@@ -1,0 +1,13 @@
+language: c
+sudo: required
+matrix:
+    include:
+        - os: linux
+            dist: trusty
+        - os: windows
+compiler:
+  - clang
+  - gcc
+script:
+  - cmake .
+  - make
