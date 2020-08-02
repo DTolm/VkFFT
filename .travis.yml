@@ -3,7 +3,7 @@ sudo: required
 matrix:
     include:
         - os: linux
-            dist: trusty
+          dist: trusty
         - os: windows
 compiler:
   - clang
