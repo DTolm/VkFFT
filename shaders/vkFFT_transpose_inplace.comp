@@ -1,0 +1,68 @@
+#version 450
+
+layout(std430, binding = 0) buffer Input
+{
+   vec2 inputs[];
+};
+
+layout(std430, binding = 1) buffer Output
+{
+   vec2 outputs[];
+};
+
+layout (local_size_x_id = 1, local_size_y_id = 2, local_size_z_id = 3) in; //32 - 32/ratio - 1
+
+layout(push_constant) uniform PushConsts
+{
+  uint inputStride[4];
+  uint ratio;
+  bool ratioDirection;
+  uint coordinate;
+} consts;
+
+
+uint index(uint index_x, uint index_y, uint coordinate) {
+    return index_x * consts.inputStride[0] + index_y * consts.inputStride[1] + gl_GlobalInvocationID.z * consts.inputStride[2] + coordinate * consts.inputStride[3];
+}
+
+const uint stride = gl_WorkGroupSize.x+1;
+shared vec2 sdata[2*gl_WorkGroupSize.y*stride];
+
+void main()
+{
+	//only transpose current x with y or z, due to the memory access patterns 
+ 
+	if (gl_WorkGroupID.x<gl_WorkGroupID.y)
+		return;
+	if (gl_WorkGroupID.x!=gl_WorkGroupID.y){
+		
+		uint id=index(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y, consts.coordinate);
+		uint pos = gl_LocalInvocationID.y*stride + gl_LocalInvocationID.x;
+		sdata[pos]=inputs[id];
+		
+		uint id_comp=index(gl_WorkGroupID.y*gl_WorkGroupSize.x + gl_LocalInvocationID.x, gl_WorkGroupID.x*gl_WorkGroupSize.y + gl_LocalInvocationID.y, consts.coordinate);
+		sdata[pos+gl_WorkGroupSize.y*stride]=inputs[id_comp];
+		
+		memoryBarrierShared();
+		barrier();
+		
+		pos =(gl_LocalInvocationID.y*consts.ratio+gl_LocalInvocationID.x%consts.ratio) + (gl_LocalInvocationID.x/consts.ratio)*stride;
+		outputs[id]=sdata[pos+gl_WorkGroupSize.y*stride];
+		outputs[id_comp]=sdata[pos];
+		
+	}
+	else {
+		
+		uint id=index(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y, consts.coordinate);
+		uint pos = gl_LocalInvocationID.y*stride + gl_LocalInvocationID.x;
+		sdata[pos]=inputs[id];
+		
+		memoryBarrierShared();
+		barrier();
+		
+		pos =(gl_LocalInvocationID.y*consts.ratio+gl_LocalInvocationID.x%consts.ratio) + (gl_LocalInvocationID.x/consts.ratio)*stride;
+		outputs[id]=sdata[pos];	
+	
+	}
+	
+}
