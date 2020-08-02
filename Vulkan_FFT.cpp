@@ -1,6 +1,7 @@
 ﻿#include <iostream>
 #include <vkFFT.h>
 #include <vulkan/vulkan.h>
+#include <string.h>
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else

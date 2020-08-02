@@ -4,7 +4,7 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
-
+#include <cmath>
 #include <vulkan/vulkan.h>
 typedef float scalar;
 using FFT_real_type = scalar;
