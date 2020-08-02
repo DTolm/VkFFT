@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.11)
+cmake_minimum_required(VERSION 3.9)
 project(Vulkan_FFT)
 set(CMAKE_CXX_STANDARD 11)
 add_definitions(-D_CRT_SECURE_NO_WARNINGS)
