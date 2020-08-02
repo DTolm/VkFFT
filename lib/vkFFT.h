@@ -88,9 +88,9 @@ namespace VkFFT
 
 	class VkFFTApplication {
 	private:
-		VkFFTConfiguration configuration = { 0 };
-		VkFFTPlan localFFTPlan = { 0 };
-		VkFFTPlan localFFTPlan_inverse_convolution = { 0 }; //additional inverse plan for convolution
+		VkFFTConfiguration configuration = {};
+		VkFFTPlan localFFTPlan = {};
+		VkFFTPlan localFFTPlan_inverse_convolution = {}; //additional inverse plan for convolution.
 		uint32_t* VkFFTReadShader(uint32_t& length, const char* filename) {
 
 			FILE* fp = fopen(filename, "rb");
@@ -626,7 +626,7 @@ namespace VkFFT
 			descriptorSetAllocateInfo.pSetLayouts = &axis->descriptorSetLayout;
 			vkAllocateDescriptorSets(configuration.device[0], &descriptorSetAllocateInfo, &axis->descriptorSet);
 			for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
-				VkDescriptorBufferInfo descriptorBufferInfo = {0};
+				VkDescriptorBufferInfo descriptorBufferInfo = {};
 
 				if (i == 0) {
 					descriptorBufferInfo.buffer = configuration.buffer[0];
@@ -786,7 +786,7 @@ namespace VkFFT
 					}
 
 				}
-				VkSpecializationMapEntry specializationMapEntries[4] = { {0} };
+				VkSpecializationMapEntry specializationMapEntries[4] = { {} };
 				specializationMapEntries[0].constantID = 1;
 				specializationMapEntries[0].size = sizeof(uint32_t);
 				specializationMapEntries[0].offset = 0;
@@ -800,7 +800,7 @@ namespace VkFFT
 				specializationMapEntries[3].size = sizeof(uint32_t);
 				specializationMapEntries[3].offset = 3 * sizeof(uint32_t);
 
-				VkSpecializationInfo specializationInfo={0};
+				VkSpecializationInfo specializationInfo={};
 				specializationInfo.dataSize = 4 * sizeof(uint32_t);
 				specializationInfo.mapEntryCount = 4;
 				specializationInfo.pMapEntries = specializationMapEntries;
@@ -1181,7 +1181,7 @@ namespace VkFFT
 			descriptorSetAllocateInfo.pSetLayouts = &axis->descriptorSetLayout;
 			vkAllocateDescriptorSets(configuration.device[0], &descriptorSetAllocateInfo, &axis->descriptorSet);
 			for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
-				VkDescriptorBufferInfo descriptorBufferInfo = {0};
+				VkDescriptorBufferInfo descriptorBufferInfo = {};
 
 				if (i == 0) {
 					descriptorBufferInfo.buffer = configuration.buffer[0];
@@ -1233,7 +1233,7 @@ namespace VkFFT
 					FFTPlan->supportAxes[1].axisBlock[2] = 1;
 					FFTPlan->supportAxes[1].axisBlock[3] = configuration.size[2];
 				}
-				VkSpecializationMapEntry specializationMapEntries[4] = { {0} };
+				VkSpecializationMapEntry specializationMapEntries[4] = { {} };
 				specializationMapEntries[0].constantID = 1;
 				specializationMapEntries[0].size = sizeof(uint32_t);
 				specializationMapEntries[0].offset = 0;
@@ -1247,7 +1247,7 @@ namespace VkFFT
 				specializationMapEntries[3].size = sizeof(uint32_t);
 				specializationMapEntries[3].offset = 3 * sizeof(uint32_t);
 
-				VkSpecializationInfo specializationInfo={0};
+				VkSpecializationInfo specializationInfo={};
 				specializationInfo.dataSize = 4 * sizeof(uint32_t);
 				specializationInfo.mapEntryCount = 4;
 				specializationInfo.pMapEntries = specializationMapEntries;
@@ -1406,7 +1406,7 @@ namespace VkFFT
 			for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
 
 			
-				VkDescriptorBufferInfo descriptorBufferInfo = {0};
+				VkDescriptorBufferInfo descriptorBufferInfo = {};
 				if (i == 0) {
 					descriptorBufferInfo.buffer = configuration.buffer[0];
 					descriptorBufferInfo.offset = 0;
@@ -1455,7 +1455,7 @@ namespace VkFFT
 			VkPipelineShaderStageCreateInfo pipelineShaderStageCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
 
 			VkComputePipelineCreateInfo computePipelineCreateInfo = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
-			VkSpecializationMapEntry specializationMapEntries[3] = { {0} };
+			VkSpecializationMapEntry specializationMapEntries[3] = { {} };
 			specializationMapEntries[0].constantID = 1;
 			specializationMapEntries[0].size = sizeof(uint32_t);
 			specializationMapEntries[0].offset = 0;
@@ -1474,7 +1474,7 @@ namespace VkFFT
 			FFTPlan->transpose[axis_id].transposeBlock[0] = max_dim;
 			FFTPlan->transpose[axis_id].transposeBlock[1] = max_dim / FFTPlan->transpose[axis_id].pushConstants.ratio;
 			FFTPlan->transpose[axis_id].transposeBlock[2] = 1;
-			VkSpecializationInfo specializationInfo={0};
+			VkSpecializationInfo specializationInfo={};
 			specializationInfo.dataSize = 3 * sizeof(uint32_t);
 			specializationInfo.mapEntryCount = 3;
 			specializationInfo.pMapEntries = specializationMapEntries;

@@ -7,18 +7,18 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
-VkInstance instance = { 0 };
-VkDebugReportCallbackEXT debugReportCallback = { 0 };
-VkPhysicalDevice physicalDevice = { 0 };
-VkPhysicalDeviceProperties physicalDeviceProperties = { 0 };
-VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties = { 0 };
-VkDevice device = { 0 };
-VkDebugUtilsMessengerEXT debugMessenger = { 0 };
-uint32_t queueFamilyIndex = { 0 };
+VkInstance instance = {};
+VkDebugReportCallbackEXT debugReportCallback = {};
+VkPhysicalDevice physicalDevice = {};
+VkPhysicalDeviceProperties physicalDeviceProperties = {};
+VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties = {};
+VkDevice device = {};
+VkDebugUtilsMessengerEXT debugMessenger = {};
+uint32_t queueFamilyIndex = {};
 std::vector<const char*> enabledLayers;
-VkQueue queue = { 0 };
-VkCommandPool commandPool = { 0 };
-VkFence fence = { 0 };
+VkQueue queue = {};
+VkCommandPool commandPool = {};
+VkFence fence = {};
 
 const std::vector<const char*> validationLayers = {
 	"VK_LAYER_KHRONOS_validation"
@@ -204,7 +204,7 @@ void createDevice() {
 	float queuePriorities = 1.0;
 	queueCreateInfo.pQueuePriorities = &queuePriorities;
 	VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
-	VkPhysicalDeviceFeatures deviceFeatures = { 0 };
+	VkPhysicalDeviceFeatures deviceFeatures = {};
 	deviceFeatures.shaderFloat64 = true;
 	deviceCreateInfo.enabledLayerCount = enabledLayers.size();
 	deviceCreateInfo.ppEnabledLayerNames = enabledLayers.data();
@@ -218,7 +218,7 @@ void createDevice() {
 
 
 uint32_t findMemoryType(uint32_t memoryTypeBits, VkMemoryPropertyFlags properties) {
-	VkPhysicalDeviceMemoryProperties memoryProperties = { 0 };
+	VkPhysicalDeviceMemoryProperties memoryProperties = {};
 
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
 
@@ -238,7 +238,7 @@ void allocateFFTBuffer(VkBuffer* buffer, VkDeviceMemory* deviceMemory, VkBufferU
 	bufferCreateInfo.size = size;
 	bufferCreateInfo.usage = usageFlags;
 	vkCreateBuffer(device, &bufferCreateInfo, NULL, buffer);
-	VkMemoryRequirements memoryRequirements = { 0 };
+	VkMemoryRequirements memoryRequirements = {};
 	vkGetBufferMemoryRequirements(device, buffer[0], &memoryRequirements);
 	VkMemoryAllocateInfo memoryAllocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
@@ -249,8 +249,8 @@ void allocateFFTBuffer(VkBuffer* buffer, VkDeviceMemory* deviceMemory, VkBufferU
 }
 void transferDataFromCPU(float* arr, VkFFT::VkFFTConfiguration configuration) {
 	VkDeviceSize stagingBufferSize = configuration.bufferSize[0];
-	VkBuffer stagingBuffer = { 0 };
-	VkDeviceMemory stagingBufferMemory = { 0 };
+	VkBuffer stagingBuffer = {};
+	VkDeviceMemory stagingBufferMemory = {};
 	allocateFFTBuffer(&stagingBuffer, &stagingBufferMemory, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBufferSize);
 
 	void* data;
@@ -261,12 +261,12 @@ void transferDataFromCPU(float* arr, VkFFT::VkFFTConfiguration configuration) {
 	commandBufferAllocateInfo.commandPool = commandPool;
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	commandBufferAllocateInfo.commandBufferCount = 1;
-	VkCommandBuffer commandBuffer = { 0 };
+	VkCommandBuffer commandBuffer = {};
 	vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &commandBuffer);
 	VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-	VkBufferCopy copyRegion = { 0 };
+	VkBufferCopy copyRegion = {};
 	copyRegion.srcOffset = 0;
 	copyRegion.dstOffset = 0;
 	copyRegion.size = stagingBufferSize;
@@ -284,8 +284,8 @@ void transferDataFromCPU(float* arr, VkFFT::VkFFTConfiguration configuration) {
 }
 void transferDataToCPU(float* arr, VkFFT::VkFFTConfiguration configuration) {
 	VkDeviceSize stagingBufferSize = configuration.bufferSize[0];
-	VkBuffer stagingBuffer = { 0 };
-	VkDeviceMemory stagingBufferMemory = { 0 };
+	VkBuffer stagingBuffer = {};
+	VkDeviceMemory stagingBufferMemory = {};
 	allocateFFTBuffer(&stagingBuffer, &stagingBufferMemory, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBufferSize);
 
 
@@ -293,12 +293,12 @@ void transferDataToCPU(float* arr, VkFFT::VkFFTConfiguration configuration) {
 	commandBufferAllocateInfo.commandPool = commandPool;
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	commandBufferAllocateInfo.commandBufferCount = 1;
-	VkCommandBuffer commandBuffer = { 0 };
+	VkCommandBuffer commandBuffer = {};
 	vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &commandBuffer);
 	VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-	VkBufferCopy copyRegion = { 0 };
+	VkBufferCopy copyRegion = {};
 	copyRegion.srcOffset = 0;
 	copyRegion.dstOffset = 0;
 	copyRegion.size = stagingBufferSize;
@@ -324,7 +324,7 @@ void performVulkanFFT(VkFFT::VkFFTApplication* app, uint32_t batch) {
 	commandBufferAllocateInfo.commandPool = commandPool;
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	commandBufferAllocateInfo.commandBufferCount = 1;
-	VkCommandBuffer commandBuffer = { 0 };
+	VkCommandBuffer commandBuffer = {};
 	vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &commandBuffer);
 	VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -351,7 +351,7 @@ void performVulkanFFTiFFT(VkFFT::VkFFTApplication* app_forward, VkFFT::VkFFTAppl
 	commandBufferAllocateInfo.commandPool = commandPool;
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	commandBufferAllocateInfo.commandBufferCount = 1;
-	VkCommandBuffer commandBuffer = { 0 };
+	VkCommandBuffer commandBuffer = {};
 	vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &commandBuffer);
 	VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -419,8 +419,8 @@ int main()
 
 		//Allocate buffer for the input data.
 		VkDeviceSize bufferSize = forward_configuration.vectorDimension * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];;
-		VkBuffer buffer = { 0 };
-		VkDeviceMemory bufferDeviceMemory = { 0 };
+		VkBuffer buffer = {};
+		VkDeviceMemory bufferDeviceMemory = {};
 
 		allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 		forward_configuration.buffer = &buffer;
@@ -498,8 +498,8 @@ int main()
 		//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use forward_configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from forward_configuration is passed to convolution_configuration as kernel object.
 		//1. Kernel forward FFT.
 		VkDeviceSize kernelSize = forward_configuration.vectorDimension * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];;
-		VkBuffer kernel = { 0 };
-		VkDeviceMemory kernelDeviceMemory = { 0 };
+		VkBuffer kernel = {};
+		VkDeviceMemory kernelDeviceMemory = {};
 
 		//Sample allocation tool.
 		allocateFFTBuffer(&kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
@@ -556,8 +556,8 @@ int main()
 
 		//Allocate separate buffer for the input data.
 		VkDeviceSize bufferSize = convolution_configuration.vectorDimension * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
-		VkBuffer buffer = { 0 };
-		VkDeviceMemory bufferDeviceMemory = { 0 };
+		VkBuffer buffer = {};
+		VkDeviceMemory bufferDeviceMemory = {};
 
 		allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 		convolution_configuration.buffer = &buffer;
