@@ -28,7 +28,7 @@ VkFFT.h is a library which can append FFT, iFFT or convolution calculation to th
 Picture below shows how data is restructured during the R2C transform depending on the system dimensions. This layout has minimal transfers between on-chip memory and graphics card (one read and one write per FFT axis + transposition if axis dimension is ≥ 256). If convolution is performed, it is embedded into the last FFT axis, which reduces memory transfers even further.
 ![alt text](https://github.com/dtolm/VkFFT/blob/master/FFT_memory_layout.png?raw=true)
 ## Benchmark results in comparison to cuFFT
-To measure how Vulkan FFT implementation works in comparison to cuFFT, we will perform a number of 2D and 3D tests. The test will consist of performing R2C FFT and inverse C2R FFT consecutively multiple times to calculate average time required. cuFFT uses out-of-place configuration while VkFFT uses in-place. The results are obtained on Nvidia 1660 Ti graphics card with no other GPU load.
+To measure how Vulkan FFT implementation works in comparison to cuFFT, we will perform a number of 2D and 3D tests. The test will consist of performing R2C FFT and inverse C2R FFT consecutively multiple times to calculate average time required. cuFFT uses out-of-place configuration while VkFFT uses in-place. The results are obtained on Nvidia 1660 Ti graphics card with no other GPU load. Launching example 0 from Vulkan_FFT.cpp performs VkFFT benchmark, benchmark_cuFFT.cu file contains similar benchmark script for cuFFT library. 
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_1.png?raw=true)
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_2.png?raw=true)
 ## Contact information
