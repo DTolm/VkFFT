@@ -66,7 +66,6 @@ namespace VkFFT
 		VkDescriptorSet descriptorSet;
 		VkPipelineLayout pipelineLayout;
 		VkPipeline pipeline;
-		VkShaderModule shaderModule;
 	} VkFFTAxis;
 	typedef struct {
 		uint32_t transposeBlock[3];
@@ -76,7 +75,6 @@ namespace VkFFT
 		VkDescriptorSet descriptorSet;
 		VkPipelineLayout pipelineLayout;
 		VkPipeline pipeline;
-		VkShaderModule shaderModule;
 	} VkFFTTranspose;
 	typedef struct {
 
@@ -405,14 +403,16 @@ namespace VkFFT
 				case 0:
 					axis->pushConstants.ratio[0] = 1;
 					axis->pushConstants.ratioDirection[0] = false;
-					if (configuration.performR2C) {
-						axis->pushConstants.ratio[1] = (configuration.size[0] / configuration.size[1]/2 >= 1) ? configuration.size[0] / configuration.size[1]/2 : 2*configuration.size[1] / configuration.size[0];
-						axis->pushConstants.ratioDirection[1] = (configuration.size[0] / configuration.size[1]/2 >= 1) ? true : false;
-					}
-					else {
-						axis->pushConstants.ratio[1] = (configuration.size[0] / configuration.size[1] >= 1) ? configuration.size[0] / configuration.size[1] : configuration.size[1] / configuration.size[0];
-						axis->pushConstants.ratioDirection[1] = (configuration.size[0] / configuration.size[1] >= 1) ? true : false;
+					if (configuration.FFTdim > 1) {
+						if (configuration.performR2C) {
+							axis->pushConstants.ratio[1] = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? configuration.size[0] / configuration.size[1] / 2 : 2 * configuration.size[1] / configuration.size[0];
+							axis->pushConstants.ratioDirection[1] = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? true : false;
+						}
+						else {
+							axis->pushConstants.ratio[1] = (configuration.size[0] / configuration.size[1] >= 1) ? configuration.size[0] / configuration.size[1] : configuration.size[1] / configuration.size[0];
+							axis->pushConstants.ratioDirection[1] = (configuration.size[0] / configuration.size[1] >= 1) ? true : false;
 
+						}
 					}
 					if (!configuration.performTranspose[0]) {
 						axis->pushConstants.ratioDirection[0] = false;
@@ -516,15 +516,17 @@ namespace VkFFT
 				case 0:
 					axis->pushConstants.ratio[1] = 1;
 					axis->pushConstants.ratioDirection[1] = true;
-					if (configuration.performR2C) {
-						axis->pushConstants.ratio[0] = (configuration.size[0] / configuration.size[1]/2 >= 1) ? configuration.size[0] / configuration.size[1]/2 : 2*configuration.size[1] / configuration.size[0];
-						axis->pushConstants.ratioDirection[0] = (configuration.size[0] / configuration.size[1]/2 >= 1) ? false : true;
-					}
-					else
-					{
-						axis->pushConstants.ratio[0] = (configuration.size[0] / configuration.size[1] >= 1) ? configuration.size[0] / configuration.size[1] : configuration.size[1] / configuration.size[0];
-						axis->pushConstants.ratioDirection[0] = (configuration.size[0] / configuration.size[1] >= 1) ? false : true;
+					if (configuration.FFTdim > 1) {
+						if (configuration.performR2C) {
+							axis->pushConstants.ratio[0] = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? configuration.size[0] / configuration.size[1] / 2 : 2 * configuration.size[1] / configuration.size[0];
+							axis->pushConstants.ratioDirection[0] = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? false : true;
+						}
+						else
+						{
+							axis->pushConstants.ratio[0] = (configuration.size[0] / configuration.size[1] >= 1) ? configuration.size[0] / configuration.size[1] : configuration.size[1] / configuration.size[0];
+							axis->pushConstants.ratioDirection[0] = (configuration.size[0] / configuration.size[1] >= 1) ? false : true;
 
+						}
 					}
 					if (!configuration.performTranspose[0]) {
 						axis->pushConstants.ratioDirection[0] = false;
@@ -593,6 +595,8 @@ namespace VkFFT
 			
 			VkDescriptorPoolSize descriptorPoolSize = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 			descriptorPoolSize.descriptorCount = 2;
+			if ((axis_id == 0) && (configuration.FFTdim == 1) && (configuration.performConvolution))
+				descriptorPoolSize.descriptorCount = 3;
 			if ((axis_id == 1) && (configuration.FFTdim == 2) && (configuration.performConvolution)) 
 				descriptorPoolSize.descriptorCount = 3;
 			if ((axis_id == 2) && (configuration.FFTdim == 3) && (configuration.performConvolution))
@@ -932,11 +936,31 @@ namespace VkFFT
 				}
 				else {
 					if (axis_id == 0) {
-						
-						if (configuration.performZeropadding)
-							VkFFTInitShader(11, &pipelineShaderStageCreateInfo.module);//not here
-						else
-							VkFFTInitShader(0, &pipelineShaderStageCreateInfo.module);
+						if ((configuration.FFTdim == 1) && (configuration.performConvolution)) {
+							switch (configuration.vectorDimension) {
+							case 1:
+								VkFFTInitShader(9, &pipelineShaderStageCreateInfo.module);
+								break;
+							case 2:
+								if (configuration.symmetricKernel)
+									VkFFTInitShader(12, &pipelineShaderStageCreateInfo.module);
+								else
+									VkFFTInitShader(15, &pipelineShaderStageCreateInfo.module);
+								break;
+							case 3:
+								if (configuration.symmetricKernel)
+									VkFFTInitShader(18, &pipelineShaderStageCreateInfo.module);
+								else
+									VkFFTInitShader(21, &pipelineShaderStageCreateInfo.module);
+								break;
+							}
+						}
+						else {
+							if (configuration.performZeropadding)
+								VkFFTInitShader(11, &pipelineShaderStageCreateInfo.module);//not here
+							else
+								VkFFTInitShader(0, &pipelineShaderStageCreateInfo.module);
+						}
 					}
 					if (axis_id == 1) {
 
@@ -1045,7 +1069,7 @@ namespace VkFFT
 				
 
 				vkCreateComputePipelines(configuration.device[0], VK_NULL_HANDLE, 1, &computePipelineCreateInfo, NULL, &axis->pipeline);
-
+				vkDestroyShaderModule(configuration.device[0], pipelineShaderStageCreateInfo.module, NULL);
 			}
 
 			
@@ -1321,7 +1345,7 @@ namespace VkFFT
 
 
 				vkCreateComputePipelines(configuration.device[0], VK_NULL_HANDLE, 1, &computePipelineCreateInfo, NULL, &axis->pipeline);
-
+				vkDestroyShaderModule(configuration.device[0], pipelineShaderStageCreateInfo.module, NULL);
 			}
 
 
@@ -1429,18 +1453,6 @@ namespace VkFFT
 			}
 			
 
-		
-			uint32_t filelength;
-			//printf("vkFFT_transpose_inplace\n");
-			char filename[256];
-			sprintf(filename, "%s%s", configuration.shaderPath, "vkFFT_transpose_inplace.spv");
-	
-			uint32_t* code = VkFFTReadShader(filelength, filename);
-			VkShaderModuleCreateInfo createInfo = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
-			createInfo.pCode = code;
-			createInfo.codeSize = filelength;
-			vkCreateShaderModule(configuration.device[0], &createInfo, NULL, &FFTPlan->transpose[axis_id].shaderModule);
-			delete[] code;
 				
 			VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
 			pipelineLayoutCreateInfo.setLayoutCount = 1;
@@ -1481,7 +1493,19 @@ namespace VkFFT
 			specializationInfo.pData = FFTPlan->transpose[axis_id].transposeBlock;
 
 			pipelineShaderStageCreateInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-			pipelineShaderStageCreateInfo.module = FFTPlan->transpose[axis_id].shaderModule;
+
+			uint32_t filelength;
+			//printf("vkFFT_transpose_inplace\n");
+			char filename[256];
+			sprintf(filename, "%s%s", configuration.shaderPath, "vkFFT_transpose_inplace.spv");
+
+			uint32_t* code = VkFFTReadShader(filelength, filename);
+			VkShaderModuleCreateInfo createInfo = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+			createInfo.pCode = code;
+			createInfo.codeSize = filelength;
+			vkCreateShaderModule(configuration.device[0], &createInfo, NULL, &pipelineShaderStageCreateInfo.module);
+			delete[] code;
+
 			pipelineShaderStageCreateInfo.pSpecializationInfo = &specializationInfo;
 			pipelineShaderStageCreateInfo.pName = "main";
 			computePipelineCreateInfo.stage = pipelineShaderStageCreateInfo;
@@ -1489,10 +1513,25 @@ namespace VkFFT
 
 
 			vkCreateComputePipelines(configuration.device[0], VK_NULL_HANDLE, 1, &computePipelineCreateInfo, NULL, &FFTPlan->transpose[axis_id].pipeline);
+			vkDestroyShaderModule(configuration.device[0], pipelineShaderStageCreateInfo.module, NULL);
+
+		}
+		void deleteAxis(VkFFTAxis* axis) {
+			vkDestroyDescriptorPool(configuration.device[0], axis->descriptorPool, NULL);
+			vkDestroyDescriptorSetLayout(configuration.device[0], axis->descriptorSetLayout, NULL);
+			vkDestroyPipelineLayout(configuration.device[0], axis->pipelineLayout, NULL);
+			vkDestroyPipeline(configuration.device[0], axis->pipeline, NULL);
 			
 
 		}
-		
+		void deleteTranspose(VkFFTTranspose* transpose) {
+			vkDestroyDescriptorPool(configuration.device[0], transpose->descriptorPool, NULL);
+			vkDestroyDescriptorSetLayout(configuration.device[0], transpose->descriptorSetLayout, NULL);
+			vkDestroyPipelineLayout(configuration.device[0], transpose->pipelineLayout, NULL);
+			vkDestroyPipeline(configuration.device[0], transpose->pipeline, NULL);
+			
+
+		}
 	public:
 		void initializeVulkanFFT(VkFFTConfiguration inputLaunchConfiguration) {
 			configuration = inputLaunchConfiguration;
@@ -2052,6 +2091,28 @@ namespace VkFFT
 			}
 
 		}
-
+		void deleteVulkanFFT() {
+			for (uint32_t i = 0; i < configuration.FFTdim; i++) {
+				deleteAxis(&localFFTPlan.axes[i]);
+			}
+		
+			for (uint32_t i = 0; i < 2; i++) {
+				if (configuration.performTranspose[i])
+					deleteTranspose(&localFFTPlan.transpose[i]);
+				else
+					deleteAxis(&localFFTPlan.supportAxes[i]);
+			}
+			if (configuration.performConvolution) {
+				for (uint32_t i = 0; i < configuration.FFTdim; i++) {
+					deleteAxis(&localFFTPlan_inverse_convolution.axes[i]);
+				}
+				for (uint32_t i = 0; i < configuration.FFTdim-1; i++) {
+					if (configuration.performTranspose[i])
+						deleteTranspose(&localFFTPlan_inverse_convolution.transpose[i]);
+					else
+						deleteAxis(&localFFTPlan_inverse_convolution.supportAxes[i]);
+				}
+			}
+		}
 	};
 }

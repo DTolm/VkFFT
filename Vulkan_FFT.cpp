@@ -383,6 +383,7 @@ int main()
 	setupDebugMessenger();
 	findPhysicalDevice();
 	createDevice();
+	
 	VkFenceCreateInfo fenceCreateInfo = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
 	fenceCreateInfo.flags = 0;
 	vkCreateFence(device, &fenceCreateInfo, NULL, &fence);
@@ -452,7 +453,7 @@ int main()
 		app_forward.initializeVulkanFFT(forward_configuration);
 		app_inverse.initializeVulkanFFT(inverse_configuration);
 		//Submit FFT+iFFT.
-		performVulkanFFTiFFT(&app_forward, &app_inverse, 500);
+		performVulkanFFTiFFT(&app_forward, &app_inverse, 10);
 		float* buffer_output = (float*)malloc(bufferSize);
 		//Transfer data from GPU using staging buffer.
 		transferDataToCPU(buffer_output, inverse_configuration);
@@ -471,6 +472,13 @@ int main()
 		}*/
 		vkDestroyBuffer(device, buffer, NULL);
 		vkFreeMemory(device, bufferDeviceMemory, NULL);
+		app_forward.deleteVulkanFFT();
+		app_inverse.deleteVulkanFFT();
+		vkDestroyFence(device, fence, NULL);
+		vkDestroyCommandPool(device, commandPool, NULL);
+		vkDestroyDevice(device, NULL);
+		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
+		vkDestroyInstance(instance, NULL);
 		break;
 	}
 	case 1:
@@ -483,10 +491,10 @@ int main()
 		VkFFT::VkFFTApplication app_kernel;
 		//Convolution sample code
 		//Setting up FFT configuration. FFT is performed in-place with no performance loss. 
-		forward_configuration.FFTdim = 2; //FFT dimension, 1D, 2D or 3D (default 1).
-		forward_configuration.size[0] = 4096; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
-		forward_configuration.size[1] = 4096;
-		forward_configuration.size[2] = 1;
+		forward_configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D (default 1).
+		forward_configuration.size[0] = 256; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
+		forward_configuration.size[1] = 256;
+		forward_configuration.size[2] = 256;
 		forward_configuration.performZeropadding = false; //(CURRENTLY DISABLED) Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes.
 		forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. As we perform forward FFT to get the kernel, it is set to false.
 		forward_configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
@@ -607,6 +615,13 @@ int main()
 		vkFreeMemory(device, bufferDeviceMemory, NULL);
 		vkDestroyBuffer(device, kernel, NULL);
 		vkFreeMemory(device, kernelDeviceMemory, NULL);
+		app_kernel.deleteVulkanFFT();
+		app_convolution.deleteVulkanFFT();
+		vkDestroyFence(device, fence, NULL);
+		vkDestroyCommandPool(device, commandPool, NULL);
+		vkDestroyDevice(device, NULL);
+		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
+		vkDestroyInstance(instance, NULL);
 		break;
 	}
 	}
