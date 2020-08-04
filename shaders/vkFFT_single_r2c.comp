@@ -9,6 +9,7 @@ layout (constant_id = 4) const uint fft_dim = 2048;
 layout(push_constant) uniform PushConsts
 {
 	bool inverse;
+	bool zeropad[2];
 	uint inputStride[4];
 	uint outputStride[4];
 	uint radixStride[3];
@@ -185,15 +186,26 @@ void main() {
 	sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+2*gl_WorkGroupSize.x)].y=inputs[indexInput(gl_LocalInvocationID.x+2*gl_WorkGroupSize.x, consts.coordinate)+consts.inputStride[1]];
 	sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x)].x=inputs[indexInput(gl_LocalInvocationID.x+3*gl_WorkGroupSize.x, consts.coordinate)];
 	sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x)].y=inputs[indexInput(gl_LocalInvocationID.x+3*gl_WorkGroupSize.x, consts.coordinate)+consts.inputStride[1]];
-	sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+4*gl_WorkGroupSize.x)].x=inputs[indexInput(gl_LocalInvocationID.x+4*gl_WorkGroupSize.x, consts.coordinate)];
-	sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+4*gl_WorkGroupSize.x)].y=inputs[indexInput(gl_LocalInvocationID.x+4*gl_WorkGroupSize.x, consts.coordinate)+consts.inputStride[1]];
-	sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+5*gl_WorkGroupSize.x)].x=inputs[indexInput(gl_LocalInvocationID.x+5*gl_WorkGroupSize.x, consts.coordinate)];
-	sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+5*gl_WorkGroupSize.x)].y=inputs[indexInput(gl_LocalInvocationID.x+5*gl_WorkGroupSize.x, consts.coordinate)+consts.inputStride[1]];
-	sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+6*gl_WorkGroupSize.x)].x=inputs[indexInput(gl_LocalInvocationID.x+6*gl_WorkGroupSize.x, consts.coordinate)];
-	sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+6*gl_WorkGroupSize.x)].y=inputs[indexInput(gl_LocalInvocationID.x+6*gl_WorkGroupSize.x, consts.coordinate)+consts.inputStride[1]];
-	sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+7*gl_WorkGroupSize.x)].x=inputs[indexInput(gl_LocalInvocationID.x+7*gl_WorkGroupSize.x, consts.coordinate)];
-	sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+7*gl_WorkGroupSize.x)].y=inputs[indexInput(gl_LocalInvocationID.x+7*gl_WorkGroupSize.x, consts.coordinate)+consts.inputStride[1]];
-    memoryBarrierShared();
+	if (consts.zeropad[0]){
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+4*gl_WorkGroupSize.x)].x=0;
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+4*gl_WorkGroupSize.x)].y=0;
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+5*gl_WorkGroupSize.x)].x=0;
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+5*gl_WorkGroupSize.x)].y=0;
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+6*gl_WorkGroupSize.x)].x=0;
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+6*gl_WorkGroupSize.x)].y=0;
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+7*gl_WorkGroupSize.x)].x=0;
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+7*gl_WorkGroupSize.x)].y=0;
+	} else {
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+4*gl_WorkGroupSize.x)].x=inputs[indexInput(gl_LocalInvocationID.x+4*gl_WorkGroupSize.x, consts.coordinate)];
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+4*gl_WorkGroupSize.x)].y=inputs[indexInput(gl_LocalInvocationID.x+4*gl_WorkGroupSize.x, consts.coordinate)+consts.inputStride[1]];
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+5*gl_WorkGroupSize.x)].x=inputs[indexInput(gl_LocalInvocationID.x+5*gl_WorkGroupSize.x, consts.coordinate)];
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+5*gl_WorkGroupSize.x)].y=inputs[indexInput(gl_LocalInvocationID.x+5*gl_WorkGroupSize.x, consts.coordinate)+consts.inputStride[1]];
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+6*gl_WorkGroupSize.x)].x=inputs[indexInput(gl_LocalInvocationID.x+6*gl_WorkGroupSize.x, consts.coordinate)];
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+6*gl_WorkGroupSize.x)].y=inputs[indexInput(gl_LocalInvocationID.x+6*gl_WorkGroupSize.x, consts.coordinate)+consts.inputStride[1]];
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+7*gl_WorkGroupSize.x)].x=inputs[indexInput(gl_LocalInvocationID.x+7*gl_WorkGroupSize.x, consts.coordinate)];
+		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+7*gl_WorkGroupSize.x)].y=inputs[indexInput(gl_LocalInvocationID.x+7*gl_WorkGroupSize.x, consts.coordinate)+consts.inputStride[1]];
+    }
+	memoryBarrierShared();
     barrier();
 
 	vec2 temp[8];
@@ -408,9 +420,13 @@ void main() {
         temp[0].y=0;
         temp[1].x=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y].y;
         temp[1].y=0;
-        outputs[indexOutput(2*gl_GlobalInvocationID.y,  gl_WorkGroupSize.y*gl_NumWorkGroups.y, consts.coordinate)]=temp[0];
-		outputs[indexOutput(2*gl_GlobalInvocationID.y+1, gl_WorkGroupSize.y*gl_NumWorkGroups.y, consts.coordinate)]=temp[1];
-    
+		if (consts.zeropad[1]){
+			outputs[indexOutput(2*gl_GlobalInvocationID.y,  gl_WorkGroupSize.y*2*gl_NumWorkGroups.y, consts.coordinate)]=temp[0];
+			outputs[indexOutput(2*gl_GlobalInvocationID.y+1, gl_WorkGroupSize.y*2*gl_NumWorkGroups.y, consts.coordinate)]=temp[1];
+		} else {
+			outputs[indexOutput(2*gl_GlobalInvocationID.y,  gl_WorkGroupSize.y*gl_NumWorkGroups.y, consts.coordinate)]=temp[0];
+			outputs[indexOutput(2*gl_GlobalInvocationID.y+1, gl_WorkGroupSize.y*gl_NumWorkGroups.y, consts.coordinate)]=temp[1];
+		}
 	}
 	//r2c regroup
 	if (consts.ratioDirection[1]){

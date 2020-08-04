@@ -394,7 +394,7 @@ int main()
 	vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physicalDeviceMemoryProperties);
 
-	uint32_t sample_id = 0;//setting parameter for VkFFT samples. 0 - FFT + iFFT R2C/C2R benchmark. 1 - convolution.
+	uint32_t sample_id = 0;//setting parameter for VkFFT samples. 0 - FFT + iFFT R2C/C2R benchmark. 1 - convolution. 2 - zeropadding convolution.
 	switch (sample_id) {
 	case 0:
 	{
@@ -417,7 +417,9 @@ int main()
 				forward_configuration.size[0] = benchmark_dimensions[n][0]; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 				forward_configuration.size[1] = benchmark_dimensions[n][1];
 				forward_configuration.size[2] = benchmark_dimensions[n][2];
-				forward_configuration.performZeropadding = false; //(CURRENTLY DISABLED) Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes.
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
 				forward_configuration.vectorDimension = 1; //Specify dimensionality of the input data vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -463,10 +465,11 @@ int main()
 				if (batch == 0) batch = 1;
 				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
 				float* buffer_output = (float*)malloc(bufferSize);
-				//Transfer data from GPU using staging buffer.
-				//transferDataToCPU(buffer_output, inverse_configuration);
+				
 				printf("System: %dx%dx%d, run: %d, Buffer: %d MB, time per step: %0.3f ms, batch: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], r, bufferSize / 1024 / 1024, totTime, batch);
 
+				//Transfer data from GPU using staging buffer.
+				//transferDataToCPU(buffer_output, inverse_configuration);
 				//Print data, if needed.
 				/*for (uint32_t v = 0; v < inverse_configuration.vectorDimension; v++) {
 					printf("\naxis: %d\n\n", v);
@@ -503,10 +506,9 @@ int main()
 		//Convolution sample code
 		//Setting up FFT configuration. FFT is performed in-place with no performance loss. 
 		forward_configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D (default 1).
-		forward_configuration.size[0] = 256; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
-		forward_configuration.size[1] = 256;
-		forward_configuration.size[2] = 256;
-		forward_configuration.performZeropadding = false; //(CURRENTLY DISABLED) Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes.
+		forward_configuration.size[0] = 32; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
+		forward_configuration.size[1] = 32;
+		forward_configuration.size[2] = 32;
 		forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. As we perform forward FFT to get the kernel, it is set to false.
 		forward_configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
 		forward_configuration.vectorDimension = 9; //Specify dimensionality of the input data vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc).
@@ -542,11 +544,11 @@ int main()
 					for (uint32_t i = 0; i < forward_configuration.size[0] / 2 + 1; i++) {
 						if ((v == 0) || (v == 4) || (v == 8)) 
 
-							kernel_input[2*i + j * forward_configuration.size[0] + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 1;
+							kernel_input[2*i + j * (forward_configuration.size[0]+2) + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 1;
 							
 						else
-							kernel_input[2*i + j * forward_configuration.size[0] + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 0;
-						kernel_input[2 * i+1 + j * forward_configuration.size[0] + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 0;
+							kernel_input[2*i + j * (forward_configuration.size[0]+2) + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 0;
+						kernel_input[2 * i+1 + j * (forward_configuration.size[0]+2) + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 0;
 					
 					}
 				}
@@ -603,7 +605,7 @@ int main()
 		//Initialize application responsible for the convolution.
 		app_convolution.initializeVulkanFFT(convolution_configuration);
 		//Sample forward FFT command buffer allocation + execution performed on kernel. FFT can also be appended to user defined command buffers.
-		performVulkanFFT(&app_convolution, 100);
+		performVulkanFFT(&app_convolution, 1);
 		//The kernel has been trasnformed.
 
 		float* buffer_output = (float*)malloc(bufferSize);
@@ -611,7 +613,7 @@ int main()
 		transferDataToCPU(buffer_output, convolution_configuration);
 
 		//Print data, if needed.
-		/*for (uint32_t v = 0; v < convolution_configuration.vectorDimension; v++) {
+		for (uint32_t v = 0; v < convolution_configuration.vectorDimension; v++) {
 			printf("\naxis: %d\n\n", v);
 			for (uint32_t k = 0; k < convolution_configuration.size[2]; k++) {
 				for (uint32_t j = 0; j < convolution_configuration.size[1]; j++) {
@@ -621,7 +623,152 @@ int main()
 					std::cout << "\n";
 				}
 			}
-		}*/
+		}
+		vkDestroyBuffer(device, buffer, NULL);
+		vkFreeMemory(device, bufferDeviceMemory, NULL);
+		vkDestroyBuffer(device, kernel, NULL);
+		vkFreeMemory(device, kernelDeviceMemory, NULL);
+		app_kernel.deleteVulkanFFT();
+		app_convolution.deleteVulkanFFT();
+		vkDestroyFence(device, fence, NULL);
+		vkDestroyCommandPool(device, commandPool, NULL);
+		vkDestroyDevice(device, NULL);
+		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
+		vkDestroyInstance(instance, NULL);
+		break;
+	}
+	case 2:
+	{
+		//Configuration + FFT application.
+		VkFFT::VkFFTConfiguration forward_configuration;
+		VkFFT::VkFFTConfiguration inverse_configuration;
+		VkFFT::VkFFTConfiguration convolution_configuration;
+		VkFFT::VkFFTApplication app_convolution;
+		VkFFT::VkFFTApplication app_kernel;
+		//Zeropadding Convolution sample code
+		//Setting up FFT configuration. FFT is performed in-place with no performance loss. 
+		forward_configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D (default 1).
+		forward_configuration.size[0] = 256; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
+		forward_configuration.size[1] = 256;
+		forward_configuration.size[2] = 256;
+		forward_configuration.performZeropadding[0] = true; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+		forward_configuration.performZeropadding[1] = true;
+		forward_configuration.performZeropadding[2] = true;
+		forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. As we perform forward FFT to get the kernel, it is set to false.
+		forward_configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
+		forward_configuration.vectorDimension = 9; //Specify dimensionality of the input data vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc).
+		//vectorDimension number is an important constant for convolution. If we perform 1x1 convolution, it is equal to 1. If we perform 2x2 convolution, it is equal to 3 for symmetric kernel (stored as xx, xy, yy) and 4 for nonsymmetric (stored as xx, xy, yx, yy). Similarly, 6 (stored as xx, xy, xz, yy, yz, zz) and 9 (stored as xx, xy, xz, yx, yy, yz, zx, zy, zz) for 3x3 convolutions.
+		forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
+		//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
+		forward_configuration.device = &device;
+		sprintf(forward_configuration.shaderPath, SHADER_DIR);
+		//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use forward_configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from forward_configuration is passed to convolution_configuration as kernel object.
+		//1. Kernel forward FFT.
+		VkDeviceSize kernelSize = forward_configuration.vectorDimension * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];;
+		VkBuffer kernel = {};
+		VkDeviceMemory kernelDeviceMemory = {};
+
+		//Sample allocation tool.
+		allocateFFTBuffer(&kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
+		forward_configuration.buffer = &kernel;
+		forward_configuration.bufferSize = &kernelSize;
+		forward_configuration.bufferDeviceMemory = &kernelDeviceMemory;
+
+		printf("Total memory needed for kernel: %d MB\n", kernelSize / 1024 / 1024);
+
+		//Fill kernel on CPU.
+		float* kernel_input = (float*)malloc(kernelSize);
+		for (uint32_t v = 0; v < forward_configuration.vectorDimension; v++) {
+			for (uint32_t k = 0; k < forward_configuration.size[2]; k++) {
+				for (uint32_t j = 0; j < forward_configuration.size[1]; j++) {
+
+					//for (uint32_t i = 0; i < forward_configuration.size[0]; i++) {
+					//	kernel_input[i + j * forward_configuration.size[0] + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 1;
+
+					//Below is the test identity kernel for 3x3 nonsymmetric FFT
+					for (uint32_t i = 0; i < forward_configuration.size[0] / 2 + 1; i++) {
+						if ((v == 0) || (v == 4) || (v == 8))
+
+							kernel_input[2 * i + j * (forward_configuration.size[0] + 2) + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 1;
+
+						else
+							kernel_input[2 * i + j * (forward_configuration.size[0] + 2) + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 0;
+						kernel_input[2 * i + 1 + j * (forward_configuration.size[0] + 2) + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 0;
+
+					}
+				}
+			}
+		}
+		//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
+		transferDataFromCPU(kernel_input, forward_configuration);
+		//Initialize application responsible for the kernel. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
+		app_kernel.initializeVulkanFFT(forward_configuration);
+		//Sample forward FFT command buffer allocation + execution performed on kernel. Second number determines how many times perform application in one submit. FFT can also be appended to user defined command buffers.
+
+		//Uncomment the line below if you want to perform kernel FFT. In this sample we use predefined identitiy kernel.
+		//performVulkanFFT(&app_kernel, 1);
+
+		//The kernel has been trasnformed.
+
+
+		//2. Buffer convolution with transformed kernel.
+		//Copy configuration, as it mostly remains unchanged. Change specific parts.
+		convolution_configuration = forward_configuration;
+		convolution_configuration.performConvolution = true;
+		convolution_configuration.symmetricKernel = false;//Specify if convolution kernel is symmetric. In this case we only pass upper triangle part of it in the form of: (xx, xy, yy) for 2d and (xx, xy, xz, yy, yz, zz) for 3d.
+		convolution_configuration.vectorDimension = 3;
+		convolution_configuration.kernel = &kernel;
+		convolution_configuration.kernelSize = &kernelSize;
+		convolution_configuration.kernelDeviceMemory = &kernelDeviceMemory;
+
+		//Allocate separate buffer for the input data.
+		VkDeviceSize bufferSize = convolution_configuration.vectorDimension * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
+		VkBuffer buffer = {};
+		VkDeviceMemory bufferDeviceMemory = {};
+
+		allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+		convolution_configuration.buffer = &buffer;
+		convolution_configuration.bufferSize = &bufferSize;
+		convolution_configuration.bufferDeviceMemory = &bufferDeviceMemory;
+
+		printf("Total memory needed for buffer: %d MB\n", bufferSize / 1024 / 1024);
+		//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
+		float* buffer_input = (float*)malloc(bufferSize);
+
+		for (uint32_t v = 0; v < convolution_configuration.vectorDimension; v++) {
+			for (uint32_t k = 0; k < convolution_configuration.size[2]/2; k++) {
+				for (uint32_t j = 0; j < convolution_configuration.size[1]/2; j++) {
+					for (uint32_t i = 0; i < convolution_configuration.size[0]/2; i++) {
+						buffer_input[i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]] = i;
+					}
+				}
+			}
+		}
+		//Transfer data to GPU using staging buffer.
+		transferDataFromCPU(buffer_input, convolution_configuration);
+
+		//Initialize application responsible for the convolution.
+		app_convolution.initializeVulkanFFT(convolution_configuration);
+		//Sample forward FFT command buffer allocation + execution performed on kernel. FFT can also be appended to user defined command buffers.
+		performVulkanFFT(&app_convolution, 1);
+		//The kernel has been trasnformed.
+
+		float* buffer_output = (float*)malloc(bufferSize);
+		//Transfer data from GPU using staging buffer.
+		transferDataToCPU(buffer_output, convolution_configuration);
+
+		//Print data, if needed.
+		for (uint32_t v = 0; v < convolution_configuration.vectorDimension; v++) {
+			printf("\naxis: %d\n\n", v);
+			for (uint32_t k = 0; k < convolution_configuration.size[2]/2; k++) {
+				for (uint32_t j = 0; j < convolution_configuration.size[1]/2; j++) {
+					for (uint32_t i = 0; i < convolution_configuration.size[0]/2; i++) {
+						printf("%.6f ", buffer_output[i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]]);
+					}
+					std::cout << "\n";
+				}
+			}
+		}
 		vkDestroyBuffer(device, buffer, NULL);
 		vkFreeMemory(device, bufferDeviceMemory, NULL);
 		vkDestroyBuffer(device, kernel, NULL);

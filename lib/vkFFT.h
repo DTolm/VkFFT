@@ -19,7 +19,7 @@ namespace VkFFT
 		uint32_t vectorDimension=1;
 		uint32_t FFTdim = 1;
 		uint32_t radix = 8;
-		bool performZeropadding = false;
+		bool performZeropadding[3] = { false, false, false };
 		bool performTranspose[2] = { true, true };
 		bool performConvolution = false;
 		bool performR2C = false;
@@ -40,6 +40,7 @@ namespace VkFFT
 
 	typedef struct {
 		VkBool32 inverse;
+		VkBool32 zeropad[2];
 		uint32_t inputStride[4];
 		uint32_t outputStride[4];
 		uint32_t radixStride[3];
@@ -225,55 +226,55 @@ namespace VkFFT
 		}
 		void VkFFTPlanAxis(VkFFTPlan* FFTPlan, uint32_t axis_id, bool inverse) {
 			//get radix stages
-			VkFFTAxis * axis = &FFTPlan->axes[axis_id];
+			VkFFTAxis* axis = &FFTPlan->axes[axis_id];
 			//for (uint32_t i; i<3; i++)
 			//	axis->pushConstants.size[i] = configuration.size[i];
 
 			//configure radix stages
 			uint32_t logSize = log2(configuration.size[axis_id]);
 			switch (configuration.radix) {
-				case 8: {
-					uint32_t stage8 = logSize / 3;
-					uint32_t stage4 = 0;
-					uint32_t stage2 = 0;
-					if (logSize % 3 == 2)
-						stage4 = 1;
-					if (logSize % 3 == 1)
-						stage2 = 1;
-					axis->pushConstants.numStages = stage8 + stage4 + stage2;
+			case 8: {
+				uint32_t stage8 = logSize / 3;
+				uint32_t stage4 = 0;
+				uint32_t stage2 = 0;
+				if (logSize % 3 == 2)
+					stage4 = 1;
+				if (logSize % 3 == 1)
+					stage2 = 1;
+				axis->pushConstants.numStages = stage8 + stage4 + stage2;
 
-					axis->pushConstants.stageRadix[0] = 8;
-					axis->pushConstants.stageRadix[1] = 8;
-					if (logSize % 3 == 2)
-						axis->pushConstants.stageRadix[1] = 4;
-					if (logSize % 3 == 1)
-						axis->pushConstants.stageRadix[1] = 2;
-					break;
-				}
-				case 4: {
-					uint32_t stage4 = logSize / 2;
-					uint32_t stage2 = 0;
-					if (logSize % 2 == 1)
-						stage2 = 1;
-					axis->pushConstants.numStages = stage4 + stage2;
-
-
-					axis->pushConstants.stageRadix[0] = 4;
+				axis->pushConstants.stageRadix[0] = 8;
+				axis->pushConstants.stageRadix[1] = 8;
+				if (logSize % 3 == 2)
 					axis->pushConstants.stageRadix[1] = 4;
-					if (logSize % 2 == 1)
-						axis->pushConstants.stageRadix[1] = 2;
-					break;
-				}
-				case 2: {
-					uint32_t stage2 = logSize;
-
-					axis->pushConstants.numStages = stage2;
-
-
-					axis->pushConstants.stageRadix[0] = 2;
+				if (logSize % 3 == 1)
 					axis->pushConstants.stageRadix[1] = 2;
-					break;
-				}
+				break;
+			}
+			case 4: {
+				uint32_t stage4 = logSize / 2;
+				uint32_t stage2 = 0;
+				if (logSize % 2 == 1)
+					stage2 = 1;
+				axis->pushConstants.numStages = stage4 + stage2;
+
+
+				axis->pushConstants.stageRadix[0] = 4;
+				axis->pushConstants.stageRadix[1] = 4;
+				if (logSize % 2 == 1)
+					axis->pushConstants.stageRadix[1] = 2;
+				break;
+			}
+			case 2: {
+				uint32_t stage2 = logSize;
+
+				axis->pushConstants.numStages = stage2;
+
+
+				axis->pushConstants.stageRadix[0] = 2;
+				axis->pushConstants.stageRadix[1] = 2;
+				break;
+			}
 			}
 			if (4096 / configuration.size[1] > 8) {
 				configuration.performTranspose[0] = false;
@@ -309,7 +310,7 @@ namespace VkFFT
 					}
 					else {
 						//don't transpose
-						axis->pushConstants.inputStride[1] = configuration.size[0]/2;
+						axis->pushConstants.inputStride[1] = configuration.size[0] / 2;
 						axis->pushConstants.inputStride[2] = (configuration.size[0] / 2 + 1) * configuration.size[1];
 					}
 				}
@@ -325,13 +326,13 @@ namespace VkFFT
 
 						if (configuration.performTranspose[0]) {
 							//transpose 0-1, don't transpose 1-2
-							axis->pushConstants.inputStride[1] = (configuration.size[0] / 2 + 1) * configuration.size[1]; 
+							axis->pushConstants.inputStride[1] = (configuration.size[0] / 2 + 1) * configuration.size[1];
 							axis->pushConstants.inputStride[2] = configuration.size[1];
 						}
 						else {
 							//don't transpose
-							axis->pushConstants.inputStride[1] = (configuration.size[0] / 2 + 1) * configuration.size[1]; 
-							axis->pushConstants.inputStride[2] = configuration.size[0]/2;
+							axis->pushConstants.inputStride[1] = (configuration.size[0] / 2 + 1) * configuration.size[1];
+							axis->pushConstants.inputStride[2] = configuration.size[0] / 2;
 						}
 					}
 				}
@@ -375,13 +376,13 @@ namespace VkFFT
 
 						if (configuration.performTranspose[0]) {
 							//transpose 0-1, no transpose 1-2
-							axis->pushConstants.inputStride[1] = configuration.size[0] * configuration.size[1];  
+							axis->pushConstants.inputStride[1] = configuration.size[0] * configuration.size[1];
 							axis->pushConstants.inputStride[2] = configuration.size[1];
 						}
 						else {
 							//no transpose
 							axis->pushConstants.inputStride[1] = configuration.size[0] * configuration.size[1];
-							axis->pushConstants.inputStride[2] = configuration.size[0] ;
+							axis->pushConstants.inputStride[2] = configuration.size[0];
 						}
 					}
 				}
@@ -391,13 +392,19 @@ namespace VkFFT
 				axis->pushConstants.outputStride[2] = axis->pushConstants.inputStride[2];
 				axis->pushConstants.outputStride[3] = axis->pushConstants.inputStride[3];
 			}
-			
+
 			for (uint32_t i = 0; i < 3; ++i) {
-				axis->pushConstants.radixStride[i] = configuration.size[axis_id] / pow(2,i+1);
-				
+				axis->pushConstants.radixStride[i] = configuration.size[axis_id] / pow(2, i + 1);
+
 			}
 
 			axis->pushConstants.inverse = inverse;
+			axis->pushConstants.zeropad[0] = configuration.performZeropadding[axis_id];
+			if (axis_id == 0)
+				axis->pushConstants.zeropad[1] = configuration.performZeropadding[axis_id + 1];
+			else 
+				axis->pushConstants.zeropad[1] = false;
+
 			if (!inverse) {
 				switch (axis_id) {
 				case 0:
@@ -818,15 +825,11 @@ namespace VkFFT
 				if (configuration.performR2C) {
 					if (axis_id == 0) {
 						if (inverse) {
-							if (configuration.performZeropadding)
-								VkFFTInitShader(2, &pipelineShaderStageCreateInfo.module);
-							else
+					
 								VkFFTInitShader(1, &pipelineShaderStageCreateInfo.module);
 						}
 						else {
-							if (configuration.performZeropadding)
-								VkFFTInitShader(4, &pipelineShaderStageCreateInfo.module);
-							else
+							
 								VkFFTInitShader(3, &pipelineShaderStageCreateInfo.module);
 							
 						}
@@ -937,6 +940,7 @@ namespace VkFFT
 				else {
 					if (axis_id == 0) {
 						if ((configuration.FFTdim == 1) && (configuration.performConvolution)) {
+							
 							switch (configuration.vectorDimension) {
 							case 1:
 								VkFFTInitShader(9, &pipelineShaderStageCreateInfo.module);
@@ -956,9 +960,6 @@ namespace VkFFT
 							}
 						}
 						else {
-							if (configuration.performZeropadding)
-								VkFFTInitShader(11, &pipelineShaderStageCreateInfo.module);//not here
-							else
 								VkFFTInitShader(0, &pipelineShaderStageCreateInfo.module);
 						}
 					}
@@ -1162,7 +1163,8 @@ namespace VkFFT
 			}
 
 			axis->pushConstants.inverse = inverse;
-			
+			axis->pushConstants.zeropad[0] = configuration.performZeropadding[axis_id];
+			axis->pushConstants.zeropad[1] = false;
 			axis->pushConstants.ratio[0] = configuration.size[axis_id - 1] / configuration.size[axis_id];
 			axis->pushConstants.ratio[1] = configuration.size[axis_id - 1] / configuration.size[axis_id];
 			axis->pushConstants.ratioDirection[0] = false;
@@ -1561,10 +1563,35 @@ namespace VkFFT
 					vkCmdPushConstants(commandBuffer, localFFTPlan.axes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[0].pushConstants);
 					vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[0].pipeline);
 					vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[0].pipelineLayout, 0, 1, &localFFTPlan.axes[0].descriptorSet, 0, NULL);
-					if (configuration.performR2C == true)
-						vkCmdDispatch(commandBuffer, 1, configuration.size[1] / 2/ localFFTPlan.axes[0].axisBlock[1], configuration.size[2] / localFFTPlan.axes[0].axisBlock[2]);
-					else
-						vkCmdDispatch(commandBuffer, 1, configuration.size[1] / localFFTPlan.axes[0].axisBlock[1], configuration.size[2] / localFFTPlan.axes[0].axisBlock[2]);
+					if (configuration.performZeropadding[1]) {
+						if (configuration.performZeropadding[2]) {
+							
+							if (configuration.performR2C == true)
+								vkCmdDispatch(commandBuffer, 1, ceil(configuration.size[1] / 2.0 / 2.0 / localFFTPlan.axes[0].axisBlock[1]), ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[0].axisBlock[2]));
+							else
+								vkCmdDispatch(commandBuffer, 1, ceil(configuration.size[1] / 2.0 / localFFTPlan.axes[0].axisBlock[1]), ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[0].axisBlock[2]));
+						}
+						else {
+							if (configuration.performR2C == true)
+								vkCmdDispatch(commandBuffer, 1, ceil(configuration.size[1] / 2.0 / 2.0 / localFFTPlan.axes[0].axisBlock[1]), configuration.size[2] / localFFTPlan.axes[0].axisBlock[2]);
+							else
+								vkCmdDispatch(commandBuffer, 1, ceil(configuration.size[1] / 2.0 / localFFTPlan.axes[0].axisBlock[1]), configuration.size[2] / localFFTPlan.axes[0].axisBlock[2]);
+						}
+					}
+					else {
+						if (configuration.performZeropadding[2]) {
+							if (configuration.performR2C == true)
+								vkCmdDispatch(commandBuffer, 1, configuration.size[1] / 2 / localFFTPlan.axes[0].axisBlock[1], ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[0].axisBlock[2]));
+							else
+								vkCmdDispatch(commandBuffer, 1, configuration.size[1] / localFFTPlan.axes[0].axisBlock[1], ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[0].axisBlock[2]));
+						}
+						else {
+							if (configuration.performR2C == true)
+								vkCmdDispatch(commandBuffer, 1, configuration.size[1] / 2 / localFFTPlan.axes[0].axisBlock[1], configuration.size[2] / localFFTPlan.axes[0].axisBlock[2]);
+							else
+								vkCmdDispatch(commandBuffer, 1, configuration.size[1] / localFFTPlan.axes[0].axisBlock[1], configuration.size[2] / localFFTPlan.axes[0].axisBlock[2]);
+						}
+					}
 					vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 				}
@@ -1601,10 +1628,19 @@ namespace VkFFT
 							vkCmdPushConstants(commandBuffer, localFFTPlan.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipelineLayout, 0, 1, &localFFTPlan.axes[1].descriptorSet, 0, NULL);
-							if (configuration.performR2C == true)
-								vkCmdDispatch(commandBuffer, 1, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[1] + 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
-							else
-								vkCmdDispatch(commandBuffer, 1, configuration.size[0] / localFFTPlan.axes[1].axisBlock[1], configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+							if (configuration.performZeropadding[2]) {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[1] + 1, ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
+								else
+									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / localFFTPlan.axes[1].axisBlock[1], ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
+							}
+							else {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[1] + 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+								else
+									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / localFFTPlan.axes[1].axisBlock[1], configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+
+							}
 							vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 						}
@@ -1614,17 +1650,31 @@ namespace VkFFT
 								vkCmdPushConstants(commandBuffer, localFFTPlan.supportAxes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.supportAxes[0].pushConstants);
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[0].pipeline);
 								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[0].pipelineLayout, 0, 1, &localFFTPlan.supportAxes[0].descriptorSet, 0, NULL);
-								vkCmdDispatch(commandBuffer, 1, 1, configuration.size[2]);
+								if (configuration.performZeropadding[2]) {
+									vkCmdDispatch(commandBuffer, 1, 1, ceil(configuration.size[2] / 2.0));
+								}
+								else {
+									vkCmdDispatch(commandBuffer, 1, 1, configuration.size[2]);
+								}
 								vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 							}
 							localFFTPlan.axes[1].pushConstants.coordinate = 0;
 							vkCmdPushConstants(commandBuffer, localFFTPlan.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipelineLayout, 0, 1, &localFFTPlan.axes[1].descriptorSet, 0, NULL);
-							if (configuration.performR2C == true)
-								vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
-							else
-								vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+							if (configuration.performZeropadding[2]) {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[0], 1, ceil(configuration.size[2] / 2.0 /localFFTPlan.axes[1].axisBlock[2]));
+								else
+									vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[1].axisBlock[0], 1, ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
+							}
+							else {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+								else
+									vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+
+							}
 							vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 						}
@@ -1636,10 +1686,19 @@ namespace VkFFT
 								vkCmdPushConstants(commandBuffer, localFFTPlan.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[1].pushConstants);
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipeline);
 								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipelineLayout, 0, 1, &localFFTPlan.axes[1].descriptorSet, 0, NULL);
-								if (configuration.performR2C == true)
-									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[1] + 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
-								else
-									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / localFFTPlan.axes[1].axisBlock[1], configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+								if (configuration.performZeropadding[2]) {
+									if (configuration.performR2C == true)
+										vkCmdDispatch(commandBuffer, 1, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[1] + 1, ceil(configuration.size[2] / 2.0 /localFFTPlan.axes[1].axisBlock[2]));
+									else
+										vkCmdDispatch(commandBuffer, 1, configuration.size[0] / localFFTPlan.axes[1].axisBlock[1], ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
+								}
+								else {
+									if (configuration.performR2C == true)
+										vkCmdDispatch(commandBuffer, 1, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[1] + 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+									else
+										vkCmdDispatch(commandBuffer, 1, configuration.size[0] / localFFTPlan.axes[1].axisBlock[1], configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+
+								}
 								vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 							}
@@ -1653,7 +1712,12 @@ namespace VkFFT
 									vkCmdPushConstants(commandBuffer, localFFTPlan.supportAxes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.supportAxes[0].pushConstants);
 									vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[0].pipeline);
 									vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[0].pipelineLayout, 0, 1, &localFFTPlan.supportAxes[0].descriptorSet, 0, NULL);
-									vkCmdDispatch(commandBuffer, 1, 1, configuration.size[2]);
+									if (configuration.performZeropadding[2]) {
+										vkCmdDispatch(commandBuffer, 1, 1, ceil(configuration.size[2]/2.0));
+									}
+									else {
+										vkCmdDispatch(commandBuffer, 1, 1, configuration.size[2]);
+									}
 									vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 								}
 							}
@@ -1662,10 +1726,19 @@ namespace VkFFT
 								vkCmdPushConstants(commandBuffer, localFFTPlan.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[1].pushConstants);
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipeline);
 								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipelineLayout, 0, 1, &localFFTPlan.axes[1].descriptorSet, 0, NULL);
-								if (configuration.performR2C == true)
-									vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
-								else
-									vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+								if (configuration.performZeropadding[2]) {
+									if (configuration.performR2C == true)
+										vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[0], 1, ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
+									else
+										vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[1].axisBlock[0], 1, ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
+								}
+								else {
+									if (configuration.performR2C == true)
+										vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+									else
+										vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+
+								}
 								vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 							}
 						}
@@ -1840,10 +1913,19 @@ namespace VkFFT
 							vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan_inverse_convolution.axes[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.axes[1].pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.axes[1].pipelineLayout, 0, 1, &localFFTPlan_inverse_convolution.axes[1].descriptorSet, 0, NULL);
-							if (configuration.performR2C == true)
-								vkCmdDispatch(commandBuffer, 1, configuration.size[0] / 2 / localFFTPlan_inverse_convolution.axes[1].axisBlock[1] + 1, configuration.size[2] / localFFTPlan_inverse_convolution.axes[1].axisBlock[2]);
-							else
-								vkCmdDispatch(commandBuffer, 1, configuration.size[0] / localFFTPlan_inverse_convolution.axes[1].axisBlock[1], configuration.size[2] / localFFTPlan_inverse_convolution.axes[1].axisBlock[2]);
+							if (configuration.performZeropadding[2]) {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / 2 / localFFTPlan_inverse_convolution.axes[1].axisBlock[1] + 1, ceil(configuration.size[2] / 2.0 / localFFTPlan_inverse_convolution.axes[1].axisBlock[2]));
+								else
+									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / localFFTPlan_inverse_convolution.axes[1].axisBlock[1], ceil(configuration.size[2] / 2.0 / localFFTPlan_inverse_convolution.axes[1].axisBlock[2]));
+							}
+							else {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / 2 / localFFTPlan_inverse_convolution.axes[1].axisBlock[1] + 1, configuration.size[2] / localFFTPlan_inverse_convolution.axes[1].axisBlock[2]);
+								else
+									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / localFFTPlan_inverse_convolution.axes[1].axisBlock[1], configuration.size[2] / localFFTPlan_inverse_convolution.axes[1].axisBlock[2]);
+
+							}
 							vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 						}
@@ -1857,7 +1939,12 @@ namespace VkFFT
 								vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.supportAxes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan_inverse_convolution.supportAxes[0].pushConstants);
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.supportAxes[0].pipeline);
 								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.supportAxes[0].pipelineLayout, 0, 1, &localFFTPlan_inverse_convolution.supportAxes[0].descriptorSet, 0, NULL);
-								vkCmdDispatch(commandBuffer, 1, 1, configuration.size[2]);
+								if (configuration.performZeropadding[2]) {
+									vkCmdDispatch(commandBuffer, 1, 1, ceil(configuration.size[2]/2.0));
+								}
+								else {
+									vkCmdDispatch(commandBuffer, 1, 1, configuration.size[2]);
+								}
 								vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 							}
 						}
@@ -1866,10 +1953,19 @@ namespace VkFFT
 							vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan_inverse_convolution.axes[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.axes[1].pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.axes[1].pipelineLayout, 0, 1, &localFFTPlan_inverse_convolution.axes[1].descriptorSet, 0, NULL);
-							if (configuration.performR2C == true)
-								vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan_inverse_convolution.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan_inverse_convolution.axes[1].axisBlock[2]);
-							else
-								vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan_inverse_convolution.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan_inverse_convolution.axes[1].axisBlock[2]);
+							if (configuration.performZeropadding[2]) {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan_inverse_convolution.axes[1].axisBlock[0], 1, ceil(configuration.size[2] / 2.0 / localFFTPlan_inverse_convolution.axes[1].axisBlock[2]));
+								else
+									vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan_inverse_convolution.axes[1].axisBlock[0], 1, ceil(configuration.size[2] / 2.0 / localFFTPlan_inverse_convolution.axes[1].axisBlock[2]));
+							}
+							else {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan_inverse_convolution.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan_inverse_convolution.axes[1].axisBlock[2]);
+								else
+									vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan_inverse_convolution.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan_inverse_convolution.axes[1].axisBlock[2]);
+
+							}
 							vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 						}
 					}
@@ -1909,10 +2005,36 @@ namespace VkFFT
 						vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.axes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan_inverse_convolution.axes[0].pushConstants);
 						vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.axes[0].pipeline);
 						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.axes[0].pipelineLayout, 0, 1, &localFFTPlan_inverse_convolution.axes[0].descriptorSet, 0, NULL);
-						if (configuration.performR2C == true)
-							vkCmdDispatch(commandBuffer, 1, configuration.size[1] / 2 / localFFTPlan_inverse_convolution.axes[0].axisBlock[1], configuration.size[2] / localFFTPlan_inverse_convolution.axes[0].axisBlock[2]);
-						else
-							vkCmdDispatch(commandBuffer, 1, configuration.size[1] / localFFTPlan_inverse_convolution.axes[0].axisBlock[1], configuration.size[2] / localFFTPlan_inverse_convolution.axes[0].axisBlock[2]);
+						if (configuration.performZeropadding[1]) {
+							if (configuration.performZeropadding[2]) {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, 1, ceil(configuration.size[1] / 2.0 / 2.0 / localFFTPlan_inverse_convolution.axes[0].axisBlock[1]), ceil(configuration.size[2] / 2.0 / localFFTPlan_inverse_convolution.axes[0].axisBlock[2]));
+								else
+									vkCmdDispatch(commandBuffer, 1, ceil(configuration.size[1] / 2.0 / localFFTPlan_inverse_convolution.axes[0].axisBlock[1]), ceil(configuration.size[2] / 2.0 / localFFTPlan_inverse_convolution.axes[0].axisBlock[2]));
+							}
+							else {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, 1, ceil(configuration.size[1] / 2.0 / 2.0 / localFFTPlan_inverse_convolution.axes[0].axisBlock[1]), configuration.size[2] / localFFTPlan_inverse_convolution.axes[0].axisBlock[2]);
+								else
+									vkCmdDispatch(commandBuffer, 1, ceil(configuration.size[1] / 2.0 / localFFTPlan_inverse_convolution.axes[0].axisBlock[1]), configuration.size[2] / localFFTPlan_inverse_convolution.axes[0].axisBlock[2]);
+
+							}
+						}
+						else {
+							if (configuration.performZeropadding[2]) {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, 1, configuration.size[1] / 2 / localFFTPlan_inverse_convolution.axes[0].axisBlock[1], ceil(configuration.size[2] / 2.0 / localFFTPlan_inverse_convolution.axes[0].axisBlock[2]));
+								else
+									vkCmdDispatch(commandBuffer, 1, configuration.size[1] / localFFTPlan_inverse_convolution.axes[0].axisBlock[1], ceil(configuration.size[2] / 2.0 / localFFTPlan_inverse_convolution.axes[0].axisBlock[2]));
+							}
+							else {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, 1, configuration.size[1] / 2 / localFFTPlan_inverse_convolution.axes[0].axisBlock[1], configuration.size[2] / localFFTPlan_inverse_convolution.axes[0].axisBlock[2]);
+								else
+									vkCmdDispatch(commandBuffer, 1, configuration.size[1] / localFFTPlan_inverse_convolution.axes[0].axisBlock[1], configuration.size[2] / localFFTPlan_inverse_convolution.axes[0].axisBlock[2]);
+
+							}
+						}
 						vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 					}
@@ -2030,7 +2152,12 @@ namespace VkFFT
 								vkCmdPushConstants(commandBuffer, localFFTPlan.supportAxes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.supportAxes[0].pushConstants);
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[0].pipeline);
 								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[0].pipelineLayout, 0, 1, &localFFTPlan.supportAxes[0].descriptorSet, 0, NULL);
-								vkCmdDispatch(commandBuffer, 1, 1, configuration.size[2]);
+								if (configuration.performZeropadding[2]) {
+									vkCmdDispatch(commandBuffer, 1, 1, ceil(configuration.size[2]/2.0));
+								}
+								else {
+									vkCmdDispatch(commandBuffer, 1, 1, configuration.size[2]);
+								}
 								vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 							}
 						}
@@ -2039,10 +2166,19 @@ namespace VkFFT
 							vkCmdPushConstants(commandBuffer, localFFTPlan.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipelineLayout, 0, 1, &localFFTPlan.axes[1].descriptorSet, 0, NULL);
-							if (configuration.performR2C == true)
-								vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
-							else
-								vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+							if (configuration.performZeropadding[2]) {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[0], 1, ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
+								else
+									vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[1].axisBlock[0], 1, ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
+							}
+							else {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+								else
+									vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+
+							}
 							vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 						}
 					}
@@ -2079,10 +2215,34 @@ namespace VkFFT
 					vkCmdPushConstants(commandBuffer, localFFTPlan.axes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[0].pushConstants);
 					vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[0].pipeline);
 					vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[0].pipelineLayout, 0, 1, &localFFTPlan.axes[0].descriptorSet, 0, NULL);
-					if (configuration.performR2C == true)
-						vkCmdDispatch(commandBuffer, 1, configuration.size[1] / 2 / localFFTPlan.axes[0].axisBlock[1], configuration.size[2] / localFFTPlan.axes[0].axisBlock[2]);
-					else
-						vkCmdDispatch(commandBuffer, 1, configuration.size[1] / localFFTPlan.axes[0].axisBlock[1], configuration.size[2] / localFFTPlan.axes[0].axisBlock[2]);
+					if (configuration.performZeropadding[1]) {
+						if (configuration.performZeropadding[2]) {
+							if (configuration.performR2C == true)
+								vkCmdDispatch(commandBuffer, 1, ceil(configuration.size[1] / 2.0 / 2.0 / localFFTPlan.axes[0].axisBlock[1]), ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[0].axisBlock[2]));
+							else
+								vkCmdDispatch(commandBuffer, 1, ceil(configuration.size[1] / 2.0 / localFFTPlan.axes[0].axisBlock[1]), ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[0].axisBlock[2]));
+						}
+						else {
+							if (configuration.performR2C == true)
+								vkCmdDispatch(commandBuffer, 1, ceil(configuration.size[1] / 2.0 / 2.0 / localFFTPlan.axes[0].axisBlock[1]), configuration.size[2] / localFFTPlan.axes[0].axisBlock[2]);
+							else
+								vkCmdDispatch(commandBuffer, 1, ceil(configuration.size[1] / 2.0 / localFFTPlan.axes[0].axisBlock[1]), configuration.size[2] / localFFTPlan.axes[0].axisBlock[2]);
+						}
+					}
+					else {
+						if (configuration.performZeropadding[2]) {
+							if (configuration.performR2C == true)
+								vkCmdDispatch(commandBuffer, 1, configuration.size[1] / 2 / localFFTPlan.axes[0].axisBlock[1], ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[0].axisBlock[2]));
+							else
+								vkCmdDispatch(commandBuffer, 1, configuration.size[1] / localFFTPlan.axes[0].axisBlock[1], ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[0].axisBlock[2]));
+						}
+						else {
+							if (configuration.performR2C == true)
+								vkCmdDispatch(commandBuffer, 1, configuration.size[1] / 2 / localFFTPlan.axes[0].axisBlock[1], configuration.size[2] / localFFTPlan.axes[0].axisBlock[2]);
+							else
+								vkCmdDispatch(commandBuffer, 1, configuration.size[1] / localFFTPlan.axes[0].axisBlock[1], configuration.size[2] / localFFTPlan.axes[0].axisBlock[2]);
+						}
+					}
 					vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 				}

@@ -9,10 +9,10 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - All transformations are performed in-place with no performance loss
   - Complex to complex (C2C), real to complex (R2C) and complex to real (C2R) transformations. R2C and C2R are optimized to run up to 2x times faster than C2C (2D and 3D case only)
   - 1x1, 2x2, 3x3 convolutions with symmetric or nonsymmetric kernel
+  - Zeropadding to model open systems (with increased speed)
   - Header-only (+precompiled shaders) library with Vulkan interface, which allows to append VkFFT directly to user's command buffer
 ## Future release plan
  - ##### Almost ready: 
-   - Zero padding support
    - Double and half-precision arithmetics
    - 8192 and 16384 dimension sizes
  - ##### Planned

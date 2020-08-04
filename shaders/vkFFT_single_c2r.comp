@@ -6,10 +6,10 @@ const float M_SQRT1_2 = 0.70710678118654752440084436210485;
 layout (local_size_x_id = 1, local_size_y_id = 2, local_size_z_id = 3) in;
 layout (constant_id = 4) const uint fft_dim = 2048;
 
-
 layout(push_constant) uniform PushConsts
 {
 	bool inverse;
+	bool zeropad[2];
 	uint inputStride[4];
 	uint outputStride[4];
 	uint radixStride[3];
@@ -42,42 +42,6 @@ uint positionShuffle(uint pos, uint ratio, bool ratioDirection ) {
 	else
 		return (((pos)/(fft_dim/2))+((pos)%(fft_dim/2))*(ratio));
 }
-void swapComplexNumbers(inout vec2 a, inout vec2 b) {
-    vec2 aux = b;
-    b = a;
-    a = aux;
-}
-
-vec2 addComplexNumbers(vec2 a, vec2 b) {
-    return a + b;
-}
-
-vec2 subComplexNumbers(vec2 a, vec2 b) {
-    return a - b;
-}
-
-vec2 multComplexNumbers(vec2 a, vec2 b) {
-    return mat2(a.x, a.y, -a.y, a.x) * b;
-}
-
-vec2 perpendicularComplexNumber(vec2 w) {
-	vec2 ret = (consts.inverse) ? vec2(w.y, -w.x) : vec2(-w.y, w.x);
-    return ret;
-}
-
-vec2 angleBisectComplexNumber(vec2 w) {
-    return normalize(w + vec2(1.0, 0.0));
-}
-
-void butterfly(inout vec2 a, inout vec2 b, vec2 w) {
-    vec2 t = multComplexNumbers(b, w);
-    b = subComplexNumbers(a, t);
-    a = addComplexNumbers(a, t);
-	//vec2 t = vec2(b.x*w.x+b.y*w.y,-b.y*w.x+b.x*w.y);
-    //b = a-t;
-    //a = a+t;
-}
-
 
 void radix2(inout vec2 values[2], vec2 w) {
     vec2 temp;
@@ -246,8 +210,14 @@ void main() {
 	}
 	if (gl_LocalInvocationID.x==0) 
 	{
-		temp[0]=inputs[indexInput(2*gl_GlobalInvocationID.y,  gl_WorkGroupSize.y*gl_NumWorkGroups.y, consts.coordinate)];
-		temp[1]=inputs[indexInput(2*gl_GlobalInvocationID.y+1,  gl_WorkGroupSize.y*gl_NumWorkGroups.y, consts.coordinate)];
+		if (consts.zeropad[1]){
+			temp[0]=inputs[indexInput(2*gl_GlobalInvocationID.y,  gl_WorkGroupSize.y*2*gl_NumWorkGroups.y, consts.coordinate)];
+			temp[1]=inputs[indexInput(2*gl_GlobalInvocationID.y+1,  gl_WorkGroupSize.y*2*gl_NumWorkGroups.y, consts.coordinate)];
+		} else {
+			temp[0]=inputs[indexInput(2*gl_GlobalInvocationID.y,  gl_WorkGroupSize.y*gl_NumWorkGroups.y, consts.coordinate)];
+			temp[1]=inputs[indexInput(2*gl_GlobalInvocationID.y+1,  gl_WorkGroupSize.y*gl_NumWorkGroups.y, consts.coordinate)];
+		
+		}
 		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + 0].x=(temp[0].x-temp[1].y);
 		sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + 0].y=(temp[0].y+temp[1].x);
 	}
@@ -460,22 +430,34 @@ void main() {
         barrier();
     }
 	
-	
-	outputs[indexOutput(gl_LocalInvocationID.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x)].x;
-	outputs[indexOutput(gl_LocalInvocationID.x+gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+gl_WorkGroupSize.x)].x;
-	outputs[indexOutput(gl_LocalInvocationID.x+2*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+2*gl_WorkGroupSize.x)].x;
-	outputs[indexOutput(gl_LocalInvocationID.x+3*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x)].x;
-	outputs[indexOutput(gl_LocalInvocationID.x+4*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+4*gl_WorkGroupSize.x)].x;
-	outputs[indexOutput(gl_LocalInvocationID.x+5*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+5*gl_WorkGroupSize.x)].x;
-	outputs[indexOutput(gl_LocalInvocationID.x+6*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+6*gl_WorkGroupSize.x)].x;
-	outputs[indexOutput(gl_LocalInvocationID.x+7*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+7*gl_WorkGroupSize.x)].x;
-	
-	outputs[indexOutput(gl_LocalInvocationID.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x)].y;
-	outputs[indexOutput(gl_LocalInvocationID.x+gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+gl_WorkGroupSize.x)].y;
-	outputs[indexOutput(gl_LocalInvocationID.x+2*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+2*gl_WorkGroupSize.x)].y;
-	outputs[indexOutput(gl_LocalInvocationID.x+3*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x)].y;
-	outputs[indexOutput(gl_LocalInvocationID.x+4*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+4*gl_WorkGroupSize.x)].y;
-	outputs[indexOutput(gl_LocalInvocationID.x+5*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+5*gl_WorkGroupSize.x)].y;
-	outputs[indexOutput(gl_LocalInvocationID.x+6*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+6*gl_WorkGroupSize.x)].y;
-	outputs[indexOutput(gl_LocalInvocationID.x+7*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+7*gl_WorkGroupSize.x)].y;
+	if (consts.zeropad[0]){
+			
+		outputs[indexOutput(gl_LocalInvocationID.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x)].x;
+		outputs[indexOutput(gl_LocalInvocationID.x+gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+gl_WorkGroupSize.x)].x;
+		outputs[indexOutput(gl_LocalInvocationID.x+2*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+2*gl_WorkGroupSize.x)].x;
+		outputs[indexOutput(gl_LocalInvocationID.x+3*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x)].x;
+		
+		outputs[indexOutput(gl_LocalInvocationID.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x)].y;
+		outputs[indexOutput(gl_LocalInvocationID.x+gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+gl_WorkGroupSize.x)].y;
+		outputs[indexOutput(gl_LocalInvocationID.x+2*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+2*gl_WorkGroupSize.x)].y;
+		outputs[indexOutput(gl_LocalInvocationID.x+3*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x)].y;
+	} else {
+		outputs[indexOutput(gl_LocalInvocationID.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x)].x;
+		outputs[indexOutput(gl_LocalInvocationID.x+gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+gl_WorkGroupSize.x)].x;
+		outputs[indexOutput(gl_LocalInvocationID.x+2*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+2*gl_WorkGroupSize.x)].x;
+		outputs[indexOutput(gl_LocalInvocationID.x+3*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x)].x;
+		outputs[indexOutput(gl_LocalInvocationID.x+4*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+4*gl_WorkGroupSize.x)].x;
+		outputs[indexOutput(gl_LocalInvocationID.x+5*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+5*gl_WorkGroupSize.x)].x;
+		outputs[indexOutput(gl_LocalInvocationID.x+6*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+6*gl_WorkGroupSize.x)].x;
+		outputs[indexOutput(gl_LocalInvocationID.x+7*gl_WorkGroupSize.x, consts.coordinate)]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+7*gl_WorkGroupSize.x)].x;
+		
+		outputs[indexOutput(gl_LocalInvocationID.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x)].y;
+		outputs[indexOutput(gl_LocalInvocationID.x+gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+gl_WorkGroupSize.x)].y;
+		outputs[indexOutput(gl_LocalInvocationID.x+2*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+2*gl_WorkGroupSize.x)].y;
+		outputs[indexOutput(gl_LocalInvocationID.x+3*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x)].y;
+		outputs[indexOutput(gl_LocalInvocationID.x+4*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+4*gl_WorkGroupSize.x)].y;
+		outputs[indexOutput(gl_LocalInvocationID.x+5*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+5*gl_WorkGroupSize.x)].y;
+		outputs[indexOutput(gl_LocalInvocationID.x+6*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+6*gl_WorkGroupSize.x)].y;
+		outputs[indexOutput(gl_LocalInvocationID.x+7*gl_WorkGroupSize.x, consts.coordinate) + consts.outputStride[1]]=sdata[8*gl_WorkGroupSize.x*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+7*gl_WorkGroupSize.x)].y;
+	}
 }
