@@ -401,7 +401,7 @@ int main()
 		const uint32_t num_benchmark_samples = 20;
 		const uint32_t num_runs = 5;
 		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {32, 32, 1, 2}, {64, 64, 1, 2}, {256, 32, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2},{1024, 1024, 1, 2}, {4096, 256, 1, 2}, {4096, 2048, 1, 2}, {4096, 4096, 1, 2},
-																	{32, 32, 32, 3}, {64, 64, 64, 3}, {256, 32, 32, 3}, {256, 256, 32, 3}, {256, 256, 256, 3}, {1024, 256, 32, 3}, {1024, 1024, 8, 3}, {2048, 1024, 8, 3}, {2048, 256, 256, 3}, {4096, 4096, 8, 3}, {4096, 4096, 32, 3} };
+																	{32, 32, 32, 3}, {64, 64, 64, 3}, {256, 32, 32, 3}, {256, 256, 32, 3}, {256, 256, 256, 3}, {1024, 256, 32, 3}, {1024, 1024, 8, 3}, {2048, 1024, 8, 3}, {2048, 256, 256, 3}, {4096, 4096, 8, 3}, {4096, 4096, 16, 3} };
 
 		for (uint32_t n = 0; n < num_benchmark_samples; n++) {
 
@@ -436,11 +436,12 @@ int main()
 
 				allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 				forward_configuration.buffer = &buffer;
+				forward_configuration.inputBuffer = &buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
 				forward_configuration.bufferSize = &bufferSize;
-				forward_configuration.bufferDeviceMemory = &bufferDeviceMemory;
-
+				
 				//Now we will create a similar configuration for inverse FFT and change inverse parameter to true.
 				inverse_configuration = forward_configuration;
+				inverse_configuration.inputBuffer = &buffer;//If you continue working with previous data, select the FFT buffer as initial
 				inverse_configuration.inverse = true;
 
 				//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
@@ -526,8 +527,9 @@ int main()
 		//Sample allocation tool.
 		allocateFFTBuffer(&kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
 		forward_configuration.buffer = &kernel;
+		forward_configuration.inputBuffer = &kernel;
 		forward_configuration.bufferSize = &kernelSize;
-		forward_configuration.bufferDeviceMemory = &kernelDeviceMemory;
+		
 
 		printf("Total memory needed for kernel: %d MB\n", kernelSize / 1024 / 1024);
 
@@ -574,7 +576,6 @@ int main()
 		convolution_configuration.vectorDimension = 3;
 		convolution_configuration.kernel = &kernel;
 		convolution_configuration.kernelSize = &kernelSize;
-		convolution_configuration.kernelDeviceMemory = &kernelDeviceMemory;
 
 		//Allocate separate buffer for the input data.
 		VkDeviceSize bufferSize = convolution_configuration.vectorDimension * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
@@ -583,8 +584,8 @@ int main()
 
 		allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 		convolution_configuration.buffer = &buffer;
+		convolution_configuration.inputBuffer = &buffer;
 		convolution_configuration.bufferSize = &bufferSize;
-		convolution_configuration.bufferDeviceMemory = &bufferDeviceMemory;
 
 		printf("Total memory needed for buffer: %d MB\n", bufferSize / 1024 / 1024);
 		//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
@@ -671,8 +672,8 @@ int main()
 		//Sample allocation tool.
 		allocateFFTBuffer(&kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
 		forward_configuration.buffer = &kernel;
+		forward_configuration.inputBuffer = &kernel;
 		forward_configuration.bufferSize = &kernelSize;
-		forward_configuration.bufferDeviceMemory = &kernelDeviceMemory;
 
 		printf("Total memory needed for kernel: %d MB\n", kernelSize / 1024 / 1024);
 
@@ -719,7 +720,6 @@ int main()
 		convolution_configuration.vectorDimension = 3;
 		convolution_configuration.kernel = &kernel;
 		convolution_configuration.kernelSize = &kernelSize;
-		convolution_configuration.kernelDeviceMemory = &kernelDeviceMemory;
 
 		//Allocate separate buffer for the input data.
 		VkDeviceSize bufferSize = convolution_configuration.vectorDimension * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
@@ -728,8 +728,8 @@ int main()
 
 		allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 		convolution_configuration.buffer = &buffer;
+		convolution_configuration.inputBuffer = &buffer;
 		convolution_configuration.bufferSize = &bufferSize;
-		convolution_configuration.bufferDeviceMemory = &bufferDeviceMemory;
 
 		printf("Total memory needed for buffer: %d MB\n", bufferSize / 1024 / 1024);
 		//Fill data on CPU. It is best to perform all operations on GPU after initial upload.

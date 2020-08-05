@@ -30,12 +30,10 @@ namespace VkFFT
 
 		VkDeviceSize* bufferSize;
 		VkBuffer* buffer;
-		VkDeviceMemory* bufferDeviceMemory;
+		VkBuffer* inputBuffer;
 
 		VkDeviceSize* kernelSize;
 		VkBuffer* kernel;
-		VkDeviceMemory* kernelDeviceMemory;
-
 	} VkFFTConfiguration;
 
 	typedef struct {
@@ -640,7 +638,12 @@ namespace VkFFT
 				VkDescriptorBufferInfo descriptorBufferInfo = {};
 
 				if (i == 0) {
-					descriptorBufferInfo.buffer = configuration.buffer[0];
+					if (((axis_id == 0) && (!configuration.inverse)) || ((axis_id == configuration.FFTdim) && (configuration.inverse))) {
+						descriptorBufferInfo.buffer = configuration.inputBuffer[0];
+					}
+					else {
+						descriptorBufferInfo.buffer = configuration.buffer[0];
+					}
 					descriptorBufferInfo.offset = 0;
 					descriptorBufferInfo.range = configuration.bufferSize[0];
 
