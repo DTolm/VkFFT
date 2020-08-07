@@ -246,7 +246,6 @@ void allocateFFTBuffer(VkBuffer* buffer, VkDeviceMemory* deviceMemory, VkBufferU
 	memoryAllocateInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, propertyFlags);
 	vkAllocateMemory(device, &memoryAllocateInfo, NULL, deviceMemory);
 	vkBindBufferMemory(device, buffer[0], deviceMemory[0], 0);
-
 }
 void transferDataFromCPU(float* arr, VkFFT::VkFFTConfiguration configuration) {
 	VkDeviceSize stagingBufferSize = configuration.bufferSize[0];
@@ -436,12 +435,17 @@ int main()
 
 				allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 				forward_configuration.buffer = &buffer;
+				forward_configuration.isInputFormatted = false; //set to true if input is a different buffer, so it can have zeropadding/R2C added  
 				forward_configuration.inputBuffer = &buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
+				forward_configuration.isOutputFormatted = false;//set to true if output is a different buffer, so it can have zeropadding/C2R automatically removed
+				forward_configuration.outputBuffer = &buffer;
 				forward_configuration.bufferSize = &bufferSize;
-				
+				forward_configuration.inputBufferSize = &bufferSize;
+				forward_configuration.outputBufferSize = &bufferSize;
 				//Now we will create a similar configuration for inverse FFT and change inverse parameter to true.
 				inverse_configuration = forward_configuration;
 				inverse_configuration.inputBuffer = &buffer;//If you continue working with previous data, select the FFT buffer as initial
+				inverse_configuration.outputBuffer = &buffer;
 				inverse_configuration.inverse = true;
 
 				//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
@@ -528,8 +532,10 @@ int main()
 		allocateFFTBuffer(&kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
 		forward_configuration.buffer = &kernel;
 		forward_configuration.inputBuffer = &kernel;
+		forward_configuration.outputBuffer = &kernel;
 		forward_configuration.bufferSize = &kernelSize;
-		
+		forward_configuration.inputBufferSize = &kernelSize;
+		forward_configuration.outputBufferSize = &kernelSize;
 
 		printf("Total memory needed for kernel: %d MB\n", kernelSize / 1024 / 1024);
 
@@ -584,8 +590,13 @@ int main()
 
 		allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 		convolution_configuration.buffer = &buffer;
+		convolution_configuration.isInputFormatted = false; //if input is a different buffer, it doesn't have to be zeropadded/R2C padded	
 		convolution_configuration.inputBuffer = &buffer;
+		convolution_configuration.isOutputFormatted = false;//if output is a different buffer, it can have zeropadding/C2R automatically removed
+		convolution_configuration.outputBuffer = &buffer;
 		convolution_configuration.bufferSize = &bufferSize;
+		convolution_configuration.inputBufferSize = &kernelSize;
+		convolution_configuration.outputBufferSize = &kernelSize;
 
 		printf("Total memory needed for buffer: %d MB\n", bufferSize / 1024 / 1024);
 		//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
@@ -665,7 +676,7 @@ int main()
 		sprintf(forward_configuration.shaderPath, SHADER_DIR);
 		//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use forward_configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from forward_configuration is passed to convolution_configuration as kernel object.
 		//1. Kernel forward FFT.
-		VkDeviceSize kernelSize = forward_configuration.vectorDimension * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];;
+		VkDeviceSize kernelSize = forward_configuration.vectorDimension * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];
 		VkBuffer kernel = {};
 		VkDeviceMemory kernelDeviceMemory = {};
 
@@ -673,8 +684,10 @@ int main()
 		allocateFFTBuffer(&kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
 		forward_configuration.buffer = &kernel;
 		forward_configuration.inputBuffer = &kernel;
+		forward_configuration.outputBuffer = &kernel;
 		forward_configuration.bufferSize = &kernelSize;
-
+		forward_configuration.inputBufferSize = &kernelSize;
+		forward_configuration.outputBufferSize = &kernelSize;
 		printf("Total memory needed for kernel: %d MB\n", kernelSize / 1024 / 1024);
 
 		//Fill kernel on CPU.
@@ -728,8 +741,13 @@ int main()
 
 		allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 		convolution_configuration.buffer = &buffer;
+		convolution_configuration.isInputFormatted = false; //if input is a different buffer, it doesn't have to be zeropadded/R2C padded	
 		convolution_configuration.inputBuffer = &buffer;
+		convolution_configuration.isOutputFormatted = false;//if output is a different buffer, it can have zeropadding/C2R automatically removed
+		convolution_configuration.outputBuffer = &buffer;
 		convolution_configuration.bufferSize = &bufferSize;
+		convolution_configuration.inputBufferSize = &bufferSize;
+		convolution_configuration.outputBufferSize = &bufferSize;
 
 		printf("Total memory needed for buffer: %d MB\n", bufferSize / 1024 / 1024);
 		//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
