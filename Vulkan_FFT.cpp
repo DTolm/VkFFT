@@ -120,7 +120,7 @@ void createInstance() {
 	applicationInfo.applicationVersion = 1.0;
 	applicationInfo.pEngineName = "VkFFT";
 	applicationInfo.engineVersion = 1.0;
-	applicationInfo.apiVersion = VK_API_VERSION_1_1;;
+	applicationInfo.apiVersion = VK_API_VERSION_1_0;
 
 	VkInstanceCreateInfo createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	createInfo.flags = 0;
