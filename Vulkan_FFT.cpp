@@ -1,7 +1,11 @@
-﻿#include <iostream>
+﻿#include <vector>
+#include <memory>
+#include <string>
+#include <chrono>
+#include <thread>
+#include <iostream>
 #include <vkFFT.h>
 #include <vulkan/vulkan.h>
-#include <string.h>
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else
@@ -247,7 +251,7 @@ void allocateFFTBuffer(VkBuffer* buffer, VkDeviceMemory* deviceMemory, VkBufferU
 	vkAllocateMemory(device, &memoryAllocateInfo, NULL, deviceMemory);
 	vkBindBufferMemory(device, buffer[0], deviceMemory[0], 0);
 }
-void transferDataFromCPU(float* arr, VkFFT::VkFFTConfiguration configuration) {
+void transferDataFromCPU(float* arr, VkFFTConfiguration configuration) {
 	VkDeviceSize stagingBufferSize = configuration.bufferSize[0];
 	VkBuffer stagingBuffer = {};
 	VkDeviceMemory stagingBufferMemory = {};
@@ -282,7 +286,7 @@ void transferDataFromCPU(float* arr, VkFFT::VkFFTConfiguration configuration) {
 	vkDestroyBuffer(device, stagingBuffer, NULL);
 	vkFreeMemory(device, stagingBufferMemory, NULL);
 }
-void transferDataToCPU(float* arr, VkFFT::VkFFTConfiguration configuration) {
+void transferDataToCPU(float* arr, VkFFTConfiguration configuration) {
 	VkDeviceSize stagingBufferSize = configuration.bufferSize[0];
 	VkBuffer stagingBuffer = {};
 	VkDeviceMemory stagingBufferMemory = {};
@@ -319,7 +323,7 @@ void transferDataToCPU(float* arr, VkFFT::VkFFTConfiguration configuration) {
 	vkFreeMemory(device, stagingBufferMemory, NULL);
 }
 
-void performVulkanFFT(VkFFT::VkFFTApplication* app, uint32_t batch) {
+void performVulkanFFT(VkFFTApplication* app, uint32_t batch) {
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	commandBufferAllocateInfo.commandPool = commandPool;
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -346,7 +350,7 @@ void performVulkanFFT(VkFFT::VkFFTApplication* app, uint32_t batch) {
 	vkResetFences(device, 1, &fence);
 	vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
-float performVulkanFFTiFFT(VkFFT::VkFFTApplication* app_forward, VkFFT::VkFFTApplication* app_inverse, uint32_t batch) {
+float performVulkanFFTiFFT(VkFFTApplication* app_forward, VkFFTApplication* app_inverse, uint32_t batch) {
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	commandBufferAllocateInfo.commandPool = commandPool;
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -406,10 +410,10 @@ int main()
 
 			for (uint32_t r = 0; r < num_runs; r++) {
 				//Configuration + FFT application .
-				VkFFT::VkFFTConfiguration forward_configuration;
-				VkFFT::VkFFTConfiguration inverse_configuration;
-				VkFFT::VkFFTApplication app_forward;
-				VkFFT::VkFFTApplication app_inverse;
+				VkFFTConfiguration forward_configuration;
+				VkFFTConfiguration inverse_configuration;
+				VkFFTApplication app_forward;
+				VkFFTApplication app_inverse;
 				//FFT + iFFT sample code.
 				//Setting up FFT configuration for forward and inverse FFT.
 				forward_configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
@@ -503,11 +507,11 @@ int main()
 	case 1:
 	{
 		//Configuration + FFT application.
-		VkFFT::VkFFTConfiguration forward_configuration;
-		VkFFT::VkFFTConfiguration inverse_configuration;
-		VkFFT::VkFFTConfiguration convolution_configuration;
-		VkFFT::VkFFTApplication app_convolution;
-		VkFFT::VkFFTApplication app_kernel;
+		VkFFTConfiguration forward_configuration;
+		VkFFTConfiguration inverse_configuration;
+		VkFFTConfiguration convolution_configuration;
+		VkFFTApplication app_convolution;
+		VkFFTApplication app_kernel;
 		//Convolution sample code
 		//Setting up FFT configuration. FFT is performed in-place with no performance loss. 
 		forward_configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D (default 1).
@@ -652,11 +656,11 @@ int main()
 	case 2:
 	{
 		//Configuration + FFT application.
-		VkFFT::VkFFTConfiguration forward_configuration;
-		VkFFT::VkFFTConfiguration inverse_configuration;
-		VkFFT::VkFFTConfiguration convolution_configuration;
-		VkFFT::VkFFTApplication app_convolution;
-		VkFFT::VkFFTApplication app_kernel;
+		VkFFTConfiguration forward_configuration;
+		VkFFTConfiguration inverse_configuration;
+		VkFFTConfiguration convolution_configuration;
+		VkFFTApplication app_convolution;
+		VkFFTApplication app_kernel;
 		//Zeropadding Convolution sample code
 		//Setting up FFT configuration. FFT is performed in-place with no performance loss. 
 		forward_configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D (default 1).
