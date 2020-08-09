@@ -1,6 +1,6 @@
 ﻿#include <vector>
 #include <memory>
-#include <string>
+#include <string.h>
 #include <chrono>
 #include <thread>
 #include <iostream>
