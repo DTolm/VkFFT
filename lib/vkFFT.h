@@ -1,4 +1,4 @@
-#include <cmath>
+#include <math.h>
 #include <vulkan/vulkan.h>
 
 typedef struct {
