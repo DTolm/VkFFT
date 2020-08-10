@@ -34,5 +34,7 @@ To measure how Vulkan FFT implementation works in comparison to cuFFT, we will p
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_1.png?raw=true)
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_2.png?raw=true)
 ## Contact information
-Initial version of VkFFT is developed by Tolmachev Dmitrii.\
-Email: <dtolm96@gmail.com>
+Initial version of VkFFT is developed by Tolmachev Dmitrii\
+Peter Grünberg Institute and Institute for Advanced Simulation, Forschungszentrum Jülich,  D-52425 Jülich, Germany\
+Email 1: <d.tolmachev@fz-juelich.de>\
+Email 2: <dtolm96@gmail.com>
