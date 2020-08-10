@@ -14,15 +14,16 @@ layout (local_size_x_id = 1, local_size_y_id = 2, local_size_z_id = 3) in; //32 
 
 layout(push_constant) uniform PushConsts
 {
-  uint inputStride[4];
+  uint inputStride[5];
   uint ratio;
   bool ratioDirection;
   uint coordinate;
+  uint featureMapID;
 } consts;
 
 
-uint index(uint index_x, uint index_y, uint coordinate) {
-    return index_x * consts.inputStride[0] + index_y * consts.inputStride[1] + gl_GlobalInvocationID.z * consts.inputStride[2] + coordinate * consts.inputStride[3];
+uint index(uint index_x, uint index_y) {
+    return index_x * consts.inputStride[0] + index_y * consts.inputStride[1] + gl_GlobalInvocationID.z * consts.inputStride[2] + consts.coordinate * consts.inputStride[3] + consts.featureMapID * consts.inputStride[4];
 }
 
 const uint stride = gl_WorkGroupSize.x+1;
@@ -36,11 +37,11 @@ void main()
 		return;
 	if (gl_WorkGroupID.x!=gl_WorkGroupID.y){
 		
-		uint id=index(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y, consts.coordinate);
+		uint id=index(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
 		uint pos = gl_LocalInvocationID.y*stride + gl_LocalInvocationID.x;
 		sdata[pos]=inputs[id];
 		
-		uint id_comp=index(gl_WorkGroupID.y*gl_WorkGroupSize.x + gl_LocalInvocationID.x, gl_WorkGroupID.x*gl_WorkGroupSize.y + gl_LocalInvocationID.y, consts.coordinate);
+		uint id_comp=index(gl_WorkGroupID.y*gl_WorkGroupSize.x + gl_LocalInvocationID.x, gl_WorkGroupID.x*gl_WorkGroupSize.y + gl_LocalInvocationID.y);
 		sdata[pos+gl_WorkGroupSize.y*stride]=inputs[id_comp];
 		
 		memoryBarrierShared();
@@ -53,7 +54,7 @@ void main()
 	}
 	else {
 		
-		uint id=index(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y, consts.coordinate);
+		uint id=index(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
 		uint pos = gl_LocalInvocationID.y*stride + gl_LocalInvocationID.x;
 		sdata[pos]=inputs[id];
 		

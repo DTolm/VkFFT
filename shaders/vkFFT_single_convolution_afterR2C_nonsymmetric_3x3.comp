@@ -10,8 +10,8 @@ layout(push_constant) uniform PushConsts
 {
 	bool inverse;
 	bool zeropad[2];
-	uint inputStride[4];
-	uint outputStride[4];
+	uint inputStride[5];
+	uint outputStride[5];
 	uint radixStride[3];
 	uint numStages;
 	uint stageRadix[2];	
@@ -20,6 +20,7 @@ layout(push_constant) uniform PushConsts
 	uint inputOffset;
 	uint outputOffset;
 	uint coordinate;
+	uint featureMapID;
 } consts;
 
 
