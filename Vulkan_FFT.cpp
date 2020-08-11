@@ -426,7 +426,7 @@ int main()
 				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
-				forward_configuration.vectorDimension = 1; //Specify dimensionality of the input data vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
+				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
 				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
 				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 				forward_configuration.device = &device;
@@ -434,7 +434,7 @@ int main()
 				sprintf(forward_configuration.shaderPath, SHADER_DIR);
 
 				//Allocate buffer for the input data.
-				VkDeviceSize bufferSize = forward_configuration.vectorDimension * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];;
+				VkDeviceSize bufferSize = forward_configuration.coordinateFeatures * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];;
 				VkBuffer buffer = {};
 				VkDeviceMemory bufferDeviceMemory = {};
 
@@ -456,7 +456,7 @@ int main()
 				//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 				float* buffer_input = (float*)malloc(bufferSize);
 
-				for (uint32_t v = 0; v < forward_configuration.vectorDimension; v++) {
+				for (uint32_t v = 0; v < forward_configuration.coordinateFeatures; v++) {
 					for (uint32_t k = 0; k < forward_configuration.size[2]; k++) {
 						for (uint32_t j = 0; j < forward_configuration.size[1]; j++) {
 							for (uint32_t i = 0; i < forward_configuration.size[0]; i++) {
@@ -481,8 +481,8 @@ int main()
 				//Transfer data from GPU using staging buffer.
 				//transferDataToCPU(buffer_output, &buffer, bufferSize);
 				//Print data, if needed.
-				/*for (uint32_t v = 0; v < inverse_configuration.vectorDimension; v++) {
-					printf("\naxis: %d\n\n", v);
+				/*for (uint32_t v = 0; v < inverse_configuration.coordinateFeatures; v++) {
+					printf("\ncoordinate: %d\n\n", v);
 					for (uint32_t k = 0; k < inverse_configuration.size[2]; k++) {
 						for (uint32_t j = 0; j < inverse_configuration.size[1]; j++) {
 							for (uint32_t i = 0; i < inverse_configuration.size[0]; i++) {
@@ -522,15 +522,15 @@ int main()
 		forward_configuration.size[2] = 32;
 		forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. As we perform forward FFT to get the kernel, it is set to false.
 		forward_configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
-		forward_configuration.vectorDimension = 9; //Specify dimensionality of the input data vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc).
-		//vectorDimension number is an important constant for convolution. If we perform 1x1 convolution, it is equal to 1. If we perform 2x2 convolution, it is equal to 3 for symmetric kernel (stored as xx, xy, yy) and 4 for nonsymmetric (stored as xx, xy, yx, yy). Similarly, 6 (stored as xx, xy, xz, yy, yz, zz) and 9 (stored as xx, xy, xz, yx, yy, yz, zx, zy, zz) for 3x3 convolutions.
+		forward_configuration.coordinateFeatures = 9; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc).
+		//coordinateFeatures number is an important constant for convolution. If we perform 1x1 convolution, it is equal to number of features, but matrixConvolution should be equal to 1. For matrix convolution, it must be equal to matrixConvolution parameter. If we perform 2x2 convolution, it is equal to 3 for symmetric kernel (stored as xx, xy, yy) and 4 for nonsymmetric (stored as xx, xy, yx, yy). Similarly, 6 (stored as xx, xy, xz, yy, yz, zz) and 9 (stored as xx, xy, xz, yx, yy, yz, zx, zy, zz) for 3x3 convolutions. 
 		forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
 		//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 		forward_configuration.device = &device;
 		sprintf(forward_configuration.shaderPath, SHADER_DIR);
 		//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use forward_configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from forward_configuration is passed to convolution_configuration as kernel object.
 		//1. Kernel forward FFT.
-		VkDeviceSize kernelSize = forward_configuration.vectorDimension * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];;
+		VkDeviceSize kernelSize = forward_configuration.coordinateFeatures * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];;
 		VkBuffer kernel = {};
 		VkDeviceMemory kernelDeviceMemory = {};
 
@@ -547,7 +547,7 @@ int main()
 
 		//Fill kernel on CPU.
 		float* kernel_input = (float*)malloc(kernelSize);
-		for (uint32_t v = 0; v < forward_configuration.vectorDimension; v++) {
+		for (uint32_t v = 0; v < forward_configuration.coordinateFeatures; v++) {
 			for (uint32_t k = 0; k < forward_configuration.size[2]; k++) {
 				for (uint32_t j = 0; j < forward_configuration.size[1]; j++) {
 
@@ -585,12 +585,13 @@ int main()
 		convolution_configuration = forward_configuration;
 		convolution_configuration.performConvolution = true;
 		convolution_configuration.symmetricKernel = false;//Specify if convolution kernel is symmetric. In this case we only pass upper triangle part of it in the form of: (xx, xy, yy) for 2d and (xx, xy, xz, yy, yz, zz) for 3d.
-		convolution_configuration.vectorDimension = 3;
+		convolution_configuration.matrixConvolution = 3;//we do matrix convolution, so kernel is 9 numbers (3x3), but vector dimension is 3
+		convolution_configuration.coordinateFeatures = 3;//equal to matrixConvolution size
 		convolution_configuration.kernel = &kernel;
 		convolution_configuration.kernelSize = &kernelSize;
 
 		//Allocate separate buffer for the input data.
-		VkDeviceSize bufferSize = convolution_configuration.vectorDimension * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
+		VkDeviceSize bufferSize = convolution_configuration.coordinateFeatures * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
 		VkBuffer buffer = {};
 		VkDeviceMemory bufferDeviceMemory = {};
 
@@ -608,7 +609,7 @@ int main()
 		//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 		float* buffer_input = (float*)malloc(bufferSize);
 
-		for (uint32_t v = 0; v < convolution_configuration.vectorDimension; v++) {
+		for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
 			for (uint32_t k = 0; k < convolution_configuration.size[2]; k++) {
 				for (uint32_t j = 0; j < convolution_configuration.size[1]; j++) {
 					for (uint32_t i = 0; i < convolution_configuration.size[0]; i++) {
@@ -631,8 +632,8 @@ int main()
 		transferDataToCPU(buffer_output, &buffer, bufferSize);
 
 		//Print data, if needed.
-		for (uint32_t v = 0; v < convolution_configuration.vectorDimension; v++) {
-			printf("\naxis: %d\n\n", v);
+		for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
+			printf("\ncoordinate: %d\n\n", v);
 			for (uint32_t k = 0; k < convolution_configuration.size[2]; k++) {
 				for (uint32_t j = 0; j < convolution_configuration.size[1]; j++) {
 					for (uint32_t i = 0; i < convolution_configuration.size[0]; i++) {
@@ -675,15 +676,15 @@ int main()
 		forward_configuration.performZeropadding[2] = true;
 		forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. As we perform forward FFT to get the kernel, it is set to false.
 		forward_configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
-		forward_configuration.vectorDimension = 9; //Specify dimensionality of the input data vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc).
-		//vectorDimension number is an important constant for convolution. If we perform 1x1 convolution, it is equal to 1. If we perform 2x2 convolution, it is equal to 3 for symmetric kernel (stored as xx, xy, yy) and 4 for nonsymmetric (stored as xx, xy, yx, yy). Similarly, 6 (stored as xx, xy, xz, yy, yz, zz) and 9 (stored as xx, xy, xz, yx, yy, yz, zx, zy, zz) for 3x3 convolutions.
+		forward_configuration.coordinateFeatures = 9; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc).
+		//coordinateFeatures number is an important constant for convolution. If we perform 1x1 convolution, it is equal to number of features, but matrixConvolution should be equal to 1. For matrix convolution, it must be equal to matrixConvolution parameter. If we perform 2x2 convolution, it is equal to 3 for symmetric kernel (stored as xx, xy, yy) and 4 for nonsymmetric (stored as xx, xy, yx, yy). Similarly, 6 (stored as xx, xy, xz, yy, yz, zz) and 9 (stored as xx, xy, xz, yx, yy, yz, zx, zy, zz) for 3x3 convolutions. 
 		forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
 		//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 		forward_configuration.device = &device;
 		sprintf(forward_configuration.shaderPath, SHADER_DIR);
 		//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use forward_configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from forward_configuration is passed to convolution_configuration as kernel object.
 		//1. Kernel forward FFT.
-		VkDeviceSize kernelSize = forward_configuration.vectorDimension * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];
+		VkDeviceSize kernelSize = forward_configuration.coordinateFeatures * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];
 		VkBuffer kernel = {};
 		VkDeviceMemory kernelDeviceMemory = {};
 
@@ -699,7 +700,7 @@ int main()
 
 		//Fill kernel on CPU.
 		float* kernel_input = (float*)malloc(kernelSize);
-		for (uint32_t v = 0; v < forward_configuration.vectorDimension; v++) {
+		for (uint32_t v = 0; v < forward_configuration.coordinateFeatures; v++) {
 			for (uint32_t k = 0; k < forward_configuration.size[2]; k++) {
 				for (uint32_t j = 0; j < forward_configuration.size[1]; j++) {
 
@@ -737,12 +738,13 @@ int main()
 		convolution_configuration = forward_configuration;
 		convolution_configuration.performConvolution = true;
 		convolution_configuration.symmetricKernel = false;//Specify if convolution kernel is symmetric. In this case we only pass upper triangle part of it in the form of: (xx, xy, yy) for 2d and (xx, xy, xz, yy, yz, zz) for 3d.
-		convolution_configuration.vectorDimension = 3;
+		convolution_configuration.matrixConvolution = 3; //we do matrix convolution, so kernel is 9 numbers (3x3), but vector dimension is 3
+		convolution_configuration.coordinateFeatures = 3; //equal to matrixConvolution size
 		convolution_configuration.kernel = &kernel;
 		convolution_configuration.kernelSize = &kernelSize;
 
 		//Allocate separate buffer for the input data.
-		VkDeviceSize bufferSize = convolution_configuration.vectorDimension * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
+		VkDeviceSize bufferSize = convolution_configuration.coordinateFeatures * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
 		VkBuffer buffer = {};
 		VkDeviceMemory bufferDeviceMemory = {};
 
@@ -760,7 +762,7 @@ int main()
 		//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 		float* buffer_input = (float*)malloc(bufferSize);
 
-		for (uint32_t v = 0; v < convolution_configuration.vectorDimension; v++) {
+		for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
 			for (uint32_t k = 0; k < convolution_configuration.size[2]/2; k++) {
 				for (uint32_t j = 0; j < convolution_configuration.size[1]/2; j++) {
 					for (uint32_t i = 0; i < convolution_configuration.size[0]/2; i++) {
@@ -783,8 +785,8 @@ int main()
 		transferDataToCPU(buffer_output, &buffer, bufferSize);
 
 		//Print data, if needed.
-		for (uint32_t v = 0; v < convolution_configuration.vectorDimension; v++) {
-			printf("\naxis: %d\n\n", v);
+		for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
+			printf("\ncoordinate: %d\n\n", v);
 			for (uint32_t k = 0; k < convolution_configuration.size[2]/2; k++) {
 				for (uint32_t j = 0; j < convolution_configuration.size[1]/2; j++) {
 					for (uint32_t i = 0; i < convolution_configuration.size[0]/2; i++) {
@@ -809,7 +811,7 @@ int main()
 	}
 	case 3:
 	{
-		//3 - multiple feature(kernel) convolution
+		//3 - multiple batches (kernels) convolution
 		//Configuration + FFT application.
 		VkFFTConfiguration forward_configuration;
 		VkFFTConfiguration inverse_configuration;
@@ -824,16 +826,16 @@ int main()
 		forward_configuration.size[2] = 1;
 		forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. As we perform forward FFT to get the kernel, it is set to false.
 		forward_configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
-		forward_configuration.vectorDimension = 1; //Specify dimensionality of the input data vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc).
-		//vectorDimension number is an important constant for convolution. If we perform 1x1 convolution, it is equal to 1. If we perform 2x2 convolution, it is equal to 3 for symmetric kernel (stored as xx, xy, yy) and 4 for nonsymmetric (stored as xx, xy, yx, yy). Similarly, 6 (stored as xx, xy, xz, yy, yz, zz) and 9 (stored as xx, xy, xz, yx, yy, yz, zx, zy, zz) for 3x3 convolutions.
+		forward_configuration.coordinateFeatures = 3; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc).
+		//coordinateFeatures number is an important constant for convolution. If we perform 1x1 convolution, it is equal to number of features, but matrixConvolution should be equal to 1. For matrix convolution, it must be equal to matrixConvolution parameter. If we perform 2x2 convolution, it is equal to 3 for symmetric kernel (stored as xx, xy, yy) and 4 for nonsymmetric (stored as xx, xy, yx, yy). Similarly, 6 (stored as xx, xy, xz, yy, yz, zz) and 9 (stored as xx, xy, xz, yx, yy, yz, zx, zy, zz) for 3x3 convolutions. 
 		forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
-		forward_configuration.numberInputSystems = 3;
+		forward_configuration.numberBatches = 2;
 		//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 		forward_configuration.device = &device;
 		sprintf(forward_configuration.shaderPath, SHADER_DIR);
 		//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use forward_configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from forward_configuration is passed to convolution_configuration as kernel object.
 		//1. Kernel forward FFT.
-		VkDeviceSize kernelSize = forward_configuration.numberInputSystems * forward_configuration.vectorDimension * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];;
+		VkDeviceSize kernelSize = forward_configuration.numberBatches * forward_configuration.coordinateFeatures * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];;
 		VkBuffer kernel = {};
 		VkDeviceMemory kernelDeviceMemory = {};
 
@@ -850,23 +852,16 @@ int main()
 
 		//Fill kernel on CPU.
 		float* kernel_input = (float*)malloc(kernelSize);
-		for (uint32_t f = 0; f < forward_configuration.numberInputSystems; f++) {
-			for (uint32_t v = 0; v < forward_configuration.vectorDimension; v++) {
+		for (uint32_t f = 0; f < forward_configuration.numberBatches; f++) {
+			for (uint32_t v = 0; v < forward_configuration.coordinateFeatures; v++) {
 				for (uint32_t k = 0; k < forward_configuration.size[2]; k++) {
 					for (uint32_t j = 0; j < forward_configuration.size[1]; j++) {
 
-						//for (uint32_t i = 0; i < forward_configuration.size[0]; i++) {
-						//	kernel_input[i + j * forward_configuration.size[0] + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 1;
-
-						//Below is the test identity kernel for 3x3 nonsymmetric FFT
+						//Below is the test identity kernel for 1x1 nonsymmetric FFT, multiplied by (f * forward_configuration.coordinateFeatures + v + 1);
 						for (uint32_t i = 0; i < forward_configuration.size[0] / 2 + 1; i++) {
-							if ((v == 0) || (v == 4) || (v == 8))
-
-								kernel_input[2 * i + j * (forward_configuration.size[0] + 2) + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2] + f * forward_configuration.vectorDimension * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 1;
-
-							else
-								kernel_input[2 * i + j * (forward_configuration.size[0] + 2) + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2] + f * forward_configuration.vectorDimension * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 0;
-							kernel_input[2 * i + 1 + j * (forward_configuration.size[0] + 2) + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2] + f * forward_configuration.vectorDimension * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 0;
+							
+							kernel_input[2 * i + j * (forward_configuration.size[0] + 2) + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2] + f * forward_configuration.coordinateFeatures * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = f* forward_configuration.coordinateFeatures + v + 1;
+							kernel_input[2 * i + 1 + j * (forward_configuration.size[0] + 2) + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2] + f * forward_configuration.coordinateFeatures * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = 0;
 
 						}
 					}
@@ -890,18 +885,17 @@ int main()
 		convolution_configuration = forward_configuration;
 		convolution_configuration.performConvolution = true;
 		convolution_configuration.symmetricKernel = false;//Specify if convolution kernel is symmetric. In this case we only pass upper triangle part of it in the form of: (xx, xy, yy) for 2d and (xx, xy, xz, yy, yz, zz) for 3d.
-		convolution_configuration.vectorDimension = 1;
 		convolution_configuration.kernel = &kernel;
 		convolution_configuration.kernelSize = &kernelSize;
-		convolution_configuration.numberInputSystems = 1;
-		convolution_configuration.numberFeatureMaps = forward_configuration.numberInputSystems;// input systems of kernel - now feature maps
+		convolution_configuration.numberBatches = 1;//one batch - numberKernels convolutions
+		convolution_configuration.numberKernels = forward_configuration.numberBatches;// number of convolutions on a single input
 		//Allocate separate buffer for the input data.
-		VkDeviceSize bufferSize = convolution_configuration.vectorDimension * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
+		VkDeviceSize bufferSize = convolution_configuration.coordinateFeatures * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
 		VkBuffer buffer = {};
 		VkDeviceMemory bufferDeviceMemory = {};
 
 		allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
-		VkDeviceSize outputBufferSize = convolution_configuration.numberFeatureMaps * convolution_configuration.vectorDimension * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
+		VkDeviceSize outputBufferSize = convolution_configuration.numberKernels * convolution_configuration.coordinateFeatures * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
 		VkBuffer outputBuffer = {};
 		VkDeviceMemory outputBufferDeviceMemory = {};
 
@@ -920,11 +914,11 @@ int main()
 		//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 		float* buffer_input = (float*)malloc(bufferSize);
 
-		for (uint32_t v = 0; v < convolution_configuration.vectorDimension; v++) {
+		for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
 			for (uint32_t k = 0; k < convolution_configuration.size[2]; k++) {
 				for (uint32_t j = 0; j < convolution_configuration.size[1]; j++) {
 					for (uint32_t i = 0; i < convolution_configuration.size[0]; i++) {
-						buffer_input[i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]] = i;
+						buffer_input[i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]] = 1;
 					}
 				}
 			}
@@ -943,14 +937,14 @@ int main()
 		transferDataToCPU(buffer_output, &outputBuffer, outputBufferSize);
 
 		//Print data, if needed.
-		for (uint32_t f = 0; f < convolution_configuration.numberFeatureMaps; f++) {
-			printf("\nfeature map: %d\n\n", f);
-			for (uint32_t v = 0; v < convolution_configuration.vectorDimension; v++) {
-				printf("\naxis: %d\n\n", v);
+		for (uint32_t f = 0; f < convolution_configuration.numberKernels; f++) {
+			printf("\nKernel id: %d\n\n", f);
+			for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
+				printf("\ncoordinate: %d\n\n", v);
 				for (uint32_t k = 0; k < convolution_configuration.size[2]; k++) {
 					for (uint32_t j = 0; j < convolution_configuration.size[1]; j++) {
 						for (uint32_t i = 0; i < convolution_configuration.size[0]; i++) {
-							printf("%.6f ", buffer_output[i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2] + f * convolution_configuration.vectorDimension * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]]);
+							printf("%.6f ", buffer_output[i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2] + f * convolution_configuration.coordinateFeatures * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]]);
 						}
 						std::cout << "\n";
 					}

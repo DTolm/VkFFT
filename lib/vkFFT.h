@@ -2,11 +2,13 @@
 #include <vulkan/vulkan.h>
 
 typedef struct {
+	//WHDCN layout
+	uint32_t size[3] = { 1,1,1 }; // WHD -system dimensions 
+	uint32_t coordinateFeatures = 1; // C - coordinate, or dimension of features vector. In matrix convolution - size of vector
+	uint32_t matrixConvolution = 1; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
 
-	uint32_t size[3] = { 1,1,1 }; //system dimensions
-	uint32_t vectorDimension = 1; // dimension of vector - similar to numberFeatureMaps, but is used for matrix convolutions, where kernel is a matrix of multiple coordinates
-	uint32_t numberInputSystems = 1;//used to initialize multiple kernels
-	uint32_t numberFeatureMaps = 1;//only used in convolution step - specify how mant kernels
+	uint32_t numberBatches = 1;// N - used to perform multiple batches of initial data
+	uint32_t numberKernels = 1;// N - only used in convolution step - specify how many kernels were initialized before. Expands one input to multiple (batched) output
 	uint32_t FFTdim = 1; //FFT dimensionality (1, 2 or 3)
 	uint32_t radix = 8; //FFT radix (2, 4 or 8)
 	bool performZeropadding[3] = { false, false, false }; // perform zeropadding (false - off, true - on)
@@ -15,8 +17,8 @@ typedef struct {
 	bool performR2C = false; //perform R2C/C2R decomposition (false - off, true - on)
 	bool inverse = false; //perform inverse FFT (false - forward, true - inverse)
 	bool symmetricKernel = false; //specify if kernel in 2x2 or 3x3 matrix convolution is symmetric
-	bool isInputFormatted = false; //specify if input buffer is not padded for R2C if out-of-place mode is selected (only if numberInputSystems==1 and numberFeatureMaps==1) - false - padded, true - not padded
-	bool isOutputFormatted = false; //specify if output buffer is not padded for R2C if out-of-place mode is selected (only if numberInputSystems==1 and numberFeatureMaps==1) - false - padded, true - not padded
+	bool isInputFormatted = false; //specify if input buffer is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1) - false - padded, true - not padded
+	bool isOutputFormatted = false; //specify if output buffer is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1) - false - padded, true - not padded
 	char shaderPath[256] = "shaders/"; //path to shaders, can be selected automatically in CMake
 	VkDevice* device;
 
@@ -45,14 +47,14 @@ typedef struct {
 	uint32_t inputOffset;
 	uint32_t outputOffset;
 	uint32_t coordinate;
-	uint32_t featureMapID;
+	uint32_t batch;
 } VkFFTPushConstantsLayout;
 typedef struct {
 	uint32_t inputStride[5];
 	uint32_t ratio;
 	bool ratioDirection;
 	uint32_t coordinate;
-	uint32_t featureMapID;
+	uint32_t batch;
 } VkFFTTransposePushConstantsLayout;
 typedef struct {
 	uint32_t axisBlock[4];
@@ -445,8 +447,8 @@ typedef struct VkFFTApplication {
 				}
 			}
 		}
-		axis->pushConstants.inputStride[4] = axis->pushConstants.inputStride[3] * configuration.vectorDimension;
-		axis->pushConstants.outputStride[4] = axis->pushConstants.outputStride[3] * configuration.vectorDimension;
+		axis->pushConstants.inputStride[4] = axis->pushConstants.inputStride[3] * configuration.coordinateFeatures;
+		axis->pushConstants.outputStride[4] = axis->pushConstants.outputStride[3] * configuration.coordinateFeatures;
 		for (uint32_t i = 0; i < 3; ++i) {
 			axis->pushConstants.radixStride[i] = configuration.size[axis_id] / pow(2, i + 1);
 
@@ -702,7 +704,7 @@ typedef struct VkFFTApplication {
 					descriptorBufferInfo.range = configuration.inputBufferSize[0];
 				}
 				else {
-					if ((configuration.numberFeatureMaps > 1) && (inverse)) {
+					if ((configuration.numberKernels > 1) && (inverse)) {
 						descriptorBufferInfo.buffer = configuration.outputBuffer[0];
 						descriptorBufferInfo.range = configuration.outputBufferSize[0];
 					}
@@ -719,7 +721,7 @@ typedef struct VkFFTApplication {
 					|| ((axis_id == configuration.FFTdim-1) && (!inverse) && (!configuration.performConvolution))
 					|| ((axis_id == 0) && (configuration.performConvolution) && (configuration.FFTdim == 1)))
 					) ||
-					((configuration.numberFeatureMaps > 1) && (
+					((configuration.numberKernels > 1) && (
 						(inverse)
 						|| (axis_id == configuration.FFTdim-1)))
 					) {
@@ -920,7 +922,7 @@ typedef struct VkFFTApplication {
 
 					if ((configuration.FFTdim == 2) && (configuration.performConvolution)) {
 						if (configuration.performTranspose[0])
-							switch (configuration.vectorDimension) {
+							switch (configuration.matrixConvolution) {
 							case 1:
 								VkFFTInitShader(10, &pipelineShaderStageCreateInfo.module);
 								break;
@@ -938,7 +940,7 @@ typedef struct VkFFTApplication {
 								break;
 							}
 						else
-							switch (configuration.vectorDimension) {
+							switch (configuration.matrixConvolution) {
 							case 1:
 								VkFFTInitShader(8, &pipelineShaderStageCreateInfo.module);
 								break;
@@ -974,7 +976,7 @@ typedef struct VkFFTApplication {
 				if (axis_id == 2) {
 					if ((configuration.FFTdim == 3) && (configuration.performConvolution)) {
 						if (configuration.performTranspose[1])
-							switch (configuration.vectorDimension) {
+							switch (configuration.matrixConvolution) {
 							case 1:
 								VkFFTInitShader(9, &pipelineShaderStageCreateInfo.module);
 								break;
@@ -992,7 +994,7 @@ typedef struct VkFFTApplication {
 								break;
 							}
 						else
-							switch (configuration.vectorDimension) {
+							switch (configuration.matrixConvolution) {
 							case 1:
 								VkFFTInitShader(8, &pipelineShaderStageCreateInfo.module);
 								break;
@@ -1023,7 +1025,7 @@ typedef struct VkFFTApplication {
 				if (axis_id == 0) {
 					if ((configuration.FFTdim == 1) && (configuration.performConvolution)) {
 
-						switch (configuration.vectorDimension) {
+						switch (configuration.matrixConvolution) {
 						case 1:
 							VkFFTInitShader(9, &pipelineShaderStageCreateInfo.module);
 							break;
@@ -1049,7 +1051,7 @@ typedef struct VkFFTApplication {
 
 					if ((configuration.FFTdim == 2) && (configuration.performConvolution)) {
 						if (configuration.performTranspose[0])
-							switch (configuration.vectorDimension) {
+							switch (configuration.matrixConvolution) {
 							case 1:
 								VkFFTInitShader(10, &pipelineShaderStageCreateInfo.module);
 								break;
@@ -1067,7 +1069,7 @@ typedef struct VkFFTApplication {
 								break;
 							}
 						else
-							switch (configuration.vectorDimension) {
+							switch (configuration.matrixConvolution) {
 							case 1:
 								VkFFTInitShader(8, &pipelineShaderStageCreateInfo.module);
 								break;
@@ -1099,7 +1101,7 @@ typedef struct VkFFTApplication {
 				if (axis_id == 2) {
 					if ((configuration.FFTdim == 3) && (configuration.performConvolution)) {
 						if (configuration.performTranspose[1])
-							switch (configuration.vectorDimension) {
+							switch (configuration.matrixConvolution) {
 							case 1:
 								VkFFTInitShader(9, &pipelineShaderStageCreateInfo.module);
 								break;
@@ -1117,7 +1119,7 @@ typedef struct VkFFTApplication {
 								break;
 							}
 						else
-							switch (configuration.vectorDimension) {
+							switch (configuration.matrixConvolution) {
 							case 1:
 								VkFFTInitShader(8, &pipelineShaderStageCreateInfo.module);
 								break;
@@ -1238,8 +1240,8 @@ typedef struct VkFFTApplication {
 		axis->pushConstants.outputStride[2] = axis->pushConstants.inputStride[2];
 		axis->pushConstants.outputStride[3] = axis->pushConstants.inputStride[3];
 
-		axis->pushConstants.inputStride[4] = axis->pushConstants.inputStride[3] * configuration.vectorDimension;
-		axis->pushConstants.outputStride[4] = axis->pushConstants.outputStride[3] * configuration.vectorDimension;
+		axis->pushConstants.inputStride[4] = axis->pushConstants.inputStride[3] * configuration.coordinateFeatures;
+		axis->pushConstants.outputStride[4] = axis->pushConstants.outputStride[3] * configuration.coordinateFeatures;
 
 		for (uint32_t i = 0; i < 3; ++i) {
 			axis->pushConstants.radixStride[i] = configuration.size[axis_id] / pow(2, i + 1);
@@ -1302,7 +1304,7 @@ typedef struct VkFFTApplication {
 					descriptorBufferInfo.range = configuration.inputBufferSize[0];
 				}
 				else {
-					if ((configuration.numberFeatureMaps > 1) && (inverse)) {
+					if ((configuration.numberKernels > 1) && (inverse)) {
 						descriptorBufferInfo.buffer = configuration.outputBuffer[0];
 						descriptorBufferInfo.range = configuration.outputBufferSize[0];
 					}
@@ -1319,7 +1321,7 @@ typedef struct VkFFTApplication {
 						|| ((axis_id == configuration.FFTdim-1) && (!inverse) && (!configuration.performConvolution))
 						|| ((axis_id == 0) && (configuration.performConvolution) && (configuration.FFTdim == 1)))
 					)||
-					((configuration.numberFeatureMaps>1)&&(
+					((configuration.numberKernels>1)&&(
 						(inverse)
 						||(axis_id== configuration.FFTdim-1)))
 					) {
@@ -1400,7 +1402,7 @@ typedef struct VkFFTApplication {
 			if (axis_id == 1) {
 
 				if ((configuration.FFTdim == 2) && (configuration.performConvolution)) {
-					switch (configuration.vectorDimension) {
+					switch (configuration.matrixConvolution) {
 					case 1:
 						VkFFTInitShader(9, &pipelineShaderStageCreateInfo.module);
 						break;
@@ -1428,7 +1430,7 @@ typedef struct VkFFTApplication {
 
 			if (axis_id == 2) {
 				if ((configuration.FFTdim == 3) && (configuration.performConvolution)) {
-					switch (configuration.vectorDimension) {
+					switch (configuration.matrixConvolution) {
 					case 1:
 						VkFFTInitShader(8, &pipelineShaderStageCreateInfo.module);
 						break;
@@ -1509,7 +1511,7 @@ typedef struct VkFFTApplication {
 				FFTPlan->transpose[axis_id].pushConstants.inputStride[3] = configuration.size[0] * configuration.size[1] * configuration.size[2];
 			}
 		}
-		FFTPlan->transpose[axis_id].pushConstants.inputStride[4] = FFTPlan->transpose[axis_id].pushConstants.inputStride[3] * configuration.vectorDimension;
+		FFTPlan->transpose[axis_id].pushConstants.inputStride[4] = FFTPlan->transpose[axis_id].pushConstants.inputStride[3] * configuration.coordinateFeatures;
 		VkDescriptorPoolSize descriptorPoolSize = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 		descriptorPoolSize.descriptorCount = 2;
 		//collection->descriptorNum = 3;
@@ -1546,7 +1548,7 @@ typedef struct VkFFTApplication {
 
 			VkDescriptorBufferInfo descriptorBufferInfo = {};
 			if (i == 0) {
-				if ((configuration.numberFeatureMaps > 1) && (inverse)) {
+				if ((configuration.numberKernels > 1) && (inverse)) {
 					descriptorBufferInfo.buffer = configuration.outputBuffer[0];
 					descriptorBufferInfo.range = configuration.outputBufferSize[0];
 				}
@@ -1557,7 +1559,7 @@ typedef struct VkFFTApplication {
 				descriptorBufferInfo.offset = 0;
 			}
 			if (i == 1) {
-				if ((configuration.numberFeatureMaps > 1) && (inverse)) {
+				if ((configuration.numberKernels > 1) && (inverse)) {
 					descriptorBufferInfo.buffer = configuration.outputBuffer[0];
 					descriptorBufferInfo.range = configuration.outputBufferSize[0];
 				}
@@ -1660,6 +1662,7 @@ typedef struct VkFFTApplication {
 	}
 	void initializeVulkanFFT(VkFFTConfiguration inputLaunchConfiguration) {
 		configuration = inputLaunchConfiguration;
+		if (configuration.matrixConvolution > 1) configuration.coordinateFeatures = configuration.matrixConvolution;
 
 		if (configuration.performConvolution) {
 			configuration.inverse = false;
@@ -1681,9 +1684,10 @@ typedef struct VkFFTApplication {
 		};
 		if (!configuration.inverse) {
 			//FFT axis 0
-			for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-				localFFTPlan.axes[0].pushConstants.featureMapID = j;
-				for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+			for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+				localFFTPlan.axes[0].pushConstants.batch = j;
+				uint32_t maxCoordinate = ((configuration.matrixConvolution) > 1 && (configuration.performConvolution) && (configuration.FFTdim == 1)) ? 1 : configuration.coordinateFeatures;
+				for (uint32_t i = 0; i < maxCoordinate; i++) {
 					localFFTPlan.axes[0].pushConstants.coordinate = i;
 					vkCmdPushConstants(commandBuffer, localFFTPlan.axes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[0].pushConstants);
 					vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[0].pipeline);
@@ -1725,9 +1729,9 @@ typedef struct VkFFTApplication {
 			if (configuration.FFTdim > 1) {
 				//transpose 0-1, if needed
 				if (configuration.performTranspose[0]) {
-					for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-						localFFTPlan.transpose[0].pushConstants.featureMapID = j;
-						for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+					for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+						localFFTPlan.transpose[0].pushConstants.batch = j;
+						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan.transpose[0].pushConstants.coordinate = i;
 							vkCmdPushConstants(commandBuffer, localFFTPlan.transpose[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTTransposePushConstantsLayout), &localFFTPlan.transpose[0].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.transpose[0].pipeline);
@@ -1755,59 +1759,67 @@ typedef struct VkFFTApplication {
 				//FFT axis 1
 				if ((configuration.FFTdim == 2) && (configuration.performConvolution)) {
 					if (configuration.performTranspose[0]) {
-						localFFTPlan.axes[1].pushConstants.coordinate = 0;
-						localFFTPlan.axes[1].pushConstants.featureMapID = configuration.numberFeatureMaps;
-						vkCmdPushConstants(commandBuffer, localFFTPlan.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[1].pushConstants);
-						vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipeline);
-						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipelineLayout, 0, 1, &localFFTPlan.axes[1].descriptorSet, 0, NULL);
-						if (configuration.performZeropadding[2]) {
-							if (configuration.performR2C == true)
-								vkCmdDispatch(commandBuffer, 1, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[1] + 1, ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
-							else
-								vkCmdDispatch(commandBuffer, 1, configuration.size[0] / localFFTPlan.axes[1].axisBlock[1], ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
-						}
-						else {
-							if (configuration.performR2C == true)
-								vkCmdDispatch(commandBuffer, 1, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[1] + 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
-							else
-								vkCmdDispatch(commandBuffer, 1, configuration.size[0] / localFFTPlan.axes[1].axisBlock[1], configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+						uint32_t maxCoordinate = (configuration.matrixConvolution > 1 ) ? 1 : configuration.coordinateFeatures;
+						for (uint32_t i = 0; i < maxCoordinate; i++) {
+							localFFTPlan.axes[1].pushConstants.coordinate = i;
+							localFFTPlan.axes[1].pushConstants.batch = configuration.numberKernels;
+							vkCmdPushConstants(commandBuffer, localFFTPlan.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[1].pushConstants);
+							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipeline);
+							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipelineLayout, 0, 1, &localFFTPlan.axes[1].descriptorSet, 0, NULL);
+							if (configuration.performZeropadding[2]) {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[1] + 1, ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
+								else
+									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / localFFTPlan.axes[1].axisBlock[1], ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
+							}
+							else {
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[1] + 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+								else
+									vkCmdDispatch(commandBuffer, 1, configuration.size[0] / localFFTPlan.axes[1].axisBlock[1], configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
 
+							}
 						}
 						vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 					}
 					else {
 						if (configuration.performR2C == true) {
-							localFFTPlan.supportAxes[0].pushConstants.coordinate = 0;
-							localFFTPlan.supportAxes[0].pushConstants.featureMapID = configuration.numberFeatureMaps;
-							vkCmdPushConstants(commandBuffer, localFFTPlan.supportAxes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.supportAxes[0].pushConstants);
-							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[0].pipeline);
-							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[0].pipelineLayout, 0, 1, &localFFTPlan.supportAxes[0].descriptorSet, 0, NULL);
+							uint32_t maxCoordinate = (configuration.matrixConvolution > 1) ? 1 : configuration.coordinateFeatures;
+							for (uint32_t i = 0; i < maxCoordinate; i++) {
+								localFFTPlan.supportAxes[0].pushConstants.coordinate = i;
+								localFFTPlan.supportAxes[0].pushConstants.batch = configuration.numberKernels;
+								vkCmdPushConstants(commandBuffer, localFFTPlan.supportAxes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.supportAxes[0].pushConstants);
+								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[0].pipeline);
+								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[0].pipelineLayout, 0, 1, &localFFTPlan.supportAxes[0].descriptorSet, 0, NULL);
+								if (configuration.performZeropadding[2]) {
+									vkCmdDispatch(commandBuffer, 1, 1, ceil(configuration.size[2] / 2.0));
+								}
+								else {
+									vkCmdDispatch(commandBuffer, 1, 1, configuration.size[2]);
+								}
+							}
+						}
+						uint32_t maxCoordinate = (configuration.matrixConvolution > 1) ? 1 : configuration.coordinateFeatures;
+						for (uint32_t i = 0; i < maxCoordinate; i++) {
+							localFFTPlan.axes[1].pushConstants.coordinate = i;
+							localFFTPlan.axes[1].pushConstants.batch = configuration.numberKernels;
+							vkCmdPushConstants(commandBuffer, localFFTPlan.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[1].pushConstants);
+							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipeline);
+							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipelineLayout, 0, 1, &localFFTPlan.axes[1].descriptorSet, 0, NULL);
 							if (configuration.performZeropadding[2]) {
-								vkCmdDispatch(commandBuffer, 1, 1, ceil(configuration.size[2] / 2.0));
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[0], 1, ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
+								else
+									vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[1].axisBlock[0], 1, ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
 							}
 							else {
-								vkCmdDispatch(commandBuffer, 1, 1, configuration.size[2]);
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+								else
+									vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
+
 							}
-						}
-
-						localFFTPlan.axes[1].pushConstants.coordinate = 0;
-						localFFTPlan.axes[1].pushConstants.featureMapID = configuration.numberFeatureMaps;
-						vkCmdPushConstants(commandBuffer, localFFTPlan.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[1].pushConstants);
-						vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipeline);
-						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipelineLayout, 0, 1, &localFFTPlan.axes[1].descriptorSet, 0, NULL);
-						if (configuration.performZeropadding[2]) {
-							if (configuration.performR2C == true)
-								vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[0], 1, ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
-							else
-								vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[1].axisBlock[0], 1, ceil(configuration.size[2] / 2.0 / localFFTPlan.axes[1].axisBlock[2]));
-						}
-						else {
-							if (configuration.performR2C == true)
-								vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
-							else
-								vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[1].axisBlock[0], 1, configuration.size[2] / localFFTPlan.axes[1].axisBlock[2]);
-
 						}
 						vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
@@ -1815,9 +1827,9 @@ typedef struct VkFFTApplication {
 				}
 				else {
 					if (configuration.performTranspose[0]) {
-						for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-							localFFTPlan.axes[1].pushConstants.featureMapID = j;
-							for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+						for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+							localFFTPlan.axes[1].pushConstants.batch = j;
+							for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 								localFFTPlan.axes[1].pushConstants.coordinate = i;
 								vkCmdPushConstants(commandBuffer, localFFTPlan.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[1].pushConstants);
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipeline);
@@ -1844,9 +1856,9 @@ typedef struct VkFFTApplication {
 					else {
 
 						if (configuration.performR2C == true) {
-							for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-								localFFTPlan.supportAxes[0].pushConstants.featureMapID = j;
-								for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+							for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+								localFFTPlan.supportAxes[0].pushConstants.batch = j;
+								for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 
 									localFFTPlan.supportAxes[0].pushConstants.coordinate = i;
 									vkCmdPushConstants(commandBuffer, localFFTPlan.supportAxes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.supportAxes[0].pushConstants);
@@ -1861,9 +1873,9 @@ typedef struct VkFFTApplication {
 								}
 							}
 						}
-						for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-							localFFTPlan.axes[1].pushConstants.featureMapID = j;
-							for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+						for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+							localFFTPlan.axes[1].pushConstants.batch = j;
+							for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 								localFFTPlan.axes[1].pushConstants.coordinate = i;
 								vkCmdPushConstants(commandBuffer, localFFTPlan.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[1].pushConstants);
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipeline);
@@ -1892,9 +1904,9 @@ typedef struct VkFFTApplication {
 			if (configuration.FFTdim > 2) {
 				//transpose 1-2, after 0-1
 				if (configuration.performTranspose[1]) {
-					for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-						localFFTPlan.transpose[1].pushConstants.featureMapID = j;
-						for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+					for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+						localFFTPlan.transpose[1].pushConstants.batch = j;
+						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan.transpose[1].pushConstants.coordinate = i;
 							vkCmdPushConstants(commandBuffer, localFFTPlan.transpose[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTTransposePushConstantsLayout), &localFFTPlan.transpose[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.transpose[1].pipeline);
@@ -1922,52 +1934,64 @@ typedef struct VkFFTApplication {
 				if ((configuration.FFTdim == 3) && (configuration.performConvolution)) {
 					//transposed 1-2, transposed 0-1
 					if (configuration.performTranspose[1]) {
-						localFFTPlan.axes[2].pushConstants.coordinate = 0;
-						localFFTPlan.axes[2].pushConstants.featureMapID = configuration.numberFeatureMaps;
-						vkCmdPushConstants(commandBuffer, localFFTPlan.axes[2].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[2].pushConstants);
-						vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipeline);
-						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipelineLayout, 0, 1, &localFFTPlan.axes[2].descriptorSet, 0, NULL);
-						if (configuration.performR2C == true)
-							vkCmdDispatch(commandBuffer, 1, configuration.size[1] / localFFTPlan.axes[2].axisBlock[2], configuration.size[0] / 2 + 1);
-						else
-							vkCmdDispatch(commandBuffer, 1, configuration.size[1] / localFFTPlan.axes[2].axisBlock[2], configuration.size[0]);
+						uint32_t maxCoordinate = (configuration.matrixConvolution > 1) ? 1 : configuration.coordinateFeatures;
+						for (uint32_t i = 0; i < maxCoordinate; i++) {
+							localFFTPlan.axes[2].pushConstants.coordinate = i;
+							localFFTPlan.axes[2].pushConstants.batch = configuration.numberKernels;
+							vkCmdPushConstants(commandBuffer, localFFTPlan.axes[2].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[2].pushConstants);
+							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipeline);
+							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipelineLayout, 0, 1, &localFFTPlan.axes[2].descriptorSet, 0, NULL);
+							if (configuration.performR2C == true)
+								vkCmdDispatch(commandBuffer, 1, configuration.size[1] / localFFTPlan.axes[2].axisBlock[2], configuration.size[0] / 2 + 1);
+							else
+								vkCmdDispatch(commandBuffer, 1, configuration.size[1] / localFFTPlan.axes[2].axisBlock[2], configuration.size[0]);
+						}
 						vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 					}
 					else {
 						if (configuration.performTranspose[0]) {
 							//transposed 0-1, didn't transpose 1-2
-							localFFTPlan.axes[2].pushConstants.coordinate = 0;
-							localFFTPlan.axes[2].pushConstants.featureMapID = configuration.numberFeatureMaps;
-							vkCmdPushConstants(commandBuffer, localFFTPlan.axes[2].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[2].pushConstants);
-							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipeline);
-							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipelineLayout, 0, 1, &localFFTPlan.axes[2].descriptorSet, 0, NULL);
-							if (configuration.performR2C == true)
-								vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.axes[2].axisBlock[0], 1, configuration.size[0] / 2 + 1);
-							else
-								vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.axes[2].axisBlock[0], 1, configuration.size[0]);
+							uint32_t maxCoordinate = (configuration.matrixConvolution > 1) ? 1 : configuration.coordinateFeatures;
+							for (uint32_t i = 0; i < maxCoordinate; i++) {
+								localFFTPlan.axes[2].pushConstants.coordinate = i;
+								localFFTPlan.axes[2].pushConstants.batch = configuration.numberKernels;
+								vkCmdPushConstants(commandBuffer, localFFTPlan.axes[2].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[2].pushConstants);
+								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipeline);
+								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipelineLayout, 0, 1, &localFFTPlan.axes[2].descriptorSet, 0, NULL);
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.axes[2].axisBlock[0], 1, configuration.size[0] / 2 + 1);
+								else
+									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.axes[2].axisBlock[0], 1, configuration.size[0]);
+							}
 							vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 						}
 						else {
 							//didn't transpose 0-1, didn't transpose 1-2
 							if (configuration.performR2C == true) {
-								localFFTPlan.supportAxes[1].pushConstants.coordinate = 0;
-								localFFTPlan.supportAxes[1].pushConstants.featureMapID = configuration.numberFeatureMaps;
-								vkCmdPushConstants(commandBuffer, localFFTPlan.supportAxes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.supportAxes[1].pushConstants);
-								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[1].pipeline);
-								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[1].pipelineLayout, 0, 1, &localFFTPlan.supportAxes[1].descriptorSet, 0, NULL);
-								vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.supportAxes[1].axisBlock[0], 1, 1);
-							}
+								uint32_t maxCoordinate = (configuration.matrixConvolution > 1) ? 1 : configuration.coordinateFeatures;
+								for (uint32_t i = 0; i < maxCoordinate; i++) {
+									localFFTPlan.supportAxes[1].pushConstants.coordinate = i;
+									localFFTPlan.supportAxes[1].pushConstants.batch = configuration.numberKernels;
+									vkCmdPushConstants(commandBuffer, localFFTPlan.supportAxes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.supportAxes[1].pushConstants);
+									vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[1].pipeline);
+									vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[1].pipelineLayout, 0, 1, &localFFTPlan.supportAxes[1].descriptorSet, 0, NULL);
+									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.supportAxes[1].axisBlock[0], 1, 1);
 
-							localFFTPlan.axes[2].pushConstants.coordinate = 0;
-							localFFTPlan.axes[2].pushConstants.featureMapID = configuration.numberFeatureMaps;
-							vkCmdPushConstants(commandBuffer, localFFTPlan.axes[2].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[2].pushConstants);
-							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipeline);
-							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipelineLayout, 0, 1, &localFFTPlan.axes[2].descriptorSet, 0, NULL);
-							if (configuration.performR2C == true)
-								vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[2].axisBlock[0], 1, configuration.size[1]);
-							else
-								vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[2].axisBlock[0], 1, configuration.size[1]);
+								}
+							}
+							uint32_t maxCoordinate = (configuration.matrixConvolution > 1) ? 1 : configuration.coordinateFeatures;
+							for (uint32_t i = 0; i < maxCoordinate; i++) {
+								localFFTPlan.axes[2].pushConstants.coordinate = i;
+								localFFTPlan.axes[2].pushConstants.batch = configuration.numberKernels;
+								vkCmdPushConstants(commandBuffer, localFFTPlan.axes[2].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[2].pushConstants);
+								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipeline);
+								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipelineLayout, 0, 1, &localFFTPlan.axes[2].descriptorSet, 0, NULL);
+								if (configuration.performR2C == true)
+									vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.axes[2].axisBlock[0], 1, configuration.size[1]);
+								else
+									vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.axes[2].axisBlock[0], 1, configuration.size[1]);
+							}
 							vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 						}
 					}
@@ -1975,9 +1999,9 @@ typedef struct VkFFTApplication {
 				else {
 					//transposed 1-2, transposed 0-1
 					if (configuration.performTranspose[1]) {
-						for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-							localFFTPlan.axes[2].pushConstants.featureMapID = j;
-							for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+						for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+							localFFTPlan.axes[2].pushConstants.batch = j;
+							for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 								localFFTPlan.axes[2].pushConstants.coordinate = i;
 								vkCmdPushConstants(commandBuffer, localFFTPlan.axes[2].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[2].pushConstants);
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipeline);
@@ -1994,9 +2018,9 @@ typedef struct VkFFTApplication {
 					else {
 						if (configuration.performTranspose[0]) {
 							//transposed 0-1, didn't transpose 1-2
-							for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-								localFFTPlan.axes[2].pushConstants.featureMapID = j;
-								for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+							for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+								localFFTPlan.axes[2].pushConstants.batch = j;
+								for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 									localFFTPlan.axes[2].pushConstants.coordinate = i;
 									vkCmdPushConstants(commandBuffer, localFFTPlan.axes[2].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[2].pushConstants);
 									vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipeline);
@@ -2013,9 +2037,9 @@ typedef struct VkFFTApplication {
 						else {
 							//didn't transpose 0-1, didn't transpose 1-2
 							if (configuration.performR2C == true) {
-								for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-									localFFTPlan.supportAxes[1].pushConstants.featureMapID = j;
-									for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+								for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+									localFFTPlan.supportAxes[1].pushConstants.batch = j;
+									for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 										localFFTPlan.supportAxes[1].pushConstants.coordinate = i;
 										vkCmdPushConstants(commandBuffer, localFFTPlan.supportAxes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.supportAxes[1].pushConstants);
 										vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[1].pipeline);
@@ -2024,9 +2048,9 @@ typedef struct VkFFTApplication {
 									}
 								}
 							}
-							for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-								localFFTPlan.axes[2].pushConstants.featureMapID = j;
-								for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+							for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+								localFFTPlan.axes[2].pushConstants.batch = j;
+								for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 									localFFTPlan.axes[2].pushConstants.coordinate = i;
 									vkCmdPushConstants(commandBuffer, localFFTPlan.axes[2].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[2].pushConstants);
 									vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipeline);
@@ -2049,9 +2073,9 @@ typedef struct VkFFTApplication {
 			if (configuration.FFTdim > 2) {
 				//transpose 1-2, after 0-1
 				if (configuration.performTranspose[1]) {
-					for (uint32_t j = 0; j < configuration.numberFeatureMaps; j++) {
-						localFFTPlan_inverse_convolution.transpose[1].pushConstants.featureMapID = j;
-						for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+					for (uint32_t j = 0; j < configuration.numberKernels; j++) {
+						localFFTPlan_inverse_convolution.transpose[1].pushConstants.batch = j;
+						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan_inverse_convolution.transpose[1].pushConstants.coordinate = i;
 							vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.transpose[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTTransposePushConstantsLayout), &localFFTPlan_inverse_convolution.transpose[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.transpose[1].pipeline);
@@ -2077,9 +2101,9 @@ typedef struct VkFFTApplication {
 				}
 
 				if (configuration.performTranspose[0]) {
-					for (uint32_t j = 0; j < configuration.numberFeatureMaps; j++) {
-						localFFTPlan_inverse_convolution.axes[1].pushConstants.featureMapID = j;
-						for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+					for (uint32_t j = 0; j < configuration.numberKernels; j++) {
+						localFFTPlan_inverse_convolution.axes[1].pushConstants.batch = j;
+						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan_inverse_convolution.axes[1].pushConstants.coordinate = i;
 							vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan_inverse_convolution.axes[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.axes[1].pipeline);
@@ -2104,9 +2128,9 @@ typedef struct VkFFTApplication {
 				else {
 
 					if (configuration.performR2C == true) {
-						for (uint32_t j = 0; j < configuration.numberFeatureMaps; j++) {
-							localFFTPlan_inverse_convolution.supportAxes[0].pushConstants.featureMapID = j;
-							for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+						for (uint32_t j = 0; j < configuration.numberKernels; j++) {
+							localFFTPlan_inverse_convolution.supportAxes[0].pushConstants.batch = j;
+							for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 
 								localFFTPlan_inverse_convolution.supportAxes[0].pushConstants.coordinate = i;
 								vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.supportAxes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan_inverse_convolution.supportAxes[0].pushConstants);
@@ -2121,9 +2145,9 @@ typedef struct VkFFTApplication {
 							}
 						}
 					}
-					for (uint32_t j = 0; j < configuration.numberFeatureMaps; j++) {
-						localFFTPlan_inverse_convolution.axes[1].pushConstants.featureMapID = j;
-						for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+					for (uint32_t j = 0; j < configuration.numberKernels; j++) {
+						localFFTPlan_inverse_convolution.axes[1].pushConstants.batch = j;
+						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan_inverse_convolution.axes[1].pushConstants.coordinate = i;
 							vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan_inverse_convolution.axes[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.axes[1].pipeline);
@@ -2154,9 +2178,9 @@ typedef struct VkFFTApplication {
 			if (configuration.FFTdim > 1) {
 				// transpose 0 - 1, if needed
 				if (configuration.performTranspose[0]) {
-					for (uint32_t j = 0; j < configuration.numberFeatureMaps; j++) {
-						localFFTPlan_inverse_convolution.transpose[0].pushConstants.featureMapID = j;
-						for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+					for (uint32_t j = 0; j < configuration.numberKernels; j++) {
+						localFFTPlan_inverse_convolution.transpose[0].pushConstants.batch = j;
+						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan_inverse_convolution.transpose[0].pushConstants.coordinate = i;
 							vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.transpose[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTTransposePushConstantsLayout), &localFFTPlan_inverse_convolution.transpose[0].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.transpose[0].pipeline);
@@ -2180,9 +2204,9 @@ typedef struct VkFFTApplication {
 					vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 				}
-				for (uint32_t j = 0; j < configuration.numberFeatureMaps; j++) {
-					localFFTPlan_inverse_convolution.axes[0].pushConstants.featureMapID = j;
-					for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+				for (uint32_t j = 0; j < configuration.numberKernels; j++) {
+					localFFTPlan_inverse_convolution.axes[0].pushConstants.batch = j;
+					for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 						localFFTPlan_inverse_convolution.axes[0].pushConstants.coordinate = i;
 						vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.axes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan_inverse_convolution.axes[0].pushConstants);
 						vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.axes[0].pipeline);
@@ -2232,9 +2256,9 @@ typedef struct VkFFTApplication {
 			if (configuration.FFTdim > 2) {
 				//transposed 1-2, transposed 0-1
 				if (configuration.performTranspose[1]) {
-					for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-						localFFTPlan.axes[2].pushConstants.featureMapID = j;
-						for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+					for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+						localFFTPlan.axes[2].pushConstants.batch = j;
+						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan.axes[2].pushConstants.coordinate = i;
 							vkCmdPushConstants(commandBuffer, localFFTPlan.axes[2].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[2].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipeline);
@@ -2251,9 +2275,9 @@ typedef struct VkFFTApplication {
 				else {
 					if (configuration.performTranspose[0]) {
 						//transposed 0-1, didn't transpose 1-2
-						for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-							localFFTPlan.axes[2].pushConstants.featureMapID = j;
-							for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+						for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+							localFFTPlan.axes[2].pushConstants.batch = j;
+							for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 								localFFTPlan.axes[2].pushConstants.coordinate = i;
 								vkCmdPushConstants(commandBuffer, localFFTPlan.axes[2].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[2].pushConstants);
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipeline);
@@ -2270,9 +2294,9 @@ typedef struct VkFFTApplication {
 					else {
 						//didn't transpose 0-1, didn't transpose 1-2
 						if (configuration.performR2C == true) {
-							for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-								localFFTPlan.supportAxes[1].pushConstants.featureMapID = j;
-								for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+							for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+								localFFTPlan.supportAxes[1].pushConstants.batch = j;
+								for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 									localFFTPlan.supportAxes[1].pushConstants.coordinate = i;
 									vkCmdPushConstants(commandBuffer, localFFTPlan.supportAxes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.supportAxes[1].pushConstants);
 									vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[1].pipeline);
@@ -2281,9 +2305,9 @@ typedef struct VkFFTApplication {
 								}
 							}
 						}
-						for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-							localFFTPlan.axes[2].pushConstants.featureMapID = j;
-							for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+						for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+							localFFTPlan.axes[2].pushConstants.batch = j;
+							for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 								localFFTPlan.axes[2].pushConstants.coordinate = i;
 								vkCmdPushConstants(commandBuffer, localFFTPlan.axes[2].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[2].pushConstants);
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[2].pipeline);
@@ -2300,9 +2324,9 @@ typedef struct VkFFTApplication {
 				}
 				//transpose 1-2, after 0-1
 				if (configuration.performTranspose[1]) {
-					for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-						localFFTPlan.transpose[1].pushConstants.featureMapID = j;
-						for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+					for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+						localFFTPlan.transpose[1].pushConstants.batch = j;
+						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan.transpose[1].pushConstants.coordinate = i;
 							vkCmdPushConstants(commandBuffer, localFFTPlan.transpose[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTTransposePushConstantsLayout), &localFFTPlan.transpose[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.transpose[1].pipeline);
@@ -2332,9 +2356,9 @@ typedef struct VkFFTApplication {
 
 				//FFT axis 1
 				if (configuration.performTranspose[0]) {
-					for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-						localFFTPlan.axes[1].pushConstants.featureMapID = j;
-						for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+					for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+						localFFTPlan.axes[1].pushConstants.batch = j;
+						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan.axes[1].pushConstants.coordinate = i;
 							vkCmdPushConstants(commandBuffer, localFFTPlan.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipeline);
@@ -2352,9 +2376,9 @@ typedef struct VkFFTApplication {
 				else {
 
 					if (configuration.performR2C == true) {
-						for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-							localFFTPlan.supportAxes[0].pushConstants.featureMapID = j;
-							for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+						for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+							localFFTPlan.supportAxes[0].pushConstants.batch = j;
+							for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 
 								localFFTPlan.supportAxes[0].pushConstants.coordinate = i;
 								vkCmdPushConstants(commandBuffer, localFFTPlan.supportAxes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.supportAxes[0].pushConstants);
@@ -2369,9 +2393,9 @@ typedef struct VkFFTApplication {
 							}
 						}
 					}
-					for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-						localFFTPlan.axes[1].pushConstants.featureMapID = j;
-						for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+					for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+						localFFTPlan.axes[1].pushConstants.batch = j;
+						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan.axes[1].pushConstants.coordinate = i;
 							vkCmdPushConstants(commandBuffer, localFFTPlan.axes[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[1].pipeline);
@@ -2397,9 +2421,9 @@ typedef struct VkFFTApplication {
 
 				// transpose 0 - 1, if needed
 				if (configuration.performTranspose[0]) {
-					for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-						localFFTPlan.transpose[0].pushConstants.featureMapID = j;
-						for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+					for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+						localFFTPlan.transpose[0].pushConstants.batch = j;
+						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan.transpose[0].pushConstants.coordinate = i;
 							vkCmdPushConstants(commandBuffer, localFFTPlan.transpose[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTTransposePushConstantsLayout), &localFFTPlan.transpose[0].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.transpose[0].pipeline);
@@ -2426,9 +2450,9 @@ typedef struct VkFFTApplication {
 
 			}
 			//FFT axis 0
-			for (uint32_t j = 0; j < configuration.numberInputSystems; j++) {
-				localFFTPlan.axes[0].pushConstants.featureMapID = j;
-				for (uint32_t i = 0; i < configuration.vectorDimension; i++) {
+			for (uint32_t j = 0; j < configuration.numberBatches; j++) {
+				localFFTPlan.axes[0].pushConstants.batch = j;
+				for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 					localFFTPlan.axes[0].pushConstants.coordinate = i;
 					vkCmdPushConstants(commandBuffer, localFFTPlan.axes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.axes[0].pushConstants);
 					vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.axes[0].pipeline);

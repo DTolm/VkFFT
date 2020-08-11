@@ -20,7 +20,7 @@ layout(push_constant) uniform PushConsts
 	uint inputOffset;
 	uint outputOffset;
 	uint coordinate;
-	uint featureMapID;
+	uint batchID;
 } consts;
 
 

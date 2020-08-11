@@ -20,7 +20,7 @@ layout(push_constant) uniform PushConsts
 	uint inputOffset;
 	uint outputOffset;
 	uint coordinate;
-	uint featureMapID;
+	uint batchID;
 } consts;
 
 
@@ -32,10 +32,10 @@ layout(std430, binding = 1) buffer Data2 {
     vec2 outputs[];
 };
 uint indexInput(uint index) {
-    return consts.inputOffset+index * consts.inputStride[0] + 2*gl_GlobalInvocationID.y * consts.inputStride[1] + 2*gl_GlobalInvocationID.z * consts.inputStride[2] + 2*consts.coordinate * consts.inputStride[3] + 2*consts.featureMapID * consts.inputStride[4] ;
+    return consts.inputOffset+index * consts.inputStride[0] + 2*gl_GlobalInvocationID.y * consts.inputStride[1] + 2*gl_GlobalInvocationID.z * consts.inputStride[2] + 2*consts.coordinate * consts.inputStride[3] + 2*consts.batchID * consts.inputStride[4] ;
 }
 uint indexOutput(uint index_x, uint index_y) {
-    return consts.outputOffset+index_x * consts.outputStride[0] + index_y * consts.outputStride[1] + gl_GlobalInvocationID.z * consts.outputStride[2] + consts.coordinate * consts.outputStride[3] + consts.featureMapID * consts.outputStride[4];
+    return consts.outputOffset+index_x * consts.outputStride[0] + index_y * consts.outputStride[1] + gl_GlobalInvocationID.z * consts.outputStride[2] + consts.coordinate * consts.outputStride[3] + consts.batchID * consts.outputStride[4];
 }
 uint positionShuffle(uint pos, uint ratio, bool ratioDirection ) {
 	if (ratioDirection)

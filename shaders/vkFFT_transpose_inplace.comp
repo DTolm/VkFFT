@@ -18,12 +18,12 @@ layout(push_constant) uniform PushConsts
   uint ratio;
   bool ratioDirection;
   uint coordinate;
-  uint featureMapID;
+  uint batchID;
 } consts;
 
 
 uint index(uint index_x, uint index_y) {
-    return index_x * consts.inputStride[0] + index_y * consts.inputStride[1] + gl_GlobalInvocationID.z * consts.inputStride[2] + consts.coordinate * consts.inputStride[3] + consts.featureMapID * consts.inputStride[4];
+    return index_x * consts.inputStride[0] + index_y * consts.inputStride[1] + gl_GlobalInvocationID.z * consts.inputStride[2] + consts.coordinate * consts.inputStride[3] + consts.batchID * consts.inputStride[4];
 }
 
 const uint stride = gl_WorkGroupSize.x+1;
