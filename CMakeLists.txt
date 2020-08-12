@@ -19,5 +19,49 @@ target_link_libraries(Vulkan_FFT
 			VkFFT
 		)
 
+option(VKFFT_BUILD_SHADERS "Compile/Build VkFFT shaders into SPIRV" OFF)
 
+# expects first argument to be the target name of the shader
+function(target_shader_postbuild SHADER_TARGET)
+	# each additional argument contains the path of a shader source
+	foreach (SHADER_SOURCE_FILEPATH ${ARGN})
+		get_filename_component(SHADER_SOURCE_FILENAME ${SHADER_SOURCE_FILEPATH} NAME_WE)
+		set(SHADER_TARGET_NAME "${SHADER_TARGET}_${SHADER_SOURCE_FILENAME}")
+		set(SHADER_BINARY_FILEPATH "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${SHADER_SOURCE_FILENAME}.spv")
+		add_custom_target(${SHADER_TARGET_NAME} DEPENDS ${SHADER_BINARY_FILEPATH})
+		add_dependencies(${SHADER_TARGET} ${SHADER_TARGET_NAME})
+		add_custom_command(
+				#                TARGET ${SHADER_TARGET} PRE_LINK
+				COMMAND ${GLSL_VALIDATOR} -V ${SHADER_SOURCE_FILEPATH} -o ${SHADER_BINARY_FILEPATH}
 
+				DEPENDS ${SHADER_SOURCE_FILEPATH}
+				OUTPUT ${SHADER_BINARY_FILEPATH}
+				COMMENT "Compiling SPIRV for \nsource: \n\t${SHADER_SOURCE_FILEPATH} \nbinary: \n\t${SHADER_BINARY_FILEPATH} \n"
+		)
+	endforeach (SHADER_SOURCE_FILEPATH)
+endfunction()
+
+target_shader_postbuild(VkFFT
+		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_convolution_symmetric_2x2.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_grouped_c2c.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_c2c.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_c2c_beforeC2R.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_grouped_convolution_nonsymmetric_2x2.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_grouped_convolution_symmetric_3x3.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_c2c_afterR2C.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_convolution_1x1.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_c2r.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_grouped_convolution_1x1.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_grouped_convolution_nonsymmetric_3x3.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_convolution_afterR2C_1x1.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_convolution_afterR2C_nonsymmetric_2x2.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_convolution_afterR2C_nonsymmetric_3x3.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_convolution_afterR2C_symmetric_2x2.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_convolution_afterR2C_symmetric_3x3.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_convolution_nonsymmetric_2x2.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_convolution_nonsymmetric_3x3.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_convolution_symmetric_2x2.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_convolution_symmetric_3x3.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_single_r2c.comp
+		${CMAKE_CURRENT_SOURCE_DIR}/vkFFT_transpose_inplace.comp
+		)
