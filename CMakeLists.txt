@@ -26,7 +26,7 @@ set(GLSL_VALIDATOR glslangValidator CACHE STRING "Path to glslangValidator, defa
 
 # expects first argument to be the target name of the shader, used to make new
 # custom targets to name avoid conflicts
-function(target_shader_postbuild SHADER_TARGET)
+function(target_shader_build SHADER_TARGET)
 	# each additional argument contains the path of a shader source
 	foreach (SHADER_SOURCE_FILEPATH ${ARGN})
 		get_filename_component(SHADER_SOURCE_FILENAME ${SHADER_SOURCE_FILEPATH} NAME_WE)
@@ -49,7 +49,7 @@ endfunction()
 message("VKFFT_BUILD_SHADERS=${VKFFT_BUILD_SHADERS}")
 if(VKFFT_BUILD_SHADERS)
 	message("GLSL_VALIDATOR=${GLSL_VALIDATOR}")
-	target_shader_postbuild(VkFFT
+	target_shader_build(VkFFT
 			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_convolution_symmetric_2x2.comp
 			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_c2c.comp
 			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_c2c.comp
