@@ -46,27 +46,31 @@ function(target_shader_postbuild SHADER_TARGET)
 	endforeach (SHADER_SOURCE_FILEPATH)
 endfunction()
 
-target_shader_postbuild(VkFFT
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_convolution_symmetric_2x2.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_c2c.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_c2c.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_c2c_beforeC2R.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_convolution_nonsymmetric_2x2.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_convolution_symmetric_3x3.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_c2c_afterR2C.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_1x1.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_c2r.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_convolution_1x1.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_convolution_nonsymmetric_3x3.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_afterR2C_1x1.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_afterR2C_nonsymmetric_2x2.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_afterR2C_nonsymmetric_3x3.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_afterR2C_symmetric_2x2.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_afterR2C_symmetric_3x3.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_nonsymmetric_2x2.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_nonsymmetric_3x3.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_symmetric_2x2.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_symmetric_3x3.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_r2c.comp
-		${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_transpose_inplace.comp
-		)
+message("VKFFT_BUILD_SHADERS=${VKFFT_BUILD_SHADERS}")
+if(VKFFT_BUILD_SHADERS)
+	message("GLSL_VALIDATOR=${GLSL_VALIDATOR}")
+	target_shader_postbuild(VkFFT
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_convolution_symmetric_2x2.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_c2c.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_c2c.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_c2c_beforeC2R.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_convolution_nonsymmetric_2x2.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_convolution_symmetric_3x3.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_c2c_afterR2C.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_1x1.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_c2r.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_convolution_1x1.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_grouped_convolution_nonsymmetric_3x3.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_afterR2C_1x1.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_afterR2C_nonsymmetric_2x2.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_afterR2C_nonsymmetric_3x3.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_afterR2C_symmetric_2x2.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_afterR2C_symmetric_3x3.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_nonsymmetric_2x2.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_nonsymmetric_3x3.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_symmetric_2x2.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_convolution_symmetric_3x3.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_single_r2c.comp
+			${CMAKE_CURRENT_SOURCE_DIR}/shaders/vkFFT_transpose_inplace.comp
+			)
+endif(VKFFT_BUILD_SHADERS)
