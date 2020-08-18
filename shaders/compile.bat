@@ -20,3 +20,9 @@ glslangvalidator -V vkFFT_single_convolution_afterR2C_symmetric_3x3.comp -o vkFF
 glslangvalidator -V vkFFT_grouped_convolution_nonsymmetric_3x3.comp -o vkFFT_grouped_convolution_nonsymmetric_3x3.spv  
 glslangvalidator -V vkFFT_single_convolution_nonsymmetric_3x3.comp -o vkFFT_single_convolution_nonsymmetric_3x3.spv  
 glslangvalidator -V vkFFT_single_convolution_afterR2C_nonsymmetric_3x3.comp -o vkFFT_single_convolution_afterR2C_nonsymmetric_3x3.spv  
+glslangvalidator -V 8192/vkFFT_single_c2r_8192.comp -o 8192/vkFFT_single_c2r_8192.spv  
+glslangvalidator -V 8192/vkFFT_single_r2c_8192.comp -o 8192/vkFFT_single_r2c_8192.spv 
+glslangvalidator -V 8192/vkFFT_single_c2c_8192.comp -o 8192/vkFFT_single_c2c_8192.spv  
+glslangvalidator -V 8192/vkFFT_single_c2c_for_transposition_8192.comp -o 8192/vkFFT_single_c2c_for_transposition_8192.spv 
+glslangvalidator -V 8192/vkFFT_single_c2c_afterR2C_for_transposition_8192.comp -o 8192/vkFFT_single_c2c_afterR2C_for_transposition_8192.spv 
+glslangvalidator -V 8192/vkFFT_single_c2c_beforeC2R_for_transposition_8192.comp -o 8192/vkFFT_single_c2c_beforeC2R_for_transposition_8192.spv 

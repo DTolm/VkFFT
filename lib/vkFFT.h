@@ -207,6 +207,38 @@ typedef struct VkFFTApplication {
 			//printf("vkFFT_single_convolution_afterR2C_nonsymmetric_3x3\n");
 			sprintf(filename, "%s%s", configuration.shaderPath, "vkFFT_single_convolution_afterR2C_nonsymmetric_3x3.spv");
 			break;
+		case 23:
+			//printf("vkFFT_single_c2r_8192\n");
+			sprintf(filename, "%s%s", configuration.shaderPath, "8192/vkFFT_single_c2r_8192.spv");
+			break;
+		case 24:
+			//printf("vkFFT_single_r2c_8192\n");
+			sprintf(filename, "%s%s", configuration.shaderPath, "8192/vkFFT_single_r2c_8192.spv");
+			break;
+		case 25:
+			//printf("vkFFT_single_c2c_8192\n");
+			sprintf(filename, "%s%s", configuration.shaderPath, "8192/vkFFT_single_c2c_8192.spv");
+			break;
+		case 26:
+			//printf("vkFFT_single_c2r_for_transposition_8192\n");
+			sprintf(filename, "%s%s", configuration.shaderPath, "8192/vkFFT_single_c2r_for_transposition_8192.spv");
+			break;
+		case 27:
+			//printf("vkFFT_single_r2c_for_transposition_8192\n");
+			sprintf(filename, "%s%s", configuration.shaderPath, "8192/vkFFT_single_r2c_for_transposition_8192.spv");
+			break;
+		case 28:
+			//printf("vkFFT_single_c2c_for_transposition_8192\n");
+			sprintf(filename, "%s%s", configuration.shaderPath, "8192/vkFFT_single_c2c_for_transposition_8192.spv");
+			break;
+		case 29:
+			//printf("vkFFT_single_c2c_afterR2C_for_transposition_8192\n");
+			sprintf(filename, "%s%s", configuration.shaderPath, "8192/vkFFT_single_c2c_afterR2C_for_transposition_8192.spv");
+			break;
+		case 30:
+			//printf("vkFFT_single_c2c_beforeC2R_for_transposition_8192\n");
+			sprintf(filename, "%s%s", configuration.shaderPath, "8192/vkFFT_single_c2c_beforeC2R_for_transposition_8192.spv");
+			break;
 
 		}
 
@@ -764,6 +796,7 @@ typedef struct VkFFTApplication {
 			if (!inverse) {
 				if (axis_id == 0) {
 					FFTPlan->axes[axis_id].axisBlock[0] = (configuration.size[axis_id] / 8 > 1) ? configuration.size[axis_id] / 8 : 1;
+					if (FFTPlan->axes[axis_id].axisBlock[0] > 512) FFTPlan->axes[axis_id].axisBlock[0] = 512;
 					if (configuration.performR2C)
 						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].pushConstants.ratioDirection[1]) ? 1 : FFTPlan->axes[axis_id].pushConstants.ratio[1] / 2;
 					else
@@ -776,6 +809,7 @@ typedef struct VkFFTApplication {
 					if (configuration.performTranspose[0]) {
 						VkFFTPlanTranspose(FFTPlan, 0, inverse);
 						FFTPlan->axes[axis_id].axisBlock[0] = (configuration.size[axis_id] / 8 > 1) ? configuration.size[axis_id] / 8 : 1;
+						if (FFTPlan->axes[axis_id].axisBlock[0] > 512) FFTPlan->axes[axis_id].axisBlock[0] = 512;
 						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].pushConstants.ratioDirection[0]) ? FFTPlan->axes[axis_id].pushConstants.ratio[0] : 1;
 						FFTPlan->axes[axis_id].axisBlock[2] = 1;
 						FFTPlan->axes[axis_id].axisBlock[3] = configuration.size[axis_id];
@@ -824,6 +858,7 @@ typedef struct VkFFTApplication {
 			else {
 				if (axis_id == 0) {
 					FFTPlan->axes[axis_id].axisBlock[0] = (configuration.size[axis_id] / 8 > 1) ? configuration.size[axis_id] / 8 : 1;
+					if (FFTPlan->axes[axis_id].axisBlock[0] > 512) FFTPlan->axes[axis_id].axisBlock[0] = 512;
 					if (configuration.performR2C)
 						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].pushConstants.ratioDirection[0]) ? FFTPlan->axes[axis_id].pushConstants.ratio[0] / 2 : 1;
 					else
@@ -835,6 +870,7 @@ typedef struct VkFFTApplication {
 					if (configuration.performTranspose[0]) {
 						VkFFTPlanTranspose(FFTPlan, 0, inverse);
 						FFTPlan->axes[axis_id].axisBlock[0] = (configuration.size[axis_id] / 8 > 1) ? configuration.size[axis_id] / 8 : 1;
+						if (FFTPlan->axes[axis_id].axisBlock[0] > 512) FFTPlan->axes[axis_id].axisBlock[0] = 512;
 						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].pushConstants.ratioDirection[1]) ? 1 : FFTPlan->axes[axis_id].pushConstants.ratio[1];
 						FFTPlan->axes[axis_id].axisBlock[2] = 1;
 						FFTPlan->axes[axis_id].axisBlock[3] = configuration.size[axis_id];
@@ -909,12 +945,38 @@ typedef struct VkFFTApplication {
 			if (configuration.performR2C) {
 				if (axis_id == 0) {
 					if (inverse) {
-
-						VkFFTInitShader(1, &pipelineShaderStageCreateInfo.module);
+						switch (configuration.size[axis_id]) {
+						case 8192:
+							VkFFTInitShader(23, &pipelineShaderStageCreateInfo.module);
+							break;
+						default:
+							switch (configuration.size[axis_id+1]) {
+							case 8192:
+								VkFFTInitShader(26, &pipelineShaderStageCreateInfo.module);
+								break;
+							default:
+								VkFFTInitShader(1, &pipelineShaderStageCreateInfo.module);
+								break;
+							}
+							break;
+						}
 					}
 					else {
-
-						VkFFTInitShader(3, &pipelineShaderStageCreateInfo.module);
+						switch (configuration.size[axis_id]) {
+						case 8192:
+							VkFFTInitShader(24, &pipelineShaderStageCreateInfo.module);
+							break;
+						default:
+							switch (configuration.size[axis_id + 1]) {
+							case 8192:
+								VkFFTInitShader(27, &pipelineShaderStageCreateInfo.module);
+								break;
+							default:
+								VkFFTInitShader(3, &pipelineShaderStageCreateInfo.module);
+								break;
+							}
+							break;
+						}
 
 					}
 				}
@@ -961,10 +1023,33 @@ typedef struct VkFFTApplication {
 					}
 					else {
 						if (configuration.performTranspose[0]) {
-							if (inverse)
-								VkFFTInitShader(6, &pipelineShaderStageCreateInfo.module);
-							else
-								VkFFTInitShader(5, &pipelineShaderStageCreateInfo.module);
+							switch (configuration.size[axis_id]) {
+							case 8192:
+								VkFFTInitShader(25, &pipelineShaderStageCreateInfo.module);
+								break;
+							default:
+								if (inverse)
+									VkFFTInitShader(6, &pipelineShaderStageCreateInfo.module);
+								else
+									VkFFTInitShader(5, &pipelineShaderStageCreateInfo.module);
+								break;
+								/*switch (configuration.size[axis_id - 1]) {
+								case 8192:
+									if (inverse) 
+										VkFFTInitShader(30, &pipelineShaderStageCreateInfo.module);
+									else
+										VkFFTInitShader(29, &pipelineShaderStageCreateInfo.module);
+									break;
+								default:
+									if (inverse)
+										VkFFTInitShader(6, &pipelineShaderStageCreateInfo.module);
+									else
+										VkFFTInitShader(5, &pipelineShaderStageCreateInfo.module);
+									break;
+								}
+								break;*/
+							}
+
 						}
 						else {
 							VkFFTInitShader(7, &pipelineShaderStageCreateInfo.module);
@@ -1014,8 +1099,25 @@ typedef struct VkFFTApplication {
 
 					}
 					else {
-						if (configuration.performTranspose[1])
-							VkFFTInitShader(0, &pipelineShaderStageCreateInfo.module);
+						if (configuration.performTranspose[1]) {
+
+							switch (configuration.size[axis_id]) {
+							case 8192:
+								VkFFTInitShader(25, &pipelineShaderStageCreateInfo.module);
+								break;
+							default:
+								switch (configuration.size[axis_id - 1]) {
+								case 8192:
+									VkFFTInitShader(28, &pipelineShaderStageCreateInfo.module);
+									break;
+								default:
+									VkFFTInitShader(0, &pipelineShaderStageCreateInfo.module);
+									break;
+								}
+								break;
+							}
+							
+						}
 						else
 							VkFFTInitShader(7, &pipelineShaderStageCreateInfo.module);
 					}
@@ -1044,7 +1146,22 @@ typedef struct VkFFTApplication {
 						}
 					}
 					else {
-						VkFFTInitShader(0, &pipelineShaderStageCreateInfo.module);
+						switch (configuration.size[axis_id]) {
+						case 8192:
+							VkFFTInitShader(25, &pipelineShaderStageCreateInfo.module);
+							break;
+						default:
+							switch (configuration.size[axis_id + 1]) {
+							case 8192:
+								VkFFTInitShader(28, &pipelineShaderStageCreateInfo.module);
+								break;
+							default:
+								VkFFTInitShader(0, &pipelineShaderStageCreateInfo.module);
+								break;
+							}
+							break;
+						}
+
 					}
 				}
 				if (axis_id == 1) {
@@ -1089,7 +1206,21 @@ typedef struct VkFFTApplication {
 					}
 					else {
 						if (configuration.performTranspose[0]) {
-							VkFFTInitShader(0, &pipelineShaderStageCreateInfo.module);
+							switch (configuration.size[axis_id]) {
+							case 8192:
+								VkFFTInitShader(25, &pipelineShaderStageCreateInfo.module);
+								break;
+							default:
+								switch (configuration.size[axis_id - 1]) {
+								case 8192:
+									VkFFTInitShader(28, &pipelineShaderStageCreateInfo.module);
+									break;
+								default:
+									VkFFTInitShader(0, &pipelineShaderStageCreateInfo.module);
+									break;
+								}
+								break;
+							}
 						}
 						else {
 							VkFFTInitShader(7, &pipelineShaderStageCreateInfo.module);
@@ -1139,7 +1270,21 @@ typedef struct VkFFTApplication {
 					}
 					else {
 						if (configuration.performTranspose[1])
-							VkFFTInitShader(0, &pipelineShaderStageCreateInfo.module);
+							switch (configuration.size[axis_id]) {
+							case 8192:
+								VkFFTInitShader(25, &pipelineShaderStageCreateInfo.module);
+								break;
+							default:
+								switch (configuration.size[axis_id - 1]) {
+								case 8192:
+									VkFFTInitShader(28, &pipelineShaderStageCreateInfo.module);
+									break;
+								default:
+									VkFFTInitShader(0, &pipelineShaderStageCreateInfo.module);
+									break;
+								}
+								break;
+							}
 						else
 							VkFFTInitShader(7, &pipelineShaderStageCreateInfo.module);
 					}
