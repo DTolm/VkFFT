@@ -12,18 +12,23 @@ layout(std430, binding = 1) buffer Output
 
 layout (local_size_x_id = 1, local_size_y_id = 2, local_size_z_id = 3) in; //32 - 32/ratio - 1
 
+layout (constant_id = 4) const uint inputStride_0 = 1;
+layout (constant_id = 5) const uint inputStride_1 = 1;
+layout (constant_id = 6) const uint inputStride_2 = 1;
+layout (constant_id = 7) const uint inputStride_3 = 1;
+layout (constant_id = 8) const uint inputStride_4 = 1;
+layout (constant_id = 9) const uint ratio = 8;
+layout (constant_id = 10) const uint ratioDirection_0 = 0;
+layout (constant_id = 11) const uint ratioDirection_1 = 1;
+
 layout(push_constant) uniform PushConsts
 {
-  uint inputStride[5];
-  uint ratio;
-  bool ratioDirection;
-  uint coordinate;
-  uint batchID;
+	uint coordinate;
+	uint batchID;
 } consts;
 
-
 uint index(uint index_x, uint index_y) {
-    return index_x * consts.inputStride[0] + index_y * consts.inputStride[1] + gl_GlobalInvocationID.z * consts.inputStride[2] + consts.coordinate * consts.inputStride[3] + consts.batchID * consts.inputStride[4];
+    return index_x * inputStride_0 + index_y * inputStride_1 + gl_GlobalInvocationID.z * inputStride_2 + consts.coordinate * inputStride_3 + consts.batchID * inputStride_4;
 }
 
 const uint stride = gl_WorkGroupSize.x+1;
@@ -47,7 +52,7 @@ void main()
 		memoryBarrierShared();
 		barrier();
 		
-		pos =(gl_LocalInvocationID.y*consts.ratio+gl_LocalInvocationID.x%consts.ratio) + (gl_LocalInvocationID.x/consts.ratio)*stride;
+		pos =(gl_LocalInvocationID.y*ratio+gl_LocalInvocationID.x%ratio) + (gl_LocalInvocationID.x/ratio)*stride;
 		outputs[id]=sdata[pos+gl_WorkGroupSize.y*stride];
 		outputs[id_comp]=sdata[pos];
 		
@@ -61,7 +66,7 @@ void main()
 		memoryBarrierShared();
 		barrier();
 		
-		pos =(gl_LocalInvocationID.y*consts.ratio+gl_LocalInvocationID.x%consts.ratio) + (gl_LocalInvocationID.x/consts.ratio)*stride;
+		pos =(gl_LocalInvocationID.y*ratio+gl_LocalInvocationID.x%ratio) + (gl_LocalInvocationID.x/ratio)*stride;
 		outputs[id]=sdata[pos];	
 	
 	}

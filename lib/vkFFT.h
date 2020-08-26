@@ -35,6 +35,8 @@ typedef struct {
 } VkFFTConfiguration;
 
 typedef struct {
+	uint32_t localSize[3];
+	uint32_t fftDim;
 	VkBool32 inverse;
 	VkBool32 zeropad[2];
 	uint32_t inputStride[5];
@@ -46,19 +48,23 @@ typedef struct {
 	VkBool32 ratioDirection[2];
 	uint32_t inputOffset;
 	uint32_t outputOffset;
-	uint32_t coordinate;
-	uint32_t batch;
-} VkFFTPushConstantsLayout;
+} VkFFTSpecializationConstantsLayout;
+
 typedef struct {
+	uint32_t coordinate=0;
+	uint32_t batch=0;
+} VkFFTPushConstantsLayout;
+
+typedef struct {
+	uint32_t localSize[3];
 	uint32_t inputStride[5];
 	uint32_t ratio;
-	bool ratioDirection;
-	uint32_t coordinate;
-	uint32_t batch;
-} VkFFTTransposePushConstantsLayout;
+	VkBool32 ratioDirection;
+} VkFFTTransposeSpecializationConstantsLayout;
 typedef struct {
 	uint32_t axisBlock[4];
 	uint32_t groupedBatch = 16;
+	VkFFTSpecializationConstantsLayout specializationConstants;
 	VkFFTPushConstantsLayout pushConstants;
 	VkDescriptorPool descriptorPool;
 	VkDescriptorSetLayout descriptorSetLayout;
@@ -68,7 +74,8 @@ typedef struct {
 } VkFFTAxis;
 typedef struct {
 	uint32_t transposeBlock[3];
-	VkFFTTransposePushConstantsLayout pushConstants;
+	VkFFTTransposeSpecializationConstantsLayout specializationConstants;
+	VkFFTPushConstantsLayout pushConstants;
 	VkDescriptorPool descriptorPool;
 	VkDescriptorSetLayout descriptorSetLayout;
 	VkDescriptorSet descriptorSet;
@@ -256,7 +263,7 @@ typedef struct VkFFTApplication {
 		//get radix stages
 		VkFFTAxis* axis = &FFTPlan->axes[axis_id];
 		//for (uint32_t i; i<3; i++)
-		//	axis->pushConstants.size[i] = configuration.size[i];
+		//	axis->specializationConstants.size[i] = configuration.size[i];
 
 		//configure radix stages
 		uint32_t logSize = log2(configuration.size[axis_id]);
@@ -269,14 +276,14 @@ typedef struct VkFFTApplication {
 				stage4 = 1;
 			if (logSize % 3 == 1)
 				stage2 = 1;
-			axis->pushConstants.numStages = stage8 + stage4 + stage2;
+			axis->specializationConstants.numStages = stage8 + stage4 + stage2;
 
-			axis->pushConstants.stageRadix[0] = 8;
-			axis->pushConstants.stageRadix[1] = 8;
+			axis->specializationConstants.stageRadix[0] = 8;
+			axis->specializationConstants.stageRadix[1] = 8;
 			if (logSize % 3 == 2)
-				axis->pushConstants.stageRadix[1] = 4;
+				axis->specializationConstants.stageRadix[1] = 4;
 			if (logSize % 3 == 1)
-				axis->pushConstants.stageRadix[1] = 2;
+				axis->specializationConstants.stageRadix[1] = 2;
 			break;
 		}
 		case 4: {
@@ -284,23 +291,23 @@ typedef struct VkFFTApplication {
 			uint32_t stage2 = 0;
 			if (logSize % 2 == 1)
 				stage2 = 1;
-			axis->pushConstants.numStages = stage4 + stage2;
+			axis->specializationConstants.numStages = stage4 + stage2;
 
 
-			axis->pushConstants.stageRadix[0] = 4;
-			axis->pushConstants.stageRadix[1] = 4;
+			axis->specializationConstants.stageRadix[0] = 4;
+			axis->specializationConstants.stageRadix[1] = 4;
 			if (logSize % 2 == 1)
-				axis->pushConstants.stageRadix[1] = 2;
+				axis->specializationConstants.stageRadix[1] = 2;
 			break;
 		}
 		case 2: {
 			uint32_t stage2 = logSize;
 
-			axis->pushConstants.numStages = stage2;
+			axis->specializationConstants.numStages = stage2;
 
 
-			axis->pushConstants.stageRadix[0] = 2;
-			axis->pushConstants.stageRadix[1] = 2;
+			axis->specializationConstants.stageRadix[0] = 2;
+			axis->specializationConstants.stageRadix[1] = 2;
 			break;
 		}
 		}
@@ -323,23 +330,23 @@ typedef struct VkFFTApplication {
 		if (configuration.performR2C)
 		{
 			//perform r2c
-			axis->pushConstants.inputStride[0] = 1;
-			axis->pushConstants.inputStride[3] = (configuration.size[0] / 2 + 1) * configuration.size[1] * configuration.size[2];
+			axis->specializationConstants.inputStride[0] = 1;
+			axis->specializationConstants.inputStride[3] = (configuration.size[0] / 2 + 1) * configuration.size[1] * configuration.size[2];
 			if (axis_id == 0) {
-				axis->pushConstants.inputStride[1] = configuration.size[0];
-				axis->pushConstants.inputStride[2] = (configuration.size[0] / 2 + 1) * configuration.size[1];
+				axis->specializationConstants.inputStride[1] = configuration.size[0];
+				axis->specializationConstants.inputStride[2] = (configuration.size[0] / 2 + 1) * configuration.size[1];
 			}
 			if (axis_id == 1)
 			{
 				if (configuration.performTranspose[0]) {
 					//transpose 0-1
-					axis->pushConstants.inputStride[1] = configuration.size[1];
-					axis->pushConstants.inputStride[2] = (configuration.size[0] / 2 + 1) * configuration.size[1];
+					axis->specializationConstants.inputStride[1] = configuration.size[1];
+					axis->specializationConstants.inputStride[2] = (configuration.size[0] / 2 + 1) * configuration.size[1];
 				}
 				else {
 					//don't transpose
-					axis->pushConstants.inputStride[1] = configuration.size[0] / 2;
-					axis->pushConstants.inputStride[2] = (configuration.size[0] / 2 + 1) * configuration.size[1];
+					axis->specializationConstants.inputStride[1] = configuration.size[0] / 2;
+					axis->specializationConstants.inputStride[2] = (configuration.size[0] / 2 + 1) * configuration.size[1];
 				}
 			}
 			if (axis_id == 2)
@@ -347,78 +354,78 @@ typedef struct VkFFTApplication {
 
 				if (configuration.performTranspose[1]) {
 					//transpose 0-1, transpose 1-2
-					axis->pushConstants.inputStride[1] = (configuration.size[0] / 2 + 1) * configuration.size[2];
-					axis->pushConstants.inputStride[2] = configuration.size[2];
+					axis->specializationConstants.inputStride[1] = (configuration.size[0] / 2 + 1) * configuration.size[2];
+					axis->specializationConstants.inputStride[2] = configuration.size[2];
 				}
 				else {
 
 					if (configuration.performTranspose[0]) {
 						//transpose 0-1, don't transpose 1-2
-						axis->pushConstants.inputStride[1] = (configuration.size[0] / 2 + 1) * configuration.size[1];
-						axis->pushConstants.inputStride[2] = configuration.size[1];
+						axis->specializationConstants.inputStride[1] = (configuration.size[0] / 2 + 1) * configuration.size[1];
+						axis->specializationConstants.inputStride[2] = configuration.size[1];
 					}
 					else {
 						//don't transpose
-						axis->pushConstants.inputStride[1] = (configuration.size[0] / 2 + 1) * configuration.size[1];
-						axis->pushConstants.inputStride[2] = configuration.size[0] / 2;
+						axis->specializationConstants.inputStride[1] = (configuration.size[0] / 2 + 1) * configuration.size[1];
+						axis->specializationConstants.inputStride[2] = configuration.size[0] / 2;
 					}
 				}
 			}
 
-			axis->pushConstants.outputStride[0] = axis->pushConstants.inputStride[0];
-			axis->pushConstants.outputStride[1] = axis->pushConstants.inputStride[1];
-			axis->pushConstants.outputStride[2] = axis->pushConstants.inputStride[2];
-			axis->pushConstants.outputStride[3] = axis->pushConstants.inputStride[3];
+			axis->specializationConstants.outputStride[0] = axis->specializationConstants.inputStride[0];
+			axis->specializationConstants.outputStride[1] = axis->specializationConstants.inputStride[1];
+			axis->specializationConstants.outputStride[2] = axis->specializationConstants.inputStride[2];
+			axis->specializationConstants.outputStride[3] = axis->specializationConstants.inputStride[3];
 			if (axis_id == 0) {
 				if ((configuration.isInputFormatted) && (!inverse)) {
 					if (configuration.performZeropadding[0])
-						axis->pushConstants.inputStride[1] = configuration.size[0] / 2;
+						axis->specializationConstants.inputStride[1] = configuration.size[0] / 2;
 
 					if (configuration.performZeropadding[1])
-						axis->pushConstants.inputStride[2] = axis->pushConstants.inputStride[1] * configuration.size[1] / 4;
+						axis->specializationConstants.inputStride[2] = axis->specializationConstants.inputStride[1] * configuration.size[1] / 4;
 					else
-						axis->pushConstants.inputStride[2] = axis->pushConstants.inputStride[1] * configuration.size[1] / 2;
+						axis->specializationConstants.inputStride[2] = axis->specializationConstants.inputStride[1] * configuration.size[1] / 2;
 
 					if (configuration.performZeropadding[2])
-						axis->pushConstants.inputStride[3] = axis->pushConstants.inputStride[2] * configuration.size[2] / 2;
+						axis->specializationConstants.inputStride[3] = axis->specializationConstants.inputStride[2] * configuration.size[2] / 2;
 					else
-						axis->pushConstants.inputStride[3] = axis->pushConstants.inputStride[2] * configuration.size[2];
+						axis->specializationConstants.inputStride[3] = axis->specializationConstants.inputStride[2] * configuration.size[2];
 				}
 				if ((configuration.isOutputFormatted) && ((inverse) || ((configuration.performConvolution) && (configuration.FFTdim == 1)))) {
 					if (configuration.performZeropadding[0])
-						axis->pushConstants.outputStride[1] = configuration.size[0] / 2;
+						axis->specializationConstants.outputStride[1] = configuration.size[0] / 2;
 
 					if (configuration.performZeropadding[1])
-						axis->pushConstants.outputStride[2] = axis->pushConstants.outputStride[1] * configuration.size[1] / 4;
+						axis->specializationConstants.outputStride[2] = axis->specializationConstants.outputStride[1] * configuration.size[1] / 4;
 					else
-						axis->pushConstants.outputStride[2] = axis->pushConstants.outputStride[1] * configuration.size[1] / 2;
+						axis->specializationConstants.outputStride[2] = axis->specializationConstants.outputStride[1] * configuration.size[1] / 2;
 
 					if (configuration.performZeropadding[2])
-						axis->pushConstants.outputStride[3] = axis->pushConstants.outputStride[2] * configuration.size[2] / 2;
+						axis->specializationConstants.outputStride[3] = axis->specializationConstants.outputStride[2] * configuration.size[2] / 2;
 					else
-						axis->pushConstants.outputStride[3] = axis->pushConstants.outputStride[2] * configuration.size[2];
+						axis->specializationConstants.outputStride[3] = axis->specializationConstants.outputStride[2] * configuration.size[2];
 				}
 			}
 		}
 		else {
 			//don't perform r2c
-			axis->pushConstants.inputStride[0] = 1;
-			axis->pushConstants.inputStride[3] = configuration.size[0] * configuration.size[1] * configuration.size[2];
+			axis->specializationConstants.inputStride[0] = 1;
+			axis->specializationConstants.inputStride[3] = configuration.size[0] * configuration.size[1] * configuration.size[2];
 			if (axis_id == 0) {
-				axis->pushConstants.inputStride[1] = configuration.size[0];
-				axis->pushConstants.inputStride[2] = configuration.size[0] * configuration.size[1];
+				axis->specializationConstants.inputStride[1] = configuration.size[0];
+				axis->specializationConstants.inputStride[2] = configuration.size[0] * configuration.size[1];
 			}
 			if (axis_id == 1)
 			{
 				if (configuration.performTranspose[0]) {
 					//transpose 0-1, no transpose 1-2
-					axis->pushConstants.inputStride[1] = configuration.size[1];
-					axis->pushConstants.inputStride[2] = configuration.size[0] * configuration.size[1];
+					axis->specializationConstants.inputStride[1] = configuration.size[1];
+					axis->specializationConstants.inputStride[2] = configuration.size[0] * configuration.size[1];
 				}
 				else {
 					//no transpose
-					axis->pushConstants.inputStride[1] = configuration.size[0];
-					axis->pushConstants.inputStride[2] = configuration.size[0] * configuration.size[1];
+					axis->specializationConstants.inputStride[1] = configuration.size[0];
+					axis->specializationConstants.inputStride[2] = configuration.size[0] * configuration.size[1];
 				}
 			}
 			if (axis_id == 2)
@@ -426,181 +433,181 @@ typedef struct VkFFTApplication {
 
 				if (configuration.performTranspose[1]) {
 					//transpose 0-1, transpose 1-2
-					axis->pushConstants.inputStride[1] = configuration.size[0] * configuration.size[2];
-					axis->pushConstants.inputStride[2] = configuration.size[2];
+					axis->specializationConstants.inputStride[1] = configuration.size[0] * configuration.size[2];
+					axis->specializationConstants.inputStride[2] = configuration.size[2];
 				}
 				else {
 
 					if (configuration.performTranspose[0]) {
 						//transpose 0-1, no transpose 1-2
-						axis->pushConstants.inputStride[1] = configuration.size[0] * configuration.size[1];
-						axis->pushConstants.inputStride[2] = configuration.size[1];
+						axis->specializationConstants.inputStride[1] = configuration.size[0] * configuration.size[1];
+						axis->specializationConstants.inputStride[2] = configuration.size[1];
 					}
 					else {
 						//no transpose
-						axis->pushConstants.inputStride[1] = configuration.size[0] * configuration.size[1];
-						axis->pushConstants.inputStride[2] = configuration.size[0];
+						axis->specializationConstants.inputStride[1] = configuration.size[0] * configuration.size[1];
+						axis->specializationConstants.inputStride[2] = configuration.size[0];
 					}
 				}
 			}
 
-			axis->pushConstants.outputStride[0] = axis->pushConstants.inputStride[0];
-			axis->pushConstants.outputStride[1] = axis->pushConstants.inputStride[1];
-			axis->pushConstants.outputStride[2] = axis->pushConstants.inputStride[2];
-			axis->pushConstants.outputStride[3] = axis->pushConstants.inputStride[3];
+			axis->specializationConstants.outputStride[0] = axis->specializationConstants.inputStride[0];
+			axis->specializationConstants.outputStride[1] = axis->specializationConstants.inputStride[1];
+			axis->specializationConstants.outputStride[2] = axis->specializationConstants.inputStride[2];
+			axis->specializationConstants.outputStride[3] = axis->specializationConstants.inputStride[3];
 			if (axis_id == 0) {
 				if ((configuration.isInputFormatted) && (!inverse)) {
 					if (configuration.performZeropadding[0])
-						axis->pushConstants.inputStride[1] = configuration.size[0] / 2;
+						axis->specializationConstants.inputStride[1] = configuration.size[0] / 2;
 
 					if (configuration.performZeropadding[1])
-						axis->pushConstants.inputStride[2] = axis->pushConstants.inputStride[1] * configuration.size[1] / 2;
+						axis->specializationConstants.inputStride[2] = axis->specializationConstants.inputStride[1] * configuration.size[1] / 2;
 					else
-						axis->pushConstants.inputStride[2] = axis->pushConstants.inputStride[1] * configuration.size[1];
+						axis->specializationConstants.inputStride[2] = axis->specializationConstants.inputStride[1] * configuration.size[1];
 
 					if (configuration.performZeropadding[2])
-						axis->pushConstants.inputStride[3] = axis->pushConstants.inputStride[2] * configuration.size[2] / 2;
+						axis->specializationConstants.inputStride[3] = axis->specializationConstants.inputStride[2] * configuration.size[2] / 2;
 					else
-						axis->pushConstants.inputStride[3] = axis->pushConstants.inputStride[2] * configuration.size[2];
+						axis->specializationConstants.inputStride[3] = axis->specializationConstants.inputStride[2] * configuration.size[2];
 				}
 				if ((configuration.isOutputFormatted) && ((inverse) || ((configuration.performConvolution) && (configuration.FFTdim == 1)))) {
 					if (configuration.performZeropadding[0])
-						axis->pushConstants.outputStride[1] = configuration.size[0] / 2;
+						axis->specializationConstants.outputStride[1] = configuration.size[0] / 2;
 
 					if (configuration.performZeropadding[1])
-						axis->pushConstants.outputStride[2] = axis->pushConstants.outputStride[1] * configuration.size[1] / 2;
+						axis->specializationConstants.outputStride[2] = axis->specializationConstants.outputStride[1] * configuration.size[1] / 2;
 					else
-						axis->pushConstants.outputStride[2] = axis->pushConstants.outputStride[1] * configuration.size[1];
+						axis->specializationConstants.outputStride[2] = axis->specializationConstants.outputStride[1] * configuration.size[1];
 
 					if (configuration.performZeropadding[2])
-						axis->pushConstants.outputStride[3] = axis->pushConstants.outputStride[2] * configuration.size[2] / 2;
+						axis->specializationConstants.outputStride[3] = axis->specializationConstants.outputStride[2] * configuration.size[2] / 2;
 					else
-						axis->pushConstants.outputStride[3] = axis->pushConstants.outputStride[2] * configuration.size[2];
+						axis->specializationConstants.outputStride[3] = axis->specializationConstants.outputStride[2] * configuration.size[2];
 				}
 			}
 		}
-		axis->pushConstants.inputStride[4] = axis->pushConstants.inputStride[3] * configuration.coordinateFeatures;
-		axis->pushConstants.outputStride[4] = axis->pushConstants.outputStride[3] * configuration.coordinateFeatures;
+		axis->specializationConstants.inputStride[4] = axis->specializationConstants.inputStride[3] * configuration.coordinateFeatures;
+		axis->specializationConstants.outputStride[4] = axis->specializationConstants.outputStride[3] * configuration.coordinateFeatures;
 		for (uint32_t i = 0; i < 3; ++i) {
-			axis->pushConstants.radixStride[i] = configuration.size[axis_id] / pow(2, i + 1);
+			axis->specializationConstants.radixStride[i] = configuration.size[axis_id] / pow(2, i + 1);
 
 		}
 
-		axis->pushConstants.inverse = inverse;
-		axis->pushConstants.zeropad[0] = configuration.performZeropadding[axis_id];
+		axis->specializationConstants.inverse = inverse;
+		axis->specializationConstants.zeropad[0] = configuration.performZeropadding[axis_id];
 		if (axis_id == 0)
-			axis->pushConstants.zeropad[1] = configuration.performZeropadding[axis_id + 1];
+			axis->specializationConstants.zeropad[1] = configuration.performZeropadding[axis_id + 1];
 		else
-			axis->pushConstants.zeropad[1] = false;
+			axis->specializationConstants.zeropad[1] = false;
 
 		if (!inverse) {
 			switch (axis_id) {
 			case 0:
-				axis->pushConstants.ratio[0] = 1;
-				axis->pushConstants.ratioDirection[0] = false;
+				axis->specializationConstants.ratio[0] = 1;
+				axis->specializationConstants.ratioDirection[0] = false;
 				if (configuration.FFTdim > 1) {
 					if (configuration.performR2C) {
-						axis->pushConstants.ratio[1] = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? configuration.size[0] / configuration.size[1] / 2 : 2 * configuration.size[1] / configuration.size[0];
-						axis->pushConstants.ratioDirection[1] = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? true : false;
+						axis->specializationConstants.ratio[1] = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? configuration.size[0] / configuration.size[1] / 2 : 2 * configuration.size[1] / configuration.size[0];
+						axis->specializationConstants.ratioDirection[1] = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? true : false;
 					}
 					else {
-						axis->pushConstants.ratio[1] = (configuration.size[0] / configuration.size[1] >= 1) ? configuration.size[0] / configuration.size[1] : configuration.size[1] / configuration.size[0];
-						axis->pushConstants.ratioDirection[1] = (configuration.size[0] / configuration.size[1] >= 1) ? true : false;
+						axis->specializationConstants.ratio[1] = (configuration.size[0] / configuration.size[1] >= 1) ? configuration.size[0] / configuration.size[1] : configuration.size[1] / configuration.size[0];
+						axis->specializationConstants.ratioDirection[1] = (configuration.size[0] / configuration.size[1] >= 1) ? true : false;
 
 					}
 				}
 				if (!configuration.performTranspose[0]) {
-					axis->pushConstants.ratioDirection[0] = false;
-					axis->pushConstants.ratioDirection[1] = true;
+					axis->specializationConstants.ratioDirection[0] = false;
+					axis->specializationConstants.ratioDirection[1] = true;
 				}
 				break;
 			case 1:
 				if (configuration.performR2C) {
 					if (configuration.size[0] / configuration.size[1] / 2 >= 1) {
-						axis->pushConstants.ratio[0] = configuration.size[0] / configuration.size[1] / 2;
-						axis->pushConstants.ratioDirection[0] = true;
+						axis->specializationConstants.ratio[0] = configuration.size[0] / configuration.size[1] / 2;
+						axis->specializationConstants.ratioDirection[0] = true;
 					}
 					else
 					{
-						axis->pushConstants.ratio[0] = (configuration.size[1] * 2 / configuration.size[0]);
-						axis->pushConstants.ratioDirection[0] = false;
+						axis->specializationConstants.ratio[0] = (configuration.size[1] * 2 / configuration.size[0]);
+						axis->specializationConstants.ratioDirection[0] = false;
 					}
 				}
 				else {
 					if (configuration.size[0] / configuration.size[1] >= 1) {
-						axis->pushConstants.ratio[0] = configuration.size[0] / configuration.size[1];
-						axis->pushConstants.ratioDirection[0] = true;
+						axis->specializationConstants.ratio[0] = configuration.size[0] / configuration.size[1];
+						axis->specializationConstants.ratioDirection[0] = true;
 					}
 					else {
-						axis->pushConstants.ratio[0] = configuration.size[1] / configuration.size[0];
-						axis->pushConstants.ratioDirection[0] = false;
+						axis->specializationConstants.ratio[0] = configuration.size[1] / configuration.size[0];
+						axis->specializationConstants.ratioDirection[0] = false;
 					}
 				}
 				if ((configuration.performConvolution) && (configuration.FFTdim == 2)) {
 					if (configuration.performR2C) {
 						if (configuration.size[0] / configuration.size[1] / 2 >= 1) {
-							axis->pushConstants.ratio[1] = configuration.size[0] / configuration.size[1] / 2;
-							axis->pushConstants.ratioDirection[1] = false;
+							axis->specializationConstants.ratio[1] = configuration.size[0] / configuration.size[1] / 2;
+							axis->specializationConstants.ratioDirection[1] = false;
 						}
 						else
 						{
-							axis->pushConstants.ratio[1] = (configuration.size[1] * 2 / configuration.size[0]);
-							axis->pushConstants.ratioDirection[1] = true;
+							axis->specializationConstants.ratio[1] = (configuration.size[1] * 2 / configuration.size[0]);
+							axis->specializationConstants.ratioDirection[1] = true;
 						}
 					}
 					else {
 						if (configuration.size[0] / configuration.size[1] >= 1) {
-							axis->pushConstants.ratio[1] = configuration.size[0] / configuration.size[1];
-							axis->pushConstants.ratioDirection[1] = false;
+							axis->specializationConstants.ratio[1] = configuration.size[0] / configuration.size[1];
+							axis->specializationConstants.ratioDirection[1] = false;
 						}
 						else {
-							axis->pushConstants.ratio[1] = configuration.size[1] / configuration.size[0];
-							axis->pushConstants.ratioDirection[1] = true;
+							axis->specializationConstants.ratio[1] = configuration.size[1] / configuration.size[0];
+							axis->specializationConstants.ratioDirection[1] = true;
 						}
 					}
 				}
 				if (configuration.FFTdim > 2) {
 					if (configuration.size[1] / configuration.size[2] >= 1) {
-						axis->pushConstants.ratio[1] = configuration.size[1] / configuration.size[2];
-						axis->pushConstants.ratioDirection[1] = true;
+						axis->specializationConstants.ratio[1] = configuration.size[1] / configuration.size[2];
+						axis->specializationConstants.ratioDirection[1] = true;
 					}
 					else
 					{
-						axis->pushConstants.ratio[1] = (configuration.size[2] / configuration.size[1]);
-						axis->pushConstants.ratioDirection[1] = false;
+						axis->specializationConstants.ratio[1] = (configuration.size[2] / configuration.size[1]);
+						axis->specializationConstants.ratioDirection[1] = false;
 					}
 				}
 				if (!configuration.performTranspose[0]) {
-					axis->pushConstants.ratioDirection[0] = false;
+					axis->specializationConstants.ratioDirection[0] = false;
 				}
 				if ((!configuration.performTranspose[1]) && (!((configuration.performConvolution) && (configuration.FFTdim == 2)))) {
-					axis->pushConstants.ratioDirection[1] = true;
+					axis->specializationConstants.ratioDirection[1] = true;
 				}
 				break;
 			case 2:
 				if (configuration.size[1] / configuration.size[2] >= 1) {
-					axis->pushConstants.ratio[0] = configuration.size[1] / configuration.size[2];
-					axis->pushConstants.ratioDirection[0] = true;
+					axis->specializationConstants.ratio[0] = configuration.size[1] / configuration.size[2];
+					axis->specializationConstants.ratioDirection[0] = true;
 				}
 				else {
-					axis->pushConstants.ratio[0] = configuration.size[2] / configuration.size[1];
-					axis->pushConstants.ratioDirection[0] = false;
+					axis->specializationConstants.ratio[0] = configuration.size[2] / configuration.size[1];
+					axis->specializationConstants.ratioDirection[0] = false;
 				}
-				axis->pushConstants.ratio[1] = 1;
-				axis->pushConstants.ratioDirection[1] = true;
+				axis->specializationConstants.ratio[1] = 1;
+				axis->specializationConstants.ratioDirection[1] = true;
 				if ((configuration.performConvolution) && (configuration.FFTdim == 3)) {
 					if (configuration.size[1] / configuration.size[2] >= 1) {
-						axis->pushConstants.ratio[1] = configuration.size[1] / configuration.size[2];
-						axis->pushConstants.ratioDirection[1] = false;
+						axis->specializationConstants.ratio[1] = configuration.size[1] / configuration.size[2];
+						axis->specializationConstants.ratioDirection[1] = false;
 					}
 					else {
-						axis->pushConstants.ratio[1] = configuration.size[2] / configuration.size[1];
-						axis->pushConstants.ratioDirection[1] = true;
+						axis->specializationConstants.ratio[1] = configuration.size[2] / configuration.size[1];
+						axis->specializationConstants.ratioDirection[1] = true;
 					}
 				}
 				if (!configuration.performTranspose[1]) {
-					axis->pushConstants.ratioDirection[0] = false;
-					axis->pushConstants.ratioDirection[1] = true;
+					axis->specializationConstants.ratioDirection[0] = false;
+					axis->specializationConstants.ratioDirection[1] = true;
 				}
 
 				break;
@@ -609,84 +616,84 @@ typedef struct VkFFTApplication {
 		else {
 			switch (axis_id) {
 			case 0:
-				axis->pushConstants.ratio[1] = 1;
-				axis->pushConstants.ratioDirection[1] = true;
+				axis->specializationConstants.ratio[1] = 1;
+				axis->specializationConstants.ratioDirection[1] = true;
 				if (configuration.FFTdim > 1) {
 					if (configuration.performR2C) {
-						axis->pushConstants.ratio[0] = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? configuration.size[0] / configuration.size[1] / 2 : 2 * configuration.size[1] / configuration.size[0];
-						axis->pushConstants.ratioDirection[0] = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? false : true;
+						axis->specializationConstants.ratio[0] = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? configuration.size[0] / configuration.size[1] / 2 : 2 * configuration.size[1] / configuration.size[0];
+						axis->specializationConstants.ratioDirection[0] = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? false : true;
 					}
 					else
 					{
-						axis->pushConstants.ratio[0] = (configuration.size[0] / configuration.size[1] >= 1) ? configuration.size[0] / configuration.size[1] : configuration.size[1] / configuration.size[0];
-						axis->pushConstants.ratioDirection[0] = (configuration.size[0] / configuration.size[1] >= 1) ? false : true;
+						axis->specializationConstants.ratio[0] = (configuration.size[0] / configuration.size[1] >= 1) ? configuration.size[0] / configuration.size[1] : configuration.size[1] / configuration.size[0];
+						axis->specializationConstants.ratioDirection[0] = (configuration.size[0] / configuration.size[1] >= 1) ? false : true;
 
 					}
 				}
 				if (!configuration.performTranspose[0]) {
-					axis->pushConstants.ratioDirection[0] = false;
-					axis->pushConstants.ratioDirection[1] = true;
+					axis->specializationConstants.ratioDirection[0] = false;
+					axis->specializationConstants.ratioDirection[1] = true;
 				}
 				break;
 			case 1:
 				if (configuration.performR2C) {
 					if (configuration.size[0] / configuration.size[1] / 2 >= 1) {
-						axis->pushConstants.ratio[1] = configuration.size[0] / configuration.size[1] / 2;
-						axis->pushConstants.ratioDirection[1] = false;
+						axis->specializationConstants.ratio[1] = configuration.size[0] / configuration.size[1] / 2;
+						axis->specializationConstants.ratioDirection[1] = false;
 					}
 					else
 					{
-						axis->pushConstants.ratio[1] = (configuration.size[1] * 2 / configuration.size[0]);
-						axis->pushConstants.ratioDirection[1] = true;
+						axis->specializationConstants.ratio[1] = (configuration.size[1] * 2 / configuration.size[0]);
+						axis->specializationConstants.ratioDirection[1] = true;
 					}
 				}
 				else {
 					if (configuration.size[0] / configuration.size[1] >= 1) {
-						axis->pushConstants.ratio[1] = configuration.size[0] / configuration.size[1];
-						axis->pushConstants.ratioDirection[1] = false;
+						axis->specializationConstants.ratio[1] = configuration.size[0] / configuration.size[1];
+						axis->specializationConstants.ratioDirection[1] = false;
 					}
 					else {
-						axis->pushConstants.ratio[1] = configuration.size[1] / configuration.size[0];
-						axis->pushConstants.ratioDirection[1] = true;
+						axis->specializationConstants.ratio[1] = configuration.size[1] / configuration.size[0];
+						axis->specializationConstants.ratioDirection[1] = true;
 					}
 				}
 				if (configuration.FFTdim > 2) {
 					if (configuration.size[1] / configuration.size[2] >= 1) {
-						axis->pushConstants.ratio[0] = configuration.size[1] / configuration.size[2];
-						axis->pushConstants.ratioDirection[0] = false;
+						axis->specializationConstants.ratio[0] = configuration.size[1] / configuration.size[2];
+						axis->specializationConstants.ratioDirection[0] = false;
 					}
 					else
 					{
-						axis->pushConstants.ratio[0] = (configuration.size[2] / configuration.size[1]);
-						axis->pushConstants.ratioDirection[0] = true;
+						axis->specializationConstants.ratio[0] = (configuration.size[2] / configuration.size[1]);
+						axis->specializationConstants.ratioDirection[0] = true;
 					}
 				}
 				if (!configuration.performTranspose[0]) {
-					axis->pushConstants.ratioDirection[1] = true;
+					axis->specializationConstants.ratioDirection[1] = true;
 				}
 				if (!configuration.performTranspose[1]) {
-					axis->pushConstants.ratioDirection[0] = false;
+					axis->specializationConstants.ratioDirection[0] = false;
 				}
 				break;
 			case 2:
 				if (configuration.size[1] / configuration.size[2] >= 1) {
-					axis->pushConstants.ratio[1] = configuration.size[1] / configuration.size[2];
-					axis->pushConstants.ratioDirection[1] = false;
+					axis->specializationConstants.ratio[1] = configuration.size[1] / configuration.size[2];
+					axis->specializationConstants.ratioDirection[1] = false;
 				}
 				else {
-					axis->pushConstants.ratio[1] = configuration.size[2] / configuration.size[1];
-					axis->pushConstants.ratioDirection[1] = true;
+					axis->specializationConstants.ratio[1] = configuration.size[2] / configuration.size[1];
+					axis->specializationConstants.ratioDirection[1] = true;
 				}
-				axis->pushConstants.ratio[0] = 1;
-				axis->pushConstants.ratioDirection[0] = false;
+				axis->specializationConstants.ratio[0] = 1;
+				axis->specializationConstants.ratioDirection[0] = false;
 				if (!configuration.performTranspose[1]) {
-					axis->pushConstants.ratioDirection[1] = true;
+					axis->specializationConstants.ratioDirection[1] = true;
 				}
 				break;
 			}
 		}
-		axis->pushConstants.inputOffset = 0;
-		axis->pushConstants.outputOffset = 0;
+		axis->specializationConstants.inputOffset = 0;
+		axis->specializationConstants.outputOffset = 0;
 
 		VkDescriptorPoolSize descriptorPoolSize = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 		descriptorPoolSize.descriptorCount = 2;
@@ -786,21 +793,23 @@ typedef struct VkFFTApplication {
 			VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
 			pipelineLayoutCreateInfo.setLayoutCount = 1;
 			pipelineLayoutCreateInfo.pSetLayouts = &axis->descriptorSetLayout;
+
 			VkPushConstantRange pushConstantRange = { VK_SHADER_STAGE_COMPUTE_BIT };
 			pushConstantRange.offset = 0;
-			pushConstantRange.size = sizeof(axis->pushConstants);
+			pushConstantRange.size = sizeof(VkFFTPushConstantsLayout);
 			// Push constant ranges are part of the pipeline layout
 			pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
 			pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
+
 			vkCreatePipelineLayout(configuration.device[0], &pipelineLayoutCreateInfo, NULL, &axis->pipelineLayout);
 			if (!inverse) {
 				if (axis_id == 0) {
 					FFTPlan->axes[axis_id].axisBlock[0] = (configuration.size[axis_id] / 8 > 1) ? configuration.size[axis_id] / 8 : 1;
 					if (FFTPlan->axes[axis_id].axisBlock[0] > 512) FFTPlan->axes[axis_id].axisBlock[0] = 512;
 					if (configuration.performR2C)
-						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].pushConstants.ratioDirection[1]) ? 1 : FFTPlan->axes[axis_id].pushConstants.ratio[1] / 2;
+						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].specializationConstants.ratioDirection[1]) ? 1 : FFTPlan->axes[axis_id].specializationConstants.ratio[1] / 2;
 					else
-						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].pushConstants.ratioDirection[1]) ? 1 : FFTPlan->axes[axis_id].pushConstants.ratio[1];
+						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].specializationConstants.ratioDirection[1]) ? 1 : FFTPlan->axes[axis_id].specializationConstants.ratio[1];
 
 					FFTPlan->axes[axis_id].axisBlock[2] = 1;
 					FFTPlan->axes[axis_id].axisBlock[3] = configuration.size[axis_id];
@@ -810,7 +819,7 @@ typedef struct VkFFTApplication {
 						VkFFTPlanTranspose(FFTPlan, 0, inverse);
 						FFTPlan->axes[axis_id].axisBlock[0] = (configuration.size[axis_id] / 8 > 1) ? configuration.size[axis_id] / 8 : 1;
 						if (FFTPlan->axes[axis_id].axisBlock[0] > 512) FFTPlan->axes[axis_id].axisBlock[0] = 512;
-						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].pushConstants.ratioDirection[0]) ? FFTPlan->axes[axis_id].pushConstants.ratio[0] : 1;
+						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].specializationConstants.ratioDirection[0]) ? FFTPlan->axes[axis_id].specializationConstants.ratio[0] : 1;
 						FFTPlan->axes[axis_id].axisBlock[2] = 1;
 						FFTPlan->axes[axis_id].axisBlock[3] = configuration.size[axis_id];
 					}
@@ -830,7 +839,7 @@ typedef struct VkFFTApplication {
 					if (configuration.performTranspose[1]) {
 						VkFFTPlanTranspose(FFTPlan, 1, inverse);
 						FFTPlan->axes[axis_id].axisBlock[0] = (configuration.size[axis_id] / 8 > 1) ? configuration.size[axis_id] / 8 : 1;
-						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].pushConstants.ratioDirection[0]) ? FFTPlan->axes[axis_id].pushConstants.ratio[0] : 1;
+						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].specializationConstants.ratioDirection[0]) ? FFTPlan->axes[axis_id].specializationConstants.ratio[0] : 1;
 						FFTPlan->axes[axis_id].axisBlock[2] = 1;
 						FFTPlan->axes[axis_id].axisBlock[3] = configuration.size[axis_id];
 					}
@@ -860,9 +869,9 @@ typedef struct VkFFTApplication {
 					FFTPlan->axes[axis_id].axisBlock[0] = (configuration.size[axis_id] / 8 > 1) ? configuration.size[axis_id] / 8 : 1;
 					if (FFTPlan->axes[axis_id].axisBlock[0] > 512) FFTPlan->axes[axis_id].axisBlock[0] = 512;
 					if (configuration.performR2C)
-						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].pushConstants.ratioDirection[0]) ? FFTPlan->axes[axis_id].pushConstants.ratio[0] / 2 : 1;
+						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].specializationConstants.ratioDirection[0]) ? FFTPlan->axes[axis_id].specializationConstants.ratio[0] / 2 : 1;
 					else
-						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].pushConstants.ratioDirection[0]) ? FFTPlan->axes[axis_id].pushConstants.ratio[0] : 1;
+						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].specializationConstants.ratioDirection[0]) ? FFTPlan->axes[axis_id].specializationConstants.ratio[0] : 1;
 					FFTPlan->axes[axis_id].axisBlock[2] = 1;
 					FFTPlan->axes[axis_id].axisBlock[3] = configuration.size[axis_id];
 				}
@@ -871,7 +880,7 @@ typedef struct VkFFTApplication {
 						VkFFTPlanTranspose(FFTPlan, 0, inverse);
 						FFTPlan->axes[axis_id].axisBlock[0] = (configuration.size[axis_id] / 8 > 1) ? configuration.size[axis_id] / 8 : 1;
 						if (FFTPlan->axes[axis_id].axisBlock[0] > 512) FFTPlan->axes[axis_id].axisBlock[0] = 512;
-						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].pushConstants.ratioDirection[1]) ? 1 : FFTPlan->axes[axis_id].pushConstants.ratio[1];
+						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].specializationConstants.ratioDirection[1]) ? 1 : FFTPlan->axes[axis_id].specializationConstants.ratio[1];
 						FFTPlan->axes[axis_id].axisBlock[2] = 1;
 						FFTPlan->axes[axis_id].axisBlock[3] = configuration.size[axis_id];
 					}
@@ -891,7 +900,7 @@ typedef struct VkFFTApplication {
 					if (configuration.performTranspose[1]) {
 						VkFFTPlanTranspose(FFTPlan, 1, inverse);
 						FFTPlan->axes[axis_id].axisBlock[0] = (configuration.size[axis_id] / 8 > 1) ? configuration.size[axis_id] / 8 : 1;
-						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].pushConstants.ratioDirection[1]) ? 1 : FFTPlan->axes[axis_id].pushConstants.ratio[1];
+						FFTPlan->axes[axis_id].axisBlock[1] = (FFTPlan->axes[axis_id].specializationConstants.ratioDirection[1]) ? 1 : FFTPlan->axes[axis_id].specializationConstants.ratio[1];
 						FFTPlan->axes[axis_id].axisBlock[2] = 1;
 						FFTPlan->axes[axis_id].axisBlock[3] = configuration.size[axis_id];
 					}
@@ -917,25 +926,21 @@ typedef struct VkFFTApplication {
 				}
 
 			}
-			VkSpecializationMapEntry specializationMapEntries[4] = { {} };
-			specializationMapEntries[0].constantID = 1;
-			specializationMapEntries[0].size = sizeof(uint32_t);
-			specializationMapEntries[0].offset = 0;
-			specializationMapEntries[1].constantID = 2;
-			specializationMapEntries[1].size = sizeof(uint32_t);
-			specializationMapEntries[1].offset = sizeof(uint32_t);
-			specializationMapEntries[2].constantID = 3;
-			specializationMapEntries[2].size = sizeof(uint32_t);
-			specializationMapEntries[2].offset = 2 * sizeof(uint32_t);
-			specializationMapEntries[3].constantID = 4;
-			specializationMapEntries[3].size = sizeof(uint32_t);
-			specializationMapEntries[3].offset = 3 * sizeof(uint32_t);
-
+			VkSpecializationMapEntry specializationMapEntries[29] = { {} };
+			for (uint32_t i = 0; i < 29; i++) {
+				specializationMapEntries[i].constantID = i + 1;
+				specializationMapEntries[i].size = sizeof(uint32_t);
+				specializationMapEntries[i].offset = i * sizeof(uint32_t);
+			}
 			VkSpecializationInfo specializationInfo = {};
-			specializationInfo.dataSize = 4 * sizeof(uint32_t);
-			specializationInfo.mapEntryCount = 4;
+			specializationInfo.dataSize = 29 * sizeof(uint32_t);
+			specializationInfo.mapEntryCount = 29;
 			specializationInfo.pMapEntries = specializationMapEntries;
-			specializationInfo.pData = &FFTPlan->axes[axis_id].axisBlock;
+			FFTPlan->axes[axis_id].specializationConstants.localSize[0] = FFTPlan->axes[axis_id].axisBlock[0];
+			FFTPlan->axes[axis_id].specializationConstants.localSize[1] = FFTPlan->axes[axis_id].axisBlock[1];
+			FFTPlan->axes[axis_id].specializationConstants.localSize[2] = FFTPlan->axes[axis_id].axisBlock[2];
+			FFTPlan->axes[axis_id].specializationConstants.fftDim = FFTPlan->axes[axis_id].axisBlock[3];
+			specializationInfo.pData = &FFTPlan->axes[axis_id].specializationConstants;
 			VkPipelineShaderStageCreateInfo pipelineShaderStageCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
 
 			VkComputePipelineCreateInfo computePipelineCreateInfo = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
@@ -1308,7 +1313,7 @@ typedef struct VkFFTApplication {
 		//get radix stages
 		VkFFTAxis* axis = &FFTPlan->supportAxes[axis_id - 1];
 		//for (uint32_t i; i<3; i++)
-		//	axis->pushConstants.size[i] = configuration.size[i];
+		//	axis->specializationConstants.size[i] = configuration.size[i];
 
 		//configure radix stages
 		uint32_t logSize = log2(configuration.size[axis_id]);
@@ -1322,14 +1327,14 @@ typedef struct VkFFTApplication {
 				stage4 = 1;
 			if (logSize % 3 == 1)
 				stage2 = 1;
-			axis->pushConstants.numStages = stage8 + stage4 + stage2;
+			axis->specializationConstants.numStages = stage8 + stage4 + stage2;
 
-			axis->pushConstants.stageRadix[0] = 8;
-			axis->pushConstants.stageRadix[1] = 8;
+			axis->specializationConstants.stageRadix[0] = 8;
+			axis->specializationConstants.stageRadix[1] = 8;
 			if (logSize % 3 == 2)
-				axis->pushConstants.stageRadix[1] = 4;
+				axis->specializationConstants.stageRadix[1] = 4;
 			if (logSize % 3 == 1)
-				axis->pushConstants.stageRadix[1] = 2;
+				axis->specializationConstants.stageRadix[1] = 2;
 			break;
 		}
 		case 4: {
@@ -1337,71 +1342,71 @@ typedef struct VkFFTApplication {
 			uint32_t stage2 = 0;
 			if (logSize % 2 == 1)
 				stage2 = 1;
-			axis->pushConstants.numStages = stage4 + stage2;
+			axis->specializationConstants.numStages = stage4 + stage2;
 
 
-			axis->pushConstants.stageRadix[0] = 4;
-			axis->pushConstants.stageRadix[1] = 4;
+			axis->specializationConstants.stageRadix[0] = 4;
+			axis->specializationConstants.stageRadix[1] = 4;
 			if (logSize % 2 == 1)
-				axis->pushConstants.stageRadix[1] = 2;
+				axis->specializationConstants.stageRadix[1] = 2;
 			break;
 		}
 		case 2: {
 			uint32_t stage2 = logSize;
 
-			axis->pushConstants.numStages = stage2;
+			axis->specializationConstants.numStages = stage2;
 
 
-			axis->pushConstants.stageRadix[0] = 2;
-			axis->pushConstants.stageRadix[1] = 2;
+			axis->specializationConstants.stageRadix[0] = 2;
+			axis->specializationConstants.stageRadix[1] = 2;
 			break;
 		}
 		}
 
 		//configure strides
 		//perform r2c
-		axis->pushConstants.inputStride[0] = 1;
-		axis->pushConstants.inputStride[3] = (configuration.size[0] / 2 + 1) * configuration.size[1] * configuration.size[2];
+		axis->specializationConstants.inputStride[0] = 1;
+		axis->specializationConstants.inputStride[3] = (configuration.size[0] / 2 + 1) * configuration.size[1] * configuration.size[2];
 
 		if (axis_id == 1)
 		{
 
 			//don't transpose 0-1
-			axis->pushConstants.inputStride[1] = configuration.size[1];
-			axis->pushConstants.inputStride[2] = (configuration.size[0] / 2 + 1) * configuration.size[1];
-			axis->pushConstants.inputStride[3] = (configuration.size[0] / 2 + 1) * configuration.size[1] * configuration.size[2];
+			axis->specializationConstants.inputStride[1] = configuration.size[1];
+			axis->specializationConstants.inputStride[2] = (configuration.size[0] / 2 + 1) * configuration.size[1];
+			axis->specializationConstants.inputStride[3] = (configuration.size[0] / 2 + 1) * configuration.size[1] * configuration.size[2];
 		}
 		if (axis_id == 2)
 		{
 
 			//don't transpose 0-1, don't transpose 1-2
-			axis->pushConstants.inputStride[1] = (configuration.size[0] / 2 + 1) * configuration.size[1];
-			axis->pushConstants.inputStride[2] = configuration.size[1];
+			axis->specializationConstants.inputStride[1] = (configuration.size[0] / 2 + 1) * configuration.size[1];
+			axis->specializationConstants.inputStride[2] = configuration.size[1];
 
 		}
 
-		axis->pushConstants.outputStride[0] = axis->pushConstants.inputStride[0];
-		axis->pushConstants.outputStride[1] = axis->pushConstants.inputStride[1];
-		axis->pushConstants.outputStride[2] = axis->pushConstants.inputStride[2];
-		axis->pushConstants.outputStride[3] = axis->pushConstants.inputStride[3];
+		axis->specializationConstants.outputStride[0] = axis->specializationConstants.inputStride[0];
+		axis->specializationConstants.outputStride[1] = axis->specializationConstants.inputStride[1];
+		axis->specializationConstants.outputStride[2] = axis->specializationConstants.inputStride[2];
+		axis->specializationConstants.outputStride[3] = axis->specializationConstants.inputStride[3];
 
-		axis->pushConstants.inputStride[4] = axis->pushConstants.inputStride[3] * configuration.coordinateFeatures;
-		axis->pushConstants.outputStride[4] = axis->pushConstants.outputStride[3] * configuration.coordinateFeatures;
+		axis->specializationConstants.inputStride[4] = axis->specializationConstants.inputStride[3] * configuration.coordinateFeatures;
+		axis->specializationConstants.outputStride[4] = axis->specializationConstants.outputStride[3] * configuration.coordinateFeatures;
 
 		for (uint32_t i = 0; i < 3; ++i) {
-			axis->pushConstants.radixStride[i] = configuration.size[axis_id] / pow(2, i + 1);
+			axis->specializationConstants.radixStride[i] = configuration.size[axis_id] / pow(2, i + 1);
 
 		}
 
-		axis->pushConstants.inverse = inverse;
-		axis->pushConstants.zeropad[0] = configuration.performZeropadding[axis_id];
-		axis->pushConstants.zeropad[1] = false;
-		axis->pushConstants.ratio[0] = configuration.size[axis_id - 1] / configuration.size[axis_id];
-		axis->pushConstants.ratio[1] = configuration.size[axis_id - 1] / configuration.size[axis_id];
-		axis->pushConstants.ratioDirection[0] = false;
-		axis->pushConstants.ratioDirection[1] = true;
-		axis->pushConstants.inputOffset = configuration.size[0] * configuration.size[1] / 2;
-		axis->pushConstants.outputOffset = configuration.size[0] * configuration.size[1] / 2;
+		axis->specializationConstants.inverse = inverse;
+		axis->specializationConstants.zeropad[0] = configuration.performZeropadding[axis_id];
+		axis->specializationConstants.zeropad[1] = false;
+		axis->specializationConstants.ratio[0] = configuration.size[axis_id - 1] / configuration.size[axis_id];
+		axis->specializationConstants.ratio[1] = configuration.size[axis_id - 1] / configuration.size[axis_id];
+		axis->specializationConstants.ratioDirection[0] = false;
+		axis->specializationConstants.ratioDirection[1] = true;
+		axis->specializationConstants.inputOffset = configuration.size[0] * configuration.size[1] / 2;
+		axis->specializationConstants.outputOffset = configuration.size[0] * configuration.size[1] / 2;
 
 		VkDescriptorPoolSize descriptorPoolSize = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 		descriptorPoolSize.descriptorCount = 2;
@@ -1499,12 +1504,15 @@ typedef struct VkFFTApplication {
 			VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
 			pipelineLayoutCreateInfo.setLayoutCount = 1;
 			pipelineLayoutCreateInfo.pSetLayouts = &axis->descriptorSetLayout;
+
 			VkPushConstantRange pushConstantRange = { VK_SHADER_STAGE_COMPUTE_BIT };
 			pushConstantRange.offset = 0;
-			pushConstantRange.size = sizeof(axis->pushConstants);
+			pushConstantRange.size = sizeof(VkFFTPushConstantsLayout);
 			// Push constant ranges are part of the pipeline layout
 			pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
 			pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
+
+
 			vkCreatePipelineLayout(configuration.device[0], &pipelineLayoutCreateInfo, NULL, &axis->pipelineLayout);
 			if (axis_id == 1) {
 				FFTPlan->supportAxes[0].axisBlock[0] = (configuration.size[axis_id] / 8 > 1) ? configuration.size[axis_id] / 8 : 1;
@@ -1518,25 +1526,22 @@ typedef struct VkFFTApplication {
 				FFTPlan->supportAxes[1].axisBlock[2] = 1;
 				FFTPlan->supportAxes[1].axisBlock[3] = configuration.size[2];
 			}
-			VkSpecializationMapEntry specializationMapEntries[4] = { {} };
-			specializationMapEntries[0].constantID = 1;
-			specializationMapEntries[0].size = sizeof(uint32_t);
-			specializationMapEntries[0].offset = 0;
-			specializationMapEntries[1].constantID = 2;
-			specializationMapEntries[1].size = sizeof(uint32_t);
-			specializationMapEntries[1].offset = sizeof(uint32_t);
-			specializationMapEntries[2].constantID = 3;
-			specializationMapEntries[2].size = sizeof(uint32_t);
-			specializationMapEntries[2].offset = 2 * sizeof(uint32_t);
-			specializationMapEntries[3].constantID = 4;
-			specializationMapEntries[3].size = sizeof(uint32_t);
-			specializationMapEntries[3].offset = 3 * sizeof(uint32_t);
-
+			
+			VkSpecializationMapEntry specializationMapEntries[29] = { {} };
+			for (uint32_t i = 0; i < 29; i++) {
+				specializationMapEntries[i].constantID = i + 1;
+				specializationMapEntries[i].size = sizeof(uint32_t);
+				specializationMapEntries[i].offset = i * sizeof(uint32_t);
+			}
 			VkSpecializationInfo specializationInfo = {};
-			specializationInfo.dataSize = 4 * sizeof(uint32_t);
-			specializationInfo.mapEntryCount = 4;
+			specializationInfo.dataSize = 29 * sizeof(uint32_t);
+			specializationInfo.mapEntryCount = 29;
 			specializationInfo.pMapEntries = specializationMapEntries;
-			specializationInfo.pData = &FFTPlan->supportAxes[axis_id - 1].axisBlock;
+			FFTPlan->supportAxes[axis_id-1].specializationConstants.localSize[0] = FFTPlan->supportAxes[axis_id-1].axisBlock[0];
+			FFTPlan->supportAxes[axis_id-1].specializationConstants.localSize[1] = FFTPlan->supportAxes[axis_id-1].axisBlock[1];
+			FFTPlan->supportAxes[axis_id-1].specializationConstants.localSize[2] = FFTPlan->supportAxes[axis_id-1].axisBlock[2];
+			FFTPlan->supportAxes[axis_id-1].specializationConstants.fftDim = FFTPlan->supportAxes[axis_id-1].axisBlock[3];
+			specializationInfo.pData = &FFTPlan->supportAxes[axis_id-1].specializationConstants;
 			VkPipelineShaderStageCreateInfo pipelineShaderStageCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
 			VkComputePipelineCreateInfo computePipelineCreateInfo = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
 
@@ -1614,49 +1619,49 @@ typedef struct VkFFTApplication {
 	void VkFFTPlanTranspose(VkFFTPlan* FFTPlan, uint32_t axis_id, bool inverse) {
 		if (axis_id == 0) {
 			if (configuration.performR2C) {
-				FFTPlan->transpose[0].pushConstants.ratio = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? configuration.size[0] / configuration.size[1] / 2 : 2 * configuration.size[1] / configuration.size[0];
-				FFTPlan->transpose[0].pushConstants.ratioDirection = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? true : false;
+				FFTPlan->transpose[0].specializationConstants.ratio = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? configuration.size[0] / configuration.size[1] / 2 : 2 * configuration.size[1] / configuration.size[0];
+				FFTPlan->transpose[0].specializationConstants.ratioDirection = (configuration.size[0] / configuration.size[1] / 2 >= 1) ? true : false;
 			}
 			else {
-				FFTPlan->transpose[0].pushConstants.ratio = (configuration.size[0] / configuration.size[1] >= 1) ? configuration.size[0] / configuration.size[1] : configuration.size[1] / configuration.size[0];
-				FFTPlan->transpose[0].pushConstants.ratioDirection = (configuration.size[0] / configuration.size[1] >= 1) ? true : false;
+				FFTPlan->transpose[0].specializationConstants.ratio = (configuration.size[0] / configuration.size[1] >= 1) ? configuration.size[0] / configuration.size[1] : configuration.size[1] / configuration.size[0];
+				FFTPlan->transpose[0].specializationConstants.ratioDirection = (configuration.size[0] / configuration.size[1] >= 1) ? true : false;
 
 			}
 		}
 		if (axis_id == 1) {
-			FFTPlan->transpose[1].pushConstants.ratio = (configuration.size[1] / configuration.size[2] >= 1) ? configuration.size[1] / configuration.size[2] : configuration.size[2] / configuration.size[1];
-			FFTPlan->transpose[1].pushConstants.ratioDirection = (configuration.size[1] / configuration.size[2] >= 1) ? true : false;
+			FFTPlan->transpose[1].specializationConstants.ratio = (configuration.size[1] / configuration.size[2] >= 1) ? configuration.size[1] / configuration.size[2] : configuration.size[2] / configuration.size[1];
+			FFTPlan->transpose[1].specializationConstants.ratioDirection = (configuration.size[1] / configuration.size[2] >= 1) ? true : false;
 		}
 
 		if (axis_id == 0) {
 			if (configuration.performR2C) {
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[0] = 1;
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[1] = (FFTPlan->transpose[0].pushConstants.ratioDirection) ? configuration.size[0] / 2 : configuration.size[1];
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[2] = (configuration.size[0] / 2 + 1) * configuration.size[1];
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[3] = (configuration.size[0] / 2 + 1) * configuration.size[1] * configuration.size[2];
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[0] = 1;
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[1] = (FFTPlan->transpose[0].specializationConstants.ratioDirection) ? configuration.size[0] / 2 : configuration.size[1];
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[2] = (configuration.size[0] / 2 + 1) * configuration.size[1];
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[3] = (configuration.size[0] / 2 + 1) * configuration.size[1] * configuration.size[2];
 			}
 			else {
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[0] = 1;
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[1] = (FFTPlan->transpose[0].pushConstants.ratioDirection) ? configuration.size[0] : configuration.size[1];
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[2] = configuration.size[0] * configuration.size[1];
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[3] = configuration.size[0] * configuration.size[1] * configuration.size[2];
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[0] = 1;
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[1] = (FFTPlan->transpose[0].specializationConstants.ratioDirection) ? configuration.size[0] : configuration.size[1];
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[2] = configuration.size[0] * configuration.size[1];
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[3] = configuration.size[0] * configuration.size[1] * configuration.size[2];
 			}
 		}
 		if (axis_id == 1) {
 			if (configuration.performR2C) {
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[0] = 1;
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[1] = (FFTPlan->transpose[1].pushConstants.ratioDirection) ? (configuration.size[0] / 2 + 1) * configuration.size[1] : (configuration.size[0] / 2 + 1) * configuration.size[2];
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[2] = (FFTPlan->transpose[1].pushConstants.ratioDirection) ? configuration.size[1] : configuration.size[2];
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[3] = (configuration.size[0] / 2 + 1) * configuration.size[1] * configuration.size[2];
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[0] = 1;
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[1] = (FFTPlan->transpose[1].specializationConstants.ratioDirection) ? (configuration.size[0] / 2 + 1) * configuration.size[1] : (configuration.size[0] / 2 + 1) * configuration.size[2];
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[2] = (FFTPlan->transpose[1].specializationConstants.ratioDirection) ? configuration.size[1] : configuration.size[2];
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[3] = (configuration.size[0] / 2 + 1) * configuration.size[1] * configuration.size[2];
 			}
 			else {
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[0] = 1;
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[1] = (FFTPlan->transpose[1].pushConstants.ratioDirection) ? configuration.size[0] * configuration.size[1] : configuration.size[0] * configuration.size[2];
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[2] = (FFTPlan->transpose[1].pushConstants.ratioDirection) ? configuration.size[1] : configuration.size[2];
-				FFTPlan->transpose[axis_id].pushConstants.inputStride[3] = configuration.size[0] * configuration.size[1] * configuration.size[2];
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[0] = 1;
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[1] = (FFTPlan->transpose[1].specializationConstants.ratioDirection) ? configuration.size[0] * configuration.size[1] : configuration.size[0] * configuration.size[2];
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[2] = (FFTPlan->transpose[1].specializationConstants.ratioDirection) ? configuration.size[1] : configuration.size[2];
+				FFTPlan->transpose[axis_id].specializationConstants.inputStride[3] = configuration.size[0] * configuration.size[1] * configuration.size[2];
 			}
 		}
-		FFTPlan->transpose[axis_id].pushConstants.inputStride[4] = FFTPlan->transpose[axis_id].pushConstants.inputStride[3] * configuration.coordinateFeatures;
+		FFTPlan->transpose[axis_id].specializationConstants.inputStride[4] = FFTPlan->transpose[axis_id].specializationConstants.inputStride[3] * configuration.coordinateFeatures;
 		VkDescriptorPoolSize descriptorPoolSize = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 		descriptorPoolSize.descriptorCount = 2;
 		//collection->descriptorNum = 3;
@@ -1730,40 +1735,43 @@ typedef struct VkFFTApplication {
 		VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
 		pipelineLayoutCreateInfo.setLayoutCount = 1;
 		pipelineLayoutCreateInfo.pSetLayouts = &FFTPlan->transpose[axis_id].descriptorSetLayout;
+
 		VkPushConstantRange pushConstantRange = { VK_SHADER_STAGE_COMPUTE_BIT };
 		pushConstantRange.offset = 0;
-		pushConstantRange.size = sizeof(VkFFTTransposePushConstantsLayout);
+		pushConstantRange.size = sizeof(VkFFTPushConstantsLayout);
 		// Push constant ranges are part of the pipeline layout
 		pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
 		pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
+
 		vkCreatePipelineLayout(configuration.device[0], &pipelineLayoutCreateInfo, NULL, &FFTPlan->transpose[axis_id].pipelineLayout);
 		VkPipelineShaderStageCreateInfo pipelineShaderStageCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
 
 		VkComputePipelineCreateInfo computePipelineCreateInfo = { VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
-		VkSpecializationMapEntry specializationMapEntries[3] = { {} };
-		specializationMapEntries[0].constantID = 1;
-		specializationMapEntries[0].size = sizeof(uint32_t);
-		specializationMapEntries[0].offset = 0;
-		specializationMapEntries[1].constantID = 2;
-		specializationMapEntries[1].size = sizeof(uint32_t);
-		specializationMapEntries[1].offset = sizeof(uint32_t);
-		specializationMapEntries[2].constantID = 3;
-		specializationMapEntries[2].size = sizeof(uint32_t);
-		specializationMapEntries[2].offset = 2 * sizeof(uint32_t);
 
 		uint32_t max_dim = 1;
-		if (FFTPlan->axes[axis_id].axisBlock[1] * configuration.size[axis_id] < pow(2, floor(log2(sqrt(1024 * FFTPlan->transpose[axis_id].pushConstants.ratio)))))
+		if (FFTPlan->axes[axis_id].axisBlock[1] * configuration.size[axis_id] < pow(2, floor(log2(sqrt(1024 * FFTPlan->transpose[axis_id].specializationConstants.ratio)))))
 			max_dim = FFTPlan->axes[axis_id].axisBlock[1] * configuration.size[axis_id];
 		else
-			max_dim = pow(2, floor(log2(sqrt(1024 * FFTPlan->transpose[axis_id].pushConstants.ratio))));
+			max_dim = pow(2, floor(log2(sqrt(1024 * FFTPlan->transpose[axis_id].specializationConstants.ratio))));
 		FFTPlan->transpose[axis_id].transposeBlock[0] = max_dim;
-		FFTPlan->transpose[axis_id].transposeBlock[1] = max_dim / FFTPlan->transpose[axis_id].pushConstants.ratio;
+		FFTPlan->transpose[axis_id].transposeBlock[1] = max_dim / FFTPlan->transpose[axis_id].specializationConstants.ratio;
 		FFTPlan->transpose[axis_id].transposeBlock[2] = 1;
+
+		VkSpecializationMapEntry specializationMapEntries[12] = { {} };
+		for (uint32_t i = 0; i < 12; i++) {
+			specializationMapEntries[i].constantID = i + 1;
+			specializationMapEntries[i].size = sizeof(uint32_t);
+			specializationMapEntries[i].offset = i * sizeof(uint32_t);
+		}
 		VkSpecializationInfo specializationInfo = {};
-		specializationInfo.dataSize = 3 * sizeof(uint32_t);
-		specializationInfo.mapEntryCount = 3;
+		specializationInfo.dataSize = 12 * sizeof(uint32_t);
+		specializationInfo.mapEntryCount = 12;
 		specializationInfo.pMapEntries = specializationMapEntries;
-		specializationInfo.pData = FFTPlan->transpose[axis_id].transposeBlock;
+		FFTPlan->transpose[axis_id].specializationConstants.localSize[0] = FFTPlan->transpose[axis_id].transposeBlock[0];
+		FFTPlan->transpose[axis_id].specializationConstants.localSize[1] = FFTPlan->transpose[axis_id].transposeBlock[1];
+		FFTPlan->transpose[axis_id].specializationConstants.localSize[2] = FFTPlan->transpose[axis_id].transposeBlock[2];
+
+		specializationInfo.pData = &FFTPlan->transpose[axis_id].specializationConstants;
 
 		pipelineShaderStageCreateInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
 
@@ -1878,18 +1886,18 @@ typedef struct VkFFTApplication {
 						localFFTPlan.transpose[0].pushConstants.batch = j;
 						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan.transpose[0].pushConstants.coordinate = i;
-							vkCmdPushConstants(commandBuffer, localFFTPlan.transpose[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTTransposePushConstantsLayout), &localFFTPlan.transpose[0].pushConstants);
+							vkCmdPushConstants(commandBuffer, localFFTPlan.transpose[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.transpose[0].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.transpose[0].pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.transpose[0].pipelineLayout, 0, 1, &localFFTPlan.transpose[0].descriptorSet, 0, NULL);
 							if (configuration.performR2C == true) {
-								if (localFFTPlan.transpose[0].pushConstants.ratioDirection)
+								if (localFFTPlan.transpose[0].specializationConstants.ratioDirection)
 									vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.transpose[0].transposeBlock[0], configuration.size[1] / localFFTPlan.transpose[0].transposeBlock[1], configuration.size[2] / localFFTPlan.transpose[0].transposeBlock[2]);
 								else
 									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.transpose[0].transposeBlock[0], configuration.size[0] / 2 / localFFTPlan.transpose[0].transposeBlock[1], configuration.size[2] / localFFTPlan.transpose[0].transposeBlock[2]);
 
 							}
 							else {
-								if (localFFTPlan.transpose[0].pushConstants.ratioDirection)
+								if (localFFTPlan.transpose[0].specializationConstants.ratioDirection)
 									vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.transpose[0].transposeBlock[0], configuration.size[1] / localFFTPlan.transpose[0].transposeBlock[1], configuration.size[2] / localFFTPlan.transpose[0].transposeBlock[2]);
 								else
 									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.transpose[0].transposeBlock[0], configuration.size[0] / localFFTPlan.transpose[0].transposeBlock[1], configuration.size[2] / localFFTPlan.transpose[0].transposeBlock[2]);
@@ -2004,7 +2012,6 @@ typedef struct VkFFTApplication {
 							for (uint32_t j = 0; j < configuration.numberBatches; j++) {
 								localFFTPlan.supportAxes[0].pushConstants.batch = j;
 								for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
-
 									localFFTPlan.supportAxes[0].pushConstants.coordinate = i;
 									vkCmdPushConstants(commandBuffer, localFFTPlan.supportAxes[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.supportAxes[0].pushConstants);
 									vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.supportAxes[0].pipeline);
@@ -2053,18 +2060,18 @@ typedef struct VkFFTApplication {
 						localFFTPlan.transpose[1].pushConstants.batch = j;
 						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan.transpose[1].pushConstants.coordinate = i;
-							vkCmdPushConstants(commandBuffer, localFFTPlan.transpose[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTTransposePushConstantsLayout), &localFFTPlan.transpose[1].pushConstants);
+							vkCmdPushConstants(commandBuffer, localFFTPlan.transpose[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.transpose[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.transpose[1].pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.transpose[1].pipelineLayout, 0, 1, &localFFTPlan.transpose[1].descriptorSet, 0, NULL);
 							if (configuration.performR2C == true) {
-								if (localFFTPlan.transpose[1].pushConstants.ratioDirection)
+								if (localFFTPlan.transpose[1].specializationConstants.ratioDirection)
 									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.transpose[1].transposeBlock[0], configuration.size[2] / localFFTPlan.transpose[1].transposeBlock[1], (configuration.size[0] / 2 + 1) / localFFTPlan.transpose[1].transposeBlock[2]);
 								else
 									vkCmdDispatch(commandBuffer, configuration.size[2] / localFFTPlan.transpose[1].transposeBlock[0], configuration.size[1] / localFFTPlan.transpose[1].transposeBlock[1], (configuration.size[0] / 2 + 1) / localFFTPlan.transpose[1].transposeBlock[2]);
 
 							}
 							else {
-								if (localFFTPlan.transpose[1].pushConstants.ratioDirection)
+								if (localFFTPlan.transpose[1].specializationConstants.ratioDirection)
 									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.transpose[1].transposeBlock[0], configuration.size[2] / localFFTPlan.transpose[1].transposeBlock[1], configuration.size[0] / localFFTPlan.transpose[1].transposeBlock[2]);
 								else
 									vkCmdDispatch(commandBuffer, configuration.size[2] / localFFTPlan.transpose[1].transposeBlock[0], configuration.size[1] / localFFTPlan.transpose[1].transposeBlock[1], configuration.size[0] / localFFTPlan.transpose[1].transposeBlock[2]);
@@ -2222,18 +2229,18 @@ typedef struct VkFFTApplication {
 						localFFTPlan_inverse_convolution.transpose[1].pushConstants.batch = j;
 						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan_inverse_convolution.transpose[1].pushConstants.coordinate = i;
-							vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.transpose[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTTransposePushConstantsLayout), &localFFTPlan_inverse_convolution.transpose[1].pushConstants);
+							vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.transpose[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan_inverse_convolution.transpose[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.transpose[1].pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.transpose[1].pipelineLayout, 0, 1, &localFFTPlan_inverse_convolution.transpose[1].descriptorSet, 0, NULL);
 							if (configuration.performR2C == true) {
-								if (localFFTPlan_inverse_convolution.transpose[1].pushConstants.ratioDirection)
+								if (localFFTPlan_inverse_convolution.transpose[1].specializationConstants.ratioDirection)
 									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan_inverse_convolution.transpose[1].transposeBlock[0], configuration.size[2] / localFFTPlan_inverse_convolution.transpose[1].transposeBlock[1], (configuration.size[0] / 2 + 1) / localFFTPlan_inverse_convolution.transpose[1].transposeBlock[2]);
 								else
 									vkCmdDispatch(commandBuffer, configuration.size[2] / localFFTPlan_inverse_convolution.transpose[1].transposeBlock[0], configuration.size[1] / localFFTPlan_inverse_convolution.transpose[1].transposeBlock[1], (configuration.size[0] / 2 + 1) / localFFTPlan_inverse_convolution.transpose[1].transposeBlock[2]);
 
 							}
 							else {
-								if (localFFTPlan_inverse_convolution.transpose[1].pushConstants.ratioDirection)
+								if (localFFTPlan_inverse_convolution.transpose[1].specializationConstants.ratioDirection)
 									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan_inverse_convolution.transpose[1].transposeBlock[0], configuration.size[2] / localFFTPlan_inverse_convolution.transpose[1].transposeBlock[1], configuration.size[0] / localFFTPlan_inverse_convolution.transpose[1].transposeBlock[2]);
 								else
 									vkCmdDispatch(commandBuffer, configuration.size[2] / localFFTPlan_inverse_convolution.transpose[1].transposeBlock[0], configuration.size[1] / localFFTPlan_inverse_convolution.transpose[1].transposeBlock[1], configuration.size[0] / localFFTPlan_inverse_convolution.transpose[1].transposeBlock[2]);
@@ -2327,18 +2334,18 @@ typedef struct VkFFTApplication {
 						localFFTPlan_inverse_convolution.transpose[0].pushConstants.batch = j;
 						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan_inverse_convolution.transpose[0].pushConstants.coordinate = i;
-							vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.transpose[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTTransposePushConstantsLayout), &localFFTPlan_inverse_convolution.transpose[0].pushConstants);
+							vkCmdPushConstants(commandBuffer, localFFTPlan_inverse_convolution.transpose[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan_inverse_convolution.transpose[0].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.transpose[0].pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan_inverse_convolution.transpose[0].pipelineLayout, 0, 1, &localFFTPlan_inverse_convolution.transpose[0].descriptorSet, 0, NULL);
 							if (configuration.performR2C == true) {
-								if (localFFTPlan_inverse_convolution.transpose[0].pushConstants.ratioDirection)
+								if (localFFTPlan_inverse_convolution.transpose[0].specializationConstants.ratioDirection)
 									vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan_inverse_convolution.transpose[0].transposeBlock[0], configuration.size[1] / localFFTPlan_inverse_convolution.transpose[0].transposeBlock[1], configuration.size[2] / localFFTPlan_inverse_convolution.transpose[0].transposeBlock[2]);
 								else
 									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan_inverse_convolution.transpose[0].transposeBlock[0], configuration.size[0] / 2 / localFFTPlan_inverse_convolution.transpose[0].transposeBlock[1], configuration.size[2] / localFFTPlan_inverse_convolution.transpose[0].transposeBlock[2]);
 
 							}
 							else {
-								if (localFFTPlan_inverse_convolution.transpose[0].pushConstants.ratioDirection)
+								if (localFFTPlan_inverse_convolution.transpose[0].specializationConstants.ratioDirection)
 									vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan_inverse_convolution.transpose[0].transposeBlock[0], configuration.size[1] / localFFTPlan_inverse_convolution.transpose[0].transposeBlock[1], configuration.size[2] / localFFTPlan_inverse_convolution.transpose[0].transposeBlock[2]);
 								else
 									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan_inverse_convolution.transpose[0].transposeBlock[0], configuration.size[0] / localFFTPlan_inverse_convolution.transpose[0].transposeBlock[1], configuration.size[2] / localFFTPlan_inverse_convolution.transpose[0].transposeBlock[2]);
@@ -2473,18 +2480,18 @@ typedef struct VkFFTApplication {
 						localFFTPlan.transpose[1].pushConstants.batch = j;
 						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan.transpose[1].pushConstants.coordinate = i;
-							vkCmdPushConstants(commandBuffer, localFFTPlan.transpose[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTTransposePushConstantsLayout), &localFFTPlan.transpose[1].pushConstants);
+							vkCmdPushConstants(commandBuffer, localFFTPlan.transpose[1].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.transpose[1].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.transpose[1].pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.transpose[1].pipelineLayout, 0, 1, &localFFTPlan.transpose[1].descriptorSet, 0, NULL);
 							if (configuration.performR2C == true) {
-								if (localFFTPlan.transpose[1].pushConstants.ratioDirection)
+								if (localFFTPlan.transpose[1].specializationConstants.ratioDirection)
 									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.transpose[1].transposeBlock[0], configuration.size[2] / localFFTPlan.transpose[1].transposeBlock[1], (configuration.size[0] / 2 + 1) / localFFTPlan.transpose[1].transposeBlock[2]);
 								else
 									vkCmdDispatch(commandBuffer, configuration.size[2] / localFFTPlan.transpose[1].transposeBlock[0], configuration.size[1] / localFFTPlan.transpose[1].transposeBlock[1], (configuration.size[0] / 2 + 1) / localFFTPlan.transpose[1].transposeBlock[2]);
 
 							}
 							else {
-								if (localFFTPlan.transpose[1].pushConstants.ratioDirection)
+								if (localFFTPlan.transpose[1].specializationConstants.ratioDirection)
 									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.transpose[1].transposeBlock[0], configuration.size[2] / localFFTPlan.transpose[1].transposeBlock[1], configuration.size[0] / localFFTPlan.transpose[1].transposeBlock[2]);
 								else
 									vkCmdDispatch(commandBuffer, configuration.size[2] / localFFTPlan.transpose[1].transposeBlock[0], configuration.size[1] / localFFTPlan.transpose[1].transposeBlock[1], configuration.size[0] / localFFTPlan.transpose[1].transposeBlock[2]);
@@ -2570,18 +2577,18 @@ typedef struct VkFFTApplication {
 						localFFTPlan.transpose[0].pushConstants.batch = j;
 						for (uint32_t i = 0; i < configuration.coordinateFeatures; i++) {
 							localFFTPlan.transpose[0].pushConstants.coordinate = i;
-							vkCmdPushConstants(commandBuffer, localFFTPlan.transpose[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTTransposePushConstantsLayout), &localFFTPlan.transpose[0].pushConstants);
+							vkCmdPushConstants(commandBuffer, localFFTPlan.transpose[0].pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &localFFTPlan.transpose[0].pushConstants);
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.transpose[0].pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, localFFTPlan.transpose[0].pipelineLayout, 0, 1, &localFFTPlan.transpose[0].descriptorSet, 0, NULL);
 							if (configuration.performR2C == true) {
-								if (localFFTPlan.transpose[0].pushConstants.ratioDirection)
+								if (localFFTPlan.transpose[0].specializationConstants.ratioDirection)
 									vkCmdDispatch(commandBuffer, configuration.size[0] / 2 / localFFTPlan.transpose[0].transposeBlock[0], configuration.size[1] / localFFTPlan.transpose[0].transposeBlock[1], configuration.size[2] / localFFTPlan.transpose[0].transposeBlock[2]);
 								else
 									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.transpose[0].transposeBlock[0], configuration.size[0] / 2 / localFFTPlan.transpose[0].transposeBlock[1], configuration.size[2] / localFFTPlan.transpose[0].transposeBlock[2]);
 
 							}
 							else {
-								if (localFFTPlan.transpose[0].pushConstants.ratioDirection)
+								if (localFFTPlan.transpose[0].specializationConstants.ratioDirection)
 									vkCmdDispatch(commandBuffer, configuration.size[0] / localFFTPlan.transpose[0].transposeBlock[0], configuration.size[1] / localFFTPlan.transpose[0].transposeBlock[1], configuration.size[2] / localFFTPlan.transpose[0].transposeBlock[2]);
 								else
 									vkCmdDispatch(commandBuffer, configuration.size[1] / localFFTPlan.transpose[0].transposeBlock[0], configuration.size[0] / localFFTPlan.transpose[0].transposeBlock[1], configuration.size[2] / localFFTPlan.transpose[0].transposeBlock[2]);
