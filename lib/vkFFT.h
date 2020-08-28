@@ -725,7 +725,7 @@ typedef struct VkFFTApplication {
 		descriptorSetLayoutCreateInfo.pBindings = descriptorSetLayoutBindings;
 
 		vkCreateDescriptorSetLayout(configuration.device[0], &descriptorSetLayoutCreateInfo, NULL, &axis->descriptorSetLayout);
-
+		free(descriptorSetLayoutBindings);
 		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
 		descriptorSetAllocateInfo.descriptorPool = axis->descriptorPool;
 		descriptorSetAllocateInfo.descriptorSetCount = 1;
@@ -1436,7 +1436,7 @@ typedef struct VkFFTApplication {
 		descriptorSetLayoutCreateInfo.pBindings = descriptorSetLayoutBindings;
 
 		vkCreateDescriptorSetLayout(configuration.device[0], &descriptorSetLayoutCreateInfo, NULL, &axis->descriptorSetLayout);
-
+		free(descriptorSetLayoutBindings);
 		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
 		descriptorSetAllocateInfo.descriptorPool = axis->descriptorPool;
 		descriptorSetAllocateInfo.descriptorSetCount = 1;
@@ -1687,7 +1687,7 @@ typedef struct VkFFTApplication {
 		descriptorSetLayoutCreateInfo.pBindings = descriptorSetLayoutBindings;
 
 		vkCreateDescriptorSetLayout(configuration.device[0], &descriptorSetLayoutCreateInfo, NULL, &FFTPlan->transpose[axis_id].descriptorSetLayout);
-
+		free(descriptorSetLayoutBindings);
 		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
 		descriptorSetAllocateInfo.descriptorPool = FFTPlan->transpose[axis_id].descriptorPool;
 		descriptorSetAllocateInfo.descriptorSetCount = 1;

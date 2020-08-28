@@ -392,7 +392,7 @@ int main()
 	vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physicalDeviceMemoryProperties);
 
-	uint32_t sample_id = 0;//setting parameter for VkFFT samples. 0 - FFT + iFFT R2C/C2R benchmark. 1 - convolution. 2 - zeropadding convolution. 3 - multiple feature(kernel) convolution. 4 - 8k sequence for testing
+	uint32_t sample_id = 4;//setting parameter for VkFFT samples. 0 - FFT + iFFT R2C/C2R benchmark. 1 - convolution. 2 - zeropadding convolution. 3 - multiple feature(kernel) convolution. 4 - 8k sequence for testing
 	switch (sample_id) {
 	case 0:
 	{
@@ -487,6 +487,8 @@ int main()
 						}
 					}
 				}*/
+				free(buffer_input);
+				free(buffer_output);
 				vkDestroyBuffer(device, buffer, NULL);
 				vkFreeMemory(device, bufferDeviceMemory, NULL);
 				app_forward.deleteVulkanFFT();
@@ -638,6 +640,9 @@ int main()
 				}
 			}
 		}
+		free(kernel_input);
+		free(buffer_input);
+		free(buffer_output);
 		vkDestroyBuffer(device, buffer, NULL);
 		vkFreeMemory(device, bufferDeviceMemory, NULL);
 		vkDestroyBuffer(device, kernel, NULL);
@@ -791,6 +796,9 @@ int main()
 				}
 			}
 		}
+		free(kernel_input);
+		free(buffer_input);
+		free(buffer_output);
 		vkDestroyBuffer(device, buffer, NULL);
 		vkFreeMemory(device, bufferDeviceMemory, NULL);
 		vkDestroyBuffer(device, kernel, NULL);
@@ -946,6 +954,9 @@ int main()
 				}
 			}
 		}
+		free(kernel_input);
+		free(buffer_input);
+		free(buffer_output);
 		vkDestroyBuffer(device, buffer, NULL);
 		vkFreeMemory(device, bufferDeviceMemory, NULL);
 		vkDestroyBuffer(device, outputBuffer, NULL);
@@ -1054,6 +1065,9 @@ int main()
 						}
 					}
 				}*/
+
+				free(buffer_input);
+				free(buffer_output);
 				vkDestroyBuffer(device, buffer, NULL);
 				vkFreeMemory(device, bufferDeviceMemory, NULL);
 				app_forward.deleteVulkanFFT();
