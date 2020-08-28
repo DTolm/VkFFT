@@ -107,7 +107,7 @@ typedef struct VkFFTApplication {
 
 		long filesizepadded = long(ceil(filesize / 4.0)) * 4;
 
-		char* str = new char[filesizepadded];
+		char* str = (char*)malloc(sizeof(char)*filesizepadded);
 		fread(str, filesize, sizeof(char), fp);
 		fclose(fp);
 
@@ -256,7 +256,7 @@ typedef struct VkFFTApplication {
 		createInfo.pCode = code;
 		createInfo.codeSize = filelength;
 		vkCreateShaderModule(configuration.device[0], &createInfo, NULL, shaderModule);
-		delete[] code;
+		free(code);
 
 	}
 	void VkFFTPlanAxis(VkFFTPlan* FFTPlan, uint32_t axis_id, bool inverse) {
@@ -710,7 +710,7 @@ typedef struct VkFFTApplication {
 		descriptorPoolCreateInfo.maxSets = 1;
 		vkCreateDescriptorPool(configuration.device[0], &descriptorPoolCreateInfo, NULL, &axis->descriptorPool);
 
-		const VkDescriptorType descriptorType[] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
+		const VkDescriptorType descriptorType[3] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 		VkDescriptorSetLayoutBinding* descriptorSetLayoutBindings;
 		descriptorSetLayoutBindings = (VkDescriptorSetLayoutBinding*)malloc(descriptorPoolSize.descriptorCount * sizeof(VkDescriptorSetLayoutBinding));
 		for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
@@ -1421,7 +1421,7 @@ typedef struct VkFFTApplication {
 		descriptorPoolCreateInfo.maxSets = 1;
 		vkCreateDescriptorPool(configuration.device[0], &descriptorPoolCreateInfo, NULL, &axis->descriptorPool);
 
-		const VkDescriptorType descriptorType[] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
+		const VkDescriptorType descriptorType[3] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 		VkDescriptorSetLayoutBinding* descriptorSetLayoutBindings;
 		descriptorSetLayoutBindings = (VkDescriptorSetLayoutBinding*)malloc(descriptorPoolSize.descriptorCount * sizeof(VkDescriptorSetLayoutBinding));
 		for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
@@ -1672,7 +1672,7 @@ typedef struct VkFFTApplication {
 		descriptorPoolCreateInfo.maxSets = 1;
 		vkCreateDescriptorPool(configuration.device[0], &descriptorPoolCreateInfo, NULL, &FFTPlan->transpose[axis_id].descriptorPool);
 
-		const VkDescriptorType descriptorType[] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
+		const VkDescriptorType descriptorType[2] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 		VkDescriptorSetLayoutBinding* descriptorSetLayoutBindings;
 		descriptorSetLayoutBindings = (VkDescriptorSetLayoutBinding*)malloc(descriptorPoolSize.descriptorCount * sizeof(VkDescriptorSetLayoutBinding));
 		for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
@@ -1785,7 +1785,7 @@ typedef struct VkFFTApplication {
 		createInfo.pCode = code;
 		createInfo.codeSize = filelength;
 		vkCreateShaderModule(configuration.device[0], &createInfo, NULL, &pipelineShaderStageCreateInfo.module);
-		delete[] code;
+		free(code);
 
 		pipelineShaderStageCreateInfo.pSpecializationInfo = &specializationInfo;
 		pipelineShaderStageCreateInfo.pName = "main";
