@@ -392,15 +392,16 @@ int main()
 	vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physicalDeviceMemoryProperties);
 
-	uint32_t sample_id = 4;//setting parameter for VkFFT samples. 0 - FFT + iFFT R2C/C2R benchmark. 1 - convolution. 2 - zeropadding convolution. 3 - multiple feature(kernel) convolution. 4 - 8k sequence for testing
+	uint32_t sample_id = 0;//setting parameter for VkFFT samples. 0 - FFT + iFFT R2C/C2R benchmark. 1 - convolution. 2 - zeropadding convolution. 3 - multiple feature(kernel) convolution. 4 - 8k sequence for testing
 	switch (sample_id) {
 	case 0:
 	{
 		//0 - FFT + iFFT R2C/C2R benchmark
-		const uint32_t num_benchmark_samples = 20;
+		const uint32_t num_benchmark_samples = 19;
 		const uint32_t num_runs = 5;
-		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {32, 32, 1, 2}, {64, 64, 1, 2}, {256, 32, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2},{1024, 1024, 1, 2}, {4096, 256, 1, 2}, {4096, 2048, 1, 2}, {4096, 4096, 1, 2},
-																	{32, 32, 32, 3}, {64, 64, 64, 3}, {256, 32, 32, 3}, {256, 256, 32, 3}, {256, 256, 256, 3}, {1024, 256, 32, 3}, {1024, 1024, 8, 3}, {2048, 1024, 8, 3}, {2048, 256, 256, 3}, {4096, 4096, 8, 3}, {4096, 4096, 16, 3} };
+		printf("First %d runs are a warmup\n", num_runs);
+		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {64, 64, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2},  {4096, 256, 1, 2}, {2048, 1024, 1, 2},{4096, 2048, 1, 2}, {4096, 4096, 1, 2},
+																	{32, 32, 32, 3}, {64, 64, 64, 3}, {256, 256, 32, 3},  {1024, 256, 32, 3},  {256, 256, 256, 3}, {2048, 1024, 8, 3},  {512, 512, 128, 3}, {2048, 256, 256, 3}, {4096, 4096, 8, 3}};
 
 		for (uint32_t n = 0; n < num_benchmark_samples; n++) {
 
@@ -412,6 +413,7 @@ int main()
 				VkFFTApplication app_inverse;
 				//FFT + iFFT sample code.
 				//Setting up FFT configuration for forward and inverse FFT.
+				forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 				forward_configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
 				forward_configuration.size[0] = benchmark_dimensions[n][0]; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 				forward_configuration.size[1] = benchmark_dimensions[n][1];
@@ -468,6 +470,7 @@ int main()
 				//Submit FFT+iFFT.
 				uint32_t batch = ((4096.0 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096.0 * 1024.0 * 1024.0) / bufferSize;
 				if (batch == 0) batch = 1;
+				//batch *= 5; //makes result more smooth, takes longer time
 				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
 				float* buffer_output = (float*)malloc(bufferSize);
 				
@@ -513,6 +516,7 @@ int main()
 		VkFFTApplication app_kernel;
 		//Convolution sample code
 		//Setting up FFT configuration. FFT is performed in-place with no performance loss. 
+		forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 		forward_configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D (default 1).
 		forward_configuration.size[0] = 32; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
 		forward_configuration.size[1] = 32;
@@ -667,6 +671,7 @@ int main()
 		VkFFTApplication app_kernel;
 		//Zeropadding Convolution sample code
 		//Setting up FFT configuration. FFT is performed in-place with no performance loss. 
+		forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 		forward_configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D (default 1).
 		forward_configuration.size[0] = 256; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
 		forward_configuration.size[1] = 256;
@@ -823,6 +828,7 @@ int main()
 		VkFFTApplication app_kernel;
 		//Convolution sample code
 		//Setting up FFT configuration. FFT is performed in-place with no performance loss. 
+		forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 		forward_configuration.FFTdim = 2; //FFT dimension, 1D, 2D or 3D (default 1).
 		forward_configuration.size[0] = 32; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
 		forward_configuration.size[1] = 32;
@@ -990,6 +996,7 @@ int main()
 				VkFFTApplication app_inverse;
 				//FFT + iFFT sample code.
 				//Setting up FFT configuration for forward and inverse FFT.
+				forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 				forward_configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
 				forward_configuration.size[0] = benchmark_dimensions[n][0]; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 				forward_configuration.size[1] = benchmark_dimensions[n][1];

@@ -20,6 +20,7 @@ typedef struct {
 	bool isInputFormatted = false; //specify if input buffer is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1) - false - padded, true - not padded
 	bool isOutputFormatted = false; //specify if output buffer is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1) - false - padded, true - not padded
 	char shaderPath[256] = "shaders/"; //path to shaders, can be selected automatically in CMake
+	uint32_t coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 	VkDevice* device;
 
 	VkDeviceSize* bufferSize;
@@ -311,7 +312,7 @@ typedef struct VkFFTApplication {
 			break;
 		}
 		}
-		if (4096 / configuration.size[1] > 8) {
+		if (4096 / configuration.size[1] > configuration.coalescedMemory / 16) {
 			configuration.performTranspose[0] = false;
 			FFTPlan->axes[1].groupedBatch = 4096 / configuration.size[1];
 		}
@@ -319,7 +320,7 @@ typedef struct VkFFTApplication {
 			configuration.performTranspose[0] = true;
 		}
 
-		if (4096 / configuration.size[2] > 8) {
+		if (4096 / configuration.size[2] > configuration.coalescedMemory / 16) {
 			configuration.performTranspose[1] = false;
 			FFTPlan->axes[2].groupedBatch = 4096 / configuration.size[2];
 		}

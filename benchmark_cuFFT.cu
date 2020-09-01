@@ -8,12 +8,24 @@
 
 int main()
 {
-    const int num_benchmark_samples_2D = 9;
+    const int num_benchmark_samples_2D = 10;
     const int num_benchmark_samples_3D = 11;
     const int num_runs = 5;
     //cuFFT works best in when last dimension is the longest in R2C mode
-    int benchmark_dimensions_2D[num_benchmark_samples_2D][4] = { {32, 32, 1, 2}, {64, 64, 1, 2}, {32, 256, 1, 2}, {256, 256, 1, 2}, {256, 1024, 1, 2},{1024, 1024, 1, 2}, {256, 4096, 1, 2}, {2048, 4096, 1, 2}, {4096, 4096, 1, 2} };
-    int benchmark_dimensions_3D[num_benchmark_samples_3D][4] = { {32, 32, 32, 3}, {64, 64, 64, 3}, {32, 32, 256, 3}, {32, 256, 256, 3}, {256, 256, 256, 3}, {32, 256, 1024, 3}, {8, 1024, 1024, 3}, {8, 1024, 2048, 3}, {256, 256, 2048, 3}, {8, 4096, 4096, 3}, {32, 4096, 4096, 3} };
+    printf("First %d runs are a warmup\n", num_runs);
+    int benchmark_dimensions_2D[num_benchmark_samples_2D][4] = { {1024, 1024, 1, 2},  {64, 64, 1, 2}, {256, 256, 1, 2}, {256, 1024, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2}, {256, 4096, 1, 2}, {1024, 2048, 1, 2},{2048, 4096, 1, 2}, {4096, 4096, 1, 2} };
+    int benchmark_dimensions_3D[num_benchmark_samples_3D][4] = { {32, 32, 32, 3}, {64, 64, 64, 3}, {32, 256, 256, 3}, {32, 256, 1024, 3}, {256, 256, 256, 3},  {8, 1024, 2048, 3},  {128, 512, 512, 3}, {256, 256, 2048, 3}, {8, 4096, 4096, 3}};
+   
+    //for 8k test
+    /*const int num_benchmark_samples_2D = 6;
+    const int num_benchmark_samples_3D = 3;
+    const int num_runs = 5;
+    int benchmark_dimensions_2D[num_benchmark_samples_2D][4] = { {1024, 1024, 1, 2}, {32, 8192, 1, 2}, {256, 8192, 1, 2}, {1024, 8192, 1, 2}, {4096, 8192, 1, 2}, {8192, 8192, 1, 2} };
+    int benchmark_dimensions_3D[num_benchmark_samples_3D][4] = { {32, 32, 8192, 3}, {64, 256, 8192, 3}, {8, 1024, 8192, 3} };
+    */
+    //you can check this with arrays below
+    //int benchmark_dimensions_2D[num_benchmark_samples_2D][4] = { {1024, 1024, 1, 2}, {32, 32, 1, 2}, {64, 64, 1, 2}, {256, 32, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2},{1024, 1024, 1, 2}, {4096, 256, 1, 2}, {4096, 2048, 1, 2}, {4096, 4096, 1, 2} };
+    //int benchmark_dimensions_3D[num_benchmark_samples_3D][4] = { {32, 32, 32, 3}, {64, 64, 64, 3}, {256, 32, 32, 3}, {256, 256, 32, 3}, {256, 256, 256, 3}, {1024, 256, 32, 3}, {1024, 1024, 8, 3}, {2048, 1024, 8, 3}, {2048, 256, 256, 3}, {4096, 4096, 8, 3}, {4096, 4096, 32, 3} };
 
     for (int n = 0; n < num_benchmark_samples_2D; n++) {
 
@@ -27,15 +39,15 @@ int main()
             int dims[2] = { benchmark_dimensions_2D[n][0] , benchmark_dimensions_2D[n][1] };
 
             inputReal = (cufftReal*)(malloc(sizeof(cufftReal) * dims[0] * dims[1]));
-            
+
             for (int j = 0; j < dims[1]; j++) {
                 for (int i = 0; i < dims[0]; i++) {
-                    inputReal[i+j* dims[0]] = j;
+                    inputReal[i + j * dims[0]] = i;
                 }
             }
             cudaMalloc((void**)&dataC, sizeof(cufftComplex) * dims[0] * (dims[1] / 2 + 1));
             cudaMalloc((void**)&dataR, sizeof(cufftReal) * dims[0] * dims[1]);
-            cudaMemcpy(dataR, inputReal, sizeof(cufftReal) * dims[0] * dims[0], cudaMemcpyHostToDevice);
+            cudaMemcpy(dataR, inputReal, sizeof(cufftReal) * dims[0] * dims[1], cudaMemcpyHostToDevice);
             if (cudaGetLastError() != cudaSuccess) {
                 fprintf(stderr, "Cuda error: Failed to allocate\n");
                 return;
@@ -55,25 +67,29 @@ int main()
                 fprintf(stderr, "CUFFT Error: Unable to create R2C plan\n");
                 return;
             }
-            
-            double totTime = 0;
-            int batch = ((512.0 * 1024.0 * 1024.0) / dims[0]/(dims[1]/2+1) > 1000) ? 1000 : (512.0 * 1024.0 * 1024.0) / dims[0] / (dims[1]/2+1);
-            if (batch == 0) batch = 1;
 
+            double totTime = 0;
+            int batch = ((512.0 * 1024.0 * 1024.0) / dims[0] / (dims[1] / 2 + 1) > 1000) ? 1000 : (512.0 * 1024.0 * 1024.0) / dims[0] / (dims[1] / 2 + 1);
+            if (batch == 0) batch = 1;
+            //batch *= 5;//makes result more smooth, takes longer time
             auto timeSubmit = std::chrono::steady_clock::now();
+            cudaDeviceSynchronize();
             for (int i = 0; i < batch; i++) {
 
                 cufftExecR2C(planR2C, dataR, dataC);
-                cudaDeviceSynchronize();
                 cufftExecC2R(planC2R, dataC, dataR);
-                cudaDeviceSynchronize();
-               
             }
+            cudaDeviceSynchronize();
             auto timeEnd = std::chrono::steady_clock::now();
-            totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001)/batch;
+            totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001) / batch;
 
-            printf("System: %dx%dx%d, run: %d, Buffer: %d MB, time per step: %0.3f ms, batch: %d\n", dims[1], dims[0], 1, r, (sizeof(cufftReal) * dims[0] * dims[1]+ sizeof(cufftComplex) * dims[0] * (dims[1] / 2 + 1)) / 1024 / 1024, totTime, batch);
-               
+            printf("System: %dx%dx%d, run: %d, Buffer: %d MB, time per step: %0.3f ms, batch: %d\n", dims[1], dims[0], 1, r, (sizeof(cufftReal) * dims[0] * dims[1] + sizeof(cufftComplex) * dims[0] * (dims[1] / 2 + 1)) / 1024 / 1024, totTime, batch);
+            /*cufftReal* output = (cufftReal*)(malloc(sizeof(cufftReal) * dims[0] * dims[1]));
+            cudaMemcpy(output, dataR, sizeof(cufftReal) * dims[0] * dims[1], cudaMemcpyDeviceToHost);
+            cudaDeviceSynchronize();
+            for (int i = 0; i < 20; i++) {
+                printf("%f %f\n", output[i] / (dims[0] * dims[1]), inputReal[i]);
+            }*/
             cufftDestroy(planR2C);
             cudaFree(dataR);
             cufftDestroy(planC2R);
@@ -95,13 +111,13 @@ int main()
             for (int k = 0; k < dims[2]; k++) {
                 for (int j = 0; j < dims[1]; j++) {
                     for (int i = 0; i < dims[0]; i++) {
-                        inputReal[i + j * dims[0]+k*dims[0]*dims[1]] = k;
+                        inputReal[i + j * dims[0] + k * dims[0] * dims[1]] = i;
                     }
                 }
             }
             cudaMalloc((void**)&dataC, sizeof(cufftComplex) * dims[0] * dims[1] * (dims[2] / 2 + 1));
             cudaMalloc((void**)&dataR, sizeof(cufftReal) * dims[0] * dims[1] * dims[2]);
-            cudaMemcpy(dataR, inputReal, sizeof(cufftReal) * dims[0] * dims[0] * dims[2], cudaMemcpyHostToDevice);
+            cudaMemcpy(dataR, inputReal, sizeof(cufftReal) * dims[0] * dims[1] * dims[2], cudaMemcpyHostToDevice);
             if (cudaGetLastError() != cudaSuccess) {
                 fprintf(stderr, "Cuda error: Failed to allocate\n");
                 return;
@@ -123,22 +139,22 @@ int main()
             }
 
             double totTime = 0;
-            int batch = ((512.0 * 1024.0 * 1024.0) / dims[0] / dims[1] / (dims[2]/2+1)> 1000) ? 1000 : (512.0 * 1024.0 * 1024.0) / dims[0] / dims[1] / (dims[2]/2+1);
+            int batch = ((512.0 * 1024.0 * 1024.0) / dims[0] / dims[1] / (dims[2] / 2 + 1) > 1000) ? 1000 : (512.0 * 1024.0 * 1024.0) / dims[0] / dims[1] / (dims[2] / 2 + 1);
             if (batch == 0) batch = 1;
-
+            //batch *= 5; //makes result more smooth, takes longer time
             auto timeSubmit = std::chrono::steady_clock::now();
+            cudaDeviceSynchronize();
             for (int i = 0; i < batch; i++) {
 
                 cufftExecR2C(planR2C, dataR, dataC);
-                cudaDeviceSynchronize();
                 cufftExecC2R(planC2R, dataC, dataR);
-                cudaDeviceSynchronize();
 
             }
+            cudaDeviceSynchronize();
             auto timeEnd = std::chrono::steady_clock::now();
             totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001) / batch;
 
-            printf("System: %dx%dx%d, run: %d, Buffer: %d MB, time per step: %0.3f ms, batch: %d\n", dims[2], dims[1], dims[0], r, (sizeof(cufftReal) * dims[0] * dims[1] * dims[2]+ sizeof(cufftComplex) * dims[0] * dims[1] * (dims[2] / 2 + 1)) / 1024 / 1024, totTime, batch);
+            printf("System: %dx%dx%d, run: %d, Buffer: %d MB, time per step: %0.3f ms, batch: %d\n", dims[2], dims[1], dims[0], r, (sizeof(cufftReal) * dims[0] * dims[1] * dims[2] + sizeof(cufftComplex) * dims[0] * dims[1] * (dims[2] / 2 + 1)) / 1024 / 1024, totTime, batch);
 
             cufftDestroy(planR2C);
             cudaFree(dataR);
