@@ -1,6 +1,9 @@
 [![Build Status](https://travis-ci.com/DTolm/VkFFT.svg?token=nMgUQeqx7PXMeCFaXqsb&branch=master)](https://travis-ci.com/github/DTolm/VkFFT)
 # VkFFT - Vulkan Fast Fourier Transform library
 VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan projects. VkFFT aims to provide community with an open-source alternative to Nvidia's cuFFT library, while achieving better performance. VkFFT is written in C language.
+
+## If you tried the provided VkFFT and cuFFT benchmark scripts, I would really appreciate if you send me the results, via E-mail or GitHub issue
+
 ## Currently supported features:
   - 1D/2D/3D systems
   - Forward and inverse directions of FFT
@@ -25,7 +28,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
     - Multiple GPU job splitting
 
 ## Installation
-Include the vkFFT.h file and specify path to the shaders folder in CMake or from C interface. Sample CMakeLists.txt file configures project based on Vulkan_FFT.cpp file, which contains five examples on how to use VkFFT to perform FFT, iFFT and convolution calculations, use zero padding, multiple feature/batch convolutions and convolutions of big sequences.
+Include the vkFFT.h file and specify path to the shaders folder in CMake or from C interface. Sample CMakeLists.txt file configures project based on Vulkan_FFT.cpp file, which contains five examples on how to use VkFFT to perform FFT, iFFT and convolution calculations, use zero padding, multiple feature/batch convolutions and FFTs of big systems.
 ## How to use VkFFT
 VkFFT.h is a library which can append FFT, iFFT or convolution calculation to the user defined command buffer. It operates on storage buffers allocated by user and doesn't require any additional memory by itself. All computations are fully based on Vulkan compute shaders with no CPU usage except for FFT planning. VkFFT creates and optimizes memory layout by itself and performs FFT with the best chosen parameters. For an example application, see Vulkan_FFT.cpp file, which has comments explaining the VkFFT configuration process.\
 Picture below shows how data is restructured during the R2C transform depending on the system dimensions. This layout has minimal transfers between on-chip memory and graphics card (one read and one write per FFT axis + transposition if axis dimension is ≥ 256). If convolution is performed, it is embedded into the last FFT axis, which reduces memory transfers even further.
@@ -37,5 +40,5 @@ To measure how Vulkan FFT implementation works in comparison to cuFFT, we will p
 ## Contact information
 Initial version of VkFFT is developed by Tolmachev Dmitrii\
 Peter Grünberg Institute and Institute for Advanced Simulation, Forschungszentrum Jülich,  D-52425 Jülich, Germany\
-Email 1: <d.tolmachev@fz-juelich.de>\
-Email 2: <dtolm96@gmail.com>
+E-mail 1: <d.tolmachev@fz-juelich.de>\
+E-mail 2: <dtolm96@gmail.com>

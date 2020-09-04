@@ -16,3 +16,35 @@ add_library(VkFFT INTERFACE)
 target_include_directories(VkFFT INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/lib/)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan VkFFT)
+
+
+#Build shaders routine
+
+find_program(
+	GLSL_VALIDATOR
+	glslangValidator
+	DOC "Vulkan Shader Compiler (glslangValidator)"
+	REQUIRED
+)
+
+file(GLOB_RECURSE COMP_SOURCE_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.comp"
+    )
+
+foreach(INPUT_SHADER ${COMP_SOURCE_FILES})
+	get_filename_component(DIR ${INPUT_SHADER} DIRECTORY)
+	get_filename_component(FILE_NAME ${INPUT_SHADER} NAME_WE)
+	set(OUTPUT_BINARY "${DIR}/${FILE_NAME}.spv")
+
+	add_custom_command(
+		OUTPUT ${OUTPUT_BINARY}
+		COMMAND ${GLSL_VALIDATOR} -V ${INPUT_SHADER} -o ${OUTPUT_BINARY}
+		DEPENDS ${INPUT_SHADER})
+	list(APPEND SPIRV_BINARY_FILES ${OUTPUT_BINARY})
+endforeach(INPUT_SHADER)
+
+add_custom_target(
+    compile_shaders
+    DEPENDS ${SPIRV_BINARY_FILES}
+    )
+add_dependencies(VkFFT compile_shaders)

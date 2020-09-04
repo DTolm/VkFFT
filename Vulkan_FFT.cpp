@@ -402,7 +402,7 @@ int main()
 		printf("First %d runs are a warmup\n", num_runs);
 		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {64, 64, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2},  {4096, 256, 1, 2}, {2048, 1024, 1, 2},{4096, 2048, 1, 2}, {4096, 4096, 1, 2},
 																	{32, 32, 32, 3}, {64, 64, 64, 3}, {256, 256, 32, 3},  {1024, 256, 32, 3},  {256, 256, 256, 3}, {2048, 1024, 8, 3},  {512, 512, 128, 3}, {2048, 256, 256, 3}, {4096, 4096, 8, 3}};
-
+		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 		for (uint32_t n = 0; n < num_benchmark_samples; n++) {
 
 			for (uint32_t r = 0; r < num_runs; r++) {
@@ -475,7 +475,8 @@ int main()
 				float* buffer_output = (float*)malloc(bufferSize);
 				
 				printf("System: %dx%dx%d, run: %d, Buffer: %d MB, time per step: %0.3f ms, batch: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], r, bufferSize / 1024 / 1024, totTime, batch);
-
+				if(n>0) benchmark_result += ((double)bufferSize / 1024 )/totTime;
+				//printf("Benchmark score: %f\n", ((double)bufferSize / 1024) / totTime);
 				//Transfer data from GPU using staging buffer.
 				//transferDataToCPU(buffer_output, &buffer, bufferSize);
 				//Print data, if needed.
@@ -498,6 +499,8 @@ int main()
 				app_inverse.deleteVulkanFFT();
 			}
 		}
+		benchmark_result /= ((num_benchmark_samples-1) * num_runs);
+		printf("Benchmark score: %d\n", (int)(benchmark_result));
 		vkDestroyFence(device, fence, NULL);
 		vkDestroyCommandPool(device, commandPool, NULL);
 		vkDestroyDevice(device, NULL);
