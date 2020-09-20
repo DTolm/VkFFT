@@ -189,7 +189,7 @@ void radix8(inout vec2 values[8], inout vec2 w) {
 
 }
 const uint max_shared_vec2=4096;
-const uint ratio =  2;//  reg mem/shared mem
+const uint ratio =  4;//  reg mem/shared mem
 const uint tempSize = fft_dim/gl_WorkGroupSize.x;
 shared vec2 sdata[max_shared_vec2];
 
@@ -197,60 +197,104 @@ void main() {
 
 	vec2 temp0[8];
 	vec2 temp1[8];
+	vec2 temp2[8];
+	vec2 temp3[8];
 	uint stageSize=1;
     float stageAngle=(inverse) ? -M_PI : M_PI;
 	if (zeropad_0&&(!inverse)){
 		for(uint j = 0; j < 4; ++j){
 			temp0[j]=inputs[indexInput(gl_LocalInvocationID.x+(j)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
 			temp1[j]=inputs[indexInput(gl_LocalInvocationID.x+(j+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
+			temp2[j]=inputs[indexInput(gl_LocalInvocationID.x+(j+16)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
+			temp3[j]=inputs[indexInput(gl_LocalInvocationID.x+(j+24)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
 		}
 		for(uint j = 4; j < 8; ++j){
 			temp0[j]=vec2(0,0);
 			temp1[j]=vec2(0,0);
+			temp2[j]=vec2(0,0);
+			temp3[j]=vec2(0,0);
 		}
 	}else {
 		for(uint j = 0; j < 8; ++j){
 			temp0[j]=inputs[indexInput(gl_LocalInvocationID.x+(j)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
 			temp1[j]=inputs[indexInput(gl_LocalInvocationID.x+(j+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
+			temp2[j]=inputs[indexInput(gl_LocalInvocationID.x+(j+16)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
+			temp3[j]=inputs[indexInput(gl_LocalInvocationID.x+(j+24)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
 		}
 	}
 	
 	for (uint n=0; n < numStages-1; n++){//all stages but last are radix-8
 		{
 			vec2 sort0[8];
-			for(uint j = 0; j < 4; ++j){
-				sort0[j]=temp0[1+2*j];
-				sort0[j+4]=temp1[1+2*j];}
+			vec2 sort1[8];
+			for(uint j = 0; j < 2; ++j){
+				sort0[j]=temp0[2+4*j];
+				sort0[j+2]=temp1[2+4*j];
+	
+			}
+			for(uint j = 0; j < 2; ++j){
+				sort1[j]=temp0[3+4*j];
+				sort1[j+2]=temp1[3+4*j];
+
+			}
+			for(uint j = 0; j < 2; ++j)
+				sort0[j+6]=temp0[4*j+1];
 			
-			for(uint j = 0; j < 4; ++j)
-				temp0[j]=temp0[2*j];
+			for(uint j = 0; j < 2; ++j)
+				temp0[j]=temp0[4*j];	
+			for(uint j = 0; j < 2; ++j)
+				temp0[j+2]=temp1[4*j];
+			for(uint j = 0; j < 2; ++j)
+				temp0[j+4]=temp2[4*j];
+			for(uint j = 0; j < 2; ++j)
+				temp0[j+6]=temp3[4*j];
 			
-			for(uint j = 0; j < 4; ++j)
-				temp0[j+4]=temp1[2*j];
-			
-			for (uint j=0; j<8; j++)
-				temp1[j]=sort0[j];
+			for(uint j = 0; j < 2; ++j)
+				temp1[j+2]=temp1[4*j+1];
+			for(uint j = 0; j < 2; ++j)
+				temp1[j]=sort0[j+6];	
+			for(uint j = 0; j < 2; ++j)
+				temp1[j+4]=temp2[4*j+1];
+			for(uint j = 0; j < 2; ++j)
+				temp1[j+6]=temp3[4*j+1];
+				
+			for(uint j = 0; j < 2; ++j){
+				sort0[j+4]=temp2[2+4*j];
+				sort0[j+6]=temp3[2+4*j];	
+			}
+			for(uint j = 0; j < 2; ++j){
+				sort1[j+4]=temp2[3+4*j];
+				sort1[j+6]=temp3[3+4*j];	
+			}
+
+			for (uint j=0; j<8; j++){
+				temp2[j]=sort0[j];
+				temp3[j]=sort1[j];}
 
 		}
 		{
 			uint stageInvocationID = (gl_LocalInvocationID.x) & (stageSize - 1u);
 			float angle = stageInvocationID * stageAngle;
 			vec2 twiddleFactor = vec2(cos(angle), sin(angle));
-			
 			radix8(temp0, twiddleFactor);
-
-
 		}
 		{
-
 			uint stageInvocationID = (gl_LocalInvocationID.x+gl_WorkGroupSize.x) & (stageSize - 1u);
 			float angle = stageInvocationID * stageAngle;
 			vec2 twiddleFactor = vec2(cos(angle), sin(angle));
-
-
 			radix8(temp1, twiddleFactor);
-
-
+		}
+		{
+			uint stageInvocationID = (gl_LocalInvocationID.x+2*gl_WorkGroupSize.x) & (stageSize - 1u);
+			float angle = stageInvocationID * stageAngle;
+			vec2 twiddleFactor = vec2(cos(angle), sin(angle));
+			radix8(temp2, twiddleFactor);
+		}
+		{
+			uint stageInvocationID = (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x) & (stageSize - 1u);
+			float angle = stageInvocationID * stageAngle;
+			vec2 twiddleFactor = vec2(cos(angle), sin(angle));
+			radix8(temp3, twiddleFactor);
 		}
         memoryBarrierShared();
         barrier();
@@ -287,6 +331,30 @@ void main() {
 			memoryBarrierShared();
 			barrier();
 			
+			for(uint j = 0; j < 8; ++j){	
+				sdata[outputIndex+stageSize*j]=temp2[j]*stageNormalization;
+			}
+			memoryBarrierShared();
+			barrier();
+			
+			for (uint j=0; j<8; j++){
+				temp2[j] = sdata[(gl_LocalInvocationID.x)+gl_WorkGroupSize.x*j];			
+			}
+			
+			memoryBarrierShared();
+			barrier();
+			for(uint j = 0; j < 8; ++j){	
+				sdata[outputIndex+stageSize*j]=temp3[j]*stageNormalization;
+			}
+			memoryBarrierShared();
+			barrier();
+			
+			for (uint j=0; j<8; j++){
+				temp3[j] = sdata[(gl_LocalInvocationID.x)+gl_WorkGroupSize.x*j];			
+			}
+			
+			memoryBarrierShared();
+			barrier();
 		}
 		
 		stageSize=stageSize*8;
@@ -298,101 +366,188 @@ void main() {
 	//stageSize=4096;
 	{
 		vec2 sort0[8];
-		for (uint t=0; t<4; t++){
-			sort0[t*2]=temp0[t];
-			sort0[t*2+1]=temp1[t];
+		vec2 sort1[8];
+		for (uint t=0; t<2; t++){
+			sort0[t*4]=temp0[t+4];
+			sort0[t*4+1]=temp1[t+4];
 		}
-		for (uint t=0; t<4; t++){
-			temp0[t]=sort0[t];
-			temp1[t]=sort0[t+4];
+		for (uint t=0; t<2; t++){
+			sort1[t*4]=temp0[t+6];
+			sort1[t*4+1]=temp1[t+6];
 		}
-		for (uint t=0; t<4; t++){
-			sort0[t*2]=temp0[t+4];
-			sort0[t*2+1]=temp1[t+4];
+		for (uint t=0; t<2; t++)
+			sort0[t*4+2]=temp0[t+2];
+			
+		for (uint t=0; t<2; t++)
+			temp0[t*4]=temp0[t];
+		for (uint t=0; t<2; t++){
+			temp0[t*4+1]=temp1[t];
+			temp0[t*4+2]=temp2[t];
+			temp0[t*4+3]=temp3[t];
 		}
-		for (uint t=0; t<4; t++)
-			temp0[t+4]=temp1[t];
+		for (uint t=0; t<2; t++)
+			temp1[t*4+1]=temp1[t+2];
+		for (uint t=0; t<2; t++){
+			temp1[t*4]=sort0[t*4+2];
+			temp1[t*4+2]=temp2[t+2];
+			temp1[t*4+3]=temp3[t+2];
+		}
 		
-		for (uint t=0; t<8; t++)
-			temp1[t]=sort0[t];
+		for (uint t=0; t<2; t++){
+			sort0[t*4+2]=temp2[t+4];
+			sort0[t*4+3]=temp3[t+4];
+		}
+		for (uint t=0; t<2; t++){
+			sort1[t*4+2]=temp2[t+6];
+			sort1[t*4+3]=temp3[t+6];
+		}
 		
+		for (uint t=0; t<8; t++){
+			temp2[t]=sort0[t];
+			temp3[t]=sort1[t];
+		}
 		
 	}
 	
 	
-	for (uint i=0; i<4; i++){
+	for (uint i=0; i<2; i++){
 		uint stageInvocationID = (gl_LocalInvocationID.x + i*gl_WorkGroupSize.x ) & (stageSize - 1u);
 		float angle = stageInvocationID * stageAngle;
 		vec2 twiddleFactor = vec2(cos(angle), sin(angle));
 		
-		vec2 values[2];
-		for(uint j = 0; j < 2; ++j){
-			values[j] = temp0[i*2+j];
+		vec2 values[4];
+		for(uint j = 0; j < 4; ++j){
+			values[j] = temp0[i*4+j];
 		}
-		radix2(values, twiddleFactor);
-		for(uint j = 0; j < 2; ++j){
-			temp0[i*2+j]=values[j];
+		radix4(values, twiddleFactor);
+		for(uint j = 0; j < 4; ++j){
+			temp0[i*4+j]=values[j];
 		}
 
 	}
-	for (uint i=0; i<4; i++){
+	for (uint i=0; i<2; i++){
+		uint stageInvocationID = (gl_LocalInvocationID.x + (i+2)*gl_WorkGroupSize.x ) & (stageSize - 1u);
+		float angle = stageInvocationID * stageAngle;
+		vec2 twiddleFactor = vec2(cos(angle), sin(angle));
+		vec2 values[4];
+		for(uint j = 0; j < 4; ++j){
+			values[j] = temp1[i*4+j];
+		}
+		radix4(values, twiddleFactor);
+		for(uint j = 0; j < 4; ++j){
+			temp1[i*4+j]=values[j];
+		}
+
+	}
+	for (uint i=0; i<2; i++){
 		uint stageInvocationID = (gl_LocalInvocationID.x + (i+4)*gl_WorkGroupSize.x ) & (stageSize - 1u);
 		float angle = stageInvocationID * stageAngle;
 		vec2 twiddleFactor = vec2(cos(angle), sin(angle));
-		vec2 values[2];
-		for(uint j = 0; j < 2; ++j){
-			values[j] = temp1[i*2+j];
+		vec2 values[4];
+		for(uint j = 0; j < 4; ++j){
+			values[j] = temp2[i*4+j];
 		}
-		radix2(values, twiddleFactor);
-		for(uint j = 0; j < 2; ++j){
-			temp1[i*2+j]=values[j];
+		radix4(values, twiddleFactor);
+		for(uint j = 0; j < 4; ++j){
+			temp2[i*4+j]=values[j];
+		}
+
+	}
+	for (uint i=0; i<2; i++){
+		uint stageInvocationID = (gl_LocalInvocationID.x + (i+6)*gl_WorkGroupSize.x ) & (stageSize - 1u);
+		float angle = stageInvocationID * stageAngle;
+		vec2 twiddleFactor = vec2(cos(angle), sin(angle));
+		vec2 values[4];
+		for(uint j = 0; j < 4; ++j){
+			values[j] = temp3[i*4+j];
+		}
+		radix4(values, twiddleFactor);
+		for(uint j = 0; j < 4; ++j){
+			temp3[i*4+j]=values[j];
 		}
 
 	}
 	{
 		vec2 sort0[8];
-		for (uint t=0; t<4; t++){
-			sort0[t]=temp0[t*2+1];
-			sort0[t+4]=temp1[t*2+1];
+		vec2 sort1[8];
+		for(uint j = 0; j < 2; ++j){
+			sort0[j]=temp0[2+4*j];
+			sort0[j+2]=temp1[2+4*j];
+
 		}
-		for (uint t=0; t<4; t++)
-			temp0[t]=temp0[t*2];
+		for(uint j = 0; j < 2; ++j){
+			sort1[j]=temp0[3+4*j];
+			sort1[j+2]=temp1[3+4*j];
+
+		}
+		for(uint j = 0; j < 2; ++j)
+			sort0[j+6]=temp0[4*j+1];
 		
-		for (uint t=0; t<4; t++)
-			temp0[t+4]=temp1[t*2];
+		for(uint j = 0; j < 2; ++j)
+			temp0[j]=temp0[4*j];	
+		for(uint j = 0; j < 2; ++j)
+			temp0[j+2]=temp1[4*j];
+		for(uint j = 0; j < 2; ++j)
+			temp0[j+4]=temp2[4*j];
+		for(uint j = 0; j < 2; ++j)
+			temp0[j+6]=temp3[4*j];
 		
-		for (uint t=0; t<8; t++)
-			temp1[t]=sort0[t];
-		
+		for(uint j = 0; j < 2; ++j)
+			temp1[j+2]=temp1[4*j+1];
+		for(uint j = 0; j < 2; ++j)
+			temp1[j]=sort0[j+6];	
+		for(uint j = 0; j < 2; ++j)
+			temp1[j+4]=temp2[4*j+1];
+		for(uint j = 0; j < 2; ++j)
+			temp1[j+6]=temp3[4*j+1];
+			
+		for(uint j = 0; j < 2; ++j){
+			sort0[j+4]=temp2[2+4*j];
+			sort0[j+6]=temp3[2+4*j];	
+		}
+		for(uint j = 0; j < 2; ++j){
+			sort1[j+4]=temp2[3+4*j];
+			sort1[j+6]=temp3[3+4*j];	
+		}
+
+		for (uint j=0; j<8; j++){
+			temp2[j]=sort0[j];
+			temp3[j]=sort1[j];}
+
 	}
 	
 	memoryBarrierShared();
 	barrier();
 
 	if (zeropad_0&&(inverse)){
-		float stageNormalization = (inverse) ? 0.5 : 1.0;
-
+		float stageNormalization = (inverse) ? 0.25 : 1.0;
 		for (uint i=0; i<8; i++){
 			outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)]=temp0[i]*stageNormalization;
 		}
-		memoryBarrierShared();
-		barrier();
-	}
-	else{
-
-		float stageNormalization = (inverse) ? 0.5 : 1.0;
-			
-		for (uint i=0; i<8; i++){
-			outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)]=temp0[i]*stageNormalization;
-		}
-		memoryBarrierShared();
-		barrier();
-
 		for (uint i=0; i<8; i++){
 			outputs[indexOutput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)]=temp1[i]*stageNormalization;
 		}
-		memoryBarrierShared();
-		barrier();
+
+	}
+	else{
+
+		float stageNormalization = (inverse) ? 0.25 : 1.0;
+
+		for (uint i=0; i<8; i++){
+			outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)]=temp0[i]*stageNormalization;
+		}
+		for (uint i=0; i<8; i++){
+			outputs[indexOutput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)]=temp1[i]*stageNormalization;
+		}
+
+		for (uint i=0; i<8; i++){
+			outputs[indexOutput(gl_LocalInvocationID.x+(i+16)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)]=temp2[i]*stageNormalization;
+		}
+
+		for (uint i=0; i<8; i++){
+			outputs[indexOutput(gl_LocalInvocationID.x+(i+24)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)]=temp3[i]*stageNormalization;
+		}
+
 	}
 
 }

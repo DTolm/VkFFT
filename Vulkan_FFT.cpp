@@ -413,7 +413,7 @@ int main()
 				VkFFTApplication app_inverse;
 				//FFT + iFFT sample code.
 				//Setting up FFT configuration for forward and inverse FFT.
-				forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
+				forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 is equal 128. For Intel use 64. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 				forward_configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
 				forward_configuration.size[0] = benchmark_dimensions[n][0]; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 				forward_configuration.size[1] = benchmark_dimensions[n][1];
@@ -470,6 +470,7 @@ int main()
 				//Submit FFT+iFFT.
 				uint32_t batch = ((4096.0 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096.0 * 1024.0 * 1024.0) / bufferSize;
 				if (batch == 0) batch = 1;
+				
 				//batch *= 5; //makes result more smooth, takes longer time
 				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
 				float* buffer_output = (float*)malloc(bufferSize);
@@ -519,7 +520,7 @@ int main()
 		VkFFTApplication app_kernel;
 		//Convolution sample code
 		//Setting up FFT configuration. FFT is performed in-place with no performance loss. 
-		forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
+		forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 is equal 128. For Intel use 64. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 		forward_configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D (default 1).
 		forward_configuration.size[0] = 32; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
 		forward_configuration.size[1] = 32;
@@ -674,7 +675,7 @@ int main()
 		VkFFTApplication app_kernel;
 		//Zeropadding Convolution sample code
 		//Setting up FFT configuration. FFT is performed in-place with no performance loss. 
-		forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
+		forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 is equal 128. For Intel use 64. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 		forward_configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D (default 1).
 		forward_configuration.size[0] = 256; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
 		forward_configuration.size[1] = 256;
@@ -831,7 +832,7 @@ int main()
 		VkFFTApplication app_kernel;
 		//Convolution sample code
 		//Setting up FFT configuration. FFT is performed in-place with no performance loss. 
-		forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
+		forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 is equal 128. For Intel use 64. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 		forward_configuration.FFTdim = 2; //FFT dimension, 1D, 2D or 3D (default 1).
 		forward_configuration.size[0] = 32; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
 		forward_configuration.size[1] = 32;
@@ -983,11 +984,11 @@ int main()
 	}
 	case 4:
 	{
-		//4 - FFT + iFFT R2C/C2R benchmark for big systems (only x>y>z, only works on GPUs with 256KB register file)
-		const uint32_t num_benchmark_samples = 8;
+		//4 - FFT + iFFT C2C benchmark for big systems
+		const uint32_t num_benchmark_samples = 9;
 		const uint32_t num_runs = 5;
-		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {8192, 32, 1, 2}, {8192, 256, 1, 2}, {8192, 1024, 1, 2}, {8192, 4096, 1, 2}, {8192, 8192, 1, 2},
-																	{8192, 32, 32, 3}, {8192, 256, 64, 3}, {8192, 1024, 8, 3}};
+		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {pow(2,13), 32, 1, 2}, {pow(2,14), 32, 1, 2}, {pow(2,15), 32, 1, 2}, {pow(2,16), 32, 1, 2}, {pow(2,17), 32, 1, 2}, {pow(2,18), 32, 1, 2}, {pow(2,13), pow(2,13), 1, 2},{pow(2,14), pow(2,14), 1, 2} };
+																	
 
 		for (uint32_t n = 0; n < num_benchmark_samples; n++) {
 
@@ -999,16 +1000,21 @@ int main()
 				VkFFTApplication app_inverse;
 				//FFT + iFFT sample code.
 				//Setting up FFT configuration for forward and inverse FFT.
-				forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
+				forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 is equal 128. For Intel use 64. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
+				
 				forward_configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
 				forward_configuration.size[0] = benchmark_dimensions[n][0]; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 				forward_configuration.size[1] = benchmark_dimensions[n][1];
 				forward_configuration.size[2] = benchmark_dimensions[n][2];
+				if (forward_configuration.size[1] > 512)
+					forward_configuration.registerBoost = 4;
+				else
+					forward_configuration.registerBoost = 1;
 				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
 				forward_configuration.performZeropadding[1] = false;
 				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
-				forward_configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
+				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
 				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
 				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
@@ -1017,7 +1023,7 @@ int main()
 				sprintf(forward_configuration.shaderPath, SHADER_DIR);
 
 				//Allocate buffer for the input data.
-				VkDeviceSize bufferSize = forward_configuration.coordinateFeatures * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];;
+				VkDeviceSize bufferSize = forward_configuration.coordinateFeatures * sizeof(float) * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;
 				VkBuffer buffer = {};
 				VkDeviceMemory bufferDeviceMemory = {};
 
@@ -1043,7 +1049,8 @@ int main()
 					for (uint32_t k = 0; k < forward_configuration.size[2]; k++) {
 						for (uint32_t j = 0; j < forward_configuration.size[1]; j++) {
 							for (uint32_t i = 0; i < forward_configuration.size[0]; i++) {
-								buffer_input[i + j * forward_configuration.size[0] + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = i;// +j % 2 * 8192;//[-1,1]
+								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2])] = (i+j)%2-0.5;// +j % 2 * 8192;//[-1,1]
+								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2])+1] = 0;// +j % 2 * 8192;//[-1,1]
 							}
 						}
 					}
@@ -1054,8 +1061,9 @@ int main()
 				app_forward.initializeVulkanFFT(forward_configuration);
 				app_inverse.initializeVulkanFFT(inverse_configuration);
 				//Submit FFT+iFFT.
-				uint32_t batch = ((4096.0 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096.0 * 1024.0 * 1024.0) / bufferSize;
+				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 				if (batch == 0) batch = 1;
+				//batch = 1;
 				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
 				float* buffer_output = (float*)malloc(bufferSize);
 
@@ -1067,9 +1075,9 @@ int main()
 				/*for (uint32_t v = 0; v < inverse_configuration.coordinateFeatures; v++) {
 					printf("\ncoordinate: %d\n\n", v);
 					for (uint32_t k = 0; k < inverse_configuration.size[2]; k++) {
-						for (uint32_t j = 0; j < inverse_configuration.size[1]; j++) {
+						for (uint32_t j = 0; j < 8; j++) {
 							for (uint32_t i = 0; i < inverse_configuration.size[0]; i++) {
-								printf("%.6f ", buffer_output[i + j * inverse_configuration.size[0] + k * (inverse_configuration.size[0] + 2) * inverse_configuration.size[1] + v * (inverse_configuration.size[0] + 2) * inverse_configuration.size[1] * inverse_configuration.size[2]]);
+								printf("%.6f ", buffer_output[2*(i + j * inverse_configuration.size[0] + k * (inverse_configuration.size[0]) * inverse_configuration.size[1] + v * (inverse_configuration.size[0]) * inverse_configuration.size[1] * inverse_configuration.size[2])]);
 							}
 							std::cout << "\n";
 						}

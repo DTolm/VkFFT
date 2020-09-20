@@ -31,7 +31,8 @@ layout (constant_id = 26) const bool ratioDirection_0 = false;
 layout (constant_id = 27) const bool ratioDirection_1 = true;
 layout (constant_id = 28) const uint inputOffset = 0;
 layout (constant_id = 29) const uint outputOffset = 0;
-
+layout (constant_id = 30) const uint stageStartSize = 1;
+layout (constant_id = 31) const uint fft_dim_x = 512;
 layout(push_constant) uniform PushConsts
 {
 	uint coordinate;
