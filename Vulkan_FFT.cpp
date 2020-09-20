@@ -987,7 +987,7 @@ int main()
 		//4 - FFT + iFFT C2C benchmark for big systems
 		const uint32_t num_benchmark_samples = 9;
 		const uint32_t num_runs = 5;
-		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {pow(2,13), 32, 1, 2}, {pow(2,14), 32, 1, 2}, {pow(2,15), 32, 1, 2}, {pow(2,16), 32, 1, 2}, {pow(2,17), 32, 1, 2}, {pow(2,18), 32, 1, 2}, {pow(2,13), pow(2,13), 1, 2},{pow(2,14), pow(2,14), 1, 2} };
+		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {(uint32_t) pow(2,13), 32, 1, 2}, {(uint32_t) pow(2,14), 32, 1, 2}, {(uint32_t) pow(2,15), 32, 1, 2}, {(uint32_t) pow(2,16), 32, 1, 2}, {(uint32_t) pow(2,17), 32, 1, 2}, {(uint32_t) pow(2,18), 32, 1, 2}, {(uint32_t) pow(2,13), (uint32_t) pow(2,13), 1, 2},{(uint32_t) pow(2,14), (uint32_t) pow(2,14), 1, 2} };
 																	
 
 		for (uint32_t n = 0; n < num_benchmark_samples; n++) {
