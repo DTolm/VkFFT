@@ -3,9 +3,8 @@
 const float M_PI = 3.1415926535897932384626433832795;
 const float M_SQRT1_2 = 0.70710678118654752440084436210485;
 
-layout (local_size_x_id = 1, local_size_y_id = 2, local_size_z_id = 3) in;
+layout (local_size_x_id = 1, local_size_y_id = 2, local_size_z_id = 3) in;// 32, fft/8, 1: total <1024
 layout (constant_id = 4) const uint fft_dim = 2048;
-
 layout (constant_id = 5) const bool inverse = false;
 layout (constant_id = 6) const bool zeropad_0 = false;
 layout (constant_id = 7) const bool zeropad_1 = false;
@@ -19,9 +18,9 @@ layout (constant_id = 14) const uint outputStride_1 = 1;
 layout (constant_id = 15) const uint outputStride_2 = 1;
 layout (constant_id = 16) const uint outputStride_3 = 1;
 layout (constant_id = 17) const uint outputStride_4 = 1;
-layout (constant_id = 18) const uint radixStride_0 = 1;
-layout (constant_id = 19) const uint radixStride_1 = 1;
-layout (constant_id = 20) const uint radixStride_2 = 1;
+layout (constant_id = 18) const uint fft_dim_full = 2048;
+layout (constant_id = 19) const uint stageStartSize = 2048;
+layout (constant_id = 20) const uint fft_dim_x = 2048;
 layout (constant_id = 21) const uint numStages = 1;
 layout (constant_id = 22) const uint stageRadix_0 = 8;
 layout (constant_id = 23) const uint stageRadix_1 = 8;
@@ -31,8 +30,11 @@ layout (constant_id = 26) const bool ratioDirection_0 = false;
 layout (constant_id = 27) const bool ratioDirection_1 = true;
 layout (constant_id = 28) const uint inputOffset = 0;
 layout (constant_id = 29) const uint outputOffset = 0;
-layout (constant_id = 30) const uint stageStartSize = 1;
-layout (constant_id = 31) const uint fft_dim_x = 512;
+layout (constant_id = 30) const uint passID = 0;
+const uint radixStride_0 = fft_dim/2;
+const uint radixStride_1 = fft_dim/4;
+const uint radixStride_2 = fft_dim/8;
+
 layout(push_constant) uniform PushConsts
 {
 	uint coordinate;

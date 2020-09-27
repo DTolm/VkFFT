@@ -984,7 +984,8 @@ int main()
 	}
 	case 4:
 	{
-		//4 - FFT + iFFT C2C benchmark for big systems
+		//4 - FFT + iFFT C2C benchmark for big systems. Done by using Four Stage FFT algorithm. Note - VkFFT doesn't transpose the end result - it doesn't matter for convolutions as the data will return to original layout.
+		//If transposition is needed, it can be done via shuffling with position shuffle routine in the shaders and an inplace transposition shader. Better support for this will be added later.
 		const uint32_t num_benchmark_samples = 9;
 		const uint32_t num_runs = 5;
 		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {(uint32_t) pow(2,13), 32, 1, 2}, {(uint32_t) pow(2,14), 32, 1, 2}, {(uint32_t) pow(2,15), 32, 1, 2}, {(uint32_t) pow(2,16), 32, 1, 2}, {(uint32_t) pow(2,17), 32, 1, 2}, {(uint32_t) pow(2,18), 32, 1, 2}, {(uint32_t) pow(2,13), (uint32_t) pow(2,13), 1, 2},{(uint32_t) pow(2,14), (uint32_t) pow(2,14), 1, 2} };
@@ -998,7 +999,7 @@ int main()
 				VkFFTConfiguration inverse_configuration;
 				VkFFTApplication app_forward;
 				VkFFTApplication app_inverse;
-				//FFT + iFFT sample code.
+				//FFT + iFFT sample code. Note that it is only useful for benchmark, as the we don't have transposition step after FFT - data is not unshuffled.
 				//Setting up FFT configuration for forward and inverse FFT.
 				forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 is equal 128. For Intel use 64. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 				

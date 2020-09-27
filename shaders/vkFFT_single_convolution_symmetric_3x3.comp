@@ -2,11 +2,9 @@
 
 const float M_PI = 3.1415926535897932384626433832795;
 const float M_SQRT1_2 = 0.70710678118654752440084436210485;
-const float mult = 1e-7;
 
-layout (local_size_x_id = 1, local_size_y_id = 2, local_size_z_id = 3) in;
+layout (local_size_x_id = 1, local_size_y_id = 2, local_size_z_id = 3) in;// 32, fft/8, 1: total <1024
 layout (constant_id = 4) const uint fft_dim = 2048;
-
 layout (constant_id = 5) const bool inverse = false;
 layout (constant_id = 6) const bool zeropad_0 = false;
 layout (constant_id = 7) const bool zeropad_1 = false;
@@ -20,9 +18,9 @@ layout (constant_id = 14) const uint outputStride_1 = 1;
 layout (constant_id = 15) const uint outputStride_2 = 1;
 layout (constant_id = 16) const uint outputStride_3 = 1;
 layout (constant_id = 17) const uint outputStride_4 = 1;
-layout (constant_id = 18) const uint radixStride_0 = 1;
-layout (constant_id = 19) const uint radixStride_1 = 1;
-layout (constant_id = 20) const uint radixStride_2 = 1;
+layout (constant_id = 18) const uint fft_dim_full = 2048;
+layout (constant_id = 19) const uint stageStartSize = 2048;
+layout (constant_id = 20) const uint fft_dim_x = 2048;
 layout (constant_id = 21) const uint numStages = 1;
 layout (constant_id = 22) const uint stageRadix_0 = 8;
 layout (constant_id = 23) const uint stageRadix_1 = 8;
@@ -32,8 +30,11 @@ layout (constant_id = 26) const bool ratioDirection_0 = false;
 layout (constant_id = 27) const bool ratioDirection_1 = true;
 layout (constant_id = 28) const uint inputOffset = 0;
 layout (constant_id = 29) const uint outputOffset = 0;
-layout (constant_id = 30) const uint stageStartSize = 1;
-layout (constant_id = 31) const uint fft_dim_x = 512;
+layout (constant_id = 30) const uint passID = 0;
+const uint radixStride_0 = fft_dim/2;
+const uint radixStride_1 = fft_dim/4;
+const uint radixStride_2 = fft_dim/8;
+
 layout(push_constant) uniform PushConsts
 {
 	uint coordinate;
@@ -201,43 +202,28 @@ void main() {
 	vec2 temp2[8];
 	
 	for(uint coordinate=0; coordinate<3; coordinate++){
-		if (zeropad_0){
-			if (ratioDirection_0){
-				for (uint i=0; i<8; i++){
-					uint pos=positionShuffle(fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+i*gl_WorkGroupSize.x, ratio_0, ratioDirection_0);
-					if (pos%fft_dim<fft_dim/2)
-						sdata[pos]=inputs[indexInput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x, coordinate)];
-					else 
-						sdata[pos]=vec2(0,0);
-				}
-			}else{
-				sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x]=inputs[indexInput(gl_LocalInvocationID.x, coordinate)];
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+gl_WorkGroupSize.x)]=inputs[indexInput(gl_LocalInvocationID.x+gl_WorkGroupSize.x, coordinate)];
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+2*gl_WorkGroupSize.x)]=inputs[indexInput(gl_LocalInvocationID.x+2*gl_WorkGroupSize.x, coordinate)];
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x)]=inputs[indexInput(gl_LocalInvocationID.x+3*gl_WorkGroupSize.x, coordinate)];
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+4*gl_WorkGroupSize.x)]=vec2(0,0);
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+5*gl_WorkGroupSize.x)]=vec2(0,0);
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+6*gl_WorkGroupSize.x)]=vec2(0,0);
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+7*gl_WorkGroupSize.x)]=vec2(0,0);
-			}
+		if ((zeropad_0)){
+			for (uint i=0; i < 4; i++)
+				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]=inputs[indexInput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim, coordinate)];
+			for (uint i=4; i < 8; i++)
+				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]=vec2(0,0);
 		} else {
-			if (ratioDirection_0){
-				for (uint i=0; i<8; i++)
-					sdata[positionShuffle(fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+i*gl_WorkGroupSize.x, ratio_0, ratioDirection_0)]=inputs[indexInput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x, coordinate)];
-			
-			}else{
-				sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x]=inputs[indexInput(gl_LocalInvocationID.x, coordinate)];
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+gl_WorkGroupSize.x)]=inputs[indexInput(gl_LocalInvocationID.x+gl_WorkGroupSize.x, coordinate)];
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+2*gl_WorkGroupSize.x)]=inputs[indexInput(gl_LocalInvocationID.x+2*gl_WorkGroupSize.x, coordinate)];
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x)]=inputs[indexInput(gl_LocalInvocationID.x+3*gl_WorkGroupSize.x, coordinate)];
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+4*gl_WorkGroupSize.x)]=inputs[indexInput(gl_LocalInvocationID.x+4*gl_WorkGroupSize.x, coordinate)];
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+5*gl_WorkGroupSize.x)]=inputs[indexInput(gl_LocalInvocationID.x+5*gl_WorkGroupSize.x, coordinate)];
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+6*gl_WorkGroupSize.x)]=inputs[indexInput(gl_LocalInvocationID.x+6*gl_WorkGroupSize.x, coordinate)];
-				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+7*gl_WorkGroupSize.x)]=inputs[indexInput(gl_LocalInvocationID.x+7*gl_WorkGroupSize.x, coordinate)];
-			}
+			for (uint i=0; i < 8; i++)
+				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]=inputs[indexInput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim, coordinate)];
 		}
 		memoryBarrierShared();
 		barrier();
+		if ((passID>0)){
+			for (uint i=0; i < 8; i++){
+				float angle=2*M_PI*(((gl_WorkGroupID.x*gl_WorkGroupSize.y+gl_LocalInvocationID.y)*(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x))/float(fft_dim_full));
+				uint index=(fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x));
+				vec2 mult = vec2(cos(angle),sin(angle));
+				vec2 res=vec2(sdata[index].x*mult.x-sdata[index].y*mult.y,sdata[index].y*mult.x+sdata[index].x*mult.y);
+				sdata[index]=res;
+			}
+			memoryBarrierShared();
+			barrier();
+		}
 
 		uint stageSize=1;
 		float stageAngle=M_PI;
@@ -484,19 +470,19 @@ void main() {
 	
 	//3x3 symmetric convolution for a 3d vector
 	for (uint i=0; i<8; i++){
-			uint icellkernel= indexInput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x, 0);	
-			float temp_spin_real0 = kernel[icellkernel  ].x * temp0[i].x + kernel[icellkernel+inputStride_3].x * temp1[i].x + kernel[icellkernel+2*inputStride_3].x * temp2[i].x - kernel[icellkernel  ].y * temp0[i].y - kernel[icellkernel+inputStride_3].y * temp1[i].y - kernel[icellkernel+2*inputStride_3].y * temp2[i].y;
-			float temp_spin_imag0 = kernel[icellkernel  ].x * temp0[i].y + kernel[icellkernel+inputStride_3].x * temp1[i].y + kernel[icellkernel+2*inputStride_3].x * temp2[i].y + kernel[icellkernel  ].y * temp0[i].x + kernel[icellkernel+inputStride_3].y * temp1[i].x + kernel[icellkernel+2*inputStride_3].y * temp2[i].x;
-			float temp_spin_real1 = kernel[icellkernel+inputStride_3].x * temp0[i].x + kernel[icellkernel+3*inputStride_3].x * temp1[i].x + kernel[icellkernel+4*inputStride_3].x * temp2[i].x - kernel[icellkernel+inputStride_3].y * temp0[i].y - kernel[icellkernel+3*inputStride_3].y * temp1[i].y - kernel[icellkernel+4*inputStride_3].y * temp2[i].y;
-			float temp_spin_imag1 = kernel[icellkernel+inputStride_3].x * temp0[i].y + kernel[icellkernel+3*inputStride_3].x * temp1[i].y + kernel[icellkernel+4*inputStride_3].x * temp2[i].y + kernel[icellkernel+inputStride_3].y * temp0[i].x + kernel[icellkernel+3*inputStride_3].y * temp1[i].x + kernel[icellkernel+4*inputStride_3].y * temp2[i].x;
-			float temp_spin_real2 = kernel[icellkernel+2*inputStride_3].x * temp0[i].x + kernel[icellkernel+4*inputStride_3].x * temp1[i].x + kernel[icellkernel+5*inputStride_3].x * temp2[i].x - kernel[icellkernel+2*inputStride_3].y * temp0[i].y - kernel[icellkernel+4*inputStride_3].y * temp1[i].y - kernel[icellkernel+5*inputStride_3].y * temp2[i].y;
-			float temp_spin_imag2 = kernel[icellkernel+2*inputStride_3].x * temp0[i].y + kernel[icellkernel+4*inputStride_3].x * temp1[i].y + kernel[icellkernel+5*inputStride_3].x * temp2[i].y + kernel[icellkernel+2*inputStride_3].y * temp0[i].x + kernel[icellkernel+4*inputStride_3].y * temp1[i].x + kernel[icellkernel+5*inputStride_3].y * temp2[i].x;
-			temp0[i].x= temp_spin_real0;
-			temp0[i].y= temp_spin_imag0;
-			temp1[i].x= temp_spin_real1;
-			temp1[i].y= temp_spin_imag1;
-			temp2[i].x= temp_spin_real2;
-			temp2[i].y= temp_spin_imag2;
+		uint icellkernel= indexInput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim, 0);	
+		float temp_spin_real0 = kernel[icellkernel  ].x * temp0[i].x + kernel[icellkernel+inputStride_3].x * temp1[i].x + kernel[icellkernel+2*inputStride_3].x * temp2[i].x - kernel[icellkernel  ].y * temp0[i].y - kernel[icellkernel+inputStride_3].y * temp1[i].y - kernel[icellkernel+2*inputStride_3].y * temp2[i].y;
+		float temp_spin_imag0 = kernel[icellkernel  ].x * temp0[i].y + kernel[icellkernel+inputStride_3].x * temp1[i].y + kernel[icellkernel+2*inputStride_3].x * temp2[i].y + kernel[icellkernel  ].y * temp0[i].x + kernel[icellkernel+inputStride_3].y * temp1[i].x + kernel[icellkernel+2*inputStride_3].y * temp2[i].x;
+		float temp_spin_real1 = kernel[icellkernel+inputStride_3].x * temp0[i].x + kernel[icellkernel+3*inputStride_3].x * temp1[i].x + kernel[icellkernel+4*inputStride_3].x * temp2[i].x - kernel[icellkernel+inputStride_3].y * temp0[i].y - kernel[icellkernel+3*inputStride_3].y * temp1[i].y - kernel[icellkernel+4*inputStride_3].y * temp2[i].y;
+		float temp_spin_imag1 = kernel[icellkernel+inputStride_3].x * temp0[i].y + kernel[icellkernel+3*inputStride_3].x * temp1[i].y + kernel[icellkernel+4*inputStride_3].x * temp2[i].y + kernel[icellkernel+inputStride_3].y * temp0[i].x + kernel[icellkernel+3*inputStride_3].y * temp1[i].x + kernel[icellkernel+4*inputStride_3].y * temp2[i].x;
+		float temp_spin_real2 = kernel[icellkernel+2*inputStride_3].x * temp0[i].x + kernel[icellkernel+4*inputStride_3].x * temp1[i].x + kernel[icellkernel+5*inputStride_3].x * temp2[i].x - kernel[icellkernel+2*inputStride_3].y * temp0[i].y - kernel[icellkernel+4*inputStride_3].y * temp1[i].y - kernel[icellkernel+5*inputStride_3].y * temp2[i].y;
+		float temp_spin_imag2 = kernel[icellkernel+2*inputStride_3].x * temp0[i].y + kernel[icellkernel+4*inputStride_3].x * temp1[i].y + kernel[icellkernel+5*inputStride_3].x * temp2[i].y + kernel[icellkernel+2*inputStride_3].y * temp0[i].x + kernel[icellkernel+4*inputStride_3].y * temp1[i].x + kernel[icellkernel+5*inputStride_3].y * temp2[i].x;
+		temp0[i].x= temp_spin_real0;
+		temp0[i].y= temp_spin_imag0;
+		temp1[i].x= temp_spin_real1;
+		temp1[i].y= temp_spin_imag1;
+		temp2[i].x= temp_spin_real2;
+		temp2[i].y= temp_spin_imag2;
 	}
 	
 	//ifft
@@ -743,37 +729,24 @@ void main() {
 			barrier();
 		}
 		
-		if (zeropad_0){
-			if (ratioDirection_1){
-				outputs[indexOutput(gl_LocalInvocationID.x, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x)];
-				outputs[indexOutput(gl_LocalInvocationID.x+gl_WorkGroupSize.x, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+gl_WorkGroupSize.x)];
-				outputs[indexOutput(gl_LocalInvocationID.x+2*gl_WorkGroupSize.x, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+2*gl_WorkGroupSize.x)];
-				outputs[indexOutput(gl_LocalInvocationID.x+3*gl_WorkGroupSize.x, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x)];
-				
-			}else{
-				for (uint i=0; i<8; i++){
-					uint pos = positionShuffle(fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+i*gl_WorkGroupSize.x, ratio_1, ratioDirection_1);
-					if (pos%fft_dim<fft_dim/2)
-						outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x, coordinate)]=sdata[pos];
-				}
+		if ((passID>0)){
+			for (uint i=0; i < 8; i++){
+				float angle=2*M_PI*(((gl_WorkGroupID.x*gl_WorkGroupSize.y+gl_LocalInvocationID.y)*(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x))/float(fft_dim_full));
+				uint index=(fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x));
+				vec2 mult = vec2(cos(angle),-sin(angle));
+				vec2 res=vec2(sdata[index].x*mult.x-sdata[index].y*mult.y,sdata[index].y*mult.x+sdata[index].x*mult.y);
+				sdata[index]=res;
 			}
+			memoryBarrierShared();
+			barrier();
+		}
+		if ((zeropad_0)){
+			for (uint i=0; i < 4; i++)
+				outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)];
+
 		} else {
-			if (ratioDirection_1){
-				outputs[indexOutput(gl_LocalInvocationID.x, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x)];
-				outputs[indexOutput(gl_LocalInvocationID.x+gl_WorkGroupSize.x, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+gl_WorkGroupSize.x)];
-				outputs[indexOutput(gl_LocalInvocationID.x+2*gl_WorkGroupSize.x, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+2*gl_WorkGroupSize.x)];
-				outputs[indexOutput(gl_LocalInvocationID.x+3*gl_WorkGroupSize.x, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x)];
-				outputs[indexOutput(gl_LocalInvocationID.x+4*gl_WorkGroupSize.x, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+4*gl_WorkGroupSize.x)];
-				outputs[indexOutput(gl_LocalInvocationID.x+5*gl_WorkGroupSize.x, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+5*gl_WorkGroupSize.x)];
-				outputs[indexOutput(gl_LocalInvocationID.x+6*gl_WorkGroupSize.x, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+6*gl_WorkGroupSize.x)];
-				outputs[indexOutput(gl_LocalInvocationID.x+7*gl_WorkGroupSize.x, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+7*gl_WorkGroupSize.x)];
-				
-			}else{
-				
-				for (uint i=0; i<8; i++)
-					outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x, coordinate)]=sdata[positionShuffle(fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+i*gl_WorkGroupSize.x, ratio_1, ratioDirection_1)];
-			
-			}
+			for (uint i=0; i < 8; i++)
+				outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim, coordinate)]=sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)];
 		}
 
 		memoryBarrierShared();
