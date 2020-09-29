@@ -398,13 +398,13 @@ int main()
 	{
 		//0 - FFT + iFFT R2C/C2R benchmark
 		const uint32_t num_benchmark_samples = 19;
-		const uint32_t num_runs = 5;
-		printf("First %d runs are a warmup\n", num_runs);
+		const uint32_t num_runs = 7;
+		//printf("First %d runs are a warmup\n", num_runs);
 		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {64, 64, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2},  {4096, 256, 1, 2}, {2048, 1024, 1, 2},{4096, 2048, 1, 2}, {4096, 4096, 1, 2},
 																	{32, 32, 32, 3}, {64, 64, 64, 3}, {256, 256, 32, 3},  {1024, 256, 32, 3},  {256, 256, 256, 3}, {2048, 1024, 8, 3},  {512, 512, 128, 3}, {2048, 256, 256, 3}, {4096, 4096, 8, 3}};
 		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 		for (uint32_t n = 0; n < num_benchmark_samples; n++) {
-
+			double run_time[num_runs];
 			for (uint32_t r = 0; r < num_runs; r++) {
 				//Configuration + FFT application .
 				VkFFTConfiguration forward_configuration;
@@ -474,9 +474,24 @@ int main()
 				//batch *= 5; //makes result more smooth, takes longer time
 				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
 				float* buffer_output = (float*)malloc(bufferSize);
+				run_time[r] = totTime;
+				if (n > 0) {
+					if (r == num_runs - 1) {
+						double std_error = 0;
+						double avg_time = 0;
+						for (uint32_t t = 0; t < num_runs; t++) {
+							avg_time += run_time[t];
+						}
+						avg_time /= num_runs;
+						for (uint32_t t = 0; t < num_runs; t++) {
+							std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
+						}
+						std_error = sqrt(std_error / num_runs);
+						printf("System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error %0.3f batch: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch);
+					}
 				
-				printf("System: %dx%dx%d, run: %d, Buffer: %d MB, time per step: %0.3f ms, batch: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], r, bufferSize / 1024 / 1024, totTime, batch);
-				if(n>0) benchmark_result += ((double)bufferSize / 1024 )/totTime;
+					benchmark_result += ((double)bufferSize / 1024) / totTime;
+				}
 				//printf("Benchmark score: %f\n", ((double)bufferSize / 1024) / totTime);
 				//Transfer data from GPU using staging buffer.
 				//transferDataToCPU(buffer_output, &buffer, bufferSize);
@@ -986,13 +1001,13 @@ int main()
 	{
 		//4 - FFT + iFFT C2C benchmark for big systems. Done by using Four Stage FFT algorithm. Note - VkFFT doesn't transpose the end result - it doesn't matter for convolutions as the data will return to original layout.
 		//If transposition is needed, it can be done via shuffling with position shuffle routine in the shaders and an inplace transposition shader. Better support for this will be added later.
-		const uint32_t num_benchmark_samples = 9;
-		const uint32_t num_runs = 5;
-		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {(uint32_t) pow(2,13), 32, 1, 2}, {(uint32_t) pow(2,14), 32, 1, 2}, {(uint32_t) pow(2,15), 32, 1, 2}, {(uint32_t) pow(2,16), 32, 1, 2}, {(uint32_t) pow(2,17), 32, 1, 2}, {(uint32_t) pow(2,18), 32, 1, 2}, {(uint32_t) pow(2,13), (uint32_t) pow(2,13), 1, 2},{(uint32_t) pow(2,14), (uint32_t) pow(2,14), 1, 2} };
+		const uint32_t num_benchmark_samples = 11;
+		const uint32_t num_runs = 7;
+		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {(uint32_t) pow(2,13), 64, 1, 2}, {(uint32_t) pow(2,14), 64, 1, 2}, {(uint32_t) pow(2,15), 64, 1, 2}, {(uint32_t) pow(2,16), 64, 1, 2}, {(uint32_t) pow(2,17), 64, 1, 2}, {(uint32_t) pow(2,18), 64, 1, 2},  {(uint32_t)pow(2,20), 64, 1, 2},  {(uint32_t)pow(2,22), 64, 1, 2}, {(uint32_t) pow(2,13), (uint32_t) pow(2,13), 1, 2},{(uint32_t) pow(2,14), (uint32_t) pow(2,14), 1, 2} };
+		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 																	
-
 		for (uint32_t n = 0; n < num_benchmark_samples; n++) {
-
+			double run_time[num_runs];
 			for (uint32_t r = 0; r < num_runs; r++) {
 				//Configuration + FFT application .
 				VkFFTConfiguration forward_configuration;
@@ -1007,6 +1022,7 @@ int main()
 				forward_configuration.size[0] = benchmark_dimensions[n][0]; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 				forward_configuration.size[1] = benchmark_dimensions[n][1];
 				forward_configuration.size[2] = benchmark_dimensions[n][2];
+				//registerBoost should be disabled on machines with <256KB register file
 				if (forward_configuration.size[1] > 512)
 					forward_configuration.registerBoost = 4;
 				else
@@ -1050,8 +1066,8 @@ int main()
 					for (uint32_t k = 0; k < forward_configuration.size[2]; k++) {
 						for (uint32_t j = 0; j < forward_configuration.size[1]; j++) {
 							for (uint32_t i = 0; i < forward_configuration.size[0]; i++) {
-								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2])] = (i+j)%2-0.5;// +j % 2 * 8192;//[-1,1]
-								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2])+1] = 0;// +j % 2 * 8192;//[-1,1]
+								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2])] = i % 4 - 1.5;// +j % 2 * 8192;//[-1,1]
+								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2]) + 1] = 0;// j;// +j % 2 * 8192;//[-1,1]
 							}
 						}
 					}
@@ -1068,17 +1084,34 @@ int main()
 				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
 				float* buffer_output = (float*)malloc(bufferSize);
 
-				printf("System: %dx%dx%d, run: %d, Buffer: %d MB, time per step: %0.3f ms, batch: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], r, bufferSize / 1024 / 1024, totTime, batch);
+				//printf("System: %dx%dx%d, run: %d, Buffer: %d MB, time per step: %0.3f ms, batch: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], r, bufferSize / 1024 / 1024, totTime, batch);
+				run_time[r] = totTime;
+				if (n > 0) {
+					if (r == num_runs - 1) {
+						double std_error = 0;
+						double avg_time = 0;
+						for (uint32_t t = 0; t < num_runs; t++) {
+							avg_time += run_time[t];
+						}
+						avg_time /= num_runs;
+						for (uint32_t t = 0; t < num_runs; t++) {
+							std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
+						}
+						std_error = sqrt(std_error / num_runs);
+						printf("System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error %0.3f batch: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch);
+					}
 
+					benchmark_result += ((double)bufferSize / 1024) / totTime;
+				}
 				//Transfer data from GPU using staging buffer.
 				//transferDataToCPU(buffer_output, &buffer, bufferSize);
 				//Print data, if needed.
 				/*for (uint32_t v = 0; v < inverse_configuration.coordinateFeatures; v++) {
 					printf("\ncoordinate: %d\n\n", v);
 					for (uint32_t k = 0; k < inverse_configuration.size[2]; k++) {
-						for (uint32_t j = 0; j < 8; j++) {
-							for (uint32_t i = 0; i < inverse_configuration.size[0]; i++) {
-								printf("%.6f ", buffer_output[2*(i + j * inverse_configuration.size[0] + k * (inverse_configuration.size[0]) * inverse_configuration.size[1] + v * (inverse_configuration.size[0]) * inverse_configuration.size[1] * inverse_configuration.size[2])]);
+						for (uint32_t j = 0; j < inverse_configuration.size[1]; j++) {
+							for (uint32_t i = 0; i < 2*1024; i++) {
+								printf("%.6f ", buffer_output[(i + 2*(j * inverse_configuration.size[0] + k * (inverse_configuration.size[0]) * inverse_configuration.size[1] + v * (inverse_configuration.size[0]) * inverse_configuration.size[1] * inverse_configuration.size[2]))]);
 							}
 							std::cout << "\n";
 						}
@@ -1093,6 +1126,8 @@ int main()
 				app_inverse.deleteVulkanFFT();
 			}
 		}
+		benchmark_result /= ((num_benchmark_samples - 1) * num_runs);
+		printf("Benchmark score: %d\n", (int)(benchmark_result));
 		vkDestroyFence(device, fence, NULL);
 		vkDestroyCommandPool(device, commandPool, NULL);
 		vkDestroyDevice(device, NULL);

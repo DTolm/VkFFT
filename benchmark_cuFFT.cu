@@ -10,12 +10,12 @@ int main()
 {
     const int num_benchmark_samples_2D = 10;
     const int num_benchmark_samples_3D = 9;
-    const int num_runs = 5;
+    const int num_runs = 7;
     //cuFFT works best in when last dimension is the longest in R2C mode
-    printf("First %d runs are a warmup\n", num_runs);
+    //printf("First %d runs are a warmup\n", num_runs);
     int benchmark_dimensions_2D[num_benchmark_samples_2D][4] = { {1024, 1024, 1, 2},  {64, 64, 1, 2}, {256, 256, 1, 2}, {256, 1024, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2}, {256, 4096, 1, 2}, {1024, 2048, 1, 2},{2048, 4096, 1, 2}, {4096, 4096, 1, 2} };
-    int benchmark_dimensions_3D[num_benchmark_samples_3D][4] = { {32, 32, 32, 3}, {64, 64, 64, 3}, {32, 256, 256, 3}, {32, 256, 1024, 3}, {256, 256, 256, 3},  {8, 1024, 2048, 3},  {128, 512, 512, 3}, {256, 256, 2048, 3}, {8, 4096, 4096, 3}};
-   
+    int benchmark_dimensions_3D[num_benchmark_samples_3D][4] = { {32, 32, 32, 3}, {64, 64, 64, 3}, {32, 256, 256, 3}, {32, 256, 1024, 3}, {256, 256, 256, 3},  {8, 1024, 2048, 3},  {128, 512, 512, 3}, {256, 256, 2048, 3}, {8, 4096, 4096, 3} };
+
     //for 8k test
     /*const int num_benchmark_samples_2D = 6;
     const int num_benchmark_samples_3D = 3;
@@ -29,7 +29,7 @@ int main()
     double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 
     for (int n = 0; n < num_benchmark_samples_2D; n++) {
-
+        double run_time[num_runs];
         for (int r = 0; r < num_runs; r++) {
             cufftHandle planR2C;
             cufftHandle planC2R;
@@ -84,11 +84,27 @@ int main()
             auto timeEnd = std::chrono::steady_clock::now();
             totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001) / batch;
 
-            printf("System: %dx%dx%d, run: %d, Buffer: %d MB, time per step: %0.3f ms, batch: %d\n", dims[1], dims[0], 1, r, (sizeof(cufftReal) * dims[0] * dims[1] + sizeof(cufftComplex) * dims[0] * (dims[1] / 2 + 1)) / 1024 / 1024, totTime, batch);
+            //printf("System: %dx%dx%d, run: %d, Buffer: %d MB, time per step: %0.3f ms, batch: %d\n", dims[1], dims[0], 1, r, (sizeof(cufftReal) * dims[0] * dims[1] + sizeof(cufftComplex) * dims[0] * (dims[1] / 2 + 1)) / 1024 / 1024, totTime, batch);
             int bufferSize = sizeof(float) * 2 * (dims[1] / 2 + 1) * dims[0];
+           
+            run_time[r] = totTime;
+            if (n > 0) {
+                if (r == num_runs - 1) {
+                    double std_error = 0;
+                    double avg_time = 0;
+                    for (uint32_t t = 0; t < num_runs; t++) {
+                        avg_time += run_time[t];
+                    }
+                    avg_time /= num_runs;
+                    for (uint32_t t = 0; t < num_runs; t++) {
+                        std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
+                    }
+                    std_error = sqrt(std_error / num_runs);
+                    printf("System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error %0.3f batch: %d\n", dims[1], dims[0], 1, (sizeof(cufftReal) * dims[0] * dims[1] + sizeof(cufftComplex) * dims[0] * (dims[1] / 2 + 1)) / 1024 / 1024, avg_time, std_error, batch);
+                }
 
-            if (n > 0) benchmark_result += ((double)bufferSize / 1024) / totTime;
-
+                benchmark_result += ((double)bufferSize / 1024) / totTime;
+            }
             /*cufftReal* output = (cufftReal*)(malloc(sizeof(cufftReal) * dims[0] * dims[1]));
             cudaMemcpy(output, dataR, sizeof(cufftReal) * dims[0] * dims[1], cudaMemcpyDeviceToHost);
             cudaDeviceSynchronize();
@@ -103,7 +119,7 @@ int main()
         }
     }
     for (int n = 0; n < num_benchmark_samples_3D; n++) {
-
+        double run_time[num_runs];
         for (int r = 0; r < num_runs; r++) {
             cufftHandle planR2C;
             cufftHandle planC2R;
@@ -160,10 +176,27 @@ int main()
             auto timeEnd = std::chrono::steady_clock::now();
             totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001) / batch;
 
-            printf("System: %dx%dx%d, run: %d, Buffer: %d MB, time per step: %0.3f ms, batch: %d\n", dims[2], dims[1], dims[0], r, (sizeof(cufftReal) * dims[0] * dims[1] * dims[2] + sizeof(cufftComplex) * dims[0] * dims[1] * (dims[2] / 2 + 1)) / 1024 / 1024, totTime, batch);
+            //printf("System: %dx%dx%d, run: %d, Buffer: %d MB, time per step: %0.3f ms, batch: %d\n", dims[2], dims[1], dims[0], r, (sizeof(cufftReal) * dims[0] * dims[1] * dims[2] + sizeof(cufftComplex) * dims[0] * dims[1] * (dims[2] / 2 + 1)) / 1024 / 1024, totTime, batch);
             int bufferSize = sizeof(float) * 2 * (dims[2] / 2 + 1) * dims[1] * dims[0];
-            benchmark_result += ((double)bufferSize / 1024) / totTime;
+            //benchmark_result += ((double)bufferSize / 1024) / totTime;
+            run_time[r] = totTime;
+            
+            if (r == num_runs - 1) {
+                double std_error = 0;
+                double avg_time = 0;
+                for (uint32_t t = 0; t < num_runs; t++) {
+                    avg_time += run_time[t];
+                }
+                avg_time /= num_runs;
+                for (uint32_t t = 0; t < num_runs; t++) {
+                    std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
+                }
+                std_error = sqrt(std_error / num_runs);
+                printf("System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error %0.3f batch: %d\n", dims[2], dims[1], dims[0], (sizeof(cufftReal)* dims[0] * dims[1] * dims[2] + sizeof(cufftComplex) * dims[0] * dims[1] * (dims[2] / 2 + 1)) / 1024 / 1024, avg_time, std_error, batch);
+            }
 
+            benchmark_result += ((double)bufferSize / 1024) / totTime;
+            
             cufftDestroy(planR2C);
             cudaFree(dataR);
             cufftDestroy(planC2R);

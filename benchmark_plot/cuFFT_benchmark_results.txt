@@ -1,0 +1,11 @@
+System: 8192x64x1 Buffer: 4 MB avg_time_per_step: 0.216 ms std_error 0.000 batch: 1000
+System: 16384x64x1 Buffer: 8 MB avg_time_per_step: 0.423 ms std_error 0.000 batch: 512
+System: 32768x64x1 Buffer: 16 MB avg_time_per_step: 0.857 ms std_error 0.001 batch: 256
+System: 65536x64x1 Buffer: 32 MB avg_time_per_step: 1.753 ms std_error 0.001 batch: 128
+System: 131072x64x1 Buffer: 64 MB avg_time_per_step: 3.613 ms std_error 0.001 batch: 64
+System: 262144x64x1 Buffer: 128 MB avg_time_per_step: 7.502 ms std_error 0.002 batch: 32
+System: 1048576x64x1 Buffer: 512 MB avg_time_per_step: 37.069 ms std_error 0.016 batch: 8
+System: 4194304x64x1 Buffer: 2048 MB avg_time_per_step: 143.983 ms std_error 0.006 batch: 2
+System: 8192x8192x1 Buffer: 512 MB avg_time_per_step: 27.327 ms std_error 0.003 batch: 8
+System: 16384x16384x1 Buffer: 2048 MB avg_time_per_step: 168.091 ms std_error 0.028 batch: 2
+Benchmark score: 17212

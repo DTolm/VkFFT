@@ -2863,7 +2863,7 @@ typedef struct VkFFTApplication {
 										}
 									}
 								}
-								if (l >=0)
+								if (l > 0)
 									vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 							}
@@ -2984,7 +2984,7 @@ typedef struct VkFFTApplication {
 								vkCmdDispatch(commandBuffer, configuration.size[1] / axis->axisBlock[0]* configuration.size[2] / axis->specializationConstants.fftDim, 1, 1);
 
 							}
-							if (l >=0)
+							if (l > 0)
 								vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 						}
@@ -3066,7 +3066,7 @@ typedef struct VkFFTApplication {
 									vkCmdDispatch(commandBuffer, configuration.size[1] / axis->axisBlock[0] * configuration.size[2] / axis->specializationConstants.fftDim, 1, 1);
 
 								}
-								if (l >= 0)
+								if (l > 0)
 									vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 							}
@@ -3225,7 +3225,7 @@ typedef struct VkFFTApplication {
 									}
 								}
 							}
-							if (l >= 0)
+							if (l > 0)
 								vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 						}
@@ -3638,7 +3638,7 @@ typedef struct VkFFTApplication {
 									}
 								}
 							}
-							if (l >= 0)
+							if (l > 0)
 								vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 						}
