@@ -42,10 +42,12 @@ To measure how Vulkan FFT implementation works in comparison to cuFFT, we will p
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_2.png?raw=true)
 ## Precision comparison of cuFFT/VkFFT/FFTW
 To measure how VkFFT (single precision) results compare to cuFFT (single precision) and FFTW (double precision), a set of ~50 systems was filled with random complex data on the scale of [-1,1] and one C2C transform was performed on each system. The precision_cuFFT_VkFFT_FFTW.cu script contains the comparison code, which calculates for each value of the transformed system:
+
 - Max difference between cuFFT/VkFFT result and FFTW result
 - Average difference between cuFFT/VkFFT result and FFTW result
 - Max ratio of the difference between cuFFT/VkFFT result and FFTW result to the FFTW result
 - Average ratio of the difference between cuFFT/VkFFT result and FFTW result to the FFTW result
+
 The precision_cuFFT_VkFFT_FFTW.txt file contains the results for Nvidia's 1660Ti GPU and AMD Ryzen 2700 CPU. On average, the results fluctuate both for cuFFT and VkFFT with no clear winner. Max ratio stays in range of 2% for both cuFFT and VkFFT, while average ratio stays below 1e-6. 
 
 ## Contact information
