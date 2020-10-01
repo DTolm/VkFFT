@@ -40,6 +40,14 @@ Picture below is now outdated. VkFFT achieves striding by grouping nearby FFTs i
 To measure how Vulkan FFT implementation works in comparison to cuFFT, we will perform a number of 2D and 3D tests. The test will consist of performing R2C FFT and inverse C2R FFT consecutively multiple times to calculate average time required. cuFFT uses out-of-place configuration while VkFFT uses in-place. The results are obtained on Nvidia 1660 Ti graphics card with no other GPU load. Launching example 0 from Vulkan_FFT.cpp performs VkFFT benchmark, benchmark_cuFFT.cu file contains similar benchmark script for cuFFT library. 
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_1.png?raw=true)
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_2.png?raw=true)
+## Precision comparison of cuFFT/VkFFT/FFTW
+To measure how VkFFT (single precision) results compare to cuFFT (single precision) and FFTW (double precision), a set of ~50 systems was filled with random complex data on the scale of [-1,1] and one C2C transform was performed on each system. The precision_cuFFT_VkFFT_FFTW.cu script contains the comparison code, which calculates for each value of the transformed system:
+- Max difference between cuFFT/VkFFT result and FFTW result
+- Average difference between cuFFT/VkFFT result and FFTW result
+- Max ratio of the difference between cuFFT/VkFFT result and FFTW result to the FFTW result
+- Average ratio of the difference between cuFFT/VkFFT result and FFTW result to the FFTW result
+The precision_cuFFT_VkFFT_FFTW.txt file contains the results for Nvidia's 1660Ti GPU and AMD Ryzen 2700 CPU. On average, the results fluctuate both for cuFFT and VkFFT with no clear winner. Max ratio stays in range of 2% for both cuFFT and VkFFT, while average ratio stays below 1e-6. 
+
 ## Contact information
 Initial version of VkFFT is developed by Tolmachev Dmitrii\
 Peter Grünberg Institute and Institute for Advanced Simulation, Forschungszentrum Jülich,  D-52425 Jülich, Germany\
