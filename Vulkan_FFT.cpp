@@ -400,7 +400,7 @@ int main()
 		const int num_benchmark_samples = 26;
 		const int num_runs = 7;
 
-		int benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
+		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
 		{32,32,1,2},{64,64,1,2},{256,256,1,2},{1024, 256, 1, 2}, {512, 512, 1, 2},  {1024, 1024, 1, 2} , {4096, 1024, 1, 2}, {2048, 2048, 1, 2}, {4096, 4096, 1, 2},
 		{64,64,64,3}, {128,128,128, 3}, {256,256,256,3}, {512, 256, 64, 3}, {1024, 1024, 64, 3}, {4096, 256, 32, 3},  {2048, 256, 256, 3},{4096, 4096, 8, 3},
 		{(uint32_t)pow(2,15), 64, 1, 2}, {(uint32_t)pow(2,16), 64, 1, 2}, {(uint32_t)pow(2,17), 64, 1, 2}, {(uint32_t)pow(2,18), 64, 1, 2},  {(uint32_t)pow(2,20), 64, 1, 2},  {(uint32_t)pow(2,22), 64, 1, 2},
@@ -465,6 +465,7 @@ int main()
 				//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
 				if (sizeof(SHADER_DIR) > 255) {
 					printf("SHADER_DIR length must be <256\n");
+					return 0;
 				}
 				sprintf(forward_configuration.shaderPath, SHADER_DIR);
 
@@ -592,6 +593,7 @@ int main()
 		forward_configuration.device = &device;
 		if (sizeof(SHADER_DIR) > 255) {
 			printf("SHADER_DIR length must be <256\n");
+			return 0;
 			
 		}
 		sprintf(forward_configuration.shaderPath, SHADER_DIR);
@@ -770,7 +772,7 @@ int main()
 		forward_configuration.device = &device;
 		if (sizeof(SHADER_DIR) > 255) {
 			printf("SHADER_DIR length must be <256\n");
-			
+			return 0;
 		}
 		sprintf(forward_configuration.shaderPath, SHADER_DIR);
 		//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use forward_configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from forward_configuration is passed to convolution_configuration as kernel object.
@@ -945,7 +947,7 @@ int main()
 		forward_configuration.device = &device;
 		if (sizeof(SHADER_DIR) > 255) {
 			printf("SHADER_DIR length must be <256\n");
-			
+			return 0;
 		}
 		sprintf(forward_configuration.shaderPath, SHADER_DIR);
 		//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use forward_configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from forward_configuration is passed to convolution_configuration as kernel object.
@@ -1148,7 +1150,7 @@ int main()
 				//Custom path to the floder with shaders, default is "shaders/");
 				if (sizeof(SHADER_DIR) > 255) {
 					printf("SHADER_DIR length must be <256\n");
-					
+					return 0;
 				}
 				sprintf(forward_configuration.shaderPath, SHADER_DIR);
 
@@ -1307,7 +1309,7 @@ int main()
 				//Custom path to the floder with shaders, default is "shaders/");
 				if (sizeof(SHADER_DIR) > 255) {
 					printf("SHADER_DIR length must be <256\n");
-					
+					return 0;
 				}
 				sprintf(forward_configuration.shaderPath, SHADER_DIR);
 
