@@ -1,11 +1,26 @@
-System: 8192x64x1 Buffer: 4 MB avg_time_per_step: 0.214 ms std_error 0.000 batch: 1000
-System: 16384x64x1 Buffer: 8 MB avg_time_per_step: 0.415 ms std_error 0.002 batch: 512
-System: 32768x64x1 Buffer: 16 MB avg_time_per_step: 0.828 ms std_error 0.000 batch: 256
-System: 65536x64x1 Buffer: 32 MB avg_time_per_step: 1.635 ms std_error 0.001 batch: 128
-System: 131072x64x1 Buffer: 64 MB avg_time_per_step: 3.242 ms std_error 0.004 batch: 64
-System: 262144x64x1 Buffer: 128 MB avg_time_per_step: 6.463 ms std_error 0.001 batch: 32
-System: 1048576x64x1 Buffer: 512 MB avg_time_per_step: 27.092 ms std_error 0.008 batch: 8
-System: 4194304x64x1 Buffer: 2048 MB avg_time_per_step: 130.668 ms std_error 0.731 batch: 2
-System: 8192x8192x1 Buffer: 512 MB avg_time_per_step: 28.168 ms std_error 0.009 batch: 8
-System: 16384x16384x1 Buffer: 2048 MB avg_time_per_step: 127.135 ms std_error 0.824 batch: 2
-Benchmark score: 18968
+VkFFT System: 32x32x1 Buffer: 0 MB avg_time_per_step: 0.015 ms std_error: 0.000 batch: 1000 benchmark: 547
+VkFFT System: 64x64x1 Buffer: 0 MB avg_time_per_step: 0.016 ms std_error: 0.000 batch: 1000 benchmark: 1998
+VkFFT System: 256x256x1 Buffer: 0 MB avg_time_per_step: 0.026 ms std_error: 0.000 batch: 1000 benchmark: 19566
+VkFFT System: 1024x256x1 Buffer: 2 MB avg_time_per_step: 0.077 ms std_error: 0.000 batch: 1000 benchmark: 26688
+VkFFT System: 512x512x1 Buffer: 2 MB avg_time_per_step: 0.080 ms std_error: 0.001 batch: 1000 benchmark: 25687
+VkFFT System: 1024x1024x1 Buffer: 8 MB avg_time_per_step: 0.326 ms std_error: 0.001 batch: 512 benchmark: 25152
+VkFFT System: 4096x1024x1 Buffer: 32 MB avg_time_per_step: 1.405 ms std_error: 0.004 batch: 128 benchmark: 23326
+VkFFT System: 2048x2048x1 Buffer: 32 MB avg_time_per_step: 1.594 ms std_error: 0.002 batch: 128 benchmark: 20554
+VkFFT System: 4096x4096x1 Buffer: 128 MB avg_time_per_step: 6.349 ms std_error: 0.001 batch: 32 benchmark: 20643
+VkFFT System: 64x64x64 Buffer: 2 MB avg_time_per_step: 0.111 ms std_error: 0.001 batch: 1000 benchmark: 18376
+VkFFT System: 128x128x128 Buffer: 16 MB avg_time_per_step: 0.809 ms std_error: 0.000 batch: 256 benchmark: 20252
+VkFFT System: 256x256x256 Buffer: 128 MB avg_time_per_step: 6.417 ms std_error: 0.002 batch: 32 benchmark: 20426
+VkFFT System: 512x256x64 Buffer: 64 MB avg_time_per_step: 3.154 ms std_error: 0.000 batch: 64 benchmark: 20775
+VkFFT System: 1024x1024x64 Buffer: 512 MB avg_time_per_step: 26.143 ms std_error: 0.007 batch: 8 benchmark: 20054
+VkFFT System: 4096x256x32 Buffer: 256 MB avg_time_per_step: 13.237 ms std_error: 0.004 batch: 16 benchmark: 19804
+VkFFT System: 2048x256x256 Buffer: 1024 MB avg_time_per_step: 54.172 ms std_error: 0.018 batch: 4 benchmark: 19356
+VkFFT System: 4096x4096x8 Buffer: 1024 MB avg_time_per_step: 67.279 ms std_error: 0.015 batch: 4 benchmark: 15585
+VkFFT System: 32768x64x1 Buffer: 16 MB avg_time_per_step: 0.833 ms std_error: 0.000 batch: 256 benchmark: 19670
+VkFFT System: 65536x64x1 Buffer: 32 MB avg_time_per_step: 1.649 ms std_error: 0.001 batch: 128 benchmark: 19874
+VkFFT System: 131072x64x1 Buffer: 64 MB avg_time_per_step: 3.269 ms std_error: 0.001 batch: 64 benchmark: 20047
+VkFFT System: 262144x64x1 Buffer: 128 MB avg_time_per_step: 6.515 ms std_error: 0.002 batch: 32 benchmark: 20116
+VkFFT System: 1048576x64x1 Buffer: 512 MB avg_time_per_step: 27.094 ms std_error: 0.011 batch: 8 benchmark: 19350
+VkFFT System: 4194304x64x1 Buffer: 2048 MB avg_time_per_step: 122.521 ms std_error: 0.025 batch: 2 benchmark: 17116
+VkFFT System: 8192x8192x1 Buffer: 512 MB avg_time_per_step: 28.439 ms std_error: 0.005 batch: 8 benchmark: 18435
+VkFFT System: 16384x16384x1 Buffer: 2048 MB avg_time_per_step: 118.966 ms std_error: 0.063 batch: 2 benchmark: 17628
+Benchmark score VkFFT: 18841

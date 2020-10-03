@@ -99,7 +99,7 @@ typedef struct VkFFTApplication {
 	VkFFTConfiguration configuration = {};
 	VkFFTPlan localFFTPlan = {};
 	VkFFTPlan localFFTPlan_inverse_convolution = {}; //additional inverse plan for convolution.
-	uint32_t* VkFFTReadShader(uint32_t& length, const char* filename) {
+	uint32_t* VkFFTReadShader(uint32_t* length, const char* filename) {
 
 		FILE* fp = fopen(filename, "rb");
 		if (fp == NULL) {
@@ -121,12 +121,11 @@ typedef struct VkFFTApplication {
 			str[i] = 0;
 		}
 
-		length = filesizepadded;
+		length[0] = filesizepadded;
 		return (uint32_t*)str;
 	}
 	void VkFFTInitShader(uint32_t shader_id, VkShaderModule* shaderModule) {
-
-		char filename[256];
+		char filename[512];
 		switch (shader_id) {
 		case 0:
 			//printf("vkFFT_single_c2c\n");
@@ -288,7 +287,7 @@ typedef struct VkFFTApplication {
 
 
 		uint32_t filelength;
-		uint32_t* code = VkFFTReadShader(filelength, filename);
+		uint32_t* code = VkFFTReadShader(&filelength, filename);
 		VkShaderModuleCreateInfo createInfo = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
 		createInfo.pCode = code;
 		createInfo.codeSize = filelength;
@@ -2541,10 +2540,10 @@ typedef struct VkFFTApplication {
 
 		uint32_t filelength;
 		//printf("vkFFT_transpose_inplace\n");
-		char filename[256];
+		char filename[512];
 		sprintf(filename, "%s%s", configuration.shaderPath, "vkFFT_transpose_inplace.spv");
 
-		uint32_t* code = VkFFTReadShader(filelength, filename);
+		uint32_t* code = VkFFTReadShader(&filelength, filename);
 		VkShaderModuleCreateInfo createInfo = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
 		createInfo.pCode = code;
 		createInfo.codeSize = filelength;

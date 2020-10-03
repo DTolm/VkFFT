@@ -18,8 +18,8 @@ set errorbars linecolor black
 set boxwidth 1 absolute
 set style fill solid 5.0 border -1
 
-set terminal png enhanced size 2500, 500 
+set terminal png enhanced size 4000, 500 
 set output 'benchmark.png'
 
-plot 'cuFFT_benchmark_results.txt' using 7:10:xtic(2) ti "cuFFT" linecolor rgb "#fdc897", ''u 0:7:7 with labels offset -2.5,1 title "", \
-	 'VkFFT_benchmark_results.txt' using 7:10:xtic(2) ti "VkFFT" linecolor rgb "#9dd79d", ''u 0:7:7 with labels offset 2.5,1 title ""
+plot 'cuFFT_benchmark_results.txt' using 8:11:xtic(3) ti "cuFFT" linecolor rgb "#fdc897", ''u 0:8:8 with labels offset -2.5,1 title "", \
+	 'VkFFT_benchmark_results.txt' using 8:11:xtic(3) ti "VkFFT" linecolor rgb "#9dd79d", ''u 0:8:8 with labels offset 2.5,1 title ""
