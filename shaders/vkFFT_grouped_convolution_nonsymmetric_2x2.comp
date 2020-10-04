@@ -62,18 +62,20 @@ uint indexOutput(uint index_x, uint index_y, uint coordinate) {
 uint positionShuffle(uint pos, uint ratio, bool ratioDirection ) {
 	return (((pos)/(ratio))+((pos)%(ratio))*(fft_dim));
 }
-void radix2(inout vec2 values[2], vec2 w) {
+void radix2(inout vec2 values[2], float angle) {
     vec2 temp;
+	vec2 w=vec2(cos(angle), sin(angle));
 	temp.x=values[1].x*w.x-values[1].y*w.y;
 	temp.y=values[1].y*w.x+values[1].x*w.y;
 	values[1]=values[0]-temp;
 	values[0]=values[0]+temp;
 }
 
-void radix4(inout vec2 values[4],inout vec2 w, float inverse) {
+void radix4(inout vec2 values[4], float angle, float inverse) {
 	
 	//DIF 1st stage with double angle
 	vec2 temp;
+	vec2 w=vec2(cos(angle), sin(angle));
 	temp.x=values[2].x*w.x-values[2].y*w.y;
 	temp.y=values[2].y*w.x+values[2].x*w.y;
 	values[2]=values[0]-temp;
@@ -84,15 +86,15 @@ void radix4(inout vec2 values[4],inout vec2 w, float inverse) {
 	values[3]=values[1]-temp;
 	values[1]=values[1]+temp;
 	
-	//DIF 2nd stage with half angle
-	w = normalize(w + vec2(1.0, 0.0));
+	//DIF 2nd stage with angle
+	w=vec2(cos(0.5*angle), sin(0.5*angle));
 	
 	temp.x=values[1].x*w.x-values[1].y*w.y;
 	temp.y=values[1].y*w.x+values[1].x*w.y;
 	values[1]=values[0]-temp;
 	values[0]=values[0]+temp;
 	
-	w = (inverse < 0 ) ? vec2(w.y, -w.x) : vec2(-w.y, w.x);
+	w = (inverse < 0) ? vec2(w.y, -w.x) : vec2(-w.y, w.x);
 
 	temp.x=values[3].x*w.x-values[3].y*w.y;
 	temp.y=values[3].y*w.x+values[3].x*w.y;
@@ -104,10 +106,11 @@ void radix4(inout vec2 values[4],inout vec2 w, float inverse) {
 	values[2]=temp;
 }
 
-void radix8(inout vec2 values[8], inout vec2 w, float inverse) {
+void radix8(inout vec2 values[8], float angle, float inverse) {
 	//DIF 1st stage with quadruple angle
 	
 	vec2 temp; 
+	vec2 w=vec2(cos(angle), sin(angle));
 	temp.x=values[4].x*w.x-values[4].y*w.y;
 	temp.y=values[4].y*w.x+values[4].x*w.y;
 	values[4]=values[0]-temp;
@@ -129,7 +132,7 @@ void radix8(inout vec2 values[8], inout vec2 w, float inverse) {
 	values[3]=values[3]+temp;
 	
 	//DIF 2nd stage with double angle
-	w = normalize(w + vec2(1.0, 0.0));
+	w=vec2(cos(0.5*angle), sin(0.5*angle));
 	
 	temp.x=values[2].x*w.x-values[2].y*w.y;
 	temp.y=values[2].y*w.x+values[2].x*w.y;
@@ -154,7 +157,7 @@ void radix8(inout vec2 values[8], inout vec2 w, float inverse) {
 	values[5]=values[5]+temp;
 	
 	//DIF 3rd stage with angle
-	w = normalize(w + vec2(1.0, 0.0));
+	w=vec2(cos(0.25*angle), sin(0.25*angle));
 	
 	temp.x=values[1].x*w.x-values[1].y*w.y;
 	temp.y=values[1].y*w.x+values[1].x*w.y;
@@ -236,45 +239,45 @@ void main() {
 				{
 					uint stageInvocationID = (gl_LocalInvocationID.y) & (stageSize - 1u);
 					float angle = stageInvocationID * stageAngle;
-					vec2 twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					vec2 values[2];
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, twiddleFactor);
+					radix2(values, angle);
 					
 					temp1[0]=values[0];
 					temp1[4]=values[1];
 					
 					stageInvocationID = (gl_LocalInvocationID.y+gl_WorkGroupSize.y) & (stageSize - 1u);
 					angle = stageInvocationID * stageAngle;
-					twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, twiddleFactor);
+					radix2(values, angle);
 					
 					temp1[1]=values[0];
 					temp1[5]=values[1];
 					
 					stageInvocationID = (gl_LocalInvocationID.y+2*gl_WorkGroupSize.y) & (stageSize - 1u);
 					angle = stageInvocationID * stageAngle;
-					twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+2*gl_WorkGroupSize.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+2*gl_WorkGroupSize.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, twiddleFactor);
+					radix2(values, angle);
 					
 					temp1[2]=values[0];
 					temp1[6]=values[1];
 					
 					stageInvocationID = (gl_LocalInvocationID.y+3*gl_WorkGroupSize.y) & (stageSize - 1u);
 					angle = stageInvocationID * stageAngle;
-					twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+3*gl_WorkGroupSize.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+3*gl_WorkGroupSize.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, twiddleFactor);
+					radix2(values, angle);
 					
 					temp1[3]=values[0];
 					temp1[7]=values[1];
@@ -285,14 +288,14 @@ void main() {
 				{
 					uint stageInvocationID = (gl_LocalInvocationID.y) & (stageSize - 1u);;
 					float angle = float(stageInvocationID) * stageAngle;
-					vec2 twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					vec2 values[4];
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+ radixStride_1)+gl_LocalInvocationID.x];
 					values[2] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+2 * radixStride_1)+gl_LocalInvocationID.x];
 					values[3] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+3* radixStride_1)+gl_LocalInvocationID.x];
 					
-					radix4(values, twiddleFactor, 1.0);
+					radix4(values, angle, 1.0);
 					
 					temp1[0]=values[0];
 					temp1[2]=values[1];
@@ -301,13 +304,13 @@ void main() {
 					
 					stageInvocationID = (gl_LocalInvocationID.y+gl_WorkGroupSize.y) & (stageSize - 1u);;
 					angle = float(stageInvocationID) * stageAngle;
-					twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y) + gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y + radixStride_1)+gl_LocalInvocationID.x];
 					values[2] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y + 2 * radixStride_1)+gl_LocalInvocationID.x];
 					values[3] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y + 3 * radixStride_1)+gl_LocalInvocationID.x];
 					
-					radix4(values, twiddleFactor, 1.0);
+					radix4(values, angle, 1.0);
 					
 					temp1[1]=values[0];
 					temp1[3]=values[1];
@@ -319,7 +322,7 @@ void main() {
 				{
 					uint stageInvocationID = (gl_LocalInvocationID.y) & (stageSize - 1u);;
 					float angle = float(stageInvocationID) * stageAngle;
-					vec2 twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					vec2 values[8];
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y + radixStride_2)+gl_LocalInvocationID.x];
@@ -330,7 +333,7 @@ void main() {
 					values[6] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y + 6 * radixStride_2)+gl_LocalInvocationID.x];
 					values[7] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y + 7 * radixStride_2)+gl_LocalInvocationID.x];
 					
-					radix8(values, twiddleFactor, 1.0);
+					radix8(values, angle, 1.0);
 					
 					temp1[0]=values[0];
 					temp1[1]=values[1];
@@ -510,45 +513,45 @@ void main() {
 				{
 					uint stageInvocationID = (gl_LocalInvocationID.y) & (stageSize - 1u);
 					float angle = stageInvocationID * stageAngle;
-					vec2 twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					vec2 values[2];
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, twiddleFactor);
+					radix2(values, angle);
 					
 					temp0[0]=values[0];
 					temp0[4]=values[1];
 					
 					stageInvocationID = (gl_LocalInvocationID.y+gl_WorkGroupSize.y) & (stageSize - 1u);
 					angle = stageInvocationID * stageAngle;
-					twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, twiddleFactor);
+					radix2(values, angle);
 					
 					temp0[1]=values[0];
 					temp0[5]=values[1];
 					
 					stageInvocationID = (gl_LocalInvocationID.y+2*gl_WorkGroupSize.y) & (stageSize - 1u);
 					angle = stageInvocationID * stageAngle;
-					twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+2*gl_WorkGroupSize.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+2*gl_WorkGroupSize.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, twiddleFactor);
+					radix2(values, angle);
 					
 					temp0[2]=values[0];
 					temp0[6]=values[1];
 					
 					stageInvocationID = (gl_LocalInvocationID.y+3*gl_WorkGroupSize.y) & (stageSize - 1u);
 					angle = stageInvocationID * stageAngle;
-					twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+3*gl_WorkGroupSize.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+3*gl_WorkGroupSize.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, twiddleFactor);
+					radix2(values, angle);
 					
 					temp0[3]=values[0];
 					temp0[7]=values[1];
@@ -559,14 +562,14 @@ void main() {
 				{
 					uint stageInvocationID = (gl_LocalInvocationID.y) & (stageSize - 1u);;
 					float angle = float(stageInvocationID) * stageAngle;
-					vec2 twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					vec2 values[4];
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+ radixStride_1)+gl_LocalInvocationID.x];
 					values[2] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+2 * radixStride_1)+gl_LocalInvocationID.x];
 					values[3] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+3* radixStride_1)+gl_LocalInvocationID.x];
 					
-					radix4(values, twiddleFactor, -1.0);
+					radix4(values, angle, -1.0);
 					
 					temp0[0]=values[0];
 					temp0[2]=values[1];
@@ -575,13 +578,13 @@ void main() {
 					
 					stageInvocationID = (gl_LocalInvocationID.y+gl_WorkGroupSize.y) & (stageSize - 1u);;
 					angle = float(stageInvocationID) * stageAngle;
-					twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y) + gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y + radixStride_1)+gl_LocalInvocationID.x];
 					values[2] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y + 2 * radixStride_1)+gl_LocalInvocationID.x];
 					values[3] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y + 3 * radixStride_1)+gl_LocalInvocationID.x];
 					
-					radix4(values, twiddleFactor, -1.0);
+					radix4(values, angle, -1.0);
 					
 					temp0[1]=values[0];
 					temp0[3]=values[1];
@@ -593,7 +596,7 @@ void main() {
 				{
 					uint stageInvocationID = (gl_LocalInvocationID.y) & (stageSize - 1u);;
 					float angle = float(stageInvocationID) * stageAngle;
-					vec2 twiddleFactor = vec2(cos(angle), sin(angle));
+					
 					vec2 values[8];
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y + radixStride_2)+gl_LocalInvocationID.x];
@@ -604,7 +607,7 @@ void main() {
 					values[6] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y + 6 * radixStride_2)+gl_LocalInvocationID.x];
 					values[7] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y + 7 * radixStride_2)+gl_LocalInvocationID.x];
 					
-					radix8(values, twiddleFactor, -1.0);
+					radix8(values, angle, -1.0);
 					
 					temp0[0]=values[0];
 					temp0[1]=values[1];
