@@ -330,7 +330,7 @@ void performVulkanFFT(VkFFTApplication* app, uint32_t batch) {
 	vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
 	//Record commands batch times. Allows to perform multiple convolutions/transforms in one submit.
 	for (uint32_t i = 0; i < batch; i++) {
-		app->VkFFTAppend(commandBuffer);
+		VkFFTAppend(app, commandBuffer);
 	}
 	vkEndCommandBuffer(commandBuffer);
 	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
@@ -356,8 +356,8 @@ float performVulkanFFTiFFT(VkFFTApplication* app_forward, VkFFTApplication* app_
 	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
 	for (uint32_t i = 0; i < batch; i++) {
-		app_forward->VkFFTAppend(commandBuffer);
-		app_inverse->VkFFTAppend(commandBuffer);
+		VkFFTAppend(app_forward, commandBuffer);
+		VkFFTAppend(app_inverse, commandBuffer);
 	}
 	vkEndCommandBuffer(commandBuffer);
 	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
@@ -416,10 +416,10 @@ int main()
 			double run_time[num_runs];
 			for (uint32_t r = 0; r < num_runs; r++) {
 				//Configuration + FFT application .
-				VkFFTConfiguration forward_configuration;
-				VkFFTConfiguration inverse_configuration;
-				VkFFTApplication app_forward;
-				VkFFTApplication app_inverse;
+				VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
+				VkFFTConfiguration inverse_configuration = defaultVkFFTConfiguration;
+				VkFFTApplication app_forward = defaultVkFFTApplication;
+				VkFFTApplication app_inverse = defaultVkFFTApplication;
 				//FFT + iFFT sample code.
 				//Setting up FFT configuration for forward and inverse FFT.
 				forward_configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
@@ -430,7 +430,7 @@ int main()
 				//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
 				switch (physicalDeviceProperties.vendorID) {
 				case 0x10DE://NVIDIA - change to 128 before Pascal
-					forward_configuration.coalescedMemory = 32;
+					forward_configuration.coalescedMemory = 16;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
 					if (forward_configuration.size[1] > 512)
 						forward_configuration.registerBoost = 4;
 					else
@@ -508,8 +508,8 @@ int main()
 				//free(buffer_input);
 
 				//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-				app_forward.initializeVulkanFFT(forward_configuration);
-				app_inverse.initializeVulkanFFT(inverse_configuration);
+				initializeVulkanFFT(&app_forward, forward_configuration);
+				initializeVulkanFFT(&app_inverse, inverse_configuration);
 				//Submit FFT+iFFT.
 				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 				if (batch == 0) batch = 1;
@@ -538,8 +538,8 @@ int main()
 
 				vkDestroyBuffer(device, buffer, NULL);
 				vkFreeMemory(device, bufferDeviceMemory, NULL);
-				app_forward.deleteVulkanFFT();
-				app_inverse.deleteVulkanFFT();
+				deleteVulkanFFT(&app_forward);
+				deleteVulkanFFT(&app_inverse);
 			}
 		}
 		free(buffer_input);
@@ -556,9 +556,8 @@ int main()
 	{
 		//1 - convolution
 		//Configuration + FFT application.
-		VkFFTConfiguration forward_configuration;
-		VkFFTConfiguration inverse_configuration;
-		VkFFTConfiguration convolution_configuration;
+		VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
+		VkFFTConfiguration convolution_configuration = defaultVkFFTConfiguration;
 		VkFFTApplication app_convolution;
 		VkFFTApplication app_kernel;
 		//Convolution sample code
@@ -640,7 +639,7 @@ int main()
 		//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 		transferDataFromCPU(kernel_input, &kernel, kernelSize);
 		//Initialize application responsible for the kernel. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-		app_kernel.initializeVulkanFFT(forward_configuration);
+		initializeVulkanFFT(&app_kernel, forward_configuration);
 		//Sample forward FFT command buffer allocation + execution performed on kernel. Second number determines how many times perform application in one submit. FFT can also be appended to user defined command buffers.
 
 		//Uncomment the line below if you want to perform kernel FFT. In this sample we use predefined identitiy kernel.
@@ -691,7 +690,7 @@ int main()
 		transferDataFromCPU(buffer_input, &buffer, bufferSize);
 
 		//Initialize application responsible for the convolution.
-		app_convolution.initializeVulkanFFT(convolution_configuration);
+		initializeVulkanFFT(&app_convolution, convolution_configuration);
 		//Sample forward FFT command buffer allocation + execution performed on kernel. FFT can also be appended to user defined command buffers.
 		performVulkanFFT(&app_convolution, 1);
 		//The kernel has been trasnformed.
@@ -719,8 +718,8 @@ int main()
 		vkFreeMemory(device, bufferDeviceMemory, NULL);
 		vkDestroyBuffer(device, kernel, NULL);
 		vkFreeMemory(device, kernelDeviceMemory, NULL);
-		app_kernel.deleteVulkanFFT();
-		app_convolution.deleteVulkanFFT();
+		deleteVulkanFFT(&app_kernel);
+		deleteVulkanFFT(&app_convolution);
 		vkDestroyFence(device, fence, NULL);
 		vkDestroyCommandPool(device, commandPool, NULL);
 		vkDestroyDevice(device, NULL);
@@ -732,9 +731,8 @@ int main()
 	{
 		//2 - zeropadding convolution
 		//Configuration + FFT application.
-		VkFFTConfiguration forward_configuration;
-		VkFFTConfiguration inverse_configuration;
-		VkFFTConfiguration convolution_configuration;
+		VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
+		VkFFTConfiguration convolution_configuration = defaultVkFFTConfiguration;
 		VkFFTApplication app_convolution;
 		VkFFTApplication app_kernel;
 		//Zeropadding Convolution sample code
@@ -817,7 +815,7 @@ int main()
 		//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 		transferDataFromCPU(kernel_input, &kernel, kernelSize);
 		//Initialize application responsible for the kernel. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-		app_kernel.initializeVulkanFFT(forward_configuration);
+		initializeVulkanFFT(&app_kernel, forward_configuration);
 		//Sample forward FFT command buffer allocation + execution performed on kernel. Second number determines how many times perform application in one submit. FFT can also be appended to user defined command buffers.
 
 		//Uncomment the line below if you want to perform kernel FFT. In this sample we use predefined identitiy kernel.
@@ -868,7 +866,7 @@ int main()
 		transferDataFromCPU(buffer_input, &buffer, bufferSize);
 
 		//Initialize application responsible for the convolution.
-		app_convolution.initializeVulkanFFT(convolution_configuration);
+		initializeVulkanFFT(&app_convolution, convolution_configuration);
 		//Sample forward FFT command buffer allocation + execution performed on kernel. FFT can also be appended to user defined command buffers.
 		performVulkanFFT(&app_convolution, 1);
 		//The kernel has been trasnformed.
@@ -896,8 +894,8 @@ int main()
 		vkFreeMemory(device, bufferDeviceMemory, NULL);
 		vkDestroyBuffer(device, kernel, NULL);
 		vkFreeMemory(device, kernelDeviceMemory, NULL);
-		app_kernel.deleteVulkanFFT();
-		app_convolution.deleteVulkanFFT();
+		deleteVulkanFFT(&app_kernel);
+		deleteVulkanFFT(&app_convolution);
 		vkDestroyFence(device, fence, NULL);
 		vkDestroyCommandPool(device, commandPool, NULL);
 		vkDestroyDevice(device, NULL);
@@ -909,9 +907,8 @@ int main()
 	{
 		//3 - multiple batches (kernels) convolution
 		//Configuration + FFT application.
-		VkFFTConfiguration forward_configuration;
-		VkFFTConfiguration inverse_configuration;
-		VkFFTConfiguration convolution_configuration;
+		VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
+		VkFFTConfiguration convolution_configuration = defaultVkFFTConfiguration;
 		VkFFTApplication app_convolution;
 		VkFFTApplication app_kernel;
 		//Convolution sample code
@@ -988,7 +985,7 @@ int main()
 		//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 		transferDataFromCPU(kernel_input, &kernel, kernelSize);
 		//Initialize application responsible for the kernel. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-		app_kernel.initializeVulkanFFT(forward_configuration);
+		initializeVulkanFFT(&app_kernel, forward_configuration);
 		//Sample forward FFT command buffer allocation + execution performed on kernel. Second number determines how many times perform application in one submit. FFT can also be appended to user defined command buffers.
 
 		//Uncomment the line below if you want to perform kernel FFT. In this sample we use predefined identitiy kernel.
@@ -1044,7 +1041,7 @@ int main()
 		transferDataFromCPU(buffer_input, &buffer, bufferSize);
 
 		//Initialize application responsible for the convolution.
-		app_convolution.initializeVulkanFFT(convolution_configuration);
+		initializeVulkanFFT(&app_convolution, convolution_configuration);
 		//Sample forward FFT command buffer allocation + execution performed on kernel. FFT can also be appended to user defined command buffers.
 		performVulkanFFT(&app_convolution, 1);
 		//The kernel has been trasnformed.
@@ -1077,8 +1074,8 @@ int main()
 		vkFreeMemory(device, outputBufferDeviceMemory, NULL);
 		vkDestroyBuffer(device, kernel, NULL);
 		vkFreeMemory(device, kernelDeviceMemory, NULL);
-		app_kernel.deleteVulkanFFT();
-		app_convolution.deleteVulkanFFT();
+		deleteVulkanFFT(&app_kernel);
+		deleteVulkanFFT(&app_convolution);
 		vkDestroyFence(device, fence, NULL);
 		vkDestroyCommandPool(device, commandPool, NULL);
 		vkDestroyDevice(device, NULL);
@@ -1102,8 +1099,8 @@ int main()
 			double run_time[num_runs];
 			for (uint32_t r = 0; r < num_runs; r++) {
 				//Configuration + FFT application .
-				VkFFTConfiguration forward_configuration;
-				VkFFTConfiguration inverse_configuration;
+				VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
+				VkFFTConfiguration inverse_configuration = defaultVkFFTConfiguration;
 				VkFFTApplication app_forward;
 				VkFFTApplication app_inverse;
 
@@ -1190,8 +1187,8 @@ int main()
 				//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 				transferDataFromCPU(buffer_input, &buffer, bufferSize);
 				//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-				app_forward.initializeVulkanFFT(forward_configuration);
-				app_inverse.initializeVulkanFFT(inverse_configuration);
+				initializeVulkanFFT(&app_forward, forward_configuration);
+				initializeVulkanFFT(&app_inverse, inverse_configuration);
 				//Submit FFT+iFFT.
 				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 				if (batch == 0) batch = 1;
@@ -1238,8 +1235,8 @@ int main()
 				//free(buffer_output);
 				vkDestroyBuffer(device, buffer, NULL);
 				vkFreeMemory(device, bufferDeviceMemory, NULL);
-				app_forward.deleteVulkanFFT();
-				app_inverse.deleteVulkanFFT();
+				deleteVulkanFFT(&app_forward);
+				deleteVulkanFFT(&app_inverse);
 			}
 		}
 		free(buffer_input);
@@ -1269,8 +1266,8 @@ int main()
 			double run_time[num_runs];
 			for (uint32_t r = 0; r < num_runs; r++) {
 				//Configuration + FFT application .
-				VkFFTConfiguration forward_configuration;
-				VkFFTConfiguration inverse_configuration;
+				VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
+				VkFFTConfiguration inverse_configuration = defaultVkFFTConfiguration;
 				VkFFTApplication app_forward;
 				VkFFTApplication app_inverse;
 				//FFT + iFFT sample code.
@@ -1348,8 +1345,8 @@ int main()
 				//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 				transferDataFromCPU(buffer_input, &buffer, bufferSize);
 				//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-				app_forward.initializeVulkanFFT(forward_configuration);
-				app_inverse.initializeVulkanFFT(inverse_configuration);
+				initializeVulkanFFT(&app_forward, forward_configuration);
+				initializeVulkanFFT(&app_inverse, inverse_configuration);
 				//Submit FFT+iFFT.
 				uint32_t batch = ((4096.0 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096.0 * 1024.0 * 1024.0) / bufferSize;
 				if (batch == 0) batch = 1;
@@ -1394,8 +1391,8 @@ int main()
 				//free(buffer_output);
 				vkDestroyBuffer(device, buffer, NULL);
 				vkFreeMemory(device, bufferDeviceMemory, NULL);
-				app_forward.deleteVulkanFFT();
-				app_inverse.deleteVulkanFFT();
+				deleteVulkanFFT(&app_forward);
+				deleteVulkanFFT(&app_inverse);
 			}
 		}
 		free(buffer_input);
