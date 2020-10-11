@@ -794,7 +794,7 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2 * sizeof(float));
 	//allocate LUT for double precision 
 	if (app->configuration.doublePrecision) {
-		double M_PI = 3.1415926535897932384626433832795;
+		double double_PI = 3.1415926535897932384626433832795;
 		if (axis->specializationConstants.passID > 0)
 			axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7 + axis->specializationConstants.fft_dim_full) * 2 * sizeof(double);
 		else
@@ -804,43 +804,43 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
 			for (uint32_t j = 0; j < pow(8, i); j++) {
 				if (inverse) {
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * M_PI / pow(8, i));
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * M_PI / pow(8, i));
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i));
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i));
 				}
 				else {
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * M_PI / pow(8, i));
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * M_PI / pow(8, i));
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i));
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i));
 				}
 			}
 		}
 		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
 			for (uint32_t j = 0; j < pow(8, i); j++) {
 				if (inverse) {
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * M_PI / pow(8, i) / 2);
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * M_PI / pow(8, i) / 2);
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i) / 2);
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i) / 2);
 				}
 				else {
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * M_PI / pow(8, i) / 2);
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * M_PI / pow(8, i) / 2);
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i) / 2);
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i) / 2);
 				}
 			}
 		}
 		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
 			for (uint32_t j = 0; j < pow(8, i); j++) {
 				if (inverse) {
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * M_PI / pow(8, i) / 4);
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * M_PI / pow(8, i) / 4);
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i) / 4);
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i) / 4);
 				}
 				else {
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * M_PI / pow(8, i) / 4);
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * M_PI / pow(8, i) / 4);
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i) / 4);
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i) / 4);
 				}
 			}
 		}
 		if (axis->specializationConstants.passID > 0)
 			for (uint32_t i = 0; i < axis->specializationConstants.fftDim; i++) {
 				for (uint32_t j = 0; j < axis->specializationConstants.fft_dim_full / axis->specializationConstants.fftDim; j++) {
-					double angle = 2 * M_PI * ((i * j) / double(axis->specializationConstants.fft_dim_full));
+					double angle = 2 * double_PI * ((i * j) / double(axis->specializationConstants.fft_dim_full));
 					if (inverse) {
 						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = cos(-angle);
 						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(-angle);
@@ -1602,7 +1602,7 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 	
 	//allocate LUT for double precision 
 	if (app->configuration.doublePrecision) {
-		double M_PI = 3.1415926535897932384626433832795;
+		double double_PI = 3.1415926535897932384626433832795;
 		if (axis->specializationConstants.passID>0)
 			axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7 + axis->specializationConstants.fft_dim_full) * 2 * sizeof(double);
 		else
@@ -1612,43 +1612,43 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
 			for (uint32_t j = 0; j < pow(8, i); j++) {
 				if (inverse) {
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * M_PI / pow(8, i));
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * M_PI / pow(8, i));
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i));
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i));
 				}
 				else {
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * M_PI / pow(8, i));
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * M_PI / pow(8, i));
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i));
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i));
 				}
 			}
 		}
 		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
 			for (uint32_t j = 0; j < pow(8, i); j++) {
 				if (inverse) {
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * M_PI / pow(8, i) / 2);
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * M_PI / pow(8, i) / 2);
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i) / 2);
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i) / 2);
 				}
 				else {
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * M_PI / pow(8, i) / 2);
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * M_PI / pow(8, i) / 2);
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i) / 2);
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i) / 2);
 				}
 			}
 		}
 		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
 			for (uint32_t j = 0; j < pow(8, i); j++) {
 				if (inverse) {
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * M_PI / pow(8, i)/4);
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * M_PI / pow(8, i) / 4);
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i)/4);
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i) / 4);
 				}
 				else {
-					tempLUT[2*(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * M_PI / pow(8, i) / 4);
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * M_PI / pow(8, i) / 4);
+					tempLUT[2*(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i) / 4);
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i) / 4);
 				}
 			}
 		}
 		if (axis->specializationConstants.passID > 0)
 			for (uint32_t i = 0; i < axis->specializationConstants.fftDim; i++) {
 				for (uint32_t j = 0; j < axis->specializationConstants.fft_dim_full/ axis->specializationConstants.fftDim; j++) {
-					double angle = 2 * M_PI * ((i* j) / double(axis->specializationConstants.fft_dim_full));
+					double angle = 2 * double_PI * ((i* j) / double(axis->specializationConstants.fft_dim_full));
 					if (inverse) {
 						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j* axis->specializationConstants.fftDim)] = cos(-angle);
 						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(-angle);
