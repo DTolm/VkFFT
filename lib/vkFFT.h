@@ -24,11 +24,17 @@ typedef struct {
 	VkBool32 symmetricKernel; //specify if kernel in 2x2 or 3x3 matrix convolution is symmetric
 	VkBool32 isInputFormatted; //specify if input buffer is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1) - 0 - padded, 1 - not padded
 	VkBool32 isOutputFormatted; //specify if output buffer is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1) - 0 - padded, 1 - not padded
+	VkBool32 doublePrecision; //1 to enable
+	VkBool32 halfPrecision; //1 to enable. Not implemented yet.
+	uint32_t sharedMemorySize;//in bytes. For now Vulkan is optimized for 32KB of shared memory
 	uint32_t registerBoost; //specify if register file size is bigger than shared memory (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4)
 	char shaderPath[256]; //path to shaders, can be selected automatically in CMake
 	uint32_t coalescedMemory;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 	VkDevice* device;
-
+	VkQueue* queue;
+	VkCommandPool* commandPool;
+	VkFence* fence;
+	VkPhysicalDevice* physicalDevice;
 	VkDeviceSize* bufferSize;
 	VkDeviceSize* inputBufferSize;
 	VkDeviceSize* outputBufferSize;
@@ -41,7 +47,7 @@ typedef struct {
 	VkBuffer* kernel;
 } VkFFTConfiguration;
 
-VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1},1,1,1,1,1,8,{0,0,0}, {0,0},0,0,0,0,0,0,1, "shaders/", 32, 0, 0,0,0,0,0,0,0,0 };
+VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1},1,1,1,1,1,8,{0,0,0}, {0,0},0,0,0,0,0,0,0,0, 32768, 1, "shaders/", 32, 0,0,0,0,0, 0,0,0,0,0,0,0,0 };
 
 typedef struct {
 	uint32_t localSize[3];
@@ -83,6 +89,9 @@ typedef struct {
 	VkDescriptorSet descriptorSet;
 	VkPipelineLayout pipelineLayout;
 	VkPipeline pipeline;
+	VkDeviceSize bufferLUTSize;
+	VkBuffer bufferLUT;
+	VkDeviceMemory bufferLUTDeviceMemory;
 } VkFFTAxis;
 typedef struct {
 	uint32_t transposeBlock[3];
@@ -135,162 +144,170 @@ uint32_t* VkFFTReadShader(uint32_t* length, const char* filename) {
 	}
 void VkFFTInitShader(VkFFTApplication* app, uint32_t shader_id, VkShaderModule* shaderModule) {
 	char filename[512];
+	char precision[10];
+	if (app->configuration.doublePrecision)
+		sprintf(precision, "double/");
+	else
+		if (app->configuration.halfPrecision)
+			sprintf(precision, "half/");
+		else
+			sprintf(precision, "float/");
 	switch (shader_id) {
 	case 0:
 		//printf("vkFFT_single_c2c\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_c2c.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_c2c.spv");
 		break;
 	case 1:
 		//printf("vkFFT_single_c2r\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_c2r.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_c2r.spv");
 		break;
 	case 2:
 		//printf("vkFFT_single_c2c_strided\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_c2c_strided.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_c2c_strided.spv");
 		break;
 	case 3:
 		//printf("vkFFT_single_r2c\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_r2c.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_r2c.spv");
 		break;
 	case 4:
 		//printf("vkFFT_single_r2c_zp\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_r2c_zp.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_r2c_zp.spv");
 		break;
 	case 5:
 		//printf("vkFFT_single_c2c_afterR2C\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_c2c_afterR2C.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_c2c_afterR2C.spv");
 		break;
 	case 6:
 		//printf("vkFFT_single_c2c_beforeC2R\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_c2c_beforeC2R.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_c2c_beforeC2R.spv");
 		break;
 	case 7:
 		//printf("vkFFT_grouped_c2c\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_grouped_c2c.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_grouped_c2c.spv");
 		break;
 	case 8:
 		//printf("vkFFT_grouped_convolution_1x1\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_grouped_convolution_1x1.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_grouped_convolution_1x1.spv");
 		break;
 	case 9:
 		//printf("vkFFT_single_convolution_1x1\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_convolution_1x1.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_convolution_1x1.spv");
 		break;
 	case 10:
 		//printf("vkFFT_single_strided_convolution_1x1\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_strided_convolution_1x1.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_strided_convolution_1x1.spv");
 		break;
 	case 11:
 		//printf("vkFFT_grouped_convolution_symmetric_2x2\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_grouped_convolution_symmetric_2x2.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_grouped_convolution_symmetric_2x2.spv");
 		break;
 	case 12:
 		//printf("vkFFT_single_convolution_symmetric_2x2\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_convolution_symmetric_2x2.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_convolution_symmetric_2x2.spv");
 		break;
 	case 13:
 		//printf("vkFFT_single_strided_convolution_symmetric_2x2\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_strided_convolution_symmetric_2x2.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_strided_convolution_symmetric_2x2.spv");
 		break;
 	case 14:
 		//printf("vkFFT_grouped_convolution_nonsymmetric_2x2\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_grouped_convolution_nonsymmetric_2x2.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_grouped_convolution_nonsymmetric_2x2.spv");
 		break;
 	case 15:
 		//printf("vkFFT_single_convolution_nonsymmetric_2x2\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_convolution_nonsymmetric_2x2.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_convolution_nonsymmetric_2x2.spv");
 		break;
 	case 16:
 		//printf("vkFFT_single_strided_convolution_nonsymmetric_2x2\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_strided_convolution_nonsymmetric_2x2.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_strided_convolution_nonsymmetric_2x2.spv");
 		break;
 	case 17:
 		//printf("vkFFT_grouped_convolution_symmetric_3x3\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_grouped_convolution_symmetric_3x3.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_grouped_convolution_symmetric_3x3.spv");
 		break;
 	case 18:
 		//printf("vkFFT_single_convolution_symmetric_3x3\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_convolution_symmetric_3x3.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_convolution_symmetric_3x3.spv");
 		break;
 	case 19:
 		//printf("vkFFT_single_strided_convolution_symmetric_3x3\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_strided_convolution_symmetric_3x3.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_strided_convolution_symmetric_3x3.spv");
 		break;
 	case 20:
 		//printf("vkFFT_grouped_convolution_nonsymmetric_3x3\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_grouped_convolution_nonsymmetric_3x3.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_grouped_convolution_nonsymmetric_3x3.spv");
 		break;
 	case 21:
 		//printf("vkFFT_single_convolution_nonsymmetric_3x3\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_convolution_nonsymmetric_3x3.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_convolution_nonsymmetric_3x3.spv");
 		break;
 	case 22:
 		//printf("vkFFT_single_strided_convolution_nonsymmetric_3x3\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_single_strided_convolution_nonsymmetric_3x3.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_single_strided_convolution_nonsymmetric_3x3.spv");
 		break;
 	case 23:
 		//printf("vkFFT_single_c2r_8192\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "8192/vkFFT_single_c2r_8192.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "8192/vkFFT_single_c2r_8192.spv");
 		break;
 	case 24:
 		//printf("vkFFT_single_r2c_8192\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "8192/vkFFT_single_r2c_8192.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "8192/vkFFT_single_r2c_8192.spv");
 		break;
 	case 25:
 		//printf("vkFFT_single_c2c_8192\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "8192/vkFFT_single_c2c_8192.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "8192/vkFFT_single_c2c_8192.spv");
 		break;
 	case 26:
 		//printf("vkFFT_grouped_strided_convolution_1x1\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_grouped_strided_convolution_1x1.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_grouped_strided_convolution_1x1.spv");
 		break;
 	case 27:
 		//printf("vkFFT_grouped_strided_convolution_symmetric_2x2\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_grouped_strided_convolution_symmetric_2x2.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_grouped_strided_convolution_symmetric_2x2.spv");
 		break;
 	case 28:
 		//printf("vkFFT_grouped_strided_convolution_nonsymmetric_2x2\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_grouped_strided_convolution_nonsymmetric_2x2.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_grouped_strided_convolution_nonsymmetric_2x2.spv");
 		break;
 	case 29:
 		//printf("vkFFT_grouped_strided_convolution_symmetric_3x3\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_grouped_strided_convolution_symmetric_3x3.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_grouped_strided_convolution_symmetric_3x3.spv");
 		break;
 	case 30:
 		//printf("vkFFT_grouped_strided_convolution_nonsymmetric_3x3\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "vkFFT_grouped_strided_convolution_nonsymmetric_3x3.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "vkFFT_grouped_strided_convolution_nonsymmetric_3x3.spv");
 		break;
 	case 33:
 		//printf("vkFFT_single_c2r_16384\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "16384/vkFFT_single_c2r_16384.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "16384/vkFFT_single_c2r_16384.spv");
 		break;
 	case 34:
 		//printf("vkFFT_single_r2c_16384\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "16384/vkFFT_single_r2c_16384.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "16384/vkFFT_single_r2c_16384.spv");
 		break;
 	case 35:
 		//printf("vkFFT_single_c2c_16384\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "16384/vkFFT_single_c2c_16384.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "16384/vkFFT_single_c2c_16384.spv");
 		break;
 	case 36:
 		//printf("vkFFT_single_c2r_for_transposition_16384\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "16384/vkFFT_single_c2r_for_transposition_16384.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "16384/vkFFT_single_c2r_for_transposition_16384.spv");
 		break;
 	case 37:
 		//printf("vkFFT_single_r2c_for_transposition_16384\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "16384/vkFFT_single_r2c_for_transposition_16384.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "16384/vkFFT_single_r2c_for_transposition_16384.spv");
 		break;
 	case 38:
 		//printf("vkFFT_single_c2c_for_transposition_16384\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "16384/vkFFT_single_c2c_for_transposition_16384.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "16384/vkFFT_single_c2c_for_transposition_16384.spv");
 		break;
 	case 39:
 		//printf("vkFFT_single_c2c_afterR2C_for_transposition_16384\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "16384/vkFFT_single_c2c_afterR2C_for_transposition_16384.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "16384/vkFFT_single_c2c_afterR2C_for_transposition_16384.spv");
 		break;
 	case 40:
 		//printf("vkFFT_single_c2c_beforeC2R_for_transposition_16384\n");
-		sprintf(filename, "%s%s", app->configuration.shaderPath, "16384/vkFFT_single_c2c_beforeC2R_for_transposition_16384.spv");
+		sprintf(filename, "%s%s%s", app->configuration.shaderPath, precision, "16384/vkFFT_single_c2c_beforeC2R_for_transposition_16384.spv");
 		break;
 	}
 
@@ -304,10 +321,81 @@ void VkFFTInitShader(VkFFTApplication* app, uint32_t shader_id, VkShaderModule* 
 	free(code);
 
 }
+uint32_t findMemoryType(VkFFTApplication* app, uint32_t memoryTypeBits, VkMemoryPropertyFlags properties) {
+	VkPhysicalDeviceMemoryProperties memoryProperties = {};
 
+	vkGetPhysicalDeviceMemoryProperties(app->configuration.physicalDevice[0], &memoryProperties);
+
+	for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
+		if ((memoryTypeBits & (1 << i)) &&
+			((memoryProperties.memoryTypes[i].propertyFlags & properties) == properties))
+			return i;
+	}
+	return -1;
+}
+void allocateFFTBuffer(VkFFTApplication* app, VkBuffer* buffer, VkDeviceMemory* deviceMemory, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags propertyFlags, VkDeviceSize size) {
+	uint32_t queueFamilyIndices;
+	VkBufferCreateInfo bufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	bufferCreateInfo.queueFamilyIndexCount = 1;
+	bufferCreateInfo.pQueueFamilyIndices = &queueFamilyIndices;
+	bufferCreateInfo.size = size;
+	bufferCreateInfo.usage = usageFlags;
+	vkCreateBuffer(app->configuration.device[0], &bufferCreateInfo, NULL, buffer);
+	VkMemoryRequirements memoryRequirements = {};
+	vkGetBufferMemoryRequirements(app->configuration.device[0], buffer[0], &memoryRequirements);
+	VkMemoryAllocateInfo memoryAllocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+	memoryAllocateInfo.allocationSize = memoryRequirements.size;
+	memoryAllocateInfo.memoryTypeIndex = findMemoryType(app, memoryRequirements.memoryTypeBits, propertyFlags);
+	vkAllocateMemory(app->configuration.device[0], &memoryAllocateInfo, NULL, deviceMemory);
+	vkBindBufferMemory(app->configuration.device[0], buffer[0], deviceMemory[0], 0);
+}
+void transferDataFromCPU(VkFFTApplication* app, void* arr, VkBuffer* buffer, VkDeviceSize bufferSize) {
+	VkDeviceSize stagingBufferSize = bufferSize;
+	VkBuffer stagingBuffer = {};
+	VkDeviceMemory stagingBufferMemory = {};
+	allocateFFTBuffer(app, &stagingBuffer, &stagingBufferMemory, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBufferSize);
+
+	void* data;
+	vkMapMemory(app->configuration.device[0], stagingBufferMemory, 0, stagingBufferSize, 0, &data);
+	memcpy(data, arr, stagingBufferSize);
+	vkUnmapMemory(app->configuration.device[0], stagingBufferMemory);
+	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+	commandBufferAllocateInfo.commandPool = app->configuration.commandPool[0];
+	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	commandBufferAllocateInfo.commandBufferCount = 1;
+	VkCommandBuffer commandBuffer = {};
+	vkAllocateCommandBuffers(app->configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
+	VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
+	VkBufferCopy copyRegion = {};
+	copyRegion.srcOffset = 0;
+	copyRegion.dstOffset = 0;
+	copyRegion.size = stagingBufferSize;
+	vkCmdCopyBuffer(commandBuffer, stagingBuffer, buffer[0], 1, &copyRegion);
+	vkEndCommandBuffer(commandBuffer);
+	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffer;
+	vkQueueSubmit(app->configuration.queue[0], 1, &submitInfo, app->configuration.fence[0]);
+	vkWaitForFences(app->configuration.device[0], 1, app->configuration.fence, VK_TRUE, 100000000000);
+	vkResetFences(app->configuration.device[0], 1, app->configuration.fence);
+	vkFreeCommandBuffers(app->configuration.device[0], app->configuration.commandPool[0], 1, &commandBuffer);
+	vkDestroyBuffer(app->configuration.device[0], stagingBuffer, NULL);
+	vkFreeMemory(app->configuration.device[0], stagingBufferMemory, NULL);
+}
 void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, VkBool32 inverse) {
 	//get radix stages
 	VkFFTAxis* axis = &FFTPlan->supportAxes[axis_id - 1][axis_upload_id];
+	uint32_t maxSingleSizeNonStrided;
+	if (app->configuration.doublePrecision)
+		maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (2 * sizeof(double));
+	else
+		if (app->configuration.halfPrecision)
+			maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (4);
+		else
+			maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (2 * sizeof(float));
 	if (axis_id == 1) {
 		//configure radix stages
 		uint32_t logSize = log2(app->configuration.size[axis_id]);
@@ -318,14 +406,14 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 			}
 		}
 		uint32_t temp = app->configuration.size[axis_id];
-		uint32_t startStage = 4096;
+		uint32_t startStage = maxSingleSizeNonStrided;
 		uint32_t continueStage = 256;
 		uint32_t maxPassId[2] = { 0,0 };
 		uint32_t minPassId[2] = { 0,0 };
 		maxPassId[0] += log2(app->configuration.registerBoost);
-		uint32_t maxSingleSize = 8 * 4096 / app->configuration.coalescedMemory;
-		maxPassId[1] = log2(maxSingleSize / 256);
-		minPassId[1] = (maxSingleSize >= 512) ? 1 : 0;
+		uint32_t maxSingleSizeStrided = app->configuration.sharedMemorySize / app->configuration.coalescedMemory;
+		maxPassId[1] = log2(maxSingleSizeStrided / 256);
+		minPassId[1] = (maxSingleSizeStrided >= 512) ? 1 : 0;
 		//maxPassId[1] += log2(app->configuration.registerBoost);//in development
 		for (uint32_t i = 0; i < 8; i++) {
 			for (uint32_t j = 0; j < 8; j++) {
@@ -358,9 +446,10 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 			//first pass is non-strided, special case
 			switch (app->configuration.radix) {
 			case 8: {
-				uint32_t logSize0Pass = (12 + passId[0] < logSize) ? 12 + passId[0] : logSize; //4096 + shift
-				if ((axis_upload_id + 1 == numPasses[passId[0]][passId[1]] - 1) && (logSize - logSize0Pass < 3))
+				uint32_t logSize0Pass = (log2(maxSingleSizeNonStrided) + passId[0] < logSize) ? log2(maxSingleSizeNonStrided) + passId[0] : logSize; //4096 + shift
+				if ((axis_upload_id + 1 == numPasses[passId[0]][passId[1]] - 1) && (logSize - logSize0Pass < maxSingleSizeStrided))
 					logSize0Pass -= (3 - (logSize - logSize0Pass));
+
 				uint32_t stage8 = logSize0Pass / 3;
 				uint32_t stage4 = 0;
 				uint32_t stage2 = 0;
@@ -421,7 +510,7 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 		}
 		else {
 			//passes after first are done similar to strided passes in y and z
-			uint32_t logSizeLaterPass = (logSize - 12 - passId[0] < 3) ? 3 : logSize - 12 - passId[0]; //4096 + shift
+			uint32_t logSizeLaterPass = (logSize - log2(maxSingleSizeNonStrided) - passId[0] < 3) ? 3 : logSize - log2(maxSingleSizeNonStrided) - passId[0]; //4096 + shift
 			switch (app->configuration.radix) {
 			case 8: {
 				uint32_t stage8 = logSizeLaterPass / 3;
@@ -550,9 +639,9 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 		uint32_t numPasses[8] = { 0,0,0,0,0,0,0,0 };//256-512-1024-2048(256KB)-4096(256KB)-8k(future?)-16k(future?) - find correct strided FFT configuration
 		uint32_t temp = app->configuration.size[axis_id];
 		uint32_t startStage = 256;
-		uint32_t maxSingleSize = 8 * 4096 / app->configuration.coalescedMemory;
-		uint32_t maxPassId = log2(maxSingleSize / 256);
-		uint32_t minPassId = (maxSingleSize >= 512) ? 1 : 0;
+		uint32_t maxSingleSizeStrided = app->configuration.sharedMemorySize / app->configuration.coalescedMemory;
+		uint32_t maxPassId = log2(maxSingleSizeStrided / 256);
+		uint32_t minPassId = (maxSingleSizeStrided >= 512) ? 1 : 0;
 		//maxPassId += log2(app->configuration.registerBoost); //in development
 		for (uint32_t i = 0; i < 8; i++) {
 			while (temp > 1)
@@ -696,7 +785,76 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 	}
 	axis->specializationConstants.passID = FFTPlan->numSupportAxisUploads[axis_id - 1] - 1 - axis_upload_id;
 	axis->specializationConstants.fft_dim_full = app->configuration.size[axis_id];
-	axis->groupedBatch = (4096 / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory / 8) ? 4096 / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / 8;
+	if (app->configuration.doublePrecision)
+		axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2 * sizeof(double));
+	else
+		if (app->configuration.halfPrecision)
+			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / 4;
+		else
+			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2 * sizeof(float));
+	//allocate LUT for double precision 
+	if (app->configuration.doublePrecision) {
+		double M_PI = 3.1415926535897932384626433832795;
+		if (axis->specializationConstants.passID > 0)
+			axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7 + axis->specializationConstants.fft_dim_full) * 2 * sizeof(double);
+		else
+			axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7) * 2 * sizeof(double);
+
+		double* tempLUT = (double*)malloc(axis->bufferLUTSize);
+		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+			for (uint32_t j = 0; j < pow(8, i); j++) {
+				if (inverse) {
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * M_PI / pow(8, i));
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * M_PI / pow(8, i));
+				}
+				else {
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * M_PI / pow(8, i));
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * M_PI / pow(8, i));
+				}
+			}
+		}
+		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+			for (uint32_t j = 0; j < pow(8, i); j++) {
+				if (inverse) {
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * M_PI / pow(8, i) / 2);
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * M_PI / pow(8, i) / 2);
+				}
+				else {
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * M_PI / pow(8, i) / 2);
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * M_PI / pow(8, i) / 2);
+				}
+			}
+		}
+		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+			for (uint32_t j = 0; j < pow(8, i); j++) {
+				if (inverse) {
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * M_PI / pow(8, i) / 4);
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * M_PI / pow(8, i) / 4);
+				}
+				else {
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * M_PI / pow(8, i) / 4);
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * M_PI / pow(8, i) / 4);
+				}
+			}
+		}
+		if (axis->specializationConstants.passID > 0)
+			for (uint32_t i = 0; i < axis->specializationConstants.fftDim; i++) {
+				for (uint32_t j = 0; j < axis->specializationConstants.fft_dim_full / axis->specializationConstants.fftDim; j++) {
+					double angle = 2 * M_PI * ((i * j) / double(axis->specializationConstants.fft_dim_full));
+					if (inverse) {
+						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = cos(-angle);
+						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(-angle);
+					}
+					else {
+						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = cos(angle);
+						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(angle);
+					}
+				}
+			}
+		allocateFFTBuffer(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
+		transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+		free(tempLUT);
+	}
 	//axis->groupedBatch = ((axis_upload_id>0)&&(axis->groupedBatch > axis->specializationConstants.stageStartSize)) ? axis->specializationConstants.stageStartSize : axis->groupedBatch;
 	//configure strides
 	//perform r2c
@@ -744,14 +902,15 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 		descriptorPoolSize.descriptorCount = 3;
 	if ((axis_id == 2) && (axis_upload_id == 0) && (app->configuration.FFTdim == 3) && (app->configuration.performConvolution))
 		descriptorPoolSize.descriptorCount = 3;
-
+	if (app->configuration.doublePrecision)
+		descriptorPoolSize.descriptorCount++;
 	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
 	descriptorPoolCreateInfo.poolSizeCount = 1;
 	descriptorPoolCreateInfo.pPoolSizes = &descriptorPoolSize;
 	descriptorPoolCreateInfo.maxSets = 1;
 	vkCreateDescriptorPool(app->configuration.device[0], &descriptorPoolCreateInfo, NULL, &axis->descriptorPool);
 
-	const VkDescriptorType descriptorType[3] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
+	const VkDescriptorType descriptorType[4] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 	VkDescriptorSetLayoutBinding* descriptorSetLayoutBindings;
 	descriptorSetLayoutBindings = (VkDescriptorSetLayoutBinding*)malloc(descriptorPoolSize.descriptorCount * sizeof(VkDescriptorSetLayoutBinding));
 	for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
@@ -822,6 +981,11 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 			descriptorBufferInfo.buffer = app->configuration.kernel[0];
 			descriptorBufferInfo.offset = 0;
 			descriptorBufferInfo.range = app->configuration.kernelSize[0];
+		}
+		if ((i == descriptorPoolSize.descriptorCount - 1) && (app->configuration.doublePrecision)) {
+			descriptorBufferInfo.buffer = axis->bufferLUT;
+			descriptorBufferInfo.offset = 0;
+			descriptorBufferInfo.range = axis->bufferLUTSize;
 		}
 		VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
 		writeDescriptorSet.dstSet = axis->descriptorSet;
@@ -1037,7 +1201,14 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, VkBool32 inverse) {
 	//get radix stages
 	VkFFTAxis* axis = &FFTPlan->axes[axis_id][axis_upload_id];
-		
+	uint32_t maxSingleSizeNonStrided;
+	if (app->configuration.doublePrecision)
+		maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (2 * sizeof(double));
+	else
+		if (app->configuration.halfPrecision)
+			maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (4);
+		else
+			maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (2 * sizeof(float));
 	if (axis_id == 0) {
 		//configure radix stages
 		uint32_t logSize = log2(app->configuration.size[axis_id]);
@@ -1048,14 +1219,14 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 			}
 		}
 		uint32_t temp = app->configuration.size[axis_id];
-		uint32_t startStage = 4096;
+		uint32_t startStage = maxSingleSizeNonStrided;
 		uint32_t continueStage = 256;
 		uint32_t maxPassId[2] = { 0,0 };
 		uint32_t minPassId[2] = { 0,0 };
 		maxPassId[0] += log2(app->configuration.registerBoost);
-		uint32_t maxSingleSize = 8 * 4096 / app->configuration.coalescedMemory;
-		maxPassId[1] = log2(maxSingleSize / 256);
-		minPassId[1] = (maxSingleSize >= 512) ? 1 : 0;
+		uint32_t maxSingleSizeStrided = app->configuration.sharedMemorySize / app->configuration.coalescedMemory;
+		maxPassId[1] = log2(maxSingleSizeStrided / 256);
+		minPassId[1] = (maxSingleSizeStrided >= 512) ? 1 : 0;
 		//maxPassId[1] += log2(app->configuration.registerBoost);//in development
 		for (uint32_t i = 0; i < 8; i++) {
 			for (uint32_t j = 0; j < 8; j++) {
@@ -1088,7 +1259,7 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 			//first pass is non-strided, special case
 			switch (app->configuration.radix) {
 			case 8: {
-				uint32_t logSize0Pass = (12 + passId[0] < logSize) ? 12 + passId[0] : logSize; //4096 + shift
+				uint32_t logSize0Pass = (log2(maxSingleSizeNonStrided) + passId[0] < logSize) ? log2(maxSingleSizeNonStrided) + passId[0] : logSize; //4096 + shift
 				if ((axis_upload_id + 1 == numPasses[passId[0]][passId[1]] - 1) && (logSize - logSize0Pass < 3))
 					logSize0Pass -= (3 - (logSize - logSize0Pass));
 				uint32_t stage8 = logSize0Pass / 3;
@@ -1116,10 +1287,7 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 					axis->specializationConstants.fftDim *= 2;
 				}
 				axis->specializationConstants.stageStartSize = 1;
-				if (app->configuration.performR2C)
-					axis->specializationConstants.fft_dim_x = app->configuration.size[0] / 2;
-				else
-					axis->specializationConstants.fft_dim_x = app->configuration.size[0];
+				axis->specializationConstants.fft_dim_x = axis->specializationConstants.stageStartSize;
 
 				break;
 			}
@@ -1151,7 +1319,7 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 		}
 		else {
 			//passes after first are done similar to strided passes in y and z
-			uint32_t logSizeLaterPass = (logSize - 12 - passId[0]<3) ? 3 : logSize - 12 - passId[0]; //4096 + shift
+			uint32_t logSizeLaterPass = (logSize - log2(maxSingleSizeNonStrided) - passId[0]<3) ? 3 : logSize - log2(maxSingleSizeNonStrided) - passId[0]; //4096 + shift
 			switch (app->configuration.radix) {
 			case 8: {
 				uint32_t stage8 = logSizeLaterPass / 3;
@@ -1185,10 +1353,7 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 						}
 					}
 					axis->specializationConstants.stageStartSize = FFTPlan->axes[axis_id][axis_upload_id - 1].specializationConstants.stageStartSize * FFTPlan->axes[axis_id][axis_upload_id - 1].specializationConstants.fftDim;
-					if (app->configuration.performR2C)
-						axis->specializationConstants.fft_dim_x = app->configuration.size[0] / 2;
-					else
-						axis->specializationConstants.fft_dim_x = app->configuration.size[0];
+					axis->specializationConstants.fft_dim_x = axis->specializationConstants.stageStartSize;
 				}
 				else {
 					if (axis_upload_id < numPasses[passId[0]][passId[1]] - 1) {
@@ -1214,10 +1379,7 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 							axis->specializationConstants.stageRadix[1] = 2;
 						}
 						axis->specializationConstants.stageStartSize = FFTPlan->axes[axis_id][axis_upload_id - 1].specializationConstants.stageStartSize * FFTPlan->axes[axis_id][axis_upload_id - 1].specializationConstants.fftDim;
-						if (app->configuration.performR2C)
-							axis->specializationConstants.fft_dim_x = app->configuration.size[0] / 2;
-						else
-							axis->specializationConstants.fft_dim_x = app->configuration.size[0];
+						axis->specializationConstants.fft_dim_x = axis->specializationConstants.stageStartSize;
 					}
 					else {
 						uint32_t locLogSize = (logSizeLaterPass - (8 + passId[1]) * (numPasses[passId[0]][passId[1]] - 2) < 3) ? 3 : logSizeLaterPass - (8 + passId[1]) * (numPasses[passId[0]][passId[1]] - 2);
@@ -1240,10 +1402,7 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 							axis->specializationConstants.stageRadix[1] = 2;
 						}
 						axis->specializationConstants.stageStartSize = FFTPlan->axes[axis_id][axis_upload_id - 1].specializationConstants.stageStartSize * FFTPlan->axes[axis_id][axis_upload_id - 1].specializationConstants.fftDim;
-						if (app->configuration.performR2C)
-							axis->specializationConstants.fft_dim_x = app->configuration.size[0] / 2;
-						else
-							axis->specializationConstants.fft_dim_x = app->configuration.size[0];
+						axis->specializationConstants.fft_dim_x = axis->specializationConstants.stageStartSize;
 					}
 				}
 
@@ -1282,9 +1441,9 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 		uint32_t numPasses[8] = { 0,0,0,0,0,0,0,0 };//256-512-1024-2048(256KB)-4096(256KB)-8k(future?)-16k(future?) - find correct strided FFT configuration
 		uint32_t temp = app->configuration.size[axis_id];
 		uint32_t startStage = 256;
-		uint32_t maxSingleSize = 8 * 4096 / app->configuration.coalescedMemory;
-		uint32_t maxPassId = log2(maxSingleSize / 256);
-		uint32_t minPassId = (maxSingleSize >= 512) ? 1 : 0;
+		uint32_t maxSingleSizeStrided = app->configuration.sharedMemorySize / app->configuration.coalescedMemory;
+		uint32_t maxPassId = log2(maxSingleSizeStrided / 256);
+		uint32_t minPassId = (maxSingleSizeStrided >= 512) ? 1 : 0;
 		//maxPassId += log2(app->configuration.registerBoost);//in development
 		for (uint32_t i = 0; i < 8; i++) {
 			while (temp > 1)
@@ -1433,7 +1592,77 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 	//axis->groupedBatch = (4096 / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory / 8) ? 4096 / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / 8;
 	axis->specializationConstants.passID = FFTPlan->numAxisUploads[axis_id] - 1 - axis_upload_id;
 	axis->specializationConstants.fft_dim_full = app->configuration.size[axis_id];
-	axis->groupedBatch = (4096 / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory / 8) ? 4096 / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / 8;
+	if (app->configuration.doublePrecision)
+		axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2 * sizeof(double));
+	else
+		if (app->configuration.halfPrecision)
+			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / 4;
+		else
+			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2*sizeof(float));
+	
+	//allocate LUT for double precision 
+	if (app->configuration.doublePrecision) {
+		double M_PI = 3.1415926535897932384626433832795;
+		if (axis->specializationConstants.passID>0)
+			axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7 + axis->specializationConstants.fft_dim_full) * 2 * sizeof(double);
+		else
+			axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7) * 2 * sizeof(double);
+
+		double* tempLUT = (double*)malloc(axis->bufferLUTSize);
+		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+			for (uint32_t j = 0; j < pow(8, i); j++) {
+				if (inverse) {
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * M_PI / pow(8, i));
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * M_PI / pow(8, i));
+				}
+				else {
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * M_PI / pow(8, i));
+					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * M_PI / pow(8, i));
+				}
+			}
+		}
+		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+			for (uint32_t j = 0; j < pow(8, i); j++) {
+				if (inverse) {
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * M_PI / pow(8, i) / 2);
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * M_PI / pow(8, i) / 2);
+				}
+				else {
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * M_PI / pow(8, i) / 2);
+					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * M_PI / pow(8, i) / 2);
+				}
+			}
+		}
+		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+			for (uint32_t j = 0; j < pow(8, i); j++) {
+				if (inverse) {
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * M_PI / pow(8, i)/4);
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * M_PI / pow(8, i) / 4);
+				}
+				else {
+					tempLUT[2*(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * M_PI / pow(8, i) / 4);
+					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * M_PI / pow(8, i) / 4);
+				}
+			}
+		}
+		if (axis->specializationConstants.passID > 0)
+			for (uint32_t i = 0; i < axis->specializationConstants.fftDim; i++) {
+				for (uint32_t j = 0; j < axis->specializationConstants.fft_dim_full/ axis->specializationConstants.fftDim; j++) {
+					double angle = 2 * M_PI * ((i* j) / double(axis->specializationConstants.fft_dim_full));
+					if (inverse) {
+						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j* axis->specializationConstants.fftDim)] = cos(-angle);
+						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(-angle);
+					}
+					else {
+						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = cos(angle);
+						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(angle);
+					}
+				}
+			}
+		allocateFFTBuffer(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
+		transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+		free(tempLUT);
+	}
 	//axis->groupedBatch = ((axis_upload_id > 0) && (axis->groupedBatch > axis->specializationConstants.stageStartSize)) ? axis->specializationConstants.stageStartSize : axis->groupedBatch;
 	/*if (4096 / app->configuration.size[1] > app->configuration.coalescedMemory / 16) {
 		app->configuration.performTranspose[0] = 0;
@@ -1824,13 +2053,15 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 	if ((axis_id == 2) && (axis_upload_id == 0) && (app->configuration.FFTdim == 3) && (app->configuration.performConvolution))
 		descriptorPoolSize.descriptorCount = 3;
 
+	if (app->configuration.doublePrecision)
+		descriptorPoolSize.descriptorCount++;
 	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
 	descriptorPoolCreateInfo.poolSizeCount = 1;
 	descriptorPoolCreateInfo.pPoolSizes = &descriptorPoolSize;
 	descriptorPoolCreateInfo.maxSets = 1;
 	vkCreateDescriptorPool(app->configuration.device[0], &descriptorPoolCreateInfo, NULL, &axis->descriptorPool);
 
-	const VkDescriptorType descriptorType[3] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
+	const VkDescriptorType descriptorType[4] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 	VkDescriptorSetLayoutBinding* descriptorSetLayoutBindings;
 	descriptorSetLayoutBindings = (VkDescriptorSetLayoutBinding*)malloc(descriptorPoolSize.descriptorCount * sizeof(VkDescriptorSetLayoutBinding));
 	for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
@@ -1893,10 +2124,15 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 			}
 			descriptorBufferInfo.offset = 0;
 		}
-		if (i == 2) {
+		if ((i == 2)&&(app->configuration.performConvolution)){
 			descriptorBufferInfo.buffer = app->configuration.kernel[0];
 			descriptorBufferInfo.offset = 0;
 			descriptorBufferInfo.range = app->configuration.kernelSize[0];
+		}
+		if ((i == descriptorPoolSize.descriptorCount - 1)&&(app->configuration.doublePrecision)) {
+			descriptorBufferInfo.buffer = axis->bufferLUT;
+			descriptorBufferInfo.offset = 0;
+			descriptorBufferInfo.range = axis->bufferLUTSize;
 		}
 		VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
 		writeDescriptorSet.dstSet = axis->descriptorSet;
@@ -2571,6 +2807,10 @@ void VkFFTPlanTranspose(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis
 
 }
 void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
+	if (app->configuration.doublePrecision) {
+		vkDestroyBuffer(app->configuration.device[0], axis->bufferLUT, NULL);
+		vkFreeMemory(app->configuration.device[0], axis->bufferLUTDeviceMemory, NULL);
+	}
 	vkDestroyDescriptorPool(app->configuration.device[0], axis->descriptorPool, NULL);
 	vkDestroyDescriptorSetLayout(app->configuration.device[0], axis->descriptorSetLayout, NULL);
 	vkDestroyPipelineLayout(app->configuration.device[0], axis->pipelineLayout, NULL);
