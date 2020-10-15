@@ -494,8 +494,8 @@ int main()
 			forward_configuration.commandPool = &commandPool;
 			forward_configuration.physicalDevice = &physicalDevice;
 			forward_configuration.doublePrecision = true;
-			//Custom path to the floder with shaders, default is "shaders");
-			sprintf(forward_configuration.shaderPath, "C:\\TolmachevDmitrii\\vkFFT\\v1.1.0\\shaders\\");
+			//Custom path to the folder with shaders, default is "shaders");
+			sprintf(forward_configuration.shaderPath, "shaders\\");
 
 			//Allocate buffer for the input data.
 			VkDeviceSize bufferSize = forward_configuration.coordinateFeatures * sizeof(double) * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;

@@ -25,7 +25,7 @@ typedef struct {
 	VkBool32 isInputFormatted; //specify if input buffer is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1) - 0 - padded, 1 - not padded
 	VkBool32 isOutputFormatted; //specify if output buffer is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1) - 0 - padded, 1 - not padded
 	VkBool32 doublePrecision; //1 to enable
-	VkBool32 halfPrecision; //1 to enable. Not implemented yet.
+	VkBool32 halfPrecision; //1 to enable
 	uint32_t sharedMemorySize;//in bytes. For now Vulkan is optimized for 32KB of shared memory
 	uint32_t registerBoost; //specify if register file size is bigger than shared memory (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4)
 	char shaderPath[256]; //path to shaders, can be selected automatically in CMake
@@ -393,7 +393,7 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 		maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (2 * sizeof(double));
 	else
 		if (app->configuration.halfPrecision)
-			maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (4);
+			maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (2 * sizeof(float));
 		else
 			maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (2 * sizeof(float));
 	if (axis_id == 1) {
@@ -789,7 +789,7 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 		axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2 * sizeof(double));
 	else
 		if (app->configuration.halfPrecision)
-			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / 4;
+			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2 * sizeof(float));
 		else
 			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2 * sizeof(float));
 	//allocate LUT for double precision 
@@ -1206,7 +1206,7 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 		maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (2 * sizeof(double));
 	else
 		if (app->configuration.halfPrecision)
-			maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (4);
+			maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (2 * sizeof(float));
 		else
 			maxSingleSizeNonStrided = app->configuration.sharedMemorySize / (2 * sizeof(float));
 	if (axis_id == 0) {
@@ -1596,7 +1596,7 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 		axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2 * sizeof(double));
 	else
 		if (app->configuration.halfPrecision)
-			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / 4;
+			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2 * sizeof(float));
 		else
 			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2*sizeof(float));
 	
