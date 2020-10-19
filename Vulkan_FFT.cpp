@@ -4,6 +4,7 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#include <algorithm>
 #include <vkFFT.h>
 #include <vulkan/vulkan.h>
 
