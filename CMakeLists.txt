@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.11)
 project(Vulkan_FFT)
+set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
+option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" OFF)
 
 if (MSVC)
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
@@ -7,15 +9,29 @@ if (MSVC)
 endif()
 
 add_executable(${PROJECT_NAME} Vulkan_FFT.cpp)
-target_compile_definitions(${PROJECT_NAME} PRIVATE -DSHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shaders/")
+
+target_compile_definitions(${PROJECT_NAME} PUBLIC -DSHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shaders/")
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_11)
 
 find_package(Vulkan REQUIRED)
-
 add_library(VkFFT INTERFACE)
 target_include_directories(VkFFT INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/lib/)
+target_link_libraries(${PROJECT_NAME} PUBLIC Vulkan::Vulkan VkFFT)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan VkFFT)
+if(build_VkFFT_cuFFT_benchmark)
+	add_definitions(-DUSE_cuFFT)
+	find_package(CUDA 8.0 REQUIRED)
+	enable_language(CUDA)
+	add_library(benchmark_scripts STATIC
+	benchmark_scripts/benchmark_cuFFT.cu
+	benchmark_scripts/benchmark_cuFFT_double.cu
+	benchmark_scripts/benchmark_cuFFT_half.cu)
+	CUDA_ADD_CUFFT_TO_TARGET(benchmark_scripts)
+	target_include_directories(benchmark_scripts PUBLIC "benchmark_scripts/")
+	set_target_properties(benchmark_scripts PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+	set_target_properties(benchmark_scripts PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+	target_link_libraries(${PROJECT_NAME} PRIVATE benchmark_scripts)
+endif()
 
 
 #Build shaders routine

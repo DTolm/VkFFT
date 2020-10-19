@@ -15,7 +15,7 @@
 #define GROUP 1
 
 
-int main()
+void launch_benchmark_cuFFT_double(bool file_output, FILE* output)
 {
 
 	const int num_benchmark_samples = 23;
@@ -28,8 +28,8 @@ int main()
 	};
 
 	double benchmark_result[2] = { 0,0 };//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
-	cufftDoubleComplex* inputC = (cufftDoubleComplex*)malloc((uint64_t)sizeof(cufftDoubleComplex) * 2 * 4096 * 4096 * 2 * 8);
-	for (uint64_t i = 0; i < 2 * 4096 * 4096 * 2 * 8; i++) {
+	cufftDoubleComplex* inputC = (cufftDoubleComplex*)malloc((uint64_t)sizeof(cufftDoubleComplex) * 4096 * 4096 * 2 * 8);
+	for (uint64_t i = 0; i < 4096 * 4096 * 2 * 8; i++) {
 		inputC[i].x = 2 * ((double)rand()) / RAND_MAX - 1.0;
 		inputC[i].y = 2 * ((double)rand()) / RAND_MAX - 1.0;
 	}
@@ -90,6 +90,9 @@ int main()
 						std_error += (run_time[t][0] - avg_time) * (run_time[t][0] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
+					if (file_output)
+						fprintf(output, "cuFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], cuBufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)cuBufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time));
+
 					printf("cuFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], cuBufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)cuBufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time));
 					benchmark_result[0] += ((double)cuBufferSize * sizeof(float)/sizeof(double)/ 1024) / avg_time;
 				}
@@ -107,6 +110,8 @@ int main()
 	}
 	free(inputC);
 	benchmark_result[0] /= (num_benchmark_samples - 1);
+	if (file_output)
+		fprintf(output, "Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));
 	printf("Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));
 
 }

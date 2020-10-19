@@ -15,7 +15,7 @@
 #define GROUP 1
 
 
-int main()
+void launch_benchmark_cuFFT_single(bool file_output, FILE* output)
 {
 	
 	const int num_benchmark_samples = 26;
@@ -29,8 +29,8 @@ int main()
 	};
 
 	double benchmark_result[2] = { 0,0 };//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
-	cufftComplex* inputC = (cufftComplex*)malloc((uint64_t)sizeof(cufftComplex)*1024*1024*1024);
-	for (uint64_t i = 0; i < 1024 * 1024 * 1024; i++) {
+	cufftComplex* inputC = (cufftComplex*)malloc((uint64_t)sizeof(cufftComplex)*4096 * 4096 * 8 * 2);
+	for (uint64_t i = 0; i < 4096 * 4096 * 8 * 2; i++) {
 		inputC[i].x = 2 * ((float)rand()) / RAND_MAX - 1.0;
 		inputC[i].y = 2 * ((float)rand()) / RAND_MAX - 1.0;
 	}
@@ -87,6 +87,9 @@ int main()
 						std_error += (run_time[t][0] - avg_time) * (run_time[t][0] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
+					if (file_output)
+						fprintf(output, "cuFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], cuBufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)cuBufferSize / 1024) / avg_time));
+
 					printf("cuFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], cuBufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)cuBufferSize / 1024) / avg_time));
 					benchmark_result[0] += ((double)cuBufferSize / 1024) / avg_time;
 				}
@@ -104,6 +107,8 @@ int main()
 	}
 	free(inputC);
 	benchmark_result[0] /= (num_benchmark_samples - 1);
+	if (file_output)
+		fprintf(output, "Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));
 	printf("Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));
 
 }

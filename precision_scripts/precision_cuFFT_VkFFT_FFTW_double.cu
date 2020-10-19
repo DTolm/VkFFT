@@ -17,15 +17,11 @@
 #include <vkFFT.h>
 
 //FFTW
-#include "FFTW/fftw3.h"
+#include "fftw3.h"
 
 #define GROUP 1
 
-#ifdef NDEBUG
 const bool enableValidationLayers = false;
-#else
-const bool enableValidationLayers = true;
-#endif
 
 VkInstance instance = {};
 VkDebugReportCallbackEXT debugReportCallback = {};
@@ -261,7 +257,7 @@ void allocateFFTBuffer(VkBuffer* buffer, VkDeviceMemory* deviceMemory, VkBufferU
 	vkAllocateMemory(device, &memoryAllocateInfo, NULL, deviceMemory);
 	vkBindBufferMemory(device, buffer[0], deviceMemory[0], 0);
 }
-void transferDataFromCPU(float* arr, VkBuffer* buffer, VkDeviceSize bufferSize) {
+void transferDataFromCPU(void* arr, VkBuffer* buffer, VkDeviceSize bufferSize) {
 	VkDeviceSize stagingBufferSize = bufferSize;
 	VkBuffer stagingBuffer = {};
 	VkDeviceMemory stagingBufferMemory = {};
@@ -296,7 +292,7 @@ void transferDataFromCPU(float* arr, VkBuffer* buffer, VkDeviceSize bufferSize) 
 	vkDestroyBuffer(device, stagingBuffer, NULL);
 	vkFreeMemory(device, stagingBufferMemory, NULL);
 }
-void transferDataToCPU(float* arr, VkBuffer* buffer, VkDeviceSize bufferSize) {
+void transferDataToCPU(void* arr, VkBuffer* buffer, VkDeviceSize bufferSize) {
 	VkDeviceSize stagingBufferSize = bufferSize;
 	VkBuffer stagingBuffer = {};
 	VkDeviceMemory stagingBufferMemory = {};
@@ -360,7 +356,7 @@ float performVulkanFFT(VkFFTApplication* app_forward, uint32_t batch) {
 	return totTime / batch;
 }
 
-int main()
+void launch_precision_comparison_double()
 {
 	createInstance();
 	setupDebugMessenger();
@@ -377,37 +373,36 @@ int main()
 	vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physicalDeviceMemoryProperties);
 
-	const int num_benchmark_samples = 47;
+	const int num_benchmark_samples = 39;
 	const int num_runs = 1;
 
 	int benchmark_dimensions[num_benchmark_samples][4] = { {32, 1, 1, 1}, { 256, 1, 1, 1 }, { 1024, 1, 1, 1 }, { 4096, 1, 1, 1 }, { 8192, 1, 1, 1 }, { 16384, 1, 1, 1 },
 		{32, 32, 1, 2},  {64, 64, 1, 2}, {256, 32, 1, 2}, {32, 256, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2},{256, 1024, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2} , {4096, 1024, 1, 2},
 		{32, 32, 32, 3}, {256, 32, 8, 3},{8, 32, 256, 3}, {32, 8, 256, 3}, {512, 256, 32, 3}, {1024, 1024, 8, 3}, {4096, 256, 8, 3},
-		{4096, 4096, 1, 2}, {4096, 4096, 8, 3}, {1024, 4096, 1, 2}, {256, 8, 4096, 3},
-		{(uint32_t)pow(2,15), 1, 1, 1}, {(uint32_t)pow(2,16), 1, 1, 1},  {(uint32_t)pow(2,17), 1, 1, 1},  {(uint32_t)pow(2,18), 1, 1, 1},   {(uint32_t)pow(2,20), 1, 1, 1},   {(uint32_t)pow(2,22), 1, 1, 1},
-		{(uint32_t)pow(2,15), 64, 1, 2}, {(uint32_t)pow(2,16), 64, 1, 2}, {(uint32_t)pow(2,17), 64, 1, 2}, {(uint32_t)pow(2,18), 64, 1, 2},  {(uint32_t)pow(2,20), 64, 1, 2},  {(uint32_t)pow(2,22), 64, 1, 2},
-		{64, (uint32_t)pow(2,13), 1, 2}, {64, (uint32_t)pow(2,14), 1, 2}, {64, (uint32_t)pow(2,15), 1, 2},
-		{8,8 , (uint32_t)pow(2,13), 3}, {8,8, (uint32_t)pow(2,14), 3}, {8,8, (uint32_t)pow(2,15), 3},
-		{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,14), 1, 2}
+		{4096, 4096, 1, 2},  {1024, 4096, 1, 2}, {256, 8, 4096, 3},
+		{(uint32_t)pow(2,15), 1, 1, 1}, {(uint32_t)pow(2,16), 1, 1, 1},  {(uint32_t)pow(2,17), 1, 1, 1},  {(uint32_t)pow(2,18), 1, 1, 1},   {(uint32_t)pow(2,20), 1, 1, 1},   
+		{(uint32_t)pow(2,15), 64, 1, 2}, {(uint32_t)pow(2,16), 64, 1, 2}, {(uint32_t)pow(2,17), 64, 1, 2}, {(uint32_t)pow(2,18), 64, 1, 2},    
+		{64, (uint32_t)pow(2,13), 1, 2}, {64, (uint32_t)pow(2,14), 1, 2}, 
+		{8,8 , (uint32_t)pow(2,13), 3}, {8,8, (uint32_t)pow(2,14), 3}, 
 	};
 
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 
 	for (int n = 0; n < num_benchmark_samples; n++) {
 		for (int r = 0; r < num_runs; r++) {
-			cufftHandle planC2C;
-			cufftComplex* dataC;
-			cufftComplex* inputC;
+			cufftHandle planZ2Z;
+			cufftDoubleComplex* dataC;
+			cufftDoubleComplex* inputC;
 			fftw_complex* inputC_double;
 			int dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
 
-			inputC = (cufftComplex*)(malloc(sizeof(cufftComplex) * dims[0] * dims[1] * dims[2]));
+			inputC = (cufftDoubleComplex*)(malloc(sizeof(cufftDoubleComplex) * dims[0] * dims[1] * dims[2]));
 			inputC_double = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
 			for (int l = 0; l < dims[2]; l++) {
 				for (int j = 0; j < dims[1]; j++) {
 					for (int i = 0; i < dims[0]; i++) {
-						inputC[i + j * dims[0] + l * dims[0] * dims[1]].x = 2 * ((float)rand()) / RAND_MAX - 1.0;
-						inputC[i + j * dims[0] + l * dims[0] * dims[1]].y = 2 * ((float)rand()) / RAND_MAX - 1.0;
+						inputC[i + j * dims[0] + l * dims[0] * dims[1]].x = 2 * ((double)rand()) / RAND_MAX - 1.0;
+						inputC[i + j * dims[0] + l * dims[0] * dims[1]].y = 2 * ((double)rand()) / RAND_MAX - 1.0;
 						inputC_double[i + j * dims[0] + l * dims[0] * dims[1]][0] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]].x;
 						inputC_double[i + j * dims[0] + l * dims[0] * dims[1]][1] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]].y;
 					}
@@ -432,22 +427,22 @@ int main()
 
 			fftw_execute(p);
 
-			cudaMalloc((void**)&dataC, sizeof(cufftComplex) * dims[0] * dims[1] * dims[2]);
+			cudaMalloc((void**)&dataC, sizeof(cufftDoubleComplex) * dims[0] * dims[1] * dims[2]);
 
-			cudaMemcpy(dataC, inputC, sizeof(cufftComplex) * dims[0] * dims[1] * dims[2], cudaMemcpyHostToDevice);
+			cudaMemcpy(dataC, inputC, sizeof(cufftDoubleComplex) * dims[0] * dims[1] * dims[2], cudaMemcpyHostToDevice);
 			if (cudaGetLastError() != cudaSuccess) {
 				fprintf(stderr, "Cuda error: Failed to allocate\n");
 				return;
 			}
 			switch (benchmark_dimensions[n][3]) {
 			case 1:
-				cufftPlan1d(&planC2C, dims[0], CUFFT_C2C, 1);
+				cufftPlan1d(&planZ2Z, dims[0], CUFFT_Z2Z, 1);
 				break;
 			case 2:
-				cufftPlan2d(&planC2C, dims[1], dims[0], CUFFT_C2C);
+				cufftPlan2d(&planZ2Z, dims[1], dims[0], CUFFT_Z2Z);
 				break;
 			case 3:
-				cufftPlan3d(&planC2C, dims[2], dims[1], dims[0], CUFFT_C2C);
+				cufftPlan3d(&planZ2Z, dims[2], dims[1], dims[0], CUFFT_Z2Z);
 				break;
 			}
 
@@ -457,21 +452,21 @@ int main()
 			cudaDeviceSynchronize();
 			for (int i = 0; i < batch; i++) {
 
-				cufftExecC2C(planC2C, dataC, dataC, 1);
+				cufftExecZ2Z(planZ2Z, dataC, dataC, 1);
 
 			}
 			cudaDeviceSynchronize();
 			auto timeEnd = std::chrono::steady_clock::now();
 			totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001) / batch;
 
-			cufftComplex* output_cuFFT = (cufftComplex*)(malloc(sizeof(cufftComplex) * dims[0] * dims[1] * dims[2]));
-			cudaMemcpy(output_cuFFT, dataC, sizeof(cufftComplex) * dims[0] * dims[1] * dims[2], cudaMemcpyDeviceToHost);
+			cufftDoubleComplex* output_cuFFT = (cufftDoubleComplex*)(malloc(sizeof(cufftDoubleComplex) * dims[0] * dims[1] * dims[2]));
+			cudaMemcpy(output_cuFFT, dataC, sizeof(cufftDoubleComplex) * dims[0] * dims[1] * dims[2], cudaMemcpyDeviceToHost);
 			cudaDeviceSynchronize();
 
 			//VkFFT part
 
-			VkFFTConfiguration forward_configuration=defaultVkFFTConfiguration;
-			VkFFTApplication app_forward=defaultVkFFTApplication;
+			VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
+			VkFFTApplication app_forward = defaultVkFFTApplication;
 			//VkFFTApplication app_inverse;
 			forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 is equal 128. For Intel use 64. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 
@@ -480,7 +475,7 @@ int main()
 			forward_configuration.size[1] = benchmark_dimensions[n][1];
 			forward_configuration.size[2] = benchmark_dimensions[n][2];
 			//registerBoost should be disabled on machines with <256KB register file
-			forward_configuration.registerBoost = 4;
+			forward_configuration.registerBoost = 1;
 			forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
 			forward_configuration.performZeropadding[1] = false;
 			forward_configuration.performZeropadding[2] = false;
@@ -490,11 +485,16 @@ int main()
 			forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 			forward_configuration.device = &device;
+			forward_configuration.queue = &queue;
+			forward_configuration.fence = &fence;
+			forward_configuration.commandPool = &commandPool;
+			forward_configuration.physicalDevice = &physicalDevice;
+			forward_configuration.doublePrecision = true;
 			//Custom path to the folder with shaders, default is "shaders");
 			sprintf(forward_configuration.shaderPath, "shaders\\");
 
 			//Allocate buffer for the input data.
-			VkDeviceSize bufferSize = forward_configuration.coordinateFeatures * sizeof(float) * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;
+			VkDeviceSize bufferSize = forward_configuration.coordinateFeatures * sizeof(double) * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};
 
@@ -509,7 +509,7 @@ int main()
 			forward_configuration.outputBufferSize = &bufferSize;
 
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
-			transferDataFromCPU((float*)inputC, &buffer, bufferSize);
+			transferDataFromCPU(inputC_double, &buffer, bufferSize);
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 			initializeVulkanFFT(&app_forward, forward_configuration);
 			//forward_configuration.inverse = true;
@@ -518,15 +518,15 @@ int main()
 			//batch = 1;
 			totTime = performVulkanFFT(&app_forward, batch);
 			//totTime = performVulkanFFT(&app_inverse, batch);
-			cufftComplex* output_VkFFT = (cufftComplex*)malloc(bufferSize);
+			fftw_complex* output_VkFFT = (fftw_complex*)malloc(bufferSize);
 
 			//Transfer data from GPU using staging buffer.
-			transferDataToCPU((float*)output_VkFFT, &buffer, bufferSize);
+			transferDataToCPU(output_VkFFT, &buffer, bufferSize);
 
-			float avg_difference[2] = { 0,0 };
-			float max_difference[2] = { 0,0 };
-			float avg_eps[2] = { 0,0 };
-			float max_eps[2] = { 0,0 };
+			double avg_difference[2] = { 0,0 };
+			double max_difference[2] = { 0,0 };
+			double avg_eps[2] = { 0,0 };
+			double max_eps[2] = { 0,0 };
 			for (int l = 0; l < dims[2]; l++) {
 				for (int j = 0; j < dims[1]; j++) {
 					for (int i = 0; i < dims[0]; i++) {
@@ -541,20 +541,20 @@ int main()
 						if (app_forward.localFFTPlan.numAxisUploads[2] > 1)
 							loc_l = l / app_forward.localFFTPlan.axes[2][1].specializationConstants.fftDim + app_forward.localFFTPlan.axes[2][0].specializationConstants.fftDim * (l % app_forward.localFFTPlan.axes[2][1].specializationConstants.fftDim);
 
-						//printf("%f %f - %f %f - %f %f\n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0], output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1], output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].x, output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].y, output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])].x, output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])].y);
+						//printf("%f %f - %f %f - %f %f\n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0], output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1], output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].x, output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].y, output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])][1]);
 
-						float current_diff_x_cuFFT = (output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].x - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0]);
-						float current_diff_y_cuFFT = (output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].y - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
-						float current_diff_x_VkFFT = (output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]].x - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0]);
-						float current_diff_y_VkFFT = (output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]].y - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
+						double current_diff_x_cuFFT = (output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].x - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0]);
+						double current_diff_y_cuFFT = (output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].y - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
+						double current_diff_x_VkFFT = (output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]][0] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0]);
+						double current_diff_y_VkFFT = (output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]][1] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
 
-						float current_diff_norm_cuFFT = sqrt(current_diff_x_cuFFT * current_diff_x_cuFFT + current_diff_y_cuFFT * current_diff_y_cuFFT);
-						float current_diff_norm_VkFFT = sqrt(current_diff_x_VkFFT * current_diff_x_VkFFT + current_diff_y_VkFFT * current_diff_y_VkFFT);
-						float current_data_norm = sqrt(output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] + output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
+						double current_diff_norm_cuFFT = sqrt(current_diff_x_cuFFT * current_diff_x_cuFFT + current_diff_y_cuFFT * current_diff_y_cuFFT);
+						double current_diff_norm_VkFFT = sqrt(current_diff_x_VkFFT * current_diff_x_VkFFT + current_diff_y_VkFFT * current_diff_y_VkFFT);
+						double current_data_norm = sqrt(output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] + output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
 						if (current_diff_norm_cuFFT > max_difference[0]) max_difference[0] = current_diff_norm_cuFFT;
 						avg_difference[0] += current_diff_norm_cuFFT;
 
-						if ((current_diff_norm_cuFFT / current_data_norm > max_eps[0]) && (current_data_norm > 1e-10)) {
+						if ((current_diff_norm_cuFFT / current_data_norm > max_eps[0]) && (current_data_norm > 1e-16)) {
 							//printf("%f %f - %f %f\n", output_cuFFT[i + j * dims[0]].x, output_cuFFT[i + j * dims[0]].y, output_VkFFT[i + j * dims[0]].x, output_VkFFT[i + j * dims[0]].y);
 
 							max_eps[0] = current_diff_norm_cuFFT / current_data_norm;
@@ -564,7 +564,7 @@ int main()
 						if (current_diff_norm_VkFFT > max_difference[1]) max_difference[1] = current_diff_norm_VkFFT;
 						avg_difference[1] += current_diff_norm_VkFFT;
 
-						if ((current_diff_norm_VkFFT / current_data_norm > max_eps[1]) && (current_data_norm > 1e-10)) {
+						if ((current_diff_norm_VkFFT / current_data_norm > max_eps[1]) && (current_data_norm > 1e-16)) {
 							//printf("%f %f - %f %f\n", output_cuFFT[i + j * dims[0]].x, output_cuFFT[i + j * dims[0]].y, output_VkFFT[i + j * dims[0]].x, output_VkFFT[i + j * dims[0]].y);
 
 							max_eps[1] = current_diff_norm_VkFFT / current_data_norm;
@@ -578,14 +578,14 @@ int main()
 			avg_eps[0] /= (dims[0] * dims[1] * dims[2]);
 			avg_difference[1] /= (dims[0] * dims[1] * dims[2]);
 			avg_eps[1] /= (dims[0] * dims[1] * dims[2]);
-			printf("cuFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
-			printf("VkFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+			printf("cuFFT System: %dx%dx%d avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+			printf("VkFFT System: %dx%dx%d avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
 			free(output_cuFFT);
 			free(output_VkFFT);
 			vkDestroyBuffer(device, buffer, NULL);
 			vkFreeMemory(device, bufferDeviceMemory, NULL);
 			deleteVulkanFFT(&app_forward);
-			cufftDestroy(planC2C);
+			cufftDestroy(planZ2Z);
 			cudaFree(dataC);
 			free(inputC);
 			fftw_destroy_plan(p);
