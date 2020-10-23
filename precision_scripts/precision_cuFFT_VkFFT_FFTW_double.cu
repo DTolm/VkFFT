@@ -490,6 +490,7 @@ void launch_precision_comparison_double()
 			forward_configuration.commandPool = &commandPool;
 			forward_configuration.physicalDevice = &physicalDevice;
 			forward_configuration.doublePrecision = true;
+			forward_configuration.useLUT = true;
 			//Custom path to the folder with shaders, default is "shaders");
 			sprintf(forward_configuration.shaderPath, "shaders\\");
 

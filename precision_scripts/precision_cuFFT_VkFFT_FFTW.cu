@@ -486,6 +486,11 @@ void launch_precision_comparison_single()
 			forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 			forward_configuration.device = &device;
+			forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
+			forward_configuration.fence = &fence;
+			forward_configuration.commandPool = &commandPool;
+			forward_configuration.physicalDevice = &physicalDevice;
+			forward_configuration.useLUT = false;
 			//Custom path to the folder with shaders, default is "shaders");
 			sprintf(forward_configuration.shaderPath, "shaders\\");
 

@@ -1,10 +1,11 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#include <memory.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <vulkan/vulkan.h>
+#include "vulkan/vulkan.h"
 
 typedef struct {
 	//WHDCN layout
@@ -24,6 +25,7 @@ typedef struct {
 	VkBool32 symmetricKernel; //specify if kernel in 2x2 or 3x3 matrix convolution is symmetric
 	VkBool32 isInputFormatted; //specify if input buffer is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1) - 0 - padded, 1 - not padded
 	VkBool32 isOutputFormatted; //specify if output buffer is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1) - 0 - padded, 1 - not padded
+	VkBool32 useLUT; //1 to enable - switches from calculating sincos to using precomputed LUT tables
 	VkBool32 doublePrecision; //1 to enable
 	VkBool32 halfPrecision; //1 to enable
 	uint32_t sharedMemorySize;//in bytes. For now Vulkan is optimized for 32KB of shared memory
@@ -47,7 +49,7 @@ typedef struct {
 	VkBuffer* kernel;
 } VkFFTConfiguration;
 
-VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1},1,1,1,1,1,8,{0,0,0}, {0,0},0,0,0,0,0,0,0,0, 32768, 1, "shaders/", 32, 0,0,0,0,0, 0,0,0,0,0,0,0,0 };
+VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1},1,1,1,1,1,8,{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 32768, 1, "shaders/", 32, 0,0,0,0,0, 0,0,0,0,0,0,0,0 };
 
 typedef struct {
 	uint32_t localSize[3];
@@ -144,14 +146,23 @@ uint32_t* VkFFTReadShader(uint32_t* length, const char* filename) {
 	}
 void VkFFTInitShader(VkFFTApplication* app, uint32_t shader_id, VkShaderModule* shaderModule) {
 	char filename[512];
-	char precision[10];
+	char precision[20];
 	if (app->configuration.doublePrecision)
-		sprintf(precision, "double/");
+		if (app->configuration.useLUT)
+			sprintf(precision, "double/LUT/");
+		else
+			sprintf(precision, "double/sincos/");
 	else
 		if (app->configuration.halfPrecision)
-			sprintf(precision, "half/");
+			if (app->configuration.useLUT)
+				sprintf(precision, "half/LUT/");
+			else
+				sprintf(precision, "half/sincos/");
 		else
-			sprintf(precision, "float/");
+			if (app->configuration.useLUT)
+				sprintf(precision, "float/LUT/");
+			else
+				sprintf(precision, "float/sincos/");
 	switch (shader_id) {
 	case 0:
 		//printf("vkFFT_single_c2c\n");
@@ -322,7 +333,7 @@ void VkFFTInitShader(VkFFTApplication* app, uint32_t shader_id, VkShaderModule* 
 
 }
 uint32_t findMemoryType(VkFFTApplication* app, uint32_t memoryTypeBits, VkMemoryPropertyFlags properties) {
-	VkPhysicalDeviceMemoryProperties memoryProperties = {};
+	VkPhysicalDeviceMemoryProperties memoryProperties = {0};
 
 	vkGetPhysicalDeviceMemoryProperties(app->configuration.physicalDevice[0], &memoryProperties);
 
@@ -342,7 +353,7 @@ void allocateFFTBuffer(VkFFTApplication* app, VkBuffer* buffer, VkDeviceMemory* 
 	bufferCreateInfo.size = size;
 	bufferCreateInfo.usage = usageFlags;
 	vkCreateBuffer(app->configuration.device[0], &bufferCreateInfo, NULL, buffer);
-	VkMemoryRequirements memoryRequirements = {};
+	VkMemoryRequirements memoryRequirements = {0};
 	vkGetBufferMemoryRequirements(app->configuration.device[0], buffer[0], &memoryRequirements);
 	VkMemoryAllocateInfo memoryAllocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
@@ -352,8 +363,8 @@ void allocateFFTBuffer(VkFFTApplication* app, VkBuffer* buffer, VkDeviceMemory* 
 }
 void transferDataFromCPU(VkFFTApplication* app, void* arr, VkBuffer* buffer, VkDeviceSize bufferSize) {
 	VkDeviceSize stagingBufferSize = bufferSize;
-	VkBuffer stagingBuffer = {};
-	VkDeviceMemory stagingBufferMemory = {};
+	VkBuffer stagingBuffer = {0};
+	VkDeviceMemory stagingBufferMemory = {0};
 	allocateFFTBuffer(app, &stagingBuffer, &stagingBufferMemory, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBufferSize);
 
 	void* data;
@@ -364,12 +375,12 @@ void transferDataFromCPU(VkFFTApplication* app, void* arr, VkBuffer* buffer, VkD
 	commandBufferAllocateInfo.commandPool = app->configuration.commandPool[0];
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	commandBufferAllocateInfo.commandBufferCount = 1;
-	VkCommandBuffer commandBuffer = {};
+	VkCommandBuffer commandBuffer = {0};
 	vkAllocateCommandBuffers(app->configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
 	VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-	VkBufferCopy copyRegion = {};
+	VkBufferCopy copyRegion = {0};
 	copyRegion.srcOffset = 0;
 	copyRegion.dstOffset = 0;
 	copyRegion.size = stagingBufferSize;
@@ -792,68 +803,129 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2 * sizeof(float));
 		else
 			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2 * sizeof(float));
-	//allocate LUT for double precision 
-	if (app->configuration.doublePrecision) {
+	//allocate LUT 
+	if (app->configuration.useLUT) {
 		double double_PI = 3.1415926535897932384626433832795;
-		if (axis->specializationConstants.passID > 0)
-			axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7 + axis->specializationConstants.fft_dim_full) * 2 * sizeof(double);
-		else
-			axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7) * 2 * sizeof(double);
-
-		double* tempLUT = (double*)malloc(axis->bufferLUTSize);
-		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-			for (uint32_t j = 0; j < pow(8, i); j++) {
-				if (inverse) {
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i));
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i));
-				}
-				else {
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i));
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i));
-				}
-			}
-		}
-		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-			for (uint32_t j = 0; j < pow(8, i); j++) {
-				if (inverse) {
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i) / 2);
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i) / 2);
-				}
-				else {
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i) / 2);
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i) / 2);
-				}
-			}
-		}
-		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-			for (uint32_t j = 0; j < pow(8, i); j++) {
-				if (inverse) {
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i) / 4);
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i) / 4);
-				}
-				else {
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i) / 4);
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i) / 4);
-				}
-			}
-		}
-		if (axis->specializationConstants.passID > 0)
-			for (uint32_t i = 0; i < axis->specializationConstants.fftDim; i++) {
-				for (uint32_t j = 0; j < axis->specializationConstants.fft_dim_full / axis->specializationConstants.fftDim; j++) {
-					double angle = 2 * double_PI * ((i * j) / double(axis->specializationConstants.fft_dim_full));
+		if (app->configuration.doublePrecision) {
+			if (axis->specializationConstants.passID > 0)
+				axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7 + axis->specializationConstants.fft_dim_full) * 2 * sizeof(double);
+			else
+				axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7) * 2 * sizeof(double);
+			double* tempLUT = (double*)malloc(axis->bufferLUTSize);
+			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				for (uint32_t j = 0; j < pow(8, i); j++) {
 					if (inverse) {
-						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = cos(-angle);
-						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(-angle);
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i));
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i));
 					}
 					else {
-						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = cos(angle);
-						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(angle);
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i));
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i));
 					}
 				}
 			}
-		allocateFFTBuffer(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
-		transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
-		free(tempLUT);
+			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				for (uint32_t j = 0; j < pow(8, i); j++) {
+					if (inverse) {
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i) / 2);
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i) / 2);
+					}
+					else {
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i) / 2);
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i) / 2);
+					}
+				}
+			}
+			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				for (uint32_t j = 0; j < pow(8, i); j++) {
+					if (inverse) {
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i) / 4);
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i) / 4);
+					}
+					else {
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i) / 4);
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i) / 4);
+					}
+				}
+			}
+			if (axis->specializationConstants.passID > 0)
+				for (uint32_t i = 0; i < axis->specializationConstants.fftDim; i++) {
+					for (uint32_t j = 0; j < axis->specializationConstants.fft_dim_full / axis->specializationConstants.fftDim; j++) {
+						double angle = 2 * double_PI * ((i * j) / (double)(axis->specializationConstants.fft_dim_full));
+						if (inverse) {
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = cos(-angle);
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(-angle);
+						}
+						else {
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = cos(angle);
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(angle);
+						}
+					}
+				}
+			allocateFFTBuffer(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
+			transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+			free(tempLUT);
+		}
+		else {
+			if (axis->specializationConstants.passID > 0)
+				axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7 + axis->specializationConstants.fft_dim_full) * 2 * sizeof(float);
+			else
+				axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7) * 2 * sizeof(float);
+			float* tempLUT = (float*)malloc(axis->bufferLUTSize);
+			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				for (uint32_t j = 0; j < pow(8, i); j++) {
+					if (inverse) {
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = (float)cos(-j * double_PI / pow(8, i));
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = (float)sin(-j * double_PI / pow(8, i));
+					}
+					else {
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = (float)cos(j * double_PI / pow(8, i));
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = (float)sin(j * double_PI / pow(8, i));
+					}
+				}
+			}
+			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				for (uint32_t j = 0; j < pow(8, i); j++) {
+					if (inverse) {
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = (float)cos(-j * double_PI / pow(8, i) / 2);
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = (float)sin(-j * double_PI / pow(8, i) / 2);
+					}
+					else {
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = (float)cos(j * double_PI / pow(8, i) / 2);
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = (float)sin(j * double_PI / pow(8, i) / 2);
+					}
+				}
+			}
+			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				for (uint32_t j = 0; j < pow(8, i); j++) {
+					if (inverse) {
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = (float)cos(-j * double_PI / pow(8, i) / 4);
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = (float)sin(-j * double_PI / pow(8, i) / 4);
+					}
+					else {
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = (float)cos(j * double_PI / pow(8, i) / 4);
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = (float)sin(j * double_PI / pow(8, i) / 4);
+					}
+				}
+			}
+			if (axis->specializationConstants.passID > 0)
+				for (uint32_t i = 0; i < axis->specializationConstants.fftDim; i++) {
+					for (uint32_t j = 0; j < axis->specializationConstants.fft_dim_full / axis->specializationConstants.fftDim; j++) {
+						double angle = 2 * double_PI * ((i * j) / (double)(axis->specializationConstants.fft_dim_full));
+						if (inverse) {
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = (float)cos(-angle);
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = (float)sin(-angle);
+						}
+						else {
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = (float)cos(angle);
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = (float)sin(angle);
+						}
+					}
+				}
+			allocateFFTBuffer(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
+			transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+			free(tempLUT);
+		}
 	}
 	//axis->groupedBatch = ((axis_upload_id>0)&&(axis->groupedBatch > axis->specializationConstants.stageStartSize)) ? axis->specializationConstants.stageStartSize : axis->groupedBatch;
 	//configure strides
@@ -902,7 +974,7 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 		descriptorPoolSize.descriptorCount = 3;
 	if ((axis_id == 2) && (axis_upload_id == 0) && (app->configuration.FFTdim == 3) && (app->configuration.performConvolution))
 		descriptorPoolSize.descriptorCount = 3;
-	if (app->configuration.doublePrecision)
+	if (app->configuration.useLUT)
 		descriptorPoolSize.descriptorCount++;
 	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
 	descriptorPoolCreateInfo.poolSizeCount = 1;
@@ -932,7 +1004,7 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 	descriptorSetAllocateInfo.pSetLayouts = &axis->descriptorSetLayout;
 	vkAllocateDescriptorSets(app->configuration.device[0], &descriptorSetAllocateInfo, &axis->descriptorSet);
 	for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
-		VkDescriptorBufferInfo descriptorBufferInfo = {};
+		VkDescriptorBufferInfo descriptorBufferInfo = {0};
 
 		if (i == 0) {
 			descriptorBufferInfo.buffer = app->configuration.buffer[0];
@@ -982,7 +1054,7 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 			descriptorBufferInfo.offset = 0;
 			descriptorBufferInfo.range = app->configuration.kernelSize[0];
 		}
-		if ((i == descriptorPoolSize.descriptorCount - 1) && (app->configuration.doublePrecision)) {
+		if ((i == descriptorPoolSize.descriptorCount - 1) && (app->configuration.useLUT)) {
 			descriptorBufferInfo.buffer = axis->bufferLUT;
 			descriptorBufferInfo.offset = 0;
 			descriptorBufferInfo.range = axis->bufferLUTSize;
@@ -1048,7 +1120,7 @@ void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t ax
 			specializationMapEntries[i].size = sizeof(uint32_t);
 			specializationMapEntries[i].offset = i * sizeof(uint32_t);
 		}
-		VkSpecializationInfo specializationInfo = {};
+		VkSpecializationInfo specializationInfo = {0};
 		specializationInfo.dataSize = 30 * sizeof(uint32_t);
 		specializationInfo.mapEntryCount = 30;
 		specializationInfo.pMapEntries = specializationMapEntries;
@@ -1600,68 +1672,129 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 		else
 			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSingleSizeNonStrided / axis->specializationConstants.fftDim : app->configuration.coalescedMemory / (2*sizeof(float));
 	
-	//allocate LUT for double precision 
-	if (app->configuration.doublePrecision) {
+	//allocate LUT 
+	if (app->configuration.useLUT) {
 		double double_PI = 3.1415926535897932384626433832795;
-		if (axis->specializationConstants.passID>0)
-			axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7 + axis->specializationConstants.fft_dim_full) * 2 * sizeof(double);
-		else
-			axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7) * 2 * sizeof(double);
-
-		double* tempLUT = (double*)malloc(axis->bufferLUTSize);
-		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-			for (uint32_t j = 0; j < pow(8, i); j++) {
-				if (inverse) {
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i));
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i));
-				}
-				else {
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i));
-					tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i));
-				}
-			}
-		}
-		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-			for (uint32_t j = 0; j < pow(8, i); j++) {
-				if (inverse) {
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i) / 2);
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i) / 2);
-				}
-				else {
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i) / 2);
-					tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i) / 2);
-				}
-			}
-		}
-		for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-			for (uint32_t j = 0; j < pow(8, i); j++) {
-				if (inverse) {
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i)/4);
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i) / 4);
-				}
-				else {
-					tempLUT[2*(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i) / 4);
-					tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i) / 4);
-				}
-			}
-		}
-		if (axis->specializationConstants.passID > 0)
-			for (uint32_t i = 0; i < axis->specializationConstants.fftDim; i++) {
-				for (uint32_t j = 0; j < axis->specializationConstants.fft_dim_full/ axis->specializationConstants.fftDim; j++) {
-					double angle = 2 * double_PI * ((i* j) / double(axis->specializationConstants.fft_dim_full));
+		if (app->configuration.doublePrecision) {
+			if (axis->specializationConstants.passID > 0)
+				axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7 + axis->specializationConstants.fft_dim_full) * 2 * sizeof(double);
+			else
+				axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7) * 2 * sizeof(double);
+			double* tempLUT = (double*)malloc(axis->bufferLUTSize);
+			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				for (uint32_t j = 0; j < pow(8, i); j++) {
 					if (inverse) {
-						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j* axis->specializationConstants.fftDim)] = cos(-angle);
-						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(-angle);
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i));
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i));
 					}
 					else {
-						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = cos(angle);
-						tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(angle);
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i));
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i));
 					}
 				}
 			}
-		allocateFFTBuffer(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
-		transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
-		free(tempLUT);
+			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				for (uint32_t j = 0; j < pow(8, i); j++) {
+					if (inverse) {
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i) / 2);
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i) / 2);
+					}
+					else {
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i) / 2);
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i) / 2);
+					}
+				}
+			}
+			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				for (uint32_t j = 0; j < pow(8, i); j++) {
+					if (inverse) {
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(-j * double_PI / pow(8, i) / 4);
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(-j * double_PI / pow(8, i) / 4);
+					}
+					else {
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = cos(j * double_PI / pow(8, i) / 4);
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = sin(j * double_PI / pow(8, i) / 4);
+					}
+				}
+			}
+			if (axis->specializationConstants.passID > 0)
+				for (uint32_t i = 0; i < axis->specializationConstants.fftDim; i++) {
+					for (uint32_t j = 0; j < axis->specializationConstants.fft_dim_full / axis->specializationConstants.fftDim; j++) {
+						double angle = 2 * double_PI * ((i * j) / (double)(axis->specializationConstants.fft_dim_full));
+						if (inverse) {
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = cos(-angle);
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(-angle);
+						}
+						else {
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = cos(angle);
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = sin(angle);
+						}
+					}
+				}
+			allocateFFTBuffer(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
+			transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+			free(tempLUT);
+		}
+		else {
+			if (axis->specializationConstants.passID > 0)
+				axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7 + axis->specializationConstants.fft_dim_full) * 2 * sizeof(float);
+			else
+				axis->bufferLUTSize = (3 * (pow(8, (axis->specializationConstants.numStages)) - 1) / 7) * 2 * sizeof(float);
+			float* tempLUT = (float*)malloc(axis->bufferLUTSize);
+			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				for (uint32_t j = 0; j < pow(8, i); j++) {
+					if (inverse) {
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = (float)cos(-j * double_PI / pow(8, i));
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = (float)sin(-j * double_PI / pow(8, i));
+					}
+					else {
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = (float)cos(j * double_PI / pow(8, i));
+						tempLUT[2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = (float)sin(j * double_PI / pow(8, i));
+					}
+				}
+			}
+			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				for (uint32_t j = 0; j < pow(8, i); j++) {
+					if (inverse) {
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = (float)cos(-j * double_PI / pow(8, i) / 2);
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = (float)sin(-j * double_PI / pow(8, i) / 2);
+					}
+					else {
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = (float)cos(j * double_PI / pow(8, i) / 2);
+						tempLUT[(uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = (float)sin(j * double_PI / pow(8, i) / 2);
+					}
+				}
+			}
+			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				for (uint32_t j = 0; j < pow(8, i); j++) {
+					if (inverse) {
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = (float)cos(-j * double_PI / pow(8, i) / 4);
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = (float)sin(-j * double_PI / pow(8, i) / 4);
+					}
+					else {
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7))] = (float)cos(j * double_PI / pow(8, i) / 4);
+						tempLUT[2 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (j + (uint32_t)((pow(8, i) - 1) / 7)) + 1] = (float)sin(j * double_PI / pow(8, i) / 4);
+					}
+				}
+			}
+			if (axis->specializationConstants.passID > 0)
+				for (uint32_t i = 0; i < axis->specializationConstants.fftDim; i++) {
+					for (uint32_t j = 0; j < axis->specializationConstants.fft_dim_full / axis->specializationConstants.fftDim; j++) {
+						double angle = 2 * double_PI * ((i * j) / (double)(axis->specializationConstants.fft_dim_full));
+						if (inverse) {
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = (float)cos(-angle);
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = (float)sin(-angle);
+						}
+						else {
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim)] = (float)cos(angle);
+							tempLUT[3 * (uint32_t)(pow(8, (axis->specializationConstants.numStages)) - 1) / 7 * 2 + 2 * (i + j * axis->specializationConstants.fftDim) + 1] = (float)sin(angle);
+						}
+					}
+				}
+			allocateFFTBuffer(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
+			transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+			free(tempLUT);
+		}
 	}
 	//axis->groupedBatch = ((axis_upload_id > 0) && (axis->groupedBatch > axis->specializationConstants.stageStartSize)) ? axis->specializationConstants.stageStartSize : axis->groupedBatch;
 	/*if (4096 / app->configuration.size[1] > app->configuration.coalescedMemory / 16) {
@@ -2053,7 +2186,7 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 	if ((axis_id == 2) && (axis_upload_id == 0) && (app->configuration.FFTdim == 3) && (app->configuration.performConvolution))
 		descriptorPoolSize.descriptorCount = 3;
 
-	if (app->configuration.doublePrecision)
+	if (app->configuration.useLUT)
 		descriptorPoolSize.descriptorCount++;
 	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
 	descriptorPoolCreateInfo.poolSizeCount = 1;
@@ -2083,7 +2216,7 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 	descriptorSetAllocateInfo.pSetLayouts = &axis->descriptorSetLayout;
 	vkAllocateDescriptorSets(app->configuration.device[0], &descriptorSetAllocateInfo, &axis->descriptorSet);
 	for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
-		VkDescriptorBufferInfo descriptorBufferInfo = {};
+		VkDescriptorBufferInfo descriptorBufferInfo = {0};
 
 		if (i == 0) {
 			if ((axis_upload_id == FFTPlan->numAxisUploads[axis_id]-1) && (app->configuration.isInputFormatted) && (
@@ -2129,7 +2262,7 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 			descriptorBufferInfo.offset = 0;
 			descriptorBufferInfo.range = app->configuration.kernelSize[0];
 		}
-		if ((i == descriptorPoolSize.descriptorCount - 1)&&(app->configuration.doublePrecision)) {
+		if ((i == descriptorPoolSize.descriptorCount - 1)&&(app->configuration.useLUT)) {
 			descriptorBufferInfo.buffer = axis->bufferLUT;
 			descriptorBufferInfo.offset = 0;
 			descriptorBufferInfo.range = axis->bufferLUTSize;
@@ -2318,7 +2451,7 @@ void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, 
 			specializationMapEntries[i].size = sizeof(uint32_t);
 			specializationMapEntries[i].offset = i * sizeof(uint32_t);
 		}
-		VkSpecializationInfo specializationInfo = {};
+		VkSpecializationInfo specializationInfo = {0};
 		specializationInfo.dataSize = 30 * sizeof(uint32_t);
 		specializationInfo.mapEntryCount = 30;
 		specializationInfo.pMapEntries = specializationMapEntries;
@@ -2705,7 +2838,7 @@ void VkFFTPlanTranspose(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis
 	for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
 
 
-		VkDescriptorBufferInfo descriptorBufferInfo = {};
+		VkDescriptorBufferInfo descriptorBufferInfo = {0};
 		if (i == 0) {
 			if ((app->configuration.numberKernels > 1) && (inverse)) {
 				descriptorBufferInfo.buffer = app->configuration.outputBuffer[0];
@@ -2772,7 +2905,7 @@ void VkFFTPlanTranspose(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis
 		specializationMapEntries[i].size = sizeof(uint32_t);
 		specializationMapEntries[i].offset = i * sizeof(uint32_t);
 	}
-	VkSpecializationInfo specializationInfo = {};
+	VkSpecializationInfo specializationInfo = {0};
 	specializationInfo.dataSize = 12 * sizeof(uint32_t);
 	specializationInfo.mapEntryCount = 12;
 	specializationInfo.pMapEntries = specializationMapEntries;
@@ -2807,7 +2940,7 @@ void VkFFTPlanTranspose(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis
 
 }
 void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
-	if (app->configuration.doublePrecision) {
+	if (app->configuration.useLUT) {
 		vkDestroyBuffer(app->configuration.device[0], axis->bufferLUT, NULL);
 		vkFreeMemory(app->configuration.device[0], axis->bufferLUTDeviceMemory, NULL);
 	}

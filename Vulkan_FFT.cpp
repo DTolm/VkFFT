@@ -91,10 +91,10 @@ std::vector<const char*> getRequiredExtensions(uint32_t sample_id) {
 	std::vector<const char*> extensions;
 
 	if (enableValidationLayers) {
-		extensions.push_back("VK_KHR_get_physical_device_properties2");
+		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 	}
 	switch (sample_id) {
-	case 7:
+	case 2:
 		extensions.push_back("VK_KHR_get_physical_device_properties2");
 		break;
 	default:
@@ -141,7 +141,7 @@ void createInstance(uint32_t sample_id) {
 	applicationInfo.pEngineName = "VkFFT";
 	applicationInfo.engineVersion = 1.0;
 	switch (sample_id) {
-	case 7:
+	case 2:
 		applicationInfo.apiVersion = VK_API_VERSION_1_2;
 		break;
 	default:
@@ -256,7 +256,7 @@ void createDevice(uint32_t sample_id) {
 	VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	VkPhysicalDeviceFeatures deviceFeatures = {};
 	switch (sample_id) {
-	case 6: {
+	case 1: {
 		deviceFeatures.shaderFloat64 = true;
 		deviceCreateInfo.enabledExtensionCount = enabledDeviceExtensions.size();
 		deviceCreateInfo.ppEnabledExtensionNames = enabledDeviceExtensions.data();
@@ -267,7 +267,7 @@ void createDevice(uint32_t sample_id) {
 		vkGetDeviceQueue(device, queueFamilyIndex, 0, &queue);
 		break;
 	}
-	case 7: {
+	case 2: {
 		VkPhysicalDeviceFeatures2 deviceFeatures2 = {};
 		VkPhysicalDeviceShaderFloat16Int8Features shaderFloat16 = {};
 		shaderFloat16.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
@@ -513,6 +513,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				switch (physicalDeviceProperties.vendorID) {
 				case 0x10DE://NVIDIA - change to 128 before Pascal
 					forward_configuration.coalescedMemory = 16;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
+					forward_configuration.useLUT = false;
 					if (forward_configuration.size[1] > 512)
 						forward_configuration.registerBoost = 4;
 					else
@@ -520,10 +521,12 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					break;
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 1;
 					break;
 				case 0x13B5://AMD
 					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = false;
 					if (forward_configuration.size[1] > 512)
 						forward_configuration.registerBoost = 4;
 					else
@@ -531,6 +534,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					break;
 				default:
 					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = false;
 					forward_configuration.registerBoost = 1;
 					break;
 				}
@@ -544,6 +548,10 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
 				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 				forward_configuration.device = &device;
+				forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
+				forward_configuration.fence = &fence;
+				forward_configuration.commandPool = &commandPool;
+				forward_configuration.physicalDevice = &physicalDevice;
 				//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
 				if (sizeof(SHADER_DIR) > 255) {
 					printf("SHADER_DIR length must be <256\n");
@@ -678,6 +686,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				switch (physicalDeviceProperties.vendorID) {
 				case 0x10DE://NVIDIA - change to 128 before Pascal
 					forward_configuration.coalescedMemory = 16;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
+					forward_configuration.useLUT = true;
 					if (forward_configuration.size[1] > 512)
 						forward_configuration.registerBoost = 1;//registerBoost is not implemented for double yet.
 					else
@@ -685,10 +694,12 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					break;
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 1;
 					break;
 				case 0x13B5://AMD
 					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = true;
 					if (forward_configuration.size[1] > 512)
 						forward_configuration.registerBoost = 1;
 					else
@@ -696,6 +707,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					break;
 				default:
 					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 1;
 					break;
 				}
@@ -709,10 +721,11 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
 				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 				forward_configuration.device = &device;
-				forward_configuration.queue = &queue; //double has to allocate memory for LUT, so we have to pass a queue, fence, commandPool and physicalDevice pointers for that.
+				forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
 				forward_configuration.fence = &fence;
 				forward_configuration.commandPool = &commandPool;
 				forward_configuration.physicalDevice = &physicalDevice;
+				//forward_configuration.useLUT = true;
 				forward_configuration.doublePrecision = true;
 				//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
 				if (sizeof(SHADER_DIR) > 255) {
@@ -850,6 +863,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				switch (physicalDeviceProperties.vendorID) {
 				case 0x10DE://NVIDIA - change to 128 before Pascal
 					forward_configuration.coalescedMemory = 32;//have to set coalesce more, as calculations are still float, while uploads are half.
+					forward_configuration.useLUT = false;
 					if (forward_configuration.size[1] > 512)
 						forward_configuration.registerBoost = 1;//registerBoost is less efficient for half precision, because computations are still in float
 					else
@@ -857,10 +871,12 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					break;
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 128;
+					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 1;
 					break;
 				case 0x13B5://AMD
 					forward_configuration.coalescedMemory = 128;
+					forward_configuration.useLUT = false;
 					if (forward_configuration.size[1] > 512)
 						forward_configuration.registerBoost = 1;
 					else
@@ -868,6 +884,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					break;
 				default:
 					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = false; 
 					forward_configuration.registerBoost = 1;
 					break;
 				}
@@ -881,6 +898,11 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
 				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 				forward_configuration.device = &device;
+				forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
+				forward_configuration.fence = &fence;
+				forward_configuration.commandPool = &commandPool;
+				forward_configuration.physicalDevice = &physicalDevice;
+				//forward_configuration.useLUT = false;
 				forward_configuration.halfPrecision = true;
 				//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
 				if (sizeof(SHADER_DIR) > 255) {
@@ -1018,6 +1040,11 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
 		//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 		forward_configuration.device = &device;
+		forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
+		forward_configuration.fence = &fence;
+		forward_configuration.commandPool = &commandPool;
+		forward_configuration.physicalDevice = &physicalDevice;
+		forward_configuration.useLUT = false;
 		if (sizeof(SHADER_DIR) > 255) {
 			printf("SHADER_DIR length must be <256\n");
 			return 1;
@@ -1201,6 +1228,11 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
 		//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 		forward_configuration.device = &device;
+		forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
+		forward_configuration.fence = &fence;
+		forward_configuration.commandPool = &commandPool;
+		forward_configuration.physicalDevice = &physicalDevice;
+		forward_configuration.useLUT = false;
 		if (sizeof(SHADER_DIR) > 255) {
 			printf("SHADER_DIR length must be <256\n");
 			return 1;
@@ -1382,6 +1414,11 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		forward_configuration.numberBatches = 2;
 		//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 		forward_configuration.device = &device;
+		forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
+		forward_configuration.fence = &fence;
+		forward_configuration.commandPool = &commandPool;
+		forward_configuration.physicalDevice = &physicalDevice;
+		forward_configuration.useLUT = false;
 		if (sizeof(SHADER_DIR) > 255) {
 			printf("SHADER_DIR length must be <256\n");
 			return 1;
@@ -1593,6 +1630,11 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
 				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 				forward_configuration.device = &device;
+				forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
+				forward_configuration.fence = &fence;
+				forward_configuration.commandPool = &commandPool;
+				forward_configuration.physicalDevice = &physicalDevice;
+				forward_configuration.useLUT = false;
 				//Custom path to the floder with shaders, default is "shaders/");
 				if (sizeof(SHADER_DIR) > 255) {
 					printf("SHADER_DIR length must be <256\n");
@@ -1761,6 +1803,11 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
 				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 				forward_configuration.device = &device;
+				forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
+				forward_configuration.fence = &fence;
+				forward_configuration.commandPool = &commandPool;
+				forward_configuration.physicalDevice = &physicalDevice;
+				forward_configuration.useLUT = false;
 				//Custom path to the floder with shaders, default is "shaders/");
 				if (sizeof(SHADER_DIR) > 255) {
 					printf("SHADER_DIR length must be <256\n");
@@ -1893,11 +1940,11 @@ int main(int argc, char* argv[])
 {
 	uint32_t device_id = 0;//device id
 	bool file_output = false;
-	FILE * output;
+	FILE * output=NULL;
 	if (findFlag(argv, argv+argc, "-h"))
 	{
 		//print help
-		printf("VkFFT v1.0.0 (19-10-2020). Author: Tolmachev Dmitrii\n");
+		printf("VkFFT v1.0.1 (23-10-2020). Author: Tolmachev Dmitrii\n");
 		printf("	-h: print help\n");
 		printf("	-devices: print the list of available GPU devices\n");
 		printf("	-d X: select GPU device (default 0)\n");
