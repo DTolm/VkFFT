@@ -1,5 +1,4 @@
 #version 450
-#extension GL_EXT_shader_explicit_arithmetic_types : require
 #extension GL_EXT_shader_16bit_storage : require
 
 const float M_PI = 3.1415926535897932384626433832795;
@@ -245,11 +244,11 @@ void main() {
 
 			vec2 temp[2];
 			if (zeropad_1){
-				temp[0]=inputs[indexInput(2*gl_GlobalInvocationID.y,  gl_WorkGroupSize.y*2*gl_NumWorkGroups.y)];
-				temp[1]=inputs[indexInput(2*gl_GlobalInvocationID.y+1,  gl_WorkGroupSize.y*2*gl_NumWorkGroups.y)];
+				temp[0]=vec2(inputs[indexInput(2*gl_GlobalInvocationID.y,  gl_WorkGroupSize.y*2*gl_NumWorkGroups.y)]);
+				temp[1]=vec2(inputs[indexInput(2*gl_GlobalInvocationID.y+1,  gl_WorkGroupSize.y*2*gl_NumWorkGroups.y)]);
 			} else {
-				temp[0]=inputs[indexInput(2*gl_GlobalInvocationID.y,  gl_WorkGroupSize.y*gl_NumWorkGroups.y)];
-				temp[1]=inputs[indexInput(2*gl_GlobalInvocationID.y+1,  gl_WorkGroupSize.y*gl_NumWorkGroups.y)];
+				temp[0]=vec2(inputs[indexInput(2*gl_GlobalInvocationID.y,  gl_WorkGroupSize.y*gl_NumWorkGroups.y)]);
+				temp[1]=vec2(inputs[indexInput(2*gl_GlobalInvocationID.y+1,  gl_WorkGroupSize.y*gl_NumWorkGroups.y)]);
 			
 			}
 			temp0[0].x=(temp[0].x-temp[1].y);

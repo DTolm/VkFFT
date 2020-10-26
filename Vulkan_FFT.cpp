@@ -217,7 +217,7 @@ void devices_list() {
 	for (uint32_t i = 0; i < devices.size(); i++) {
 		VkPhysicalDeviceProperties device_properties;
 		vkGetPhysicalDeviceProperties(devices[i], &device_properties);
-		printf("Device id: %d name: %s API:%d.%d.%d\n",i, device_properties.deviceName, (device_properties.apiVersion >> 22), ((device_properties.apiVersion >> 12) & 0x3ff), (device_properties.apiVersion & 0xfff));
+		printf("Device id: %d name: %s API:%d.%d.%d\n", i, device_properties.deviceName, (device_properties.apiVersion >> 22), ((device_properties.apiVersion >> 12) & 0x3ff), (device_properties.apiVersion & 0xfff));
 	}
 	vkDestroyInstance(local_instance, NULL);
 }
@@ -637,7 +637,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		free(buffer_input);
 		benchmark_result /= (num_benchmark_samples - 1);
 		
-		if (file_output){
+		if (file_output) {
 			fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
 			fprintf(output, "Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
 		}
@@ -1940,11 +1940,11 @@ int main(int argc, char* argv[])
 {
 	uint32_t device_id = 0;//device id
 	bool file_output = false;
-	FILE * output=NULL;
-	if (findFlag(argv, argv+argc, "-h"))
+	FILE* output = NULL;
+	if (findFlag(argv, argv + argc, "-h"))
 	{
 		//print help
-		printf("VkFFT v1.0.1 (23-10-2020). Author: Tolmachev Dmitrii\n");
+		printf("VkFFT v1.0.2 (26-10-2020). Author: Tolmachev Dmitrii\n");
 		printf("	-h: print help\n");
 		printf("	-devices: print the list of available GPU devices\n");
 		printf("	-d X: select GPU device (default 0)\n");
@@ -1966,7 +1966,7 @@ int main(int argc, char* argv[])
 	if (findFlag(argv, argv + argc, "-d"))
 	{
 		//select device_id
-		char* value=getFlagValue(argv, argv + argc, "-d");
+		char* value = getFlagValue(argv, argv + argc, "-d");
 		if (value != 0) {
 			sscanf(value, "%d", &device_id);
 		}

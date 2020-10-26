@@ -201,10 +201,18 @@ void main() {
 
 	//combine up to 16 ffts to avoid strided reads - here in 2nd and later passes of 1d FFT along x axis.
 	if ((zeropad_0)&&(!inverse)){
-		for (uint i=0; i < 4; i++)
-			sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=inputs[indexInput(gl_GlobalInvocationID.x%(stageStartSize) + stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+(gl_GlobalInvocationID.x/stageStartSize)*(stageStartSize*fft_dim))];
-		for (uint i=4; i < 8; i++)
-			sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=dvec2(0,0);
+		if(fft_dim==fft_dim_full){
+			for (uint i=0; i < 4; i++)
+				sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=inputs[indexInput(gl_GlobalInvocationID.x%(stageStartSize) + stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+(gl_GlobalInvocationID.x/stageStartSize)*(stageStartSize*fft_dim))];
+			for (uint i=4; i < 8; i++)
+				sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=dvec2(0,0);
+		}else{
+			for (uint i=0; i < 8; i++)
+				if((gl_GlobalInvocationID.x%(stageStartSize) + stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+(gl_GlobalInvocationID.x/stageStartSize)*(stageStartSize*fft_dim))%fft_dim_full<fft_dim_full/2)
+					sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=inputs[indexInput(gl_GlobalInvocationID.x%(stageStartSize) + stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+(gl_GlobalInvocationID.x/stageStartSize)*(stageStartSize*fft_dim))];
+				else
+					sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=dvec2(0,0);
+		}
 	} else {
 		for (uint i=0; i < 8; i++)
 			sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=inputs[indexInput(gl_GlobalInvocationID.x%(stageStartSize) + stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+(gl_GlobalInvocationID.x/stageStartSize)*(stageStartSize*fft_dim))];
@@ -444,9 +452,14 @@ void main() {
 		barrier();
 	}
 	if ((zeropad_0)&&(inverse)){
-		for (uint i=0; i < 4; i++)
-			outputs[indexOutput(gl_GlobalInvocationID.x%(stageStartSize) + stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+(gl_GlobalInvocationID.x/stageStartSize)*(stageStartSize*fft_dim))]=sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))];
-
+		if(fft_dim==fft_dim_full){
+			for (uint i=0; i < 4; i++)
+				outputs[indexOutput(gl_GlobalInvocationID.x%(stageStartSize) + stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+(gl_GlobalInvocationID.x/stageStartSize)*(stageStartSize*fft_dim))]=sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))];
+		}else{
+			for (uint i=0; i < 8; i++)
+				if((gl_GlobalInvocationID.x%(stageStartSize) + stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+(gl_GlobalInvocationID.x/stageStartSize)*(stageStartSize*fft_dim))%fft_dim_full<fft_dim_full/2)
+					outputs[indexOutput(gl_GlobalInvocationID.x%(stageStartSize) + stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+(gl_GlobalInvocationID.x/stageStartSize)*(stageStartSize*fft_dim))]=sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))];
+		}
 	} else {
 
 		for (uint i=0; i < 8; i++)

@@ -208,16 +208,26 @@ void main() {
 	uint stageSize=1;
 		uint stageSizeSum=0;
     float stageAngle=(inverse) ? -M_PI : M_PI;
-	if (zeropad_0&&(!inverse)){
-		for(uint i = 0; i < 4; ++i){
-			temp0[i]=inputs[indexInput(gl_LocalInvocationID.x+(i)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
-			temp1[i]=inputs[indexInput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
+	if ((zeropad_0)&&(!inverse)){
+		if(fft_dim==fft_dim_full){
+			for (uint i=0; i < 8; i++)
+				temp0[i]=inputs[indexInput(gl_LocalInvocationID.x+(i)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
+			for (uint i=0; i < 8; i++)
+				temp1[i]=vec2(0,0);
+		}else{
+			if((gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim)%fft_dim_full<fft_dim_full/2)
+				for(uint i = 0; i < 8; ++i){
+					temp0[i]=inputs[indexInput(gl_LocalInvocationID.x+(i)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
+					temp1[i]=inputs[indexInput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
+				}
+			else
+				for(uint i = 0; i < 8; ++i){
+					temp0[i]=vec2(0,0);
+					temp1[i]=vec2(0,0);
+				}
 		}
-		for(uint i = 4; i < 8; ++i){
-			temp0[i]=vec2(0,0);
-			temp1[i]=vec2(0,0);
-		}
-	}else {
+		
+	} else {
 		for(uint i = 0; i < 8; ++i){
 			temp0[i]=inputs[indexInput(gl_LocalInvocationID.x+(i)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
 			temp1[i]=inputs[indexInput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)];
@@ -399,30 +409,28 @@ void main() {
 		memoryBarrierShared();
 		barrier();
 	}	
-	if (zeropad_0&&(inverse)){
+	if ((zeropad_0)&&(inverse)){
 		float stageNormalization = (inverse) ? 0.5 : 1.0;
-
-		for (uint i=0; i<8; i++){
-			outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)]=temp0[i]*stageNormalization;
+		if(fft_dim==fft_dim_full){
+			for (uint i=0; i<8; i++){
+				outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)]=temp0[i]*stageNormalization;
+			}
+		}else{
+			if((gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim)%fft_dim_full<fft_dim_full/2)
+				for (uint i=0; i<8; i++){
+					outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)]=temp0[i]*stageNormalization;
+					outputs[indexOutput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)]=temp1[i]*stageNormalization;
+				}
 		}
-		memoryBarrierShared();
-		barrier();
-	}
-	else{
-
+		
+	} else {
 		float stageNormalization = (inverse) ? 0.5 : 1.0;
 			
 		for (uint i=0; i<8; i++){
 			outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)]=temp0[i]*stageNormalization;
-		}
-		memoryBarrierShared();
-		barrier();
-
-		for (uint i=0; i<8; i++){
 			outputs[indexOutput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x)*fft_dim)]=temp1[i]*stageNormalization;
 		}
-		memoryBarrierShared();
-		barrier();
+
 	}
 
 }

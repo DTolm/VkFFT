@@ -203,10 +203,20 @@ shared vec2 sdata[gl_WorkGroupSize.y*fft_dim];// gl_WorkGroupSize.x - fft size, 
 void main() {
 
 	if ((zeropad_0)&&(!inverse)){
-		for (uint i=0; i < 4; i++)
-			sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]=vec2(inputs[indexInput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim)]);
-		for (uint i=4; i < 8; i++)
-			sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]=vec2(0,0);
+		if(fft_dim==fft_dim_full){
+			for (uint i=0; i < 4; i++)
+				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]=vec2(inputs[indexInput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim)]);
+			for (uint i=4; i < 8; i++)
+				sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]=vec2(0,0);
+		}else{
+			if((gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim)%fft_dim_full<fft_dim_full/2)
+				for (uint i=0; i < 8; i++)
+					sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]=vec2(inputs[indexInput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim)]);
+			else
+				for (uint i=0; i < 8; i++)
+					sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]=vec2(0,0);
+		}
+		
 	} else {
 		for (uint i=0; i < 8; i++)
 			sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]=vec2(inputs[indexInput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim)]);
@@ -235,79 +245,38 @@ void main() {
 		switch(current_radix){
 			case 2:
 			{
-				uint stageInvocationID = (gl_LocalInvocationID.x) & (stageSize - 1u);
-				uint LUTId=stageInvocationID+stageSizeSum;
-				vec2 values[2];
-				values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x];
-				values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+radixStride_0];
-				
-				radix2(values, LUTId);
-				
-				temp[0]=values[0];
-				temp[4]=values[1];
-				
-				stageInvocationID = (gl_LocalInvocationID.x+gl_WorkGroupSize.x) & (stageSize - 1u);
-				LUTId=stageInvocationID+stageSizeSum;
-				values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+gl_WorkGroupSize.x];
-				values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+gl_WorkGroupSize.x+radixStride_0];
-				
-				radix2(values, LUTId);
-				
-				temp[1]=values[0];
-				temp[5]=values[1];
-				
-				stageInvocationID = (gl_LocalInvocationID.x+2*gl_WorkGroupSize.x) & (stageSize - 1u);
-				LUTId=stageInvocationID+stageSizeSum;
-				values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+2*gl_WorkGroupSize.x];
-				values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+2*gl_WorkGroupSize.x+radixStride_0];
-				
-				radix2(values, LUTId);
-				
-				temp[2]=values[0];
-				temp[6]=values[1];
-				
-				stageInvocationID = (gl_LocalInvocationID.x+3*gl_WorkGroupSize.x) & (stageSize - 1u);
-				LUTId=stageInvocationID+stageSizeSum;
-				values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+3*gl_WorkGroupSize.x];
-				values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+3*gl_WorkGroupSize.x+radixStride_0];
-				
-				radix2(values, LUTId);
-				
-				temp[3]=values[0];
-				temp[7]=values[1];
-
+				for (uint i=0; i < 4; i++){
+					uint stageInvocationID = (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x) & (stageSize - 1u);
+					uint LUTId=stageInvocationID+stageSizeSum;
+					vec2 values[2];
+					values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+i*gl_WorkGroupSize.x];
+					values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+radixStride_0];
+					
+					radix2(values, LUTId);
+					
+					temp[i]=values[0];
+					temp[i+4]=values[1];
+				}
 				break;
 			}
 			case 4:
 			{
-				uint stageInvocationID = (gl_LocalInvocationID.x) & (stageSize - 1u);
-				uint LUTId=stageInvocationID+stageSizeSum;
-				vec2 values[4];
-				values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x];
-				values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+radixStride_1];
-				values[2] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+2 * radixStride_1];
-				values[3] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+3 * radixStride_1];
-				
-				radix4(values, LUTId);
-				
-				temp[0]=values[0];
-				temp[2]=values[1];
-				temp[4]=values[2];
-				temp[6]=values[3];
-				
-				stageInvocationID = (gl_LocalInvocationID.x+gl_WorkGroupSize.x) & (stageSize - 1u);
-				LUTId=stageInvocationID+stageSizeSum;
-				values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+gl_WorkGroupSize.x];
-				values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+gl_WorkGroupSize.x+radixStride_1];
-				values[2] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+gl_WorkGroupSize.x+2 * radixStride_1];
-				values[3] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+gl_WorkGroupSize.x+3 * radixStride_1];
-				
-				radix4(values, LUTId);
-				
-				temp[1]=values[0];
-				temp[3]=values[1];
-				temp[5]=values[2];
-				temp[7]=values[3];
+				for (uint i=0; i < 2; i++){
+					uint stageInvocationID = (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x) & (stageSize - 1u);
+					uint LUTId=stageInvocationID+stageSizeSum;
+					vec2 values[4];
+					values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+i*gl_WorkGroupSize.x];
+					values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+radixStride_1+i*gl_WorkGroupSize.x];
+					values[2] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+2 * radixStride_1+i*gl_WorkGroupSize.x];
+					values[3] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+3 * radixStride_1+i*gl_WorkGroupSize.x];
+					
+					radix4(values, LUTId);
+					
+					temp[i]=values[0];
+					temp[i+2]=values[1];
+					temp[i+4]=values[2];
+					temp[i+6]=values[3];
+				}
 				break;
 			}
 			case 8:
@@ -315,25 +284,19 @@ void main() {
 				uint stageInvocationID = (gl_LocalInvocationID.x) & (stageSize - 1u);
 				uint LUTId=stageInvocationID+stageSizeSum;
 				vec2 values[8];
-				values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x];
-				values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+ radixStride_2];
-				values[2] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+2 * radixStride_2];
-				values[3] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+3 * radixStride_2];
-				values[4] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+4 * radixStride_2];
-				values[5] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+5 * radixStride_2];
-				values[6] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+6 * radixStride_2];
-				values[7] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+7 * radixStride_2];
+				
+				for (uint i=0; i < 8; i++)
+					values[i] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+i * radixStride_2];
 				
 				radix8(values, LUTId);
 				
-				temp[0]=values[0];
-				temp[1]=values[1];
-				temp[2]=values[2];
-				temp[3]=values[3];
-				temp[4]=values[4];
-				temp[5]=values[5];
-				temp[6]=values[6];
-				temp[7]=values[7];
+				if ((fft_dim>256)&&(stageSize==1)){
+					uint tshuffle= ((gl_LocalInvocationID.x)>>1)&7;
+					for (uint i=0; i < 8; i++)
+						temp[i]=values[(i+tshuffle)&7];
+				}else
+					for (uint i=0; i < 8; i++)
+						temp[i]=values[i];
 				break;
 			}
 		}
@@ -406,15 +369,14 @@ void main() {
 				uint stageInvocationID = (gl_LocalInvocationID.x) & (stageSize - 1u);
 				uint blockInvocationID = (gl_LocalInvocationID.x) - stageInvocationID;
 				uint outputIndex = stageInvocationID + blockInvocationID * 8;
-				sdata[fft_dim*gl_LocalInvocationID.y + outputIndex]=temp[0]*stageNormalization;
-				sdata[fft_dim*gl_LocalInvocationID.y + outputIndex+stageSize]=temp[1]*stageNormalization;
-				sdata[fft_dim*gl_LocalInvocationID.y + outputIndex+stageSize*2]=temp[2]*stageNormalization;
-				sdata[fft_dim*gl_LocalInvocationID.y + outputIndex+stageSize*3]=temp[3]*stageNormalization;
-				sdata[fft_dim*gl_LocalInvocationID.y + outputIndex+stageSize*4]=temp[4]*stageNormalization;
-				sdata[fft_dim*gl_LocalInvocationID.y + outputIndex+stageSize*5]=temp[5]*stageNormalization;
-				sdata[fft_dim*gl_LocalInvocationID.y + outputIndex+stageSize*6]=temp[6]*stageNormalization;
-				sdata[fft_dim*gl_LocalInvocationID.y + outputIndex+stageSize*7]=temp[7]*stageNormalization;
-
+				if ((fft_dim>256)&&(stageSize==1)){
+					uint tshuffle= ((gl_LocalInvocationID.x)>>1)&7;
+					for (uint i=0; i < 8; i++)
+						sdata[fft_dim*gl_LocalInvocationID.y + outputIndex+stageSize*((i+tshuffle)&7)]=temp[i]*stageNormalization;
+				}else{
+					for (uint i=0; i < 8; i++)
+						sdata[fft_dim*gl_LocalInvocationID.y + outputIndex+stageSize*i]=temp[i]*stageNormalization;
+				}
 				stageSize=stageSize*8;
 				stageAngle=stageAngle*0.125f;
 				break;
@@ -435,9 +397,15 @@ void main() {
 		barrier();
 	}	
 	if ((zeropad_0)&&(inverse)){
-		for (uint i=0; i < 4; i++)
-			outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim)]=f16vec2(sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]);
-
+		if(fft_dim==fft_dim_full){
+			for (uint i=0; i < 4; i++)
+				outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim)]=f16vec2(sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]);
+		}else{
+			if((gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim)%fft_dim_full<fft_dim_full/2)
+				for (uint i=0; i < 8; i++)
+					outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim)]=f16vec2(sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]);
+		}
+		
 	} else {
 		for (uint i=0; i < 8; i++)
 			outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x)*gl_WorkGroupSize.y*fft_dim)]=f16vec2(sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+i*gl_WorkGroupSize.x)]);

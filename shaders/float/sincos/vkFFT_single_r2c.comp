@@ -199,7 +199,7 @@ void radix8(inout vec2 values[8], float angle) {
 shared vec2 sdata[gl_WorkGroupSize.y*fft_dim];
 
 void main() {
-
+	
 	sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x].x=inputs[indexInput(gl_LocalInvocationID.x)];
 	sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x].y=inputs[indexInput(gl_LocalInvocationID.x)+inputStride_1];
 	sdata[fft_dim*gl_LocalInvocationID.y + (gl_LocalInvocationID.x+gl_WorkGroupSize.x)].x=inputs[indexInput(gl_LocalInvocationID.x+gl_WorkGroupSize.x)];
