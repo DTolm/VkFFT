@@ -67,9 +67,10 @@ uint indexOutput(uint index_x, uint index_y, uint coordinate) {
 uint positionShuffle(uint pos, uint ratio, bool ratioDirection ) {
 	return (((pos)/(ratio))+((pos)%(ratio))*(fft_dim));
 }
-void radix2(inout dvec2 values[2], uint LUTId) {
+void radix2(inout dvec2 values[2], uint LUTId, float inverse) {
     dvec2 temp;
 	dvec2 w=twiddleLUT[LUTId];
+	w.y = (inverse < 0) ? -w.y : w.y;
 	temp.x=values[1].x*w.x-values[1].y*w.y;
 	temp.y=values[1].y*w.x+values[1].x*w.y;
 	values[1]=values[0]-temp;
@@ -260,7 +261,7 @@ void main() {
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, LUTId);
+					radix2(values, LUTId, 1.0);
 					
 					temp1[0]=values[0];
 					temp1[4]=values[1];
@@ -271,7 +272,7 @@ void main() {
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, LUTId);
+					radix2(values, LUTId, 1.0);
 					
 					temp1[1]=values[0];
 					temp1[5]=values[1];
@@ -282,7 +283,7 @@ void main() {
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+2*gl_WorkGroupSize.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+2*gl_WorkGroupSize.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, LUTId);
+					radix2(values, LUTId, 1.0);
 					
 					temp1[2]=values[0];
 					temp1[6]=values[1];
@@ -293,7 +294,7 @@ void main() {
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+3*gl_WorkGroupSize.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+3*gl_WorkGroupSize.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, LUTId);
+					radix2(values, LUTId, 1.0);
 					
 					temp1[3]=values[0];
 					temp1[7]=values[1];
@@ -535,7 +536,7 @@ void main() {
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, LUTId);
+					radix2(values, LUTId, -1.0);
 					
 					temp0[0]=values[0];
 					temp0[4]=values[1];
@@ -546,7 +547,7 @@ void main() {
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+gl_WorkGroupSize.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, LUTId);
+					radix2(values, LUTId, -1.0);
 					
 					temp0[1]=values[0];
 					temp0[5]=values[1];
@@ -557,7 +558,7 @@ void main() {
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+2*gl_WorkGroupSize.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+2*gl_WorkGroupSize.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, LUTId);
+					radix2(values, LUTId, -1.0);
 					
 					temp0[2]=values[0];
 					temp0[6]=values[1];
@@ -568,7 +569,7 @@ void main() {
 					values[0] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+3*gl_WorkGroupSize.y)+gl_LocalInvocationID.x];
 					values[1] = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+3*gl_WorkGroupSize.y+radixStride_0)+gl_LocalInvocationID.x];
 					
-					radix2(values, LUTId);
+					radix2(values, LUTId, -1.0);
 					
 					temp0[3]=values[0];
 					temp0[7]=values[1];

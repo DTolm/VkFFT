@@ -15,7 +15,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - All transformations are performed in-place with no performance loss. Out-of-place transforms are supported by selecting different input/output buffers.
   - No transpositions. Note: data is not reshuffled after the four step FFT algorithm (for big sequences). Doesn't matter for convolutions - they return to the input ordering.
   - Complex to complex (C2C), real to complex (R2C) and complex to real (C2R) transformations. R2C and C2R are optimized to run up to 2x times faster than C2C (2D and 3D case only)
-  - 1x1, 2x2, 3x3 convolutions with symmetric or nonsymmetric kernel (only for one upload last size for now - 1k in the last dimension on Nvidia. Will be changed in the next update)
+  - 1x1, 2x2, 3x3 convolutions with symmetric or nonsymmetric kernel (no register overutilization)
   - Native zero padding to model open systems (up to 2x faster than simply padding input array with zeros)
   - WHDCN layout - data is stored in the following order (sorted by increase in strides): the width, the height, the depth, the coordinate (the number of feature maps), the batch number
   - Multiple feature/batch convolutions - one input, multiple kernels

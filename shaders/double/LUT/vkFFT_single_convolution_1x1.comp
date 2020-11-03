@@ -71,9 +71,10 @@ uint positionShuffle(uint pos, uint ratio, bool ratioDirection ) {
 	return (((pos)/(ratio))+((pos)%(ratio))*(fft_dim));
 
 }
-void radix2(inout dvec2 values[2], uint LUTId) {
+void radix2(inout dvec2 values[2], uint LUTId, float inverse) {
     dvec2 temp;
 	dvec2 w=twiddleLUT[LUTId];
+	if (inverse<0) w.y=-w.y;
 	temp.x=values[1].x*w.x-values[1].y*w.y;
 	temp.y=values[1].y*w.x+values[1].x*w.y;
 	values[1]=values[0]-temp;
@@ -85,7 +86,7 @@ void radix4(inout dvec2 values[4], uint LUTId, float inverse) {
 	//DIF 1st stage with double angle
 	dvec2 temp;
 	dvec2 w=twiddleLUT[LUTId];
-	w.y = (inverse < 0) ? -w.y : w.y;
+	if (inverse<0) w.y=-w.y;
 	temp.x=values[2].x*w.x-values[2].y*w.y;
 	temp.y=values[2].y*w.x+values[2].x*w.y;
 	values[2]=values[0]-temp;
@@ -98,7 +99,7 @@ void radix4(inout dvec2 values[4], uint LUTId, float inverse) {
 	
 	//DIF 2nd stage with angle
 	w=twiddleLUT[LUTId+uint((pow(8,numStages)-1)/7)];
-	w.y = (inverse < 0) ? -w.y : w.y;
+	if (inverse<0) w.y=-w.y;
 	temp.x=values[1].x*w.x-values[1].y*w.y;
 	temp.y=values[1].y*w.x+values[1].x*w.y;
 	values[1]=values[0]-temp;
@@ -121,7 +122,7 @@ void radix8(inout dvec2 values[8], uint LUTId, float inverse) {
 	
 	dvec2 temp; 
 	dvec2 w=twiddleLUT[LUTId];
-	w.y = (inverse < 0) ? -w.y : w.y;
+	if (inverse<0) w.y=-w.y;
 	temp.x=values[4].x*w.x-values[4].y*w.y;
 	temp.y=values[4].y*w.x+values[4].x*w.y;
 	values[4]=values[0]-temp;
@@ -144,7 +145,7 @@ void radix8(inout dvec2 values[8], uint LUTId, float inverse) {
 	
 	//DIF 2nd stage with double angle
 	w=twiddleLUT[LUTId+uint((pow(8,numStages)-1)/7)];
-	w.y = (inverse < 0) ? -w.y : w.y;
+	if (inverse<0) w.y=-w.y;
 	temp.x=values[2].x*w.x-values[2].y*w.y;
 	temp.y=values[2].y*w.x+values[2].x*w.y;
 	values[2]=values[0]-temp;
@@ -169,7 +170,7 @@ void radix8(inout dvec2 values[8], uint LUTId, float inverse) {
 	
 	//DIF 3rd stage with angle
 	w=twiddleLUT[LUTId+2*uint((pow(8,numStages)-1)/7)];
-	w.y = (inverse < 0) ? -w.y : w.y;
+	if (inverse<0) w.y=-w.y;
 	
 	temp.x=values[1].x*w.x-values[1].y*w.y;
 	temp.y=values[1].y*w.x+values[1].x*w.y;
@@ -261,7 +262,7 @@ void main() {
 				values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x];
 				values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+radixStride_0];
 				
-				radix2(values, LUTId);
+				radix2(values, LUTId, 1.0);
 				
 				temp0[0]=values[0];
 				temp0[4]=values[1];
@@ -272,7 +273,7 @@ void main() {
 				values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+gl_WorkGroupSize.x];
 				values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+gl_WorkGroupSize.x+radixStride_0];
 				
-				radix2(values, LUTId);
+				radix2(values, LUTId, 1.0);
 				
 				temp0[1]=values[0];
 				temp0[5]=values[1];
@@ -283,7 +284,7 @@ void main() {
 				values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+2*gl_WorkGroupSize.x];
 				values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+2*gl_WorkGroupSize.x+radixStride_0];
 				
-				radix2(values, LUTId);
+				radix2(values, LUTId, 1.0);
 				
 				temp0[2]=values[0];
 				temp0[6]=values[1];
@@ -294,7 +295,7 @@ void main() {
 				values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+3*gl_WorkGroupSize.x];
 				values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+3*gl_WorkGroupSize.x+radixStride_0];
 				
-				radix2(values, LUTId);
+				radix2(values, LUTId, 1.0);
 				
 				temp0[3]=values[0];
 				temp0[7]=values[1];
@@ -487,7 +488,7 @@ void main() {
 		
 		stageSize=1;
 		stageAngle=-M_PI;
-		
+		stageSizeSum=0;
 		//0-numStages stage
 		for (uint n=0; n < numStages; n++){
 			uint current_radix = (n<numStages-1) ? stageRadix_0 : stageRadix_1;
@@ -501,7 +502,7 @@ void main() {
 					values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x];
 					values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+radixStride_0];
 					
-					radix2(values, LUTId);
+					radix2(values, LUTId, -1.0);
 					
 					temp0_out[0]=values[0];
 					temp0_out[4]=values[1];
@@ -512,7 +513,7 @@ void main() {
 					values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+gl_WorkGroupSize.x];
 					values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+gl_WorkGroupSize.x+radixStride_0];
 					
-					radix2(values, LUTId);
+					radix2(values, LUTId, -1.0);
 					
 					temp0_out[1]=values[0];
 					temp0_out[5]=values[1];
@@ -523,7 +524,7 @@ void main() {
 					values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+2*gl_WorkGroupSize.x];
 					values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+2*gl_WorkGroupSize.x+radixStride_0];
 					
-					radix2(values, LUTId);
+					radix2(values, LUTId, -1.0);
 					
 					temp0_out[2]=values[0];
 					temp0_out[6]=values[1];
@@ -534,7 +535,7 @@ void main() {
 					values[0] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+3*gl_WorkGroupSize.x];
 					values[1] = sdata[fft_dim*gl_LocalInvocationID.y + gl_LocalInvocationID.x+3*gl_WorkGroupSize.x+radixStride_0];
 					
-					radix2(values, LUTId);
+					radix2(values, LUTId, -1.0);
 					
 					temp0_out[3]=values[0];
 					temp0_out[7]=values[1];
