@@ -3188,8 +3188,8 @@ extern "C" {
 
 	}
 	void dispatchEnchanced(VkFFTApplication* app, VkCommandBuffer commandBuffer, VkFFTAxis* axis, uint32_t* dispatchBlock) {
-		uint32_t maxBlockPow2Size[3] = { pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[0])),pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[1])),pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[2])) };
-		uint32_t blockNumber[3] = { ceil(dispatchBlock[0]/ (float)maxBlockPow2Size[0] ),ceil(dispatchBlock[1] / (float)maxBlockPow2Size[1]),ceil(dispatchBlock[2] / (float)maxBlockPow2Size[2]) };
+		uint32_t maxBlockPow2Size[3] = { (uint32_t)pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[0])),(uint32_t)pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[1])),(uint32_t)pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[2])) };
+		uint32_t blockNumber[3] = { (uint32_t)ceil(dispatchBlock[0]/ (float)maxBlockPow2Size[0] ),(uint32_t)ceil(dispatchBlock[1] / (float)maxBlockPow2Size[1]),(uint32_t)ceil(dispatchBlock[2] / (float)maxBlockPow2Size[2]) };
 		for (uint32_t i = 0; i < 3; i++)
 			if (blockNumber[i] == 1) maxBlockPow2Size[i] = dispatchBlock[i];
 		for (uint32_t i = 0; i < blockNumber[0]; i++) {
