@@ -21,7 +21,7 @@
 
 #define GROUP 1
 
-const bool enableValidationLayers = false;
+const bool enableValidationLayers = true;
 
 VkInstance instance = {};
 VkDebugReportCallbackEXT debugReportCallback = {};
@@ -356,7 +356,7 @@ float performVulkanFFT(VkFFTApplication* app_forward, uint32_t batch) {
 	return totTime / batch;
 }
 
-void launch_precision_comparison_single()
+void main()
 {
 	createInstance();
 	setupDebugMessenger();
@@ -373,18 +373,21 @@ void launch_precision_comparison_single()
 	vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physicalDeviceMemoryProperties);
 
-	const int num_benchmark_samples = 47;
+	const int num_benchmark_samples = 60;
 	const int num_runs = 1;
 
-	int benchmark_dimensions[num_benchmark_samples][4] = { {32, 1, 1, 1}, { 256, 1, 1, 1 }, { 1024, 1, 1, 1 }, { 4096, 1, 1, 1 }, { 8192, 1, 1, 1 }, { 16384, 1, 1, 1 },
-		{32, 32, 1, 2},  {64, 64, 1, 2}, {256, 32, 1, 2}, {32, 256, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2},{256, 1024, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2} , {4096, 1024, 1, 2},
-		{32, 32, 32, 3}, {256, 32, 8, 3},{8, 32, 256, 3}, {32, 8, 256, 3}, {512, 256, 32, 3}, {1024, 1024, 8, 3}, {4096, 256, 8, 3},
-		{4096, 4096, 1, 2}, {4096, 4096, 8, 3}, {1024, 4096, 1, 2}, {256, 8, 4096, 3},
-		{(uint32_t)pow(2,15), 1, 1, 1}, {(uint32_t)pow(2,16), 1, 1, 1},  {(uint32_t)pow(2,17), 1, 1, 1},  {(uint32_t)pow(2,18), 1, 1, 1},   {(uint32_t)pow(2,20), 1, 1, 1},   {(uint32_t)pow(2,22), 1, 1, 1},
-		{(uint32_t)pow(2,15), 64, 1, 2}, {(uint32_t)pow(2,16), 64, 1, 2}, {(uint32_t)pow(2,17), 64, 1, 2}, {(uint32_t)pow(2,18), 64, 1, 2},  {(uint32_t)pow(2,20), 64, 1, 2},  {(uint32_t)pow(2,22), 64, 1, 2},
-		{64, (uint32_t)pow(2,13), 1, 2}, {64, (uint32_t)pow(2,14), 1, 2}, {64, (uint32_t)pow(2,15), 1, 2},
-		{8,8 , (uint32_t)pow(2,13), 3}, {8,8, (uint32_t)pow(2,14), 3}, {8,8, (uint32_t)pow(2,15), 3},
-		{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,14), 1, 2}
+	int benchmark_dimensions[num_benchmark_samples][4] = { {(uint32_t)pow(2,5), 1, 1, 1},{(uint32_t)pow(2,6), 1, 1, 1},{(uint32_t)pow(2,7), 1, 1, 1},{(uint32_t)pow(2,8), 1, 1, 1},{(uint32_t)pow(2,9), 1, 1, 1},{(uint32_t)pow(2,10), 1, 1, 1},
+		{(uint32_t)pow(2,11), 1, 1, 1},{(uint32_t)pow(2,12), 1, 1, 1},{(uint32_t)pow(2,13), 1, 1, 1},{(uint32_t)pow(2,14), 1, 1, 1},{(uint32_t)pow(2,15), 1, 1, 1},{(uint32_t)pow(2,16), 1, 1, 1},{(uint32_t)pow(2,17), 1, 1, 1},{(uint32_t)pow(2,18), 1, 1, 1},
+		{(uint32_t)pow(2,19), 1, 1, 1},{(uint32_t)pow(2,20), 1, 1, 1},{(uint32_t)pow(2,21), 1, 1, 1},{(uint32_t)pow(2,22), 1, 1, 1},{(uint32_t)pow(2,23), 1, 1, 1},{(uint32_t)pow(2,24), 1, 1, 1},{(uint32_t)pow(2,25), 1, 1, 1},{(uint32_t)pow(2,26), 1, 1, 1},{(uint32_t)pow(2,27), 1, 1, 1},
+
+		{8, (uint32_t)pow(2,3), 1, 2},{8, (uint32_t)pow(2,4), 1, 2},{8, (uint32_t)pow(2,5), 1, 2},{8, (uint32_t)pow(2,6), 1, 2},{8, (uint32_t)pow(2,7), 1, 2},{8, (uint32_t)pow(2,8), 1, 2},{8, (uint32_t)pow(2,9), 1, 2},{8, (uint32_t)pow(2,10), 1, 2},
+		{8, (uint32_t)pow(2,11), 1, 2},{8, (uint32_t)pow(2,12), 1, 2},{8, (uint32_t)pow(2,13), 1, 2},{8, (uint32_t)pow(2,14), 1, 2},{8, (uint32_t)pow(2,15), 1, 2},{8, (uint32_t)pow(2,16), 1, 2},{8, (uint32_t)pow(2,17), 1, 2},{8, (uint32_t)pow(2,18), 1, 2},
+		{8, (uint32_t)pow(2,19), 1, 2},{8, (uint32_t)pow(2,20), 1, 2},{8, (uint32_t)pow(2,21), 1, 2},{8, (uint32_t)pow(2,22), 1, 2},{8, (uint32_t)pow(2,23), 1, 2},{8, (uint32_t)pow(2,24), 1, 2},
+
+		{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},
+		{ (uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},{ (uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},{ (uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},{ (uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{ (uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
+
+		{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3},
 	};
 
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
@@ -454,7 +457,7 @@ void launch_precision_comparison_single()
 			for (int i = 0; i < batch; i++) {
 
 				cufftExecC2C(planC2C, dataC, dataC, 1);
-
+				//cufftExecC2C(planC2C, dataC, dataC, -1);
 			}
 			cudaDeviceSynchronize();
 			auto timeEnd = std::chrono::steady_clock::now();
@@ -466,9 +469,9 @@ void launch_precision_comparison_single()
 
 			//VkFFT part
 
-			VkFFTConfiguration forward_configuration=defaultVkFFTConfiguration;
-			VkFFTApplication app_forward=defaultVkFFTApplication;
-			//VkFFTApplication app_inverse;
+			VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
+			VkFFTApplication app_forward = defaultVkFFTApplication;
+			//VkFFTApplication app_inverse = defaultVkFFTApplication;
 			forward_configuration.coalescedMemory = 32;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 is equal 128. For Intel use 64. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 
 			forward_configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
@@ -491,6 +494,7 @@ void launch_precision_comparison_single()
 			forward_configuration.commandPool = &commandPool;
 			forward_configuration.physicalDevice = &physicalDevice;
 			forward_configuration.useLUT = false;
+			forward_configuration.reorderFourStep = true;
 			//Custom path to the folder with shaders, default is "shaders");
 			sprintf(forward_configuration.shaderPath, "shaders\\");
 
@@ -498,9 +502,13 @@ void launch_precision_comparison_single()
 			VkDeviceSize bufferSize = forward_configuration.coordinateFeatures * sizeof(float) * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};
-
+			VkBuffer tempBuffer = {};
+			VkDeviceMemory tempBufferDeviceMemory = {};
 			allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			allocateFFTBuffer(&tempBuffer, &tempBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+
 			forward_configuration.buffer = &buffer;
+			forward_configuration.tempBuffer = &tempBuffer;
 			forward_configuration.isInputFormatted = false; //set to true if input is a different buffer, so it can have zeropadding/R2C added  
 			forward_configuration.inputBuffer = &buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
 			forward_configuration.isOutputFormatted = false;//set to true if output is a different buffer, so it can have zeropadding/C2R automatically removed
@@ -508,13 +516,13 @@ void launch_precision_comparison_single()
 			forward_configuration.bufferSize = &bufferSize;
 			forward_configuration.inputBufferSize = &bufferSize;
 			forward_configuration.outputBufferSize = &bufferSize;
-
+			//forward_configuration.inverse = true;
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 			transferDataFromCPU((float*)inputC, &buffer, bufferSize);
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 			initializeVulkanFFT(&app_forward, forward_configuration);
 			//forward_configuration.inverse = true;
-			//app_inverse.initializeVulkanFFT(forward_configuration);
+			//initializeVulkanFFT(&app_inverse,forward_configuration);
 			//Submit FFT+iFFT.
 			//batch = 1;
 			totTime = performVulkanFFT(&app_forward, batch);
@@ -534,18 +542,19 @@ void launch_precision_comparison_single()
 						int loc_i = i;
 						int loc_j = j;
 						int loc_l = l;
-						//VkFFT doesn't reshuffle after 4 step FFT
-						if (app_forward.localFFTPlan.numAxisUploads[0] > 1)
+						
+					/*	if (app_forward.localFFTPlan.numAxisUploads[0] > 1)
 							loc_i = i / app_forward.localFFTPlan.axes[0][1].specializationConstants.fftDim + app_forward.localFFTPlan.axes[0][0].specializationConstants.fftDim * (i % app_forward.localFFTPlan.axes[0][1].specializationConstants.fftDim);
 						if (app_forward.localFFTPlan.numAxisUploads[1] > 1)
 							loc_j = j / app_forward.localFFTPlan.axes[1][1].specializationConstants.fftDim + app_forward.localFFTPlan.axes[1][0].specializationConstants.fftDim * (j % app_forward.localFFTPlan.axes[1][1].specializationConstants.fftDim);
 						if (app_forward.localFFTPlan.numAxisUploads[2] > 1)
 							loc_l = l / app_forward.localFFTPlan.axes[2][1].specializationConstants.fftDim + app_forward.localFFTPlan.axes[2][0].specializationConstants.fftDim * (l % app_forward.localFFTPlan.axes[2][1].specializationConstants.fftDim);
+							*/
+						int N = (forward_configuration.inverse) ? dims[0] * dims[1] * dims[2] : 1;
+						//printf("%f %f - %f %f - %f %f\n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0]/N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]/N, output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].x/N, output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].y/N, output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])].x, output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])].y);
 
-						//printf("%f %f - %f %f - %f %f\n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0], output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1], output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].x, output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].y, output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])].x, output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])].y);
-
-						float current_diff_x_cuFFT = (output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].x - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0]);
-						float current_diff_y_cuFFT = (output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].y - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
+						float current_diff_x_cuFFT = (output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].x / N - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0]);
+						float current_diff_y_cuFFT = (output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].y / N - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
 						float current_diff_x_VkFFT = (output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]].x - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0]);
 						float current_diff_y_VkFFT = (output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]].y - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
 
@@ -584,7 +593,9 @@ void launch_precision_comparison_single()
 			free(output_cuFFT);
 			free(output_VkFFT);
 			vkDestroyBuffer(device, buffer, NULL);
+			vkDestroyBuffer(device, tempBuffer, NULL);
 			vkFreeMemory(device, bufferDeviceMemory, NULL);
+			vkFreeMemory(device, tempBufferDeviceMemory, NULL);
 			deleteVulkanFFT(&app_forward);
 			cufftDestroy(planC2C);
 			cudaFree(dataC);

@@ -9,11 +9,11 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
 ## Currently supported features:
   - 1D/2D/3D systems
   - Forward and inverse directions of FFT
-  - Support for big FFT dimension sizes. Current limits in single and half precision: C2C - (2^24, 2^15, 2^15), C2R/R2C - (2^14, 2^15, 2^15) with register overutilization. (will be increased later). y and z axis are capped due to Vulkan maxComputeWorkGroupCount and will be increased later. x axis size will also be improved, after tests of the >2 passes big FFTs algorithm. Current limits in double precision: C2C - (2^20, 2^15, 2^15), C2R/R2C - (2^11, 2^15, 2^15) with no register overutilization.
+  - Support for big FFT dimension sizes. Current limits in single and half precision: C2C - (2^30, 2^30, 2^30), if four-step reordering is not performed - (2^32, 2^32, 2^32). C2R/R2C with register overutilization - (2^14, 2^30, 2^30). (will be increased later). Current limits in double precision: C2C - (2^30, 2^30, 2^30), C2R/R2C - (2^11, 2^30, 2^30) with no register overutilization.
   - Radix-2/4/8 FFT, only power of two systems. 
   - Single, double and half precision support. Double precision uses CPU generated LUT tables. Half precision still does all computations in single and only uses half precision to store data.
   - All transformations are performed in-place with no performance loss. Out-of-place transforms are supported by selecting different input/output buffers.
-  - No transpositions. Note: data is not reshuffled after the four step FFT algorithm (for big sequences). Doesn't matter for convolutions - they return to the input ordering.
+  - No additional transposition uploads. Note: data can be reshuffled after the four step FFT algorithm with additional buffer (for big sequences). Doesn't matter for convolutions - they return to the input ordering (saves memory).
   - Complex to complex (C2C), real to complex (R2C) and complex to real (C2R) transformations. R2C and C2R are optimized to run up to 2x times faster than C2C (2D and 3D case only)
   - 1x1, 2x2, 3x3 convolutions with symmetric or nonsymmetric kernel (no register overutilization)
   - Native zero padding to model open systems (up to 2x faster than simply padding input array with zeros)
@@ -31,7 +31,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
 
 ## Installation
 Include the vkFFT.h file and specify path to the shaders folder in CMake or from C interface. Sample CMakeLists.txt file configures project based on Vulkan_FFT.cpp file, which contains examples on how to use VkFFT to perform FFT, iFFT and convolution calculations, use zero padding, multiple feature/batch convolutions, C2C FFTs of big systems, R2C/C2R transforms, double precision FFTs, half precision FFTs.\
-For single and double precision, Vulkan 1.0 is required. For half precision, Vulkan 1.2 is required.
+For single and double precision, Vulkan 1.0 is required. For half precision, Vulkan 1.1 is required.
 ## Command-line interface
 VkFFT has a command-line interface with the following set of commands:\
 -h: print help\
@@ -53,7 +53,7 @@ To measure how Vulkan FFT implementation works in comparison to cuFFT, we will p
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_1.png?raw=true)
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_2.png?raw=true)
 ## Precision comparison of cuFFT/VkFFT/FFTW
-To measure how VkFFT (single/double precision) results compare to cuFFT (single/double precision) and FFTW (double precision), a set of ~50 systems was filled with random complex data on the scale of [-1,1] and one C2C transform was performed on each system. The precision_cuFFT_VkFFT_FFTW.cu script in benchmark_precision_scripts folder contains the comparison code, which calculates for each value of the transformed system:
+To measure how VkFFT (single/double precision) results compare to cuFFT (single/double precision) and FFTW (double precision), a set of ~50 systems covering full FFT range was filled with random complex data on the scale of [-1,1] and one C2C transform was performed on each system. The precision_cuFFT_VkFFT_FFTW.cu script in benchmark_precision_scripts folder contains the comparison code, which calculates for each value of the transformed system:
 
 - Max difference between cuFFT/VkFFT result and FFTW result
 - Average difference between cuFFT/VkFFT result and FFTW result

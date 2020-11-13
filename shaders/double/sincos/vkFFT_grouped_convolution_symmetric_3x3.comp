@@ -51,17 +51,17 @@ layout (constant_id = 16) const uint outputStride_3 = 1;
 layout (constant_id = 17) const uint outputStride_4 = 1;
 layout (constant_id = 18) const uint fft_dim_full = 2048;
 layout (constant_id = 19) const uint stageStartSize = 2048;
-layout (constant_id = 20) const uint fft_dim_x = 2048;
-layout (constant_id = 21) const uint numStages = 1;
-layout (constant_id = 22) const uint stageRadix_0 = 8;
-layout (constant_id = 23) const uint stageRadix_1 = 8;
-layout (constant_id = 24) const uint ratio_0 = 8;
-layout (constant_id = 25) const uint ratio_1 = 8;
-layout (constant_id = 26) const bool ratioDirection_0 = false;
-layout (constant_id = 27) const bool ratioDirection_1 = true;
-layout (constant_id = 28) const uint inputOffset = 0;
-layout (constant_id = 29) const uint outputOffset = 0;
-layout (constant_id = 30) const uint passID = 0;
+layout (constant_id = 20) const uint firstStageStartSize = 2048;
+layout (constant_id = 21) const uint fft_dim_x = 2048;
+layout (constant_id = 22) const uint numStages = 1;
+layout (constant_id = 23) const uint stageRadix_0 = 8;
+layout (constant_id = 24) const uint stageRadix_1 = 8;
+layout (constant_id = 25) const uint inputOffset = 0;
+layout (constant_id = 26) const uint outputOffset = 0;
+layout (constant_id = 27) const bool reorderFourStep = false;
+layout (constant_id = 28) const uint performWorkGroupShiftX = 0;
+layout (constant_id = 29) const uint performWorkGroupShiftY = 0;
+layout (constant_id = 30) const uint performWorkGroupShiftZ = 0;
 const uint radixStride_0 = fft_dim/2;
 const uint radixStride_1 = fft_dim/4;
 const uint radixStride_2 = fft_dim/8;
@@ -70,6 +70,9 @@ layout(push_constant) uniform PushConsts
 {
 	uint coordinate;
 	uint batchID;
+	uint workGroupShiftX;
+	uint workGroupShiftY;
+	uint workGroupShiftZ;
 } consts;
 
 layout(std430, binding = 0) buffer Data {
@@ -257,17 +260,7 @@ void main() {
 		memoryBarrierShared();
 		barrier();
 		
-		if (passID>0){
-			for (uint i=0; i < 8; i++){
-				double angle=2*M_PI*(((gl_GlobalInvocationID.x/fft_dim_x)*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))/double(fft_dim_full));
-				uint index=(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y));
-				dvec2 mult = sincos_20(angle);
-				dvec2 res=dvec2(sdata[index].x*mult.x-sdata[index].y*mult.y,sdata[index].y*mult.x+sdata[index].x*mult.y);
-				sdata[index]=res;
-			}
-			memoryBarrierShared();
-			barrier();
-		}
+		
 		uint stageSize=1;
 		
 		double stageAngle=M_PI;
@@ -774,17 +767,7 @@ void main() {
 			memoryBarrierShared();
 			barrier();
 		}
-		if (passID>0){
-			for (uint i=0; i < 8; i++){
-				double angle=2*M_PI*(((gl_GlobalInvocationID.x/fft_dim_x)*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))/double(fft_dim_full));
-				uint index=(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y));
-				dvec2 mult = sincos_20(-angle);
-				dvec2 res=dvec2(sdata[index].x*mult.x-sdata[index].y*mult.y,sdata[index].y*mult.x+sdata[index].x*mult.y);
-				sdata[index]=res;
-			}
-			memoryBarrierShared();
-			barrier();
-		}
+		
 		if ((zeropad_0)&&(inverse)){
 			if(fft_dim==fft_dim_full){
 				for (uint i=0; i < 4; i++)
