@@ -303,18 +303,18 @@ void createDevice(uint32_t sample_id) {
 }
 
 
-uint32_t findMemoryType(uint32_t memoryTypeBits, VkMemoryPropertyFlags properties) {
-	VkPhysicalDeviceMemoryProperties memoryProperties = {};
+uint32_t findMemoryType(uint32_t memoryTypeBits, uint32_t memorySize, VkMemoryPropertyFlags properties) {
+	VkPhysicalDeviceMemoryProperties memoryProperties = { 0 };
 
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
 
 	for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
-		if ((memoryTypeBits & (1 << i)) &&
-			((memoryProperties.memoryTypes[i].propertyFlags & properties) == properties))
+		if ((memoryTypeBits & (1 << i)) && ((memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) && (memoryProperties.memoryHeaps[memoryProperties.memoryTypes[i].heapIndex].size >= memorySize))
 			return i;
 	}
 	return -1;
 }
+
 void allocateFFTBuffer(VkBuffer* buffer, VkDeviceMemory* deviceMemory, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags propertyFlags, VkDeviceSize size) {
 	uint32_t queueFamilyIndices;
 	VkBufferCreateInfo bufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
@@ -328,7 +328,7 @@ void allocateFFTBuffer(VkBuffer* buffer, VkDeviceMemory* deviceMemory, VkBufferU
 	vkGetBufferMemoryRequirements(device, buffer[0], &memoryRequirements);
 	VkMemoryAllocateInfo memoryAllocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
-	memoryAllocateInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, propertyFlags);
+	memoryAllocateInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, memoryRequirements.size, propertyFlags);
 	vkAllocateMemory(device, &memoryAllocateInfo, NULL, deviceMemory);
 	vkBindBufferMemory(device, buffer[0], deviceMemory[0], 0);
 }
@@ -514,23 +514,17 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 					forward_configuration.useLUT = false;
-					if (forward_configuration.size[1] > 512)
 						forward_configuration.registerBoost = 4;
-					else
-						forward_configuration.registerBoost = 1;
 					break;
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 1;
 					break;
-				case 0x13B5://AMD
+				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = false;
-					if (forward_configuration.size[1] > 512)
 						forward_configuration.registerBoost = 4;
-					else
-						forward_configuration.registerBoost = 1;
 					break;
 				default:
 					forward_configuration.coalescedMemory = 64;
@@ -694,22 +688,16 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 					forward_configuration.useLUT = true;
-					if (forward_configuration.size[1] > 512)
 						forward_configuration.registerBoost = 1;//registerBoost is not implemented for double yet.
-					else
-						forward_configuration.registerBoost = 1;
 					break;
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 1;
 					break;
-				case 0x13B5://AMD
+				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = true;
-					if (forward_configuration.size[1] > 512)
-						forward_configuration.registerBoost = 1;
-					else
 						forward_configuration.registerBoost = 1;
 					break;
 				default:
@@ -878,23 +866,16 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 64;//have to set coalesce more, as calculations are still float, while uploads are half.
 					forward_configuration.useLUT = false;
-					if (forward_configuration.size[1] > 512)
-						forward_configuration.registerBoost = 1;//registerBoost is less efficient for half precision, because computations are still in float
-					else
-						forward_configuration.registerBoost = 1;
-					break;
+						forward_configuration.registerBoost = 4;					break;
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 128;
 					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 1;
 					break;
-				case 0x13B5://AMD
+				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = false;
-					if (forward_configuration.size[1] > 512)
-						forward_configuration.registerBoost = 1;
-					else
-						forward_configuration.registerBoost = 1;
+						forward_configuration.registerBoost = 4;
 					break;
 				default:
 					forward_configuration.coalescedMemory = 64;
@@ -1042,7 +1023,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 			forward_configuration.coalescedMemory = 64;
 			forward_configuration.registerBoost = 1;
 			break;
-		case 0x13B5://AMD
+		case 0x1002://AMD
 			forward_configuration.coalescedMemory = 32;
 			forward_configuration.registerBoost = 1;
 		default:
@@ -1230,7 +1211,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 			forward_configuration.coalescedMemory = 64;
 			forward_configuration.registerBoost = 1;
 			break;
-		case 0x13B5://AMD
+		case 0x1002://AMD
 			forward_configuration.coalescedMemory = 32;
 			forward_configuration.registerBoost = 1;
 		default:
@@ -1420,7 +1401,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 			forward_configuration.coalescedMemory = 64;
 			forward_configuration.registerBoost = 1;
 			break;
-		case 0x13B5://AMD
+		case 0x1002://AMD
 			forward_configuration.coalescedMemory = 32;
 			forward_configuration.registerBoost = 1;
 		default:
@@ -1630,10 +1611,6 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
 					forward_configuration.useLUT = false;
-					if (forward_configuration.size[1] > 512)
-						forward_configuration.registerBoost = 4;
-					else
-						forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost = 4;
 					break;
 				case 0x8086://INTEL
@@ -1642,13 +1619,10 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					forward_configuration.registerBoost = 1;
 
 					break;
-				case 0x13B5://AMD
+				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = false;
-					if (forward_configuration.size[1] > 512)
 						forward_configuration.registerBoost = 4;
-					else
-						forward_configuration.registerBoost = 1;
 					break;
 				default:
 					forward_configuration.coalescedMemory = 64;
@@ -1743,9 +1717,9 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 						}
 						std_error = sqrt(std_error / num_runs);
 						if (file_output)
-							fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", forward_configuration.size[0], forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time));
+							fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time));
 
-						printf("VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", forward_configuration.size[0], forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time));
+						printf("VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time));
 						benchmark_result += ((double)bufferSize / 1024) / avg_time;
 					}
 
@@ -1808,7 +1782,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.registerBoost = 4;
 					break;
-				case 0x13B5://AMD
+				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.registerBoost = 4;
 					break;
