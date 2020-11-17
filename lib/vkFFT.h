@@ -38,7 +38,10 @@ extern "C" {
 		VkBool32 doublePrecision; //1 to enable
 		VkBool32 halfPrecision; //1 to enable
 		uint32_t sharedMemorySize;//in bytes. For now Vulkan is optimized for 32KB of shared memory
-		uint32_t registerBoost; //specify if register file size is bigger than shared memory (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4)
+		uint32_t registerBoost; //specify if register file size is bigger than shared memory (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4). Default 1, max 4
+		uint32_t registerBoost4Step; //specify if register file overutilization should be used in big sequences (>2^14), same value or lower as above. Default 1, max 4
+		uint32_t swapTo3Stage4Step; //specify at which power of 2 to switch from 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled. Must be at least 17
+		uint32_t performHalfBandwidthBoost;//try to reduce coalsesced number by a factor of 2 to get bigger sequence in one upload
 		char shaderPath[256]; //path to shaders, can be selected automatically in CMake
 		uint32_t coalescedMemory;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 		VkDevice* device;
@@ -60,7 +63,7 @@ extern "C" {
 		VkBuffer* kernel;
 	} VkFFTConfiguration;
 
-	VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {65535,65535,65535},1,1,1,1,1,8,{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 32768, 1, "shaders/", 32, 0,0,0,0,0, 0,0,0,0,0,0,0,0,0 };
+	VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {65535,65535,65535},1,1,1,1,1,8,{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 32768, 1, 1, 0, 1,"shaders/", 32, 0,0,0,0,0, 0,0,0,0,0,0,0,0,0 };
 
 	typedef struct {
 		uint32_t localSize[3];
@@ -417,31 +420,41 @@ extern "C" {
 				complexSize = (2 * sizeof(float));
 			else
 				complexSize = (2 * sizeof(float));
+		uint32_t registerBoost = app->configuration.registerBoost;
+
 		uint32_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
 		uint32_t maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
-		if ((axis_id == 0) && (!app->configuration.performConvolution)) maxSingleSizeNonStrided *= app->configuration.registerBoost;
-		uint32_t maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / 2 > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory / 2) : app->configuration.sharedMemorySize / complexSize;
+		if ((axis_id == 0) && (!app->configuration.performConvolution)) maxSingleSizeNonStrided *= registerBoost;
 		uint32_t maxSingleSizeStrided = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
 		uint32_t numPasses = 1;
 		uint32_t numPassesHalfBandwidth = 1;
-		uint32_t temp = (axis_id == 0) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStridedHalfBandwidth;
-		if (temp > 1) {//more passes than one
-			temp = ((axis_id == 0) && (!app->configuration.reorderFourStep)) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStridedHalfBandwidth;
-			if (app->configuration.reorderFourStep)
-				numPassesHalfBandwidth = (uint32_t)ceil(log2(app->configuration.size[axis_id]) / log2(maxSingleSizeStridedHalfBandwidth));
-			else
-				numPassesHalfBandwidth += (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStridedHalfBandwidth));
-		}
-
+		uint32_t temp;
 		temp = (axis_id == 0) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStrided;
 		if (temp > 1) {//more passes than one
+			registerBoost = app->configuration.registerBoost4Step;
 			temp = ((axis_id == 0) && (!app->configuration.reorderFourStep)) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStrided;
 			if (app->configuration.reorderFourStep)
 				numPasses = (uint32_t)ceil(log2(app->configuration.size[axis_id]) / log2(maxSingleSizeStrided));
 			else
 				numPasses += (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStrided));
 		}
-		if (numPassesHalfBandwidth < numPasses) numPasses = numPassesHalfBandwidth;
+		uint32_t maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
+		if (app->configuration.performHalfBandwidthBoost) {
+			maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / 2 > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory / 2) : app->configuration.sharedMemorySize / complexSize;
+			temp = (axis_id == 0) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStridedHalfBandwidth;
+			if (temp > 1) {//more passes than two
+				temp = ((axis_id == 0) && (!app->configuration.reorderFourStep)) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStridedHalfBandwidth;
+				if (app->configuration.reorderFourStep)
+					numPassesHalfBandwidth = (uint32_t)ceil(log2(app->configuration.size[axis_id]) / log2(maxSingleSizeStridedHalfBandwidth));
+				else
+					numPassesHalfBandwidth = 1 + (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStridedHalfBandwidth));
+				if ((numPassesHalfBandwidth == 2)&& (!app->configuration.reorderFourStep)&&(registerBoost>1)) {//switch back for two step and don't do half bandwidth on strided accesses if register boost and no 4-step reordering
+					numPassesHalfBandwidth = 1 + (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStrided));
+				}
+			}
+			if (numPassesHalfBandwidth < numPasses) numPasses = numPassesHalfBandwidth;
+		}
+		if ((uint32_t)log2(app->configuration.size[axis_id]) >= app->configuration.swapTo3Stage4Step) numPasses = 3;//Force set to 3 stage 4 step algorithm
 		FFTPlan->numAxisUploads[axis_id] = numPasses;
 		switch (numPasses) {
 		case 1: {
@@ -460,16 +473,16 @@ extern "C" {
 						FFTPlan->axisSplit[axis_id][0] = maxSequenceLengthSharedMemory;
 					}
 					else {
-						if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * app->configuration.registerBoost) < maxSingleSizeStridedHalfBandwidth) {
-							for (uint32_t i = 1; i <= (uint32_t)log2(app->configuration.registerBoost); i++) {
+						if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * registerBoost) < maxSingleSizeStridedHalfBandwidth) {
+							for (uint32_t i = 1; i <= (uint32_t)log2(registerBoost); i++) {
 								if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i)) <= maxSingleSizeStrided) {
 									FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i));
-									i = (uint32_t)log2(app->configuration.registerBoost) + 1;
+									i = (uint32_t)log2(registerBoost) + 1;
 								}
 							}
 						}
 						else {
-							FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * app->configuration.registerBoost);
+							FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * registerBoost);
 						}
 					}
 				}
@@ -491,60 +504,77 @@ extern "C" {
 			}
 			FFTPlan->axisSplit[axis_id][1] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0];
 			if (FFTPlan->axisSplit[axis_id][1] < 64) {
-				FFTPlan->axisSplit[axis_id][0] = FFTPlan->axisSplit[axis_id][0] / (64 / FFTPlan->axisSplit[axis_id][1]);
+				FFTPlan->axisSplit[axis_id][0] = (FFTPlan->axisSplit[axis_id][1] == 0) ? FFTPlan->axisSplit[axis_id][0] / (64) : FFTPlan->axisSplit[axis_id][0] / (64 / FFTPlan->axisSplit[axis_id][1]);
 				FFTPlan->axisSplit[axis_id][1] = 64;
+			}
+			if (FFTPlan->axisSplit[axis_id][1] > FFTPlan->axisSplit[axis_id][0]) {
+				uint32_t swap = FFTPlan->axisSplit[axis_id][0];
+				FFTPlan->axisSplit[axis_id][0] = FFTPlan->axisSplit[axis_id][1];
+				FFTPlan->axisSplit[axis_id][1] = swap;
 			}
 			break;
 		}
 		case 3: {
+
+
 			uint32_t maxPow8Strided = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided)) / 3);
 			if ((axis_id == 0) && (!app->configuration.reorderFourStep)) {
 				//unit stride
 				uint32_t maxPow8SharedMemory = (uint32_t)pow(8, ((uint32_t)log2(maxSequenceLengthSharedMemory)) / 3);
-				if (app->configuration.size[axis_id] / maxPow8SharedMemory <= 2 * maxSingleSizeStrided)
+				if (app->configuration.size[axis_id] / maxPow8SharedMemory <= maxPow8Strided * maxPow8Strided)
 					FFTPlan->axisSplit[axis_id][0] = maxPow8SharedMemory;
 				else {
 					if (app->configuration.size[axis_id] / maxSequenceLengthSharedMemory <= maxSingleSizeStrided * maxSingleSizeStrided)
 						FFTPlan->axisSplit[axis_id][0] = maxSequenceLengthSharedMemory;
 					else {
-						if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * app->configuration.registerBoost) <= maxSingleSizeStrided * maxSingleSizeStrided) {
-							for (uint32_t i = 1; i <= (uint32_t)log2(app->configuration.registerBoost); i++) {
+						if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * registerBoost) <= maxSingleSizeStrided * maxSingleSizeStrided) {
+							for (uint32_t i = 0; i <= (uint32_t)log2(registerBoost); i++) {
 								if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i)) <= maxSingleSizeStrided * maxSingleSizeStrided) {
 									FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i));
-									i = (uint32_t)log2(app->configuration.registerBoost) + 1;
+									i = (uint32_t)log2(registerBoost) + 1;
 								}
 							}
 						}
 						else {
-							FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * app->configuration.registerBoost);
+							FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * registerBoost);
 						}
 					}
 				}
 			}
 			else {
 				//to account for TLB misses, it is best to coalesce the unit-strided stage to 128 bytes
-				uint32_t maxSingleSizeStrided128 = app->configuration.sharedMemorySize / (128) / 2;
+				/*uint32_t log2axis = (uint32_t)log2(app->configuration.size[axis_id]);
+				FFTPlan->axisSplit[axis_id][0] = (uint32_t)pow(2, (uint32_t)log2axis / 3);
+				if (log2axis % 3 > 0) FFTPlan->axisSplit[axis_id][0] *= 2;
+				FFTPlan->axisSplit[axis_id][1] = (uint32_t)pow(2, (uint32_t)log2axis / 3);
+				if (log2axis % 3 > 1) FFTPlan->axisSplit[axis_id][1] *= 2;
+				FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0] / FFTPlan->axisSplit[axis_id][1];*/
+				uint32_t maxSingleSizeStrided128 = app->configuration.sharedMemorySize / (128) ;
 				uint32_t maxPow8_128 = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided128)) / 3);
-				uint32_t maxPow8Strided = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided)) / 3);
 				//unit stride
-				if (app->configuration.size[axis_id] / maxPow8_128 <= maxPow8Strided * maxPow8Strided)
+				if (app->configuration.size[axis_id] / maxPow8_128 <= maxPow8Strided * maxSingleSizeStrided)
 					FFTPlan->axisSplit[axis_id][0] = maxPow8_128;
 				//non-unit stride
 				else {
-					if (app->configuration.size[axis_id] / maxSingleSizeStrided <= maxSingleSizeStrided * maxSingleSizeStrided) {
-						for (uint32_t i = 1; i <= (uint32_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128); i++) {
-							if (app->configuration.size[axis_id] / (maxSingleSizeStrided128 * (uint32_t)pow(2, i)) <= maxSingleSizeStrided * maxSingleSizeStrided) {
-								FFTPlan->axisSplit[axis_id][0] = (maxSingleSizeStrided128 * (uint32_t)pow(2, i));
-								i = (uint32_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128) + 1;
-							}
-						}
+
+					if ((app->configuration.size[axis_id] / (maxPow8_128*2) <= maxPow8Strided * maxSingleSizeStrided)&&(maxPow8_128 * 2<= maxSingleSizeStrided128)) {
+						FFTPlan->axisSplit[axis_id][0] = maxPow8_128 * 2;
 					}
 					else {
-						if (app->configuration.size[axis_id] / maxSingleSizeStrided <= maxSingleSizeStridedHalfBandwidth * maxSingleSizeStridedHalfBandwidth) {
-							FFTPlan->axisSplit[axis_id][0] = maxSingleSizeStrided;
+						if ((app->configuration.size[axis_id] / (maxPow8_128 * 4) <= maxPow8Strided * maxSingleSizeStrided) && (maxPow8_128 * 4 <= maxSingleSizeStrided128)) {
+							FFTPlan->axisSplit[axis_id][0] = maxPow8_128 * 4;
 						}
 						else {
-							FFTPlan->axisSplit[axis_id][0] = maxSingleSizeStridedHalfBandwidth;
+							if (app->configuration.size[axis_id] / maxSingleSizeStrided <= maxSingleSizeStrided * maxSingleSizeStrided) {
+								for (uint32_t i = 0; i <= (uint32_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128); i++) {
+									if (app->configuration.size[axis_id] / (maxSingleSizeStrided128 * (uint32_t)pow(2, i)) <= maxSingleSizeStrided * maxSingleSizeStrided) {
+										FFTPlan->axisSplit[axis_id][0] = (maxSingleSizeStrided128 * (uint32_t)pow(2, i));
+										i = (uint32_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128) + 1;
+									}
+								}
+							}
+							else
+								FFTPlan->axisSplit[axis_id][0] = maxSingleSizeStridedHalfBandwidth;
 						}
 					}
 				}
@@ -564,8 +594,13 @@ extern "C" {
 				}
 			}
 			if (FFTPlan->axisSplit[axis_id][2] < 64) {
-				FFTPlan->axisSplit[axis_id][1] = FFTPlan->axisSplit[axis_id][1] / (64 / FFTPlan->axisSplit[axis_id][2]);
+				FFTPlan->axisSplit[axis_id][1] = (FFTPlan->axisSplit[axis_id][2] == 0 ) ? FFTPlan->axisSplit[axis_id][1] / (64) : FFTPlan->axisSplit[axis_id][1] / (64 / FFTPlan->axisSplit[axis_id][2]);
 				FFTPlan->axisSplit[axis_id][2] = 64;
+			}
+			if (FFTPlan->axisSplit[axis_id][2] > FFTPlan->axisSplit[axis_id][1]) {
+				uint32_t swap = FFTPlan->axisSplit[axis_id][1];
+				FFTPlan->axisSplit[axis_id][1] = FFTPlan->axisSplit[axis_id][2];
+				FFTPlan->axisSplit[axis_id][2] = swap;
 			}
 			break;
 		}
@@ -1609,10 +1644,11 @@ extern "C" {
 		else {
 			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
 		}
-
-		if ((FFTPlan->numAxisUploads[axis_id] == 3) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory / 16)) {
+		//shared memory bank conflict resolve
+		if ((FFTPlan->numAxisUploads[axis_id] == 3) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory/16)) {
 			axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 		}
+		//half bandiwdth technique
 		if (!((axis_id == 0) && (FFTPlan->numAxisUploads[axis_id] == 1)) && !((axis_id == 0) && (axis_upload_id == 0) && (!app->configuration.reorderFourStep)) && (axis->specializationConstants.fftDim > maxSingleSizeStrided)) {
 			axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 		}
@@ -2289,10 +2325,12 @@ extern "C" {
 
 
 			pipelineShaderStageCreateInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+			uint32_t registerBoost = (FFTPlan->numAxisUploads[axis_id] > 1) ? app->configuration.registerBoost4Step : app->configuration.registerBoost;
+
 			if (app->configuration.performR2C) {
 				if (axis_id == 0) {
 					if (inverse) {
-						switch (app->configuration.registerBoost) {
+						switch (registerBoost) {
 						case 1:
 						{
 							VkFFTInitShader(app, 1, &pipelineShaderStageCreateInfo.module);
@@ -2328,7 +2366,7 @@ extern "C" {
 						}
 					}
 					else {
-						switch (app->configuration.registerBoost) {
+						switch (registerBoost) {
 						case 1:
 						{
 							VkFFTInitShader(app, 3, &pipelineShaderStageCreateInfo.module);
@@ -2466,7 +2504,7 @@ extern "C" {
 						}
 					}
 					else {
-						switch (app->configuration.registerBoost) {
+						switch (registerBoost) {
 						case 1:
 						{
 							if (axis_upload_id == 0)

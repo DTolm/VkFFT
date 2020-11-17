@@ -514,22 +514,34 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 					forward_configuration.useLUT = false;
-						forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 4;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = true;
 					break;
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = false;
-						forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 19;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				default:
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = false;
 					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				}
 
@@ -688,22 +700,34 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 					forward_configuration.useLUT = true;
-						forward_configuration.registerBoost = 1;//registerBoost is not implemented for double yet.
+					forward_configuration.registerBoost = 1;//registerBoost is not implemented for double yet.
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = true;
 					break;
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = true;
-						forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 19;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				default:
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				}
 
@@ -866,21 +890,34 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 64;//have to set coalesce more, as calculations are still float, while uploads are half.
 					forward_configuration.useLUT = false;
-						forward_configuration.registerBoost = 4;					break;
+					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 4;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = true;
+					break;
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 128;
 					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = false;
-						forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 19;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				default:
-					forward_configuration.coalescedMemory = 64;
+					forward_configuration.coalescedMemory = 128;
 					forward_configuration.useLUT = false;
 					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				}
 
@@ -1017,22 +1054,38 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		switch (physicalDeviceProperties.vendorID) {
 		case 0x10DE://NVIDIA
 			forward_configuration.coalescedMemory = 32;
+			forward_configuration.useLUT = false;
 			forward_configuration.registerBoost = 1;
+			forward_configuration.registerBoost4Step = 1;
+			forward_configuration.swapTo3Stage4Step = 0;
+			forward_configuration.performHalfBandwidthBoost = true;
 			break;
 		case 0x8086://INTEL
 			forward_configuration.coalescedMemory = 64;
+			forward_configuration.useLUT = true;
 			forward_configuration.registerBoost = 1;
+			forward_configuration.registerBoost4Step = 1;
+			forward_configuration.swapTo3Stage4Step = 0;
+			forward_configuration.performHalfBandwidthBoost = false;
 			break;
 		case 0x1002://AMD
 			forward_configuration.coalescedMemory = 32;
+			forward_configuration.useLUT = false;
 			forward_configuration.registerBoost = 1;
+			forward_configuration.registerBoost4Step = 1;
+			forward_configuration.swapTo3Stage4Step = 21;
+			forward_configuration.performHalfBandwidthBoost = false;
 		default:
 			forward_configuration.coalescedMemory = 64;
+			forward_configuration.useLUT = false;
 			forward_configuration.registerBoost = 1;
+			forward_configuration.registerBoost4Step = 1;
+			forward_configuration.swapTo3Stage4Step = 0;
+			forward_configuration.performHalfBandwidthBoost = false;
 			break;
 		}
 		forward_configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
-		forward_configuration.size[0] = 1024*1024*8; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
+		forward_configuration.size[0] = 1024 * 1024 * 8; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
 		forward_configuration.size[1] = 1;
 		forward_configuration.size[2] = 1;
 		forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. As we perform forward FFT to get the kernel, it is set to false.
@@ -1048,7 +1101,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		forward_configuration.fence = &fence;
 		forward_configuration.commandPool = &commandPool;
 		forward_configuration.physicalDevice = &physicalDevice;
-		forward_configuration.useLUT = false;
+
 		if (sizeof(SHADER_DIR) > 255) {
 			printf("SHADER_DIR length must be <256\n");
 			return 1;
@@ -1089,7 +1142,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 
 						else
 							kernel_input[2 * (i + j * (forward_configuration.size[0]) + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2])] = 0;
-						kernel_input[2 * (i + j * (forward_configuration.size[0]) + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2])+1] = 0;
+						kernel_input[2 * (i + j * (forward_configuration.size[0]) + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2]) + 1] = 0;
 
 					}
 				}
@@ -1141,8 +1194,8 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 			for (uint32_t k = 0; k < convolution_configuration.size[2]; k++) {
 				for (uint32_t j = 0; j < convolution_configuration.size[1]; j++) {
 					for (uint32_t i = 0; i < convolution_configuration.size[0]; i++) {
-						buffer_input[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2])] = i%8-3.5;
-						buffer_input[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2])+1] = i % 4 - 1.5;
+						buffer_input[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2])] = i % 8 - 3.5;
+						buffer_input[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2]) + 1] = i % 4 - 1.5;
 					}
 				}
 			}
@@ -1169,8 +1222,8 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				for (uint32_t j = 0; j < convolution_configuration.size[1]; j++) {
 					for (uint32_t i = 0; i < convolution_configuration.size[0]; i++) {
 						if (file_output)
-							fprintf(output, "%.6f %.6f ", buffer_output[2*(i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] ) * convolution_configuration.size[1] * convolution_configuration.size[2])], buffer_output[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2])+1]);
-						printf("%.6f %.6f ", buffer_output[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2])], buffer_output[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2])+1]);
+							fprintf(output, "%.6f %.6f ", buffer_output[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2])], buffer_output[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2]) + 1]);
+						printf("%.6f %.6f ", buffer_output[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2])], buffer_output[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2]) + 1]);
 					}
 					std::cout << "\n";
 				}
@@ -1205,18 +1258,34 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		switch (physicalDeviceProperties.vendorID) {
 		case 0x10DE://NVIDIA
 			forward_configuration.coalescedMemory = 32;
+			forward_configuration.useLUT = false;
 			forward_configuration.registerBoost = 1;
+			forward_configuration.registerBoost4Step = 1;
+			forward_configuration.swapTo3Stage4Step = 0;
+			forward_configuration.performHalfBandwidthBoost = true;
 			break;
 		case 0x8086://INTEL
 			forward_configuration.coalescedMemory = 64;
+			forward_configuration.useLUT = true;
 			forward_configuration.registerBoost = 1;
+			forward_configuration.registerBoost4Step = 1;
+			forward_configuration.swapTo3Stage4Step = 0;
+			forward_configuration.performHalfBandwidthBoost = false;
 			break;
 		case 0x1002://AMD
 			forward_configuration.coalescedMemory = 32;
+			forward_configuration.useLUT = false;
 			forward_configuration.registerBoost = 1;
+			forward_configuration.registerBoost4Step = 1;
+			forward_configuration.swapTo3Stage4Step = 21;
+			forward_configuration.performHalfBandwidthBoost = false;
 		default:
 			forward_configuration.coalescedMemory = 64;
+			forward_configuration.useLUT = false;
 			forward_configuration.registerBoost = 1;
+			forward_configuration.registerBoost4Step = 1;
+			forward_configuration.swapTo3Stage4Step = 0;
+			forward_configuration.performHalfBandwidthBoost = false;
 			break;
 		}
 		forward_configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D (default 1).
@@ -1239,7 +1308,6 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		forward_configuration.fence = &fence;
 		forward_configuration.commandPool = &commandPool;
 		forward_configuration.physicalDevice = &physicalDevice;
-		forward_configuration.useLUT = false;
 		if (sizeof(SHADER_DIR) > 255) {
 			printf("SHADER_DIR length must be <256\n");
 			return 1;
@@ -1395,18 +1463,34 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		switch (physicalDeviceProperties.vendorID) {
 		case 0x10DE://NVIDIA
 			forward_configuration.coalescedMemory = 32;
+			forward_configuration.useLUT = false;
 			forward_configuration.registerBoost = 1;
+			forward_configuration.registerBoost4Step = 1;
+			forward_configuration.swapTo3Stage4Step = 0;
+			forward_configuration.performHalfBandwidthBoost = true;
 			break;
 		case 0x8086://INTEL
 			forward_configuration.coalescedMemory = 64;
+			forward_configuration.useLUT = true;
 			forward_configuration.registerBoost = 1;
+			forward_configuration.registerBoost4Step = 1;
+			forward_configuration.swapTo3Stage4Step = 0;
+			forward_configuration.performHalfBandwidthBoost = false;
 			break;
 		case 0x1002://AMD
 			forward_configuration.coalescedMemory = 32;
+			forward_configuration.useLUT = false;
 			forward_configuration.registerBoost = 1;
+			forward_configuration.registerBoost4Step = 1;
+			forward_configuration.swapTo3Stage4Step = 21;
+			forward_configuration.performHalfBandwidthBoost = false;
 		default:
 			forward_configuration.coalescedMemory = 64;
+			forward_configuration.useLUT = false;
 			forward_configuration.registerBoost = 1;
+			forward_configuration.registerBoost4Step = 1;
+			forward_configuration.swapTo3Stage4Step = 0;
+			forward_configuration.performHalfBandwidthBoost = false;
 			break;
 		}
 		forward_configuration.FFTdim = 2; //FFT dimension, 1D, 2D or 3D (default 1).
@@ -1427,7 +1511,6 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		forward_configuration.fence = &fence;
 		forward_configuration.commandPool = &commandPool;
 		forward_configuration.physicalDevice = &physicalDevice;
-		forward_configuration.useLUT = false;
 		if (sizeof(SHADER_DIR) > 255) {
 			printf("SHADER_DIR length must be <256\n");
 			return 1;
@@ -1612,22 +1695,33 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
 					forward_configuration.useLUT = false;
 					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 4;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = true;
 					break;
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 1;
-
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = false;
-						forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 19;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				default:
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = false;
 					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				}
 				forward_configuration.reorderFourStep = true;
@@ -1776,19 +1870,35 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				switch (physicalDeviceProperties.vendorID) {
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 32;
+					forward_configuration.useLUT = false;
 					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 4;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = true;
 					break;
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
+					forward_configuration.useLUT = false;
 					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 19;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				default:
 					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = false;
 					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				}
 				forward_configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
@@ -1809,7 +1919,6 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				forward_configuration.fence = &fence;
 				forward_configuration.commandPool = &commandPool;
 				forward_configuration.physicalDevice = &physicalDevice;
-				forward_configuration.useLUT = false;
 				//Custom path to the floder with shaders, default is "shaders/");
 				if (sizeof(SHADER_DIR) > 255) {
 					printf("SHADER_DIR length must be <256\n");
@@ -1826,6 +1935,8 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				VkDeviceMemory tempBufferDeviceMemory = {};
 				allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 				allocateFFTBuffer(&tempBuffer, &tempBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+				forward_configuration.buffer = &buffer;
+				forward_configuration.tempBuffer = &tempBuffer;
 				forward_configuration.isInputFormatted = false; //set to true if input is a different buffer, so it can have zeropadding/R2C added  
 				forward_configuration.inputBuffer = &buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
 				forward_configuration.isOutputFormatted = false;//set to true if output is a different buffer, so it can have zeropadding/C2R automatically removed
@@ -1950,7 +2061,7 @@ int main(int argc, char* argv[])
 	if (findFlag(argv, argv + argc, "-h"))
 	{
 		//print help
-		printf("VkFFT v1.0.3 (13-11-2020). Author: Tolmachev Dmitrii\n");
+		printf("VkFFT v1.0.4 (17-11-2020). Author: Tolmachev Dmitrii\n");
 		printf("	-h: print help\n");
 		printf("	-devices: print the list of available GPU devices\n");
 		printf("	-d X: select GPU device (default 0)\n");
