@@ -454,7 +454,7 @@ extern "C" {
 			}
 			if (numPassesHalfBandwidth < numPasses) numPasses = numPassesHalfBandwidth;
 		}
-		if ((uint32_t)log2(app->configuration.size[axis_id]) >= app->configuration.swapTo3Stage4Step) numPasses = 3;//Force set to 3 stage 4 step algorithm
+		if (((uint32_t)log2(app->configuration.size[axis_id]) >= app->configuration.swapTo3Stage4Step)&&(app->configuration.swapTo3Stage4Step>=17)) numPasses = 3;//Force set to 3 stage 4 step algorithm
 		FFTPlan->numAxisUploads[axis_id] = numPasses;
 		switch (numPasses) {
 		case 1: {
