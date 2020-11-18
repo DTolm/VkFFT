@@ -4,6 +4,8 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
 
 ## I am looking for a PhD position/job that may be interested in my set of skills. Contact me by email: <d.tolmachev@fz-juelich.de> | <dtolm96@gmail.com>
 
+## Added Windows executables for benchmark: versions with CUDA benchmark (requires CUDA 11) and without (requires only graphics drivers). Both require shaders folder placed in the same location as executable. Uses ~3.5GB of VRAM. Located in Vulkan_FFT_CUDA_v1.0.5.zip and in Vulkan_FFT_noCUDA_v1.0.5.zip. Built with VS2019.
+
 ## Benchmark results of VkFFT can be found here: https://openbenchmarking.org/test/pts/vkfft
 
 ## Currently supported features:
@@ -19,7 +21,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - Native zero padding to model open systems (up to 2x faster than simply padding input array with zeros)
   - WHDCN layout - data is stored in the following order (sorted by increase in strides): the width, the height, the depth, the coordinate (the number of feature maps), the batch number
   - Multiple feature/batch convolutions - one input, multiple kernels
-  - Works on Nvidia, AMD and Intel GPUs (tested on Nvidia GTX 1660 Ti and Intel UHD 620)
+  - Works on Nvidia, AMD and Intel GPUs (tested on Nvidia RTX 3080, GTX 1660 Ti, AMD Radeon VII and Intel UHD 620)
   - Header-only (+precompiled shaders) library with Vulkan interface, which allows to append VkFFT directly to user's command buffer
 ## Future release plan
  - ##### Planned
@@ -38,8 +40,9 @@ VkFFT has a command-line interface with the following set of commands:\
 -devices: print the list of available GPU devices\
 -d X: select GPU device (default 0)\
 -o NAME: specify output file path\
--vkfft X: launch VkFFT sample X (0-7)\
--cufft X: launch cuFFT sample X (0-2) (if enabled in CMakeLists.txt)\
+-vkfft X: launch VkFFT sample X (0-9)\
+-cufft X: launch cuFFT sample X (0-3) (if enabled in CMakeLists.txt)\
+-test: (or no other keys) launch all VkFFT and cuFFT benchmarks\
 So, the command to launch single precision benchmark of VkFFT and cuFFT and save log to output.txt file on device 0 will look like this on Windows:\
 .\Vulkan_FFT.exe -d 0 -o output.txt -vkfft 0 -cufft 0\
 For double precision benchmark, replace -vkfft 0 -cufft 0 with -vkfft 1 -cufft 1. For half precision benchmark, replace -vkfft 0 -cufft 0 with -vkfft 2 -cufft 2.
@@ -48,10 +51,16 @@ VkFFT.h is a library which can append FFT, iFFT or convolution calculation to th
 VkFFT achieves striding by grouping nearby FFTs instead of transpositions.
 ![alt text](https://github.com/dtolm/VkFFT/blob/master/FFT_memory_layout.png?raw=true)
 ## Benchmark results in comparison to cuFFT
-To measure how Vulkan FFT implementation works in comparison to cuFFT, we will perform a number of 2D and 3D tests, ranging from the small systems to the big ones. The test will consist of performing C2C FFT and inverse C2C FFT consecutively multiple times to calculate average time required. FFT is performed in-place in single precision. The results are obtained on Nvidia 1660 Ti graphics card with no other GPU load. Launching example 0 from Vulkan_FFT.cpp performs VkFFT benchmark, benchmark_cuFFT.cu file contains similar benchmark script for cuFFT library. The overall benchmark score is calculated as an averaged performance score over presented set of systems: sum(system_size/average_iteration_time) /num_benchmark_samples
+To measure how Vulkan FFT implementation works in comparison to cuFFT, we will perform a number of 1D, 2D and 3D tests, ranging from the small systems to the big ones. The test will consist of performing C2C FFT and inverse C2C FFT consecutively multiple times to calculate average time required. The results are obtained on Nvidia RTX 3080 and AMD Radeon VII graphics cards with no other GPU load. Launching -test key from Vulkan_FFT.cpp performs VkFFT/cuFFT benchmark. The overall benchmark score is calculated as an averaged performance score over presented set of systems (the bigger - the better): sum(system_size/average_iteration_time) /num_benchmark_samples
 
-![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_1.png?raw=true)
-![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_2.png?raw=true)
+The stable flat lines present on RTX 3080 graph indicate that time scales linearly with the system size on Nvidia GPUs, so the bigger the bandwidth the better the result will be. The stepwise drops occur once the amount of transfers increases from to 2x and to 3x when compute unit can't hold full sequence and splits it into combination of smaller ones. Radeon VII is faster than RTX 3080 below 2^17 due to it having HBM2 memory with a higher bandwidth, however, this GPU apparently has TLB miss problems on large buffer sizes. On RTX 3080, VkFFT is faster than cuFFT in single precision batched 1D FFTs on the whole range from 2^7 to 2^28:
+![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_single.png?raw=true)
+In double precision Radeon VII is able to get advantage due to its high double precision core count:
+![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_double.png?raw=true)
+In half precision mode, VkFFT only uses it for data storage, all computations are performed in single.It still proves to be enough to get stable 2x performance gain on RTX 3080: 
+![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_half.png?raw=true)
+Native support for zero-padding allows to transfer less data and get up to 3x performance boost in multidimensional FFTs:
+![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_zeropadding.png?raw=true)
 ## Precision comparison of cuFFT/VkFFT/FFTW
 To measure how VkFFT (single/double precision) results compare to cuFFT (single/double precision) and FFTW (double precision), a set of ~50 systems covering full FFT range was filled with random complex data on the scale of [-1,1] and one C2C transform was performed on each system. The precision_cuFFT_VkFFT_FFTW.cu script in benchmark_precision_scripts folder contains the comparison code, which calculates for each value of the transformed system:
 

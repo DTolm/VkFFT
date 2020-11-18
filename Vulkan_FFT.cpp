@@ -12,6 +12,7 @@
 #include "benchmark_cuFFT.h"
 #include "benchmark_cuFFT_double.h"
 #include "benchmark_cuFFT_half.h"
+#include "benchmark_cuFFT_3d.h"
 #endif
 
 #ifdef NDEBUG
@@ -478,20 +479,591 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 	switch (sample_id) {
 	case 0:
 	{
-		//0 - FFT + iFFT C2C benchmark. 
-		const int num_benchmark_samples = 26;
-		const int num_runs = 7;
+		if (file_output)
+			fprintf(output, "0 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision\n");
+		printf("0 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision\n");
+		const int num_runs = 3;
+		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
+		//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
+		float* buffer_input = (float*)malloc((uint64_t)4 * 2 * pow(2, 27));
+		for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
+			buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+		}
+		for (uint32_t n = 0; n < 23; n++) {
+			double run_time[num_runs];
+			for (uint32_t r = 0; r < num_runs; r++) {
+				//Configuration + FFT application .
+				VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
+				VkFFTConfiguration inverse_configuration = defaultVkFFTConfiguration;
+				VkFFTApplication app_forward = defaultVkFFTApplication;
+				VkFFTApplication app_inverse = defaultVkFFTApplication;
+				//FFT + iFFT sample code.
+				//Setting up FFT configuration for forward and inverse FFT.
+				forward_configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
+				forward_configuration.size[0] = 32 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
+				if (n == 0) forward_configuration.size[0] = 4096;
+				forward_configuration.size[1] = 64 * 32 * pow(2, 16) / forward_configuration.size[0];
+				if (forward_configuration.size[1] < 1) forward_configuration.size[1] = 1;
+				//forward_configuration.size[1] = (forward_configuration.size[1] > 32768) ? 32768 : forward_configuration.size[1];
+				forward_configuration.size[2] = 1;
+
+
+				//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
+				switch (physicalDeviceProperties.vendorID) {
+				case 0x10DE://NVIDIA
+					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
+					forward_configuration.useLUT = false;
+					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 4;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = true;
+					break;
+				case 0x8086://INTEL
+					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = true;
+					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				case 0x1002://AMD
+					forward_configuration.coalescedMemory = 32;
+					forward_configuration.useLUT = false;
+					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 19;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				default:
+					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = false;
+					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				}
+				forward_configuration.reorderFourStep = true;
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
+				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
+				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
+				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
+				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
+				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
+				forward_configuration.device = &device;
+				forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
+				forward_configuration.fence = &fence;
+				forward_configuration.commandPool = &commandPool;
+				forward_configuration.physicalDevice = &physicalDevice;
+
+				//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
+				if (sizeof(SHADER_DIR) > 255) {
+					printf("SHADER_DIR length must be <256\n");
+					return 1;
+				}
+				sprintf(forward_configuration.shaderPath, SHADER_DIR);
+
+				//Allocate buffer for the input data.
+				VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(float) * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;
+				VkBuffer buffer = {};
+				VkDeviceMemory bufferDeviceMemory = {};
+				VkBuffer tempBuffer = {};
+				VkDeviceMemory tempBufferDeviceMemory = {};
+				allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+				allocateFFTBuffer(&tempBuffer, &tempBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+
+				forward_configuration.buffer = &buffer;
+				forward_configuration.tempBuffer = &tempBuffer;
+				forward_configuration.isInputFormatted = false; //set to true if input is a different buffer, so it can have zeropadding/R2C added  
+				forward_configuration.inputBuffer = &buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
+				forward_configuration.isOutputFormatted = false;//set to true if output is a different buffer, so it can have zeropadding/C2R automatically removed
+				forward_configuration.outputBuffer = &buffer;
+				forward_configuration.bufferSize = &bufferSize;
+				forward_configuration.inputBufferSize = &bufferSize;
+				forward_configuration.outputBufferSize = &bufferSize;
+				//Now we will create a similar configuration for inverse FFT and change inverse parameter to true.
+				inverse_configuration = forward_configuration;
+				inverse_configuration.inputBuffer = &buffer;//If you continue working with previous data, select the FFT buffer as initial
+				inverse_configuration.outputBuffer = &buffer;
+				inverse_configuration.inverse = true;
+
+				//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
+				/*float* buffer_input = (float*)malloc(bufferSize);
+
+				for (uint32_t v = 0; v < forward_configuration.coordinateFeatures; v++) {
+					for (uint32_t k = 0; k < forward_configuration.size[2]; k++) {
+						for (uint32_t j = 0; j < forward_configuration.size[1]; j++) {
+							for (uint32_t i = 0; i < forward_configuration.size[0]; i++) {
+								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+							}
+						}
+					}
+				}
+				*/
+				//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
+				transferDataFromCPU(buffer_input, &buffer, bufferSize);
+				//free(buffer_input);
+
+				//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
+				initializeVulkanFFT(&app_forward, forward_configuration);
+				initializeVulkanFFT(&app_inverse, inverse_configuration);
+				//Submit FFT+iFFT.
+				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
+				if (batch == 0) batch = 1;
+				batch *= 5;
+				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
+
+				run_time[r] = totTime;
+				if (n > 0) {
+					if (r == num_runs - 1) {
+						double std_error = 0;
+						double avg_time = 0;
+						for (uint32_t t = 0; t < num_runs; t++) {
+							avg_time += run_time[t];
+						}
+						avg_time /= num_runs;
+						for (uint32_t t = 0; t < num_runs; t++) {
+							std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
+						}
+						std_error = sqrt(std_error / num_runs);
+						uint32_t num_tot_transfers = 0;
+						for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
+							num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers *= 4;
+						if (file_output)
+							fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+
+						printf("VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						benchmark_result += ((double)bufferSize / 1024) / avg_time;
+					}
+
+
+				}
+
+				vkDestroyBuffer(device, buffer, NULL);
+				vkDestroyBuffer(device, tempBuffer, NULL);
+				vkFreeMemory(device, bufferDeviceMemory, NULL);
+				vkFreeMemory(device, tempBufferDeviceMemory, NULL);
+				deleteVulkanFFT(&app_forward);
+				deleteVulkanFFT(&app_inverse);
+			}
+		}
+		free(buffer_input);
+		benchmark_result /= (23 - 1);
+
+		if (file_output) {
+			fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+			fprintf(output, "Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
+		}
+		printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		printf("Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
+		vkDestroyFence(device, fence, NULL);
+		vkDestroyCommandPool(device, commandPool, NULL);
+		vkDestroyDevice(device, NULL);
+		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
+		vkDestroyInstance(instance, NULL);
+		break;
+	}
+	case 1:
+	{
+		if (file_output)
+			fprintf(output, "1 - VkFFT FFT + iFFT C2C benchmark 1D batched in double precision LUT\n");
+		printf("1 - VkFFT FFT + iFFT C2C benchmark 1D batched in double precision LUT\n");
+		const int num_runs = 3;
+		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
+		//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
+		double* buffer_input = (double*)malloc((uint64_t)8 * 2 * pow(2, 27));
+		for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
+			buffer_input[i] = 2 * ((double)rand()) / RAND_MAX - 1.0;
+		}
+		for (uint32_t n = 0; n < 21; n++) {
+			double run_time[num_runs];
+			for (uint32_t r = 0; r < num_runs; r++) {
+				//Configuration + FFT application .
+				VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
+				VkFFTConfiguration inverse_configuration = defaultVkFFTConfiguration;
+				VkFFTApplication app_forward = defaultVkFFTApplication;
+				VkFFTApplication app_inverse = defaultVkFFTApplication;
+				//FFT + iFFT sample code.
+				//Setting up FFT configuration for forward and inverse FFT.
+				forward_configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
+				forward_configuration.size[0] = 32 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
+				if (n == 0) forward_configuration.size[0] = 2048;
+				forward_configuration.size[1] = 64 * 32 * pow(2, 15) / forward_configuration.size[0];
+				if (forward_configuration.size[1] < 1) forward_configuration.size[1] = 1;
+				forward_configuration.size[2] = 1;
+				//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
+				switch (physicalDeviceProperties.vendorID) {
+				case 0x10DE://NVIDIA - change to 128 before Pascal
+					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
+					forward_configuration.useLUT = true;
+					forward_configuration.registerBoost = 1;//registerBoost is not implemented for double yet.
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = true;
+					break;
+				case 0x8086://INTEL
+					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = true;
+					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				case 0x1002://AMD
+					forward_configuration.coalescedMemory = 32;
+					forward_configuration.useLUT = true;
+					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 19;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				default:
+					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = true;
+					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				}
+				forward_configuration.reorderFourStep = true;
+
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
+				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
+				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
+				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
+				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
+				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
+				forward_configuration.device = &device;
+				forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
+				forward_configuration.fence = &fence;
+				forward_configuration.commandPool = &commandPool;
+				forward_configuration.physicalDevice = &physicalDevice;
+				//forward_configuration.useLUT = true;
+				forward_configuration.doublePrecision = true;
+				//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
+				if (sizeof(SHADER_DIR) > 255) {
+					printf("SHADER_DIR length must be <256\n");
+					return 1;
+				}
+				sprintf(forward_configuration.shaderPath, SHADER_DIR);
+
+				//Allocate buffer for the input data.
+				VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(double) * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;
+				VkBuffer buffer = {};
+				VkDeviceMemory bufferDeviceMemory = {};
+				VkBuffer tempBuffer = {};
+				VkDeviceMemory tempBufferDeviceMemory = {};
+				allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+				allocateFFTBuffer(&tempBuffer, &tempBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+
+				forward_configuration.buffer = &buffer;
+				forward_configuration.tempBuffer = &tempBuffer;
+				forward_configuration.isInputFormatted = false; //set to true if input is a different buffer, so it can have zeropadding/R2C added  
+				forward_configuration.inputBuffer = &buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
+				forward_configuration.isOutputFormatted = false;//set to true if output is a different buffer, so it can have zeropadding/C2R automatically removed
+				forward_configuration.outputBuffer = &buffer;
+				forward_configuration.bufferSize = &bufferSize;
+				forward_configuration.inputBufferSize = &bufferSize;
+				forward_configuration.outputBufferSize = &bufferSize;
+				//Now we will create a similar configuration for inverse FFT and change inverse parameter to true.
+				inverse_configuration = forward_configuration;
+				inverse_configuration.inputBuffer = &buffer;//If you continue working with previous data, select the FFT buffer as initial
+				inverse_configuration.outputBuffer = &buffer;
+				inverse_configuration.inverse = true;
+
+				//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
+				/*float* buffer_input = (float*)malloc(bufferSize);
+
+				for (uint32_t v = 0; v < forward_configuration.coordinateFeatures; v++) {
+					for (uint32_t k = 0; k < forward_configuration.size[2]; k++) {
+						for (uint32_t j = 0; j < forward_configuration.size[1]; j++) {
+							for (uint32_t i = 0; i < forward_configuration.size[0]; i++) {
+								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+							}
+						}
+					}
+				}
+				*/
+				//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
+				transferDataFromCPU(buffer_input, &buffer, bufferSize);
+				//free(buffer_input);
+
+				//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
+				initializeVulkanFFT(&app_forward, forward_configuration);
+				initializeVulkanFFT(&app_inverse, inverse_configuration);
+				//Submit FFT+iFFT.
+				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize / 5 > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize / 5;
+				if (batch == 0) batch = 1;
+				batch *= 5;
+				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
+
+				run_time[r] = totTime;
+				if (n > 0) {
+					if (r == num_runs - 1) {
+						double std_error = 0;
+						double avg_time = 0;
+						for (uint32_t t = 0; t < num_runs; t++) {
+							avg_time += run_time[t];
+						}
+						avg_time /= num_runs;
+						for (uint32_t t = 0; t < num_runs; t++) {
+							std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
+						}
+						std_error = sqrt(std_error / num_runs);
+						uint32_t num_tot_transfers = 0;
+						for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
+							num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers *= 4;
+						if (file_output)
+							fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+
+						printf("VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						benchmark_result += ((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time;
+					}
+
+
+				}
+
+				vkDestroyBuffer(device, buffer, NULL);
+				vkDestroyBuffer(device, tempBuffer, NULL);
+				vkFreeMemory(device, bufferDeviceMemory, NULL);
+				vkFreeMemory(device, tempBufferDeviceMemory, NULL);
+				deleteVulkanFFT(&app_forward);
+				deleteVulkanFFT(&app_inverse);
+			}
+		}
+		free(buffer_input);
+		benchmark_result /= (21 - 1);
+		if (file_output) {
+			fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+			fprintf(output, "Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
+		}
+		printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		printf("Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
+
+		vkDestroyFence(device, fence, NULL);
+		vkDestroyCommandPool(device, commandPool, NULL);
+		vkDestroyDevice(device, NULL);
+		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
+		vkDestroyInstance(instance, NULL);
+		break;
+	}
+	case 2:
+	{
+		if (file_output)
+			fprintf(output, "2 - VkFFT FFT + iFFT C2C benchmark 1D batched in half precision\n");
+		printf("2 - VkFFT FFT + iFFT C2C benchmark 1D batched in half precision\n");
+		const int num_runs = 3;
+		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
+		//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
+		float* buffer_input = (float*)malloc((uint64_t)4 * 2 * pow(2, 27));
+		for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
+			buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+		}
+		for (uint32_t n = 0; n < 23; n++) {
+			double run_time[num_runs];
+			for (uint32_t r = 0; r < num_runs; r++) {
+				//Configuration + FFT application .
+				VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
+				VkFFTConfiguration inverse_configuration = defaultVkFFTConfiguration;
+				VkFFTApplication app_forward = defaultVkFFTApplication;
+				VkFFTApplication app_inverse = defaultVkFFTApplication;
+				//FFT + iFFT sample code.
+				//Setting up FFT configuration for forward and inverse FFT.
+				forward_configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
+				forward_configuration.size[0] = 32 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
+				if (n == 0) forward_configuration.size[0] = 4096;
+				forward_configuration.size[1] = 64 * 32 * pow(2, 16) / forward_configuration.size[0];
+				if (forward_configuration.size[1] < 1) forward_configuration.size[1] = 1;
+				forward_configuration.size[2] = 1;
+
+				//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
+				switch (physicalDeviceProperties.vendorID) {
+				case 0x10DE://NVIDIA - change to 128 before Pascal
+					forward_configuration.coalescedMemory = 64;//have to set coalesce more, as calculations are still float, while uploads are half.
+					forward_configuration.useLUT = false;
+					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 4;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = true;
+					break;
+				case 0x8086://INTEL
+					forward_configuration.coalescedMemory = 128;
+					forward_configuration.useLUT = true;
+					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				case 0x1002://AMD
+					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = false;
+					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 19;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				default:
+					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = false;
+					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				}
+				forward_configuration.reorderFourStep = true;
+
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
+				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
+				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
+				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
+				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
+				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
+				forward_configuration.device = &device;
+				forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
+				forward_configuration.fence = &fence;
+				forward_configuration.commandPool = &commandPool;
+				forward_configuration.physicalDevice = &physicalDevice;
+				//forward_configuration.useLUT = false;
+				forward_configuration.halfPrecision = true;
+				//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
+				if (sizeof(SHADER_DIR) > 255) {
+					printf("SHADER_DIR length must be <256\n");
+					return 1;
+				}
+				sprintf(forward_configuration.shaderPath, SHADER_DIR);
+
+				//Allocate buffer for the input data.
+				VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * 2 * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;
+				VkBuffer buffer = {};
+				VkDeviceMemory bufferDeviceMemory = {};
+				VkBuffer tempBuffer = {};
+				VkDeviceMemory tempBufferDeviceMemory = {};
+				allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+				allocateFFTBuffer(&tempBuffer, &tempBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+
+				forward_configuration.buffer = &buffer;
+				forward_configuration.tempBuffer = &tempBuffer;
+				forward_configuration.isInputFormatted = false; //set to true if input is a different buffer, so it can have zeropadding/R2C added  
+				forward_configuration.inputBuffer = &buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
+				forward_configuration.isOutputFormatted = false;//set to true if output is a different buffer, so it can have zeropadding/C2R automatically removed
+				forward_configuration.outputBuffer = &buffer;
+				forward_configuration.bufferSize = &bufferSize;
+				forward_configuration.inputBufferSize = &bufferSize;
+				forward_configuration.outputBufferSize = &bufferSize;
+				//Now we will create a similar configuration for inverse FFT and change inverse parameter to true.
+				inverse_configuration = forward_configuration;
+				inverse_configuration.inputBuffer = &buffer;//If you continue working with previous data, select the FFT buffer as initial
+				inverse_configuration.outputBuffer = &buffer;
+				inverse_configuration.inverse = true;
+
+				//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
+				/*float* buffer_input = (float*)malloc(bufferSize);
+
+				for (uint32_t v = 0; v < forward_configuration.coordinateFeatures; v++) {
+					for (uint32_t k = 0; k < forward_configuration.size[2]; k++) {
+						for (uint32_t j = 0; j < forward_configuration.size[1]; j++) {
+							for (uint32_t i = 0; i < forward_configuration.size[0]; i++) {
+								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+							}
+						}
+					}
+				}
+				*/
+				//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
+				transferDataFromCPU(buffer_input, &buffer, bufferSize);
+				//free(buffer_input);
+
+				//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
+				initializeVulkanFFT(&app_forward, forward_configuration);
+				initializeVulkanFFT(&app_inverse, inverse_configuration);
+				//Submit FFT+iFFT.
+				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
+				if (batch == 0) batch = 1;
+				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
+
+				run_time[r] = totTime;
+				if (n > 0) {
+					if (r == num_runs - 1) {
+						double std_error = 0;
+						double avg_time = 0;
+						for (uint32_t t = 0; t < num_runs; t++) {
+							avg_time += run_time[t];
+						}
+						avg_time /= num_runs;
+						for (uint32_t t = 0; t < num_runs; t++) {
+							std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
+						}
+						std_error = sqrt(std_error / num_runs);
+						uint32_t num_tot_transfers = 0;
+						for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
+							num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers *= 4;
+						if (file_output)
+							fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize * sizeof(float) / 2 / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+
+						printf("VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize * sizeof(float) / 2 / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						benchmark_result += ((double)bufferSize * sizeof(float) / 2 / 1024) / avg_time;
+					}
+
+
+				}
+
+				vkDestroyBuffer(device, buffer, NULL);
+				vkDestroyBuffer(device, tempBuffer, NULL);
+				vkFreeMemory(device, bufferDeviceMemory, NULL);
+				vkFreeMemory(device, tempBufferDeviceMemory, NULL);
+				deleteVulkanFFT(&app_forward);
+				deleteVulkanFFT(&app_inverse);
+			}
+		}
+		free(buffer_input);
+		benchmark_result /= (23 - 1);
+		if (file_output) {
+			fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+			fprintf(output, "Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
+		}
+		printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		printf("Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
+		vkDestroyFence(device, fence, NULL);
+		vkDestroyCommandPool(device, commandPool, NULL);
+		vkDestroyDevice(device, NULL);
+		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
+		vkDestroyInstance(instance, NULL);
+		break;
+	}
+	case 3:
+	{
+		if (file_output)
+			fprintf(output, "VkFFT 3 - FFT + iFFT C2C multidimensional benchmark in single precision\n");
+		printf("VkFFT 3 - FFT + iFFT C2C multidimensional benchmark in single precision\n");
+
+		const int num_benchmark_samples = 16;
+		const int num_runs = 3;
 
 		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
-		{32,32,1,2},{64,64,1,2},{256,256,1,2},{1024, 256, 1, 2}, {512, 512, 1, 2},  {1024, 1024, 1, 2} , {4096, 1024, 1, 2}, {2048, 2048, 1, 2}, {4096, 4096, 1, 2},
-		{64,64,64,3}, {128,128,128, 3}, {256,256,256,3}, {512, 256, 64, 3}, {1024, 1024, 64, 3}, {4096, 256, 32, 3},  {2048, 256, 256, 3},{4096, 4096, 8, 3},
-		{(uint32_t)pow(2,15), 64, 1, 2}, {(uint32_t)pow(2,16), 64, 1, 2}, {(uint32_t)pow(2,17), 64, 1, 2}, {(uint32_t)pow(2,18), 64, 1, 2},  {(uint32_t)pow(2,20), 64, 1, 2},  {(uint32_t)pow(2,22), 64, 1, 2},
-		{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,14), 1, 2},
+		{(uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{(uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2}, {(uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{(uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},
+		{(uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},{(uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},{(uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},{(uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},
+		{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
+		{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},
+		{(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3},
 		};
 		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 		//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
-		float* buffer_input = (float*)malloc((uint64_t)4 * 2 * 4096 * 4096 * 8 * 2);
-		for (uint64_t i = 0; i < 2 * 4096 * 4096 * 2 * 8; i++) {
+		float* buffer_input = (float*)malloc((uint64_t)4 * 2 * pow(2, 27));
+		for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
 			buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 		}
 		for (uint32_t n = 0; n < num_benchmark_samples; n++) {
@@ -630,9 +1202,14 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 							std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 						}
 						std_error = sqrt(std_error / num_runs);
+
+						uint32_t num_tot_transfers = 0;
+						for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
+							num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers *= 4;
 						if (file_output)
-							fprintf(output, "VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time));
-						printf("VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time));
+							fprintf(output, "VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						printf("VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 						benchmark_result += ((double)bufferSize / 1024) / avg_time;
 					}
 
@@ -663,22 +1240,27 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		vkDestroyInstance(instance, NULL);
 		break;
 	}
-	case 1:
+	case 4:
 	{
-		//1 - FFT + iFFT C2C benchmark in double precision. 
-		const int num_benchmark_samples = 23;
-		const int num_runs = 7;
+		if (file_output)
+			fprintf(output, "VkFFT 4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
+		printf("VkFFT 4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
+
+		const int num_benchmark_samples = 16;
+		const int num_runs = 3;
 
 		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
-		{32,32,1,2},{64,64,1,2},{256,256,1,2},{1024, 256, 1, 2}, {512, 512, 1, 2},  {1024, 1024, 1, 2} , {4096, 1024, 1, 2}, {2048, 2048, 1, 2}, {4096, 4096, 1, 2},
-		{64,64,64,3}, {128,128,128, 3}, {256,256,256,3}, {512, 256, 64, 3}, {1024, 1024, 64, 3}, {4096, 256, 32, 3},  {2048, 256, 256, 3},{4096, 4096, 8, 3},
-		{(uint32_t)pow(2,15), 64, 1, 2}, {(uint32_t)pow(2,16), 64, 1, 2}, {(uint32_t)pow(2,17), 64, 1, 2}, {(uint32_t)pow(2,18), 64, 1, 2},  {(uint32_t)pow(2,20), 64, 1, 2},
+		{(uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{(uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2}, {(uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{(uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},
+		{(uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},{(uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},{(uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},{(uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},
+		{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
+		{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},
+		{(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3},
 		};
 		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 		//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
-		double* buffer_input = (double*)malloc((uint64_t)8 * 2 * 4096 * 4096 * 8 * 2);
-		for (uint64_t i = 0; i < 2 * 4096 * 4096 * 2 * 8; i++) {
-			buffer_input[i] = 2 * ((double)rand()) / RAND_MAX - 1.0;
+		float* buffer_input = (float*)malloc((uint64_t)4 * 2 * pow(2, 27));
+		for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
+			buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 		}
 		for (uint32_t n = 0; n < num_benchmark_samples; n++) {
 			double run_time[num_runs];
@@ -699,8 +1281,8 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				switch (physicalDeviceProperties.vendorID) {
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
-					forward_configuration.useLUT = true;
-					forward_configuration.registerBoost = 1;//registerBoost is not implemented for double yet.
+					forward_configuration.useLUT = false;
+					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
 					forward_configuration.performHalfBandwidthBoost = true;
@@ -715,15 +1297,15 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					break;
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
-					forward_configuration.useLUT = true;
-					forward_configuration.registerBoost = 1;
+					forward_configuration.useLUT = false;
+					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 19;
 					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				default:
 					forward_configuration.coalescedMemory = 64;
-					forward_configuration.useLUT = true;
+					forward_configuration.useLUT = false;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -731,9 +1313,9 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					break;
 				}
 
-				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropadding[1] = false;
-				forward_configuration.performZeropadding[2] = false;
+				forward_configuration.performZeropadding[0] = true; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = true;
+				forward_configuration.performZeropadding[2] = true;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -745,8 +1327,6 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				forward_configuration.fence = &fence;
 				forward_configuration.commandPool = &commandPool;
 				forward_configuration.physicalDevice = &physicalDevice;
-				//forward_configuration.useLUT = true;
-				forward_configuration.doublePrecision = true;
 				//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
 				if (sizeof(SHADER_DIR) > 255) {
 					printf("SHADER_DIR length must be <256\n");
@@ -755,7 +1335,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				sprintf(forward_configuration.shaderPath, SHADER_DIR);
 
 				//Allocate buffer for the input data.
-				VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(double) * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;
+				VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(float) * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;
 				VkBuffer buffer = {};
 				VkDeviceMemory bufferDeviceMemory = {};
 				VkBuffer tempBuffer = {};//temp buffer, needed to unshuffle four-step fft
@@ -800,7 +1380,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				initializeVulkanFFT(&app_forward, forward_configuration);
 				initializeVulkanFFT(&app_inverse, inverse_configuration);
 				//Submit FFT+iFFT.
-				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize / 5 > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize / 5;
+				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 				if (batch == 0) batch = 1;
 
 				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
@@ -818,11 +1398,14 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 							std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 						}
 						std_error = sqrt(std_error / num_runs);
+						uint32_t num_tot_transfers = 0;
+						for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
+							num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers *= 4;
 						if (file_output)
-							fprintf(output, "VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time));
-
-						printf("VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time));
-						benchmark_result += ((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time;
+							fprintf(output, "VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						printf("VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						benchmark_result += ((double)bufferSize / 1024) / avg_time;
 					}
 
 
@@ -838,13 +1421,13 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		}
 		free(buffer_input);
 		benchmark_result /= (num_benchmark_samples - 1);
+
 		if (file_output) {
 			fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
 			fprintf(output, "Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
 		}
 		printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
 		printf("Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
-
 		vkDestroyFence(device, fence, NULL);
 		vkDestroyCommandPool(device, commandPool, NULL);
 		vkDestroyDevice(device, NULL);
@@ -852,25 +1435,19 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		vkDestroyInstance(instance, NULL);
 		break;
 	}
-	case 2:
+	case 5:
 	{
-		//2 - FFT + iFFT C2C benchmark in half precision. 
-		const int num_benchmark_samples = 26;
-		const int num_runs = 7;
-
-		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
-		{32,32,1,2},{64,64,1,2},{256,256,1,2},{1024, 256, 1, 2}, {512, 512, 1, 2},  {1024, 1024, 1, 2} , {4096, 1024, 1, 2}, {2048, 2048, 1, 2}, {4096, 4096, 1, 2},
-		{64,64,64,3}, {128,128,128, 3}, {256,256,256,3}, {512, 256, 64, 3}, {1024, 1024, 64, 3}, {4096, 256, 32, 3},  {2048, 256, 256, 3},{4096, 4096, 8, 3},
-		{(uint32_t)pow(2,15), 64, 1, 2}, {(uint32_t)pow(2,16), 64, 1, 2}, {(uint32_t)pow(2,17), 64, 1, 2}, {(uint32_t)pow(2,18), 64, 1, 2},  {(uint32_t)pow(2,20), 64, 1, 2},  {(uint32_t)pow(2,22), 64, 1, 2},
-		{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,14), 1, 2},
-		};
+		if (file_output)
+			fprintf(output, "5 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n");
+		printf("5 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n");
+		const int num_runs = 3;
 		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 		//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
-		//double* buffer_input = (double*)malloc((uint64_t)2 * 8 * 1024 * 1024 * 8 * 2);
-		//for (uint64_t i = 0; i < 2 * 1024 * 1024 * 8 * 2; i++) {
-			//buffer_input[i] = 2 * ((double)rand()) / RAND_MAX - 1.0;
-		//}
-		for (uint32_t n = 0; n < num_benchmark_samples; n++) {
+		float* buffer_input = (float*)malloc((uint64_t)4 * 2 * pow(2, 27));
+		for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
+			buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+		}
+		for (uint32_t n = 0; n < 23; n++) {
 			double run_time[num_runs];
 			for (uint32_t r = 0; r < num_runs; r++) {
 				//Configuration + FFT application .
@@ -880,15 +1457,19 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				VkFFTApplication app_inverse = defaultVkFFTApplication;
 				//FFT + iFFT sample code.
 				//Setting up FFT configuration for forward and inverse FFT.
-				forward_configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
-				forward_configuration.size[0] = benchmark_dimensions[n][0]; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
-				forward_configuration.size[1] = benchmark_dimensions[n][1];
-				forward_configuration.size[2] = benchmark_dimensions[n][2];
+				forward_configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
+				forward_configuration.size[0] = 32 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
+				if (n == 0) forward_configuration.size[0] = 4096;
+				forward_configuration.size[1] = 64 * 32 * pow(2, 16) / forward_configuration.size[0];
+				if (forward_configuration.size[1] < 1) forward_configuration.size[1] = 1;
+				//forward_configuration.size[1] = (forward_configuration.size[1] > 32768) ? 32768 : forward_configuration.size[1];
+				forward_configuration.size[2] = 1;
+
 
 				//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
 				switch (physicalDeviceProperties.vendorID) {
 				case 0x10DE://NVIDIA
-					forward_configuration.coalescedMemory = 64;//have to set coalesce more, as calculations are still float, while uploads are half.
+					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
 					forward_configuration.useLUT = false;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 4;
@@ -896,7 +1477,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					forward_configuration.performHalfBandwidthBoost = true;
 					break;
 				case 0x8086://INTEL
-					forward_configuration.coalescedMemory = 128;
+					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
@@ -904,15 +1485,15 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				case 0x1002://AMD
-					forward_configuration.coalescedMemory = 64;
+					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = false;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 1;
-					forward_configuration.swapTo3Stage4Step = 19;
+					forward_configuration.swapTo3Stage4Step = 21;
 					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				default:
-					forward_configuration.coalescedMemory = 128;
+					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = false;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
@@ -920,7 +1501,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				}
-
+				forward_configuration.reorderFourStep = false;
 				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
 				forward_configuration.performZeropadding[1] = false;
 				forward_configuration.performZeropadding[2] = false;
@@ -928,15 +1509,13 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
 				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
-				forward_configuration.reorderFourStep = true;//set to true if you want data to return to correct layout after FFT. Set to false if you use convolution routine. Requires additional tempBuffer of bufferSize (see below) to do reordering
 				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 				forward_configuration.device = &device;
 				forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
 				forward_configuration.fence = &fence;
 				forward_configuration.commandPool = &commandPool;
 				forward_configuration.physicalDevice = &physicalDevice;
-				//forward_configuration.useLUT = false;
-				forward_configuration.halfPrecision = true;
+
 				//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
 				if (sizeof(SHADER_DIR) > 255) {
 					printf("SHADER_DIR length must be <256\n");
@@ -945,16 +1524,12 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				sprintf(forward_configuration.shaderPath, SHADER_DIR);
 
 				//Allocate buffer for the input data.
-				VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * 2 * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;
+				VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(float) * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;
 				VkBuffer buffer = {};
 				VkDeviceMemory bufferDeviceMemory = {};
-				VkBuffer tempBuffer = {};//temp buffer, needed to unshuffle four-step fft
-				VkDeviceMemory tempBufferDeviceMemory = {};
 				allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
-				allocateFFTBuffer(&tempBuffer, &tempBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 
 				forward_configuration.buffer = &buffer;
-				forward_configuration.tempBuffer = &tempBuffer;
 				forward_configuration.isInputFormatted = false; //set to true if input is a different buffer, so it can have zeropadding/R2C added  
 				forward_configuration.inputBuffer = &buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
 				forward_configuration.isOutputFormatted = false;//set to true if output is a different buffer, so it can have zeropadding/C2R automatically removed
@@ -983,7 +1558,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				}
 				*/
 				//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
-				//transferDataFromCPU(buffer_input, &buffer, bufferSize);
+				transferDataFromCPU(buffer_input, &buffer, bufferSize);
 				//free(buffer_input);
 
 				//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
@@ -992,7 +1567,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				//Submit FFT+iFFT.
 				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 				if (batch == 0) batch = 1;
-
+				batch *= 5;
 				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
 
 				run_time[r] = totTime;
@@ -1008,11 +1583,15 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 							std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 						}
 						std_error = sqrt(std_error / num_runs);
+						uint32_t num_tot_transfers = 0;
+						for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
+							num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers *= 4;
 						if (file_output)
-							fprintf(output, "VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize * sizeof(float) / 2 / 1024) / avg_time));
+							fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 
-						printf("VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize * sizeof(float) / 2 / 1024) / avg_time));
-						benchmark_result += ((double)bufferSize * sizeof(float) / 2 / 1024) / avg_time;
+						printf("VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						benchmark_result += ((double)bufferSize / 1024) / avg_time;
 					}
 
 
@@ -1020,14 +1599,13 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 
 				vkDestroyBuffer(device, buffer, NULL);
 				vkFreeMemory(device, bufferDeviceMemory, NULL);
-				vkDestroyBuffer(device, tempBuffer, NULL);
-				vkFreeMemory(device, tempBufferDeviceMemory, NULL);
 				deleteVulkanFFT(&app_forward);
 				deleteVulkanFFT(&app_inverse);
 			}
 		}
-		//free(buffer_input);
-		benchmark_result /= (num_benchmark_samples - 1);
+		free(buffer_input);
+		benchmark_result /= (23 - 1);
+
 		if (file_output) {
 			fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
 			fprintf(output, "Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
@@ -1041,9 +1619,209 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		vkDestroyInstance(instance, NULL);
 		break;
 	}
-	case 3:
+	case 6:
 	{
-		//3 - convolution
+		if (file_output)
+			fprintf(output, "6 - VkFFT FFT + iFFT R2C/C2R benchmark\n");
+		printf("6 - VkFFT FFT + iFFT R2C/C2R benchmark\n"); 
+		const uint32_t num_benchmark_samples = 19;
+		const uint32_t num_runs = 3;
+		//printf("First %d runs are a warmup\n", num_runs);
+		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {64, 64, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2},  {4096, 256, 1, 2}, {2048, 1024, 1, 2},{4096, 2048, 1, 2}, {4096, 4096, 1, 2},
+																	{32, 32, 32, 3}, {64, 64, 64, 3}, {256, 256, 32, 3},  {1024, 256, 32, 3},  {256, 256, 256, 3}, {2048, 1024, 8, 3},  {512, 512, 128, 3}, {2048, 256, 256, 3}, {4096, 512, 8, 3} };
+		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
+		float* buffer_input = (float*)malloc((uint64_t)4 * 2 * pow(2, 27));
+		for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
+			buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+		}
+		for (uint32_t n = 0; n < num_benchmark_samples; n++) {
+			double run_time[num_runs];
+			for (uint32_t r = 0; r < num_runs; r++) {
+				//Configuration + FFT application .
+				VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
+				VkFFTConfiguration inverse_configuration = defaultVkFFTConfiguration;
+				VkFFTApplication app_forward;
+				VkFFTApplication app_inverse;
+				//FFT + iFFT sample code.
+				//Setting up FFT configuration for forward and inverse FFT.
+				switch (physicalDeviceProperties.vendorID) {
+				case 0x10DE://NVIDIA
+					forward_configuration.coalescedMemory = 32;
+					forward_configuration.useLUT = false;
+					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 4;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = true;
+					break;
+				case 0x8086://INTEL
+					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = true;
+					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				case 0x1002://AMD
+					forward_configuration.coalescedMemory = 32;
+					forward_configuration.useLUT = false;
+					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 19;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				default:
+					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = false;
+					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				}
+				forward_configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
+				forward_configuration.size[0] = benchmark_dimensions[n][0]; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
+				forward_configuration.size[1] = benchmark_dimensions[n][1];
+				forward_configuration.size[2] = benchmark_dimensions[n][2];
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
+				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
+				forward_configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
+				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
+				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
+				forward_configuration.reorderFourStep = true;//set to true if you want data to return to correct layout after FFT. Set to false if you use convolution routine. Requires additional tempBuffer of bufferSize (see below) to do reordering
+				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
+				forward_configuration.device = &device;
+				forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
+				forward_configuration.fence = &fence;
+				forward_configuration.commandPool = &commandPool;
+				forward_configuration.physicalDevice = &physicalDevice;
+				//Custom path to the floder with shaders, default is "shaders/");
+				if (sizeof(SHADER_DIR) > 255) {
+					printf("SHADER_DIR length must be <256\n");
+					return 1;
+				}
+				sprintf(forward_configuration.shaderPath, SHADER_DIR);
+
+				//Allocate buffer for the input data.
+				VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];;
+				VkBuffer buffer = {};
+				VkDeviceMemory bufferDeviceMemory = {};
+
+				VkBuffer tempBuffer = {};
+				VkDeviceMemory tempBufferDeviceMemory = {};
+				allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+				allocateFFTBuffer(&tempBuffer, &tempBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+				forward_configuration.buffer = &buffer;
+				forward_configuration.tempBuffer = &tempBuffer;
+				forward_configuration.isInputFormatted = false; //set to true if input is a different buffer, so it can have zeropadding/R2C added  
+				forward_configuration.inputBuffer = &buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
+				forward_configuration.isOutputFormatted = false;//set to true if output is a different buffer, so it can have zeropadding/C2R automatically removed
+				forward_configuration.outputBuffer = &buffer;
+				forward_configuration.bufferSize = &bufferSize;
+				forward_configuration.inputBufferSize = &bufferSize;
+				forward_configuration.outputBufferSize = &bufferSize;
+				//Now we will create a similar configuration for inverse FFT and change inverse parameter to true.
+				inverse_configuration = forward_configuration;
+				inverse_configuration.inputBuffer = &buffer;//If you continue working with previous data, select the FFT buffer as initial
+				inverse_configuration.outputBuffer = &buffer;
+				inverse_configuration.inverse = true;
+
+				//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
+				/*float* buffer_input = (float*)malloc(bufferSize);
+
+				for (uint32_t v = 0; v < forward_configuration.coordinateFeatures; v++) {
+					for (uint32_t k = 0; k < forward_configuration.size[2]; k++) {
+						for (uint32_t j = 0; j < forward_configuration.size[1]; j++) {
+							for (uint32_t i = 0; i < forward_configuration.size[0]; i++) {
+								buffer_input[i + j * forward_configuration.size[0] + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = i;//[-1,1]
+							}
+						}
+					}
+				}*/
+				//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
+				transferDataFromCPU(buffer_input, &buffer, bufferSize);
+				//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
+				initializeVulkanFFT(&app_forward, forward_configuration);
+				initializeVulkanFFT(&app_inverse, inverse_configuration);
+				//Submit FFT+iFFT.
+				uint32_t batch = ((4096.0 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096.0 * 1024.0 * 1024.0) / bufferSize;
+				if (batch == 0) batch = 1;
+
+				//batch *= 5; //makes result more smooth, takes longer time
+				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
+				//float* buffer_output = (float*)malloc(bufferSize);
+				run_time[r] = totTime;
+				if (n > 0) {
+					if (r == num_runs - 1) {
+						double std_error = 0;
+						double avg_time = 0;
+						for (uint32_t t = 0; t < num_runs; t++) {
+							avg_time += run_time[t];
+						}
+						avg_time /= num_runs;
+						for (uint32_t t = 0; t < num_runs; t++) {
+							std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
+						}
+						std_error = sqrt(std_error / num_runs);
+						uint32_t num_tot_transfers = 0;
+						for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
+							num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers *= 4;
+						if (file_output)
+							fprintf(output, "VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						printf("VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						benchmark_result += ((double)bufferSize / 1024) / avg_time;
+					}
+
+				}
+				//printf("Benchmark score: %f\n", ((double)bufferSize / 1024) / totTime);
+				//Transfer data from GPU using staging buffer.
+				//transferDataToCPU(buffer_output, &buffer, bufferSize);
+				//Print data, if needed.
+				/*for (uint32_t v = 0; v < inverse_configuration.coordinateFeatures; v++) {
+					printf("\ncoordinate: %d\n\n", v);
+					for (uint32_t k = 0; k < inverse_configuration.size[2]; k++) {
+						for (uint32_t j = 0; j < inverse_configuration.size[1]; j++) {
+							for (uint32_t i = 0; i < inverse_configuration.size[0]; i++) {
+								printf("%.6f ", buffer_output[i + j * inverse_configuration.size[0] + k * (inverse_configuration.size[0] + 2) * inverse_configuration.size[1] + v * (inverse_configuration.size[0] + 2) * inverse_configuration.size[1] * inverse_configuration.size[2]]);
+							}
+							std::cout << "\n";
+						}
+					}
+				}*/
+				//free(buffer_input);
+				//free(buffer_output);
+				vkDestroyBuffer(device, buffer, NULL);
+				vkFreeMemory(device, bufferDeviceMemory, NULL);
+				vkDestroyBuffer(device, tempBuffer, NULL);
+				vkFreeMemory(device, tempBufferDeviceMemory, NULL);
+				deleteVulkanFFT(&app_forward);
+				deleteVulkanFFT(&app_inverse);
+			}
+		}
+		free(buffer_input);
+		benchmark_result /= ((num_benchmark_samples - 1));
+		if (file_output) {
+			fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+			fprintf(output, "Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
+		}
+		printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		printf("Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
+
+		vkDestroyFence(device, fence, NULL);
+		vkDestroyCommandPool(device, commandPool, NULL);
+		vkDestroyDevice(device, NULL);
+		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
+		vkDestroyInstance(instance, NULL);
+		break;
+	}
+	case 7:
+	{
+		if (file_output)
+			fprintf(output, "7 - VkFFT convolution example with identitiy kernel\n");
+		printf("7 - VkFFT convolution example with identitiy kernel\n");
+		//7 - convolution
 		//Configuration + FFT application.
 		VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
 		VkFFTConfiguration convolution_configuration = defaultVkFFTConfiguration;
@@ -1245,9 +2023,11 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		vkDestroyInstance(instance, NULL);
 		break;
 	}
-	case 4:
+	case 8:
 	{
-		//4 - zeropadding convolution
+		if (file_output)
+			fprintf(output, "8 - VkFFT zeropadding convolution example with identitiy kernel\n");
+		printf("8 - VkFFT zeropadding convolution example with identitiy kernel\n");
 		//Configuration + FFT application.
 		VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
 		VkFFTConfiguration convolution_configuration = defaultVkFFTConfiguration;
@@ -1450,9 +2230,11 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		vkDestroyInstance(instance, NULL);
 		break;
 	}
-	case 5:
+	case 9:
 	{
-		//5 - multiple batches (kernels) convolution
+		if (file_output)
+			fprintf(output, "9 - VkFFT batched convolution example with identitiy kernel\n");
+		printf("9 - VkFFT batched convolution example with identitiy kernel\n");
 		//Configuration + FFT application.
 		VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
 		VkFFTConfiguration convolution_configuration = defaultVkFFTConfiguration;
@@ -1661,381 +2443,6 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		vkDestroyInstance(instance, NULL);
 		break;
 	}
-	case 6:
-	{
-		//6 - FFT + iFFT C2C benchmark for big systems. Done by using four-step FFT algorithm in two or three passes - up to pow(2,30). Test uses 4GB of memory.
-		const int num_runs = 3;
-		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
-		//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
-		float* buffer_input = (float*)malloc((uint64_t)4 * 2 * 4096 * 4096 * 8 * 2);
-		for (uint64_t i = 0; i < 2 * 4096 * 4096 * 2 * 8; i++) {
-			buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
-		}
-		for (uint32_t n = 0; n < 24; n++) {
-			double run_time[num_runs];
-			for (uint32_t r = 0; r < num_runs; r++) {
-				//Configuration + FFT application .
-				VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
-				VkFFTConfiguration inverse_configuration = defaultVkFFTConfiguration;
-				VkFFTApplication app_forward = defaultVkFFTApplication;
-				VkFFTApplication app_inverse = defaultVkFFTApplication;
-				//FFT + iFFT sample code.
-				//Setting up FFT configuration for forward and inverse FFT.
-				forward_configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
-				forward_configuration.size[0] = 32 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
-				if (n == 0) forward_configuration.size[0] = 4096;
-				forward_configuration.size[1] = 64 * 32 * pow(2, 17) / forward_configuration.size[0];
-				//forward_configuration.size[1] = (forward_configuration.size[1] > 32768) ? 32768 : forward_configuration.size[1];
-				forward_configuration.size[2] = 1;
-
-
-				//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
-				switch (physicalDeviceProperties.vendorID) {
-				case 0x10DE://NVIDIA
-					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
-					forward_configuration.useLUT = false;
-					forward_configuration.registerBoost = 4;
-					forward_configuration.registerBoost4Step = 4;
-					forward_configuration.swapTo3Stage4Step = 0;
-					forward_configuration.performHalfBandwidthBoost = true;
-					break;
-				case 0x8086://INTEL
-					forward_configuration.coalescedMemory = 64;
-					forward_configuration.useLUT = true;
-					forward_configuration.registerBoost = 1;
-					forward_configuration.registerBoost4Step = 1;
-					forward_configuration.swapTo3Stage4Step = 0;
-					forward_configuration.performHalfBandwidthBoost = false;
-					break;
-				case 0x1002://AMD
-					forward_configuration.coalescedMemory = 32;
-					forward_configuration.useLUT = false;
-					forward_configuration.registerBoost = 4;
-					forward_configuration.registerBoost4Step = 1;
-					forward_configuration.swapTo3Stage4Step = 19;
-					forward_configuration.performHalfBandwidthBoost = false;
-					break;
-				default:
-					forward_configuration.coalescedMemory = 64;
-					forward_configuration.useLUT = false;
-					forward_configuration.registerBoost = 1;
-					forward_configuration.registerBoost4Step = 1;
-					forward_configuration.swapTo3Stage4Step = 0;
-					forward_configuration.performHalfBandwidthBoost = false;
-					break;
-				}
-				forward_configuration.reorderFourStep = true;
-				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropadding[1] = false;
-				forward_configuration.performZeropadding[2] = false;
-				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
-				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
-				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
-				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
-				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
-				forward_configuration.device = &device;
-				forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
-				forward_configuration.fence = &fence;
-				forward_configuration.commandPool = &commandPool;
-				forward_configuration.physicalDevice = &physicalDevice;
-
-				//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
-				if (sizeof(SHADER_DIR) > 255) {
-					printf("SHADER_DIR length must be <256\n");
-					return 1;
-				}
-				sprintf(forward_configuration.shaderPath, SHADER_DIR);
-
-				//Allocate buffer for the input data.
-				VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(float) * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;
-				VkBuffer buffer = {};
-				VkDeviceMemory bufferDeviceMemory = {};
-				VkBuffer tempBuffer = {};
-				VkDeviceMemory tempBufferDeviceMemory = {};
-				allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
-				allocateFFTBuffer(&tempBuffer, &tempBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
-
-				forward_configuration.buffer = &buffer;
-				forward_configuration.tempBuffer = &tempBuffer;
-				forward_configuration.isInputFormatted = false; //set to true if input is a different buffer, so it can have zeropadding/R2C added  
-				forward_configuration.inputBuffer = &buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
-				forward_configuration.isOutputFormatted = false;//set to true if output is a different buffer, so it can have zeropadding/C2R automatically removed
-				forward_configuration.outputBuffer = &buffer;
-				forward_configuration.bufferSize = &bufferSize;
-				forward_configuration.inputBufferSize = &bufferSize;
-				forward_configuration.outputBufferSize = &bufferSize;
-				//Now we will create a similar configuration for inverse FFT and change inverse parameter to true.
-				inverse_configuration = forward_configuration;
-				inverse_configuration.inputBuffer = &buffer;//If you continue working with previous data, select the FFT buffer as initial
-				inverse_configuration.outputBuffer = &buffer;
-				inverse_configuration.inverse = true;
-
-				//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
-				/*float* buffer_input = (float*)malloc(bufferSize);
-
-				for (uint32_t v = 0; v < forward_configuration.coordinateFeatures; v++) {
-					for (uint32_t k = 0; k < forward_configuration.size[2]; k++) {
-						for (uint32_t j = 0; j < forward_configuration.size[1]; j++) {
-							for (uint32_t i = 0; i < forward_configuration.size[0]; i++) {
-								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
-								buffer_input[2 * (i + j * forward_configuration.size[0] + k * (forward_configuration.size[0]) * forward_configuration.size[1] + v * (forward_configuration.size[0]) * forward_configuration.size[1] * forward_configuration.size[2]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
-							}
-						}
-					}
-				}
-				*/
-				//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
-				transferDataFromCPU(buffer_input, &buffer, bufferSize);
-				//free(buffer_input);
-
-				//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-				initializeVulkanFFT(&app_forward, forward_configuration);
-				initializeVulkanFFT(&app_inverse, inverse_configuration);
-				//Submit FFT+iFFT.
-				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
-				if (batch == 0) batch = 1;
-				batch *= 5;
-				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
-
-				run_time[r] = totTime;
-				if (n > 0) {
-					if (r == num_runs - 1) {
-						double std_error = 0;
-						double avg_time = 0;
-						for (uint32_t t = 0; t < num_runs; t++) {
-							avg_time += run_time[t];
-						}
-						avg_time /= num_runs;
-						for (uint32_t t = 0; t < num_runs; t++) {
-							std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
-						}
-						std_error = sqrt(std_error / num_runs);
-						if (file_output)
-							fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time));
-
-						printf("VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time));
-						benchmark_result += ((double)bufferSize / 1024) / avg_time;
-					}
-
-
-				}
-
-				vkDestroyBuffer(device, buffer, NULL);
-				vkDestroyBuffer(device, tempBuffer, NULL);
-				vkFreeMemory(device, bufferDeviceMemory, NULL);
-				vkFreeMemory(device, tempBufferDeviceMemory, NULL);
-				deleteVulkanFFT(&app_forward);
-				deleteVulkanFFT(&app_inverse);
-			}
-		}
-		free(buffer_input);
-		benchmark_result /= (24 - 1);
-
-		if (file_output) {
-			fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
-			fprintf(output, "Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
-		}
-		printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
-		printf("Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
-		vkDestroyFence(device, fence, NULL);
-		vkDestroyCommandPool(device, commandPool, NULL);
-		vkDestroyDevice(device, NULL);
-		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
-		vkDestroyInstance(instance, NULL);
-		break;
-	}
-	case 7:
-	{
-		//7 - FFT + iFFT R2C/C2R benchmark. Limited to one upload for now in x axis (16k with register overutilization), y and z are pow(2,30)
-		const uint32_t num_benchmark_samples = 19;
-		const uint32_t num_runs = 7;
-		//printf("First %d runs are a warmup\n", num_runs);
-		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {64, 64, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2},  {4096, 256, 1, 2}, {2048, 1024, 1, 2},{4096, 2048, 1, 2}, {4096, 4096, 1, 2},
-																	{32, 32, 32, 3}, {64, 64, 64, 3}, {256, 256, 32, 3},  {1024, 256, 32, 3},  {256, 256, 256, 3}, {2048, 1024, 8, 3},  {512, 512, 128, 3}, {2048, 256, 256, 3}, {4096, 4096, 8, 3} };
-		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
-		float* buffer_input = (float*)malloc((uint64_t)4 * 2 * 4096 * 4096 * 8 * 2);
-		for (uint64_t i = 0; i < 2 * 4096 * 4096 * 2 * 8; i++) {
-			buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
-		}
-		for (uint32_t n = 0; n < num_benchmark_samples; n++) {
-			double run_time[num_runs];
-			for (uint32_t r = 0; r < num_runs; r++) {
-				//Configuration + FFT application .
-				VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
-				VkFFTConfiguration inverse_configuration = defaultVkFFTConfiguration;
-				VkFFTApplication app_forward;
-				VkFFTApplication app_inverse;
-				//FFT + iFFT sample code.
-				//Setting up FFT configuration for forward and inverse FFT.
-				switch (physicalDeviceProperties.vendorID) {
-				case 0x10DE://NVIDIA
-					forward_configuration.coalescedMemory = 32;
-					forward_configuration.useLUT = false;
-					forward_configuration.registerBoost = 4;
-					forward_configuration.registerBoost4Step = 4;
-					forward_configuration.swapTo3Stage4Step = 0;
-					forward_configuration.performHalfBandwidthBoost = true;
-					break;
-				case 0x8086://INTEL
-					forward_configuration.coalescedMemory = 64;
-					forward_configuration.useLUT = true;
-					forward_configuration.registerBoost = 4;
-					forward_configuration.registerBoost4Step = 1;
-					forward_configuration.swapTo3Stage4Step = 0;
-					forward_configuration.performHalfBandwidthBoost = false;
-					break;
-				case 0x1002://AMD
-					forward_configuration.coalescedMemory = 32;
-					forward_configuration.useLUT = false;
-					forward_configuration.registerBoost = 4;
-					forward_configuration.registerBoost4Step = 1;
-					forward_configuration.swapTo3Stage4Step = 19;
-					forward_configuration.performHalfBandwidthBoost = false;
-					break;
-				default:
-					forward_configuration.coalescedMemory = 64;
-					forward_configuration.useLUT = false;
-					forward_configuration.registerBoost = 1;
-					forward_configuration.registerBoost4Step = 1;
-					forward_configuration.swapTo3Stage4Step = 0;
-					forward_configuration.performHalfBandwidthBoost = false;
-					break;
-				}
-				forward_configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
-				forward_configuration.size[0] = benchmark_dimensions[n][0]; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
-				forward_configuration.size[1] = benchmark_dimensions[n][1];
-				forward_configuration.size[2] = benchmark_dimensions[n][2];
-				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropadding[1] = false;
-				forward_configuration.performZeropadding[2] = false;
-				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
-				forward_configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
-				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
-				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
-				forward_configuration.reorderFourStep = true;//set to true if you want data to return to correct layout after FFT. Set to false if you use convolution routine. Requires additional tempBuffer of bufferSize (see below) to do reordering
-				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
-				forward_configuration.device = &device;
-				forward_configuration.queue = &queue; //to allocate memory for LUT, we have to pass a queue, fence, commandPool and physicalDevice pointers 
-				forward_configuration.fence = &fence;
-				forward_configuration.commandPool = &commandPool;
-				forward_configuration.physicalDevice = &physicalDevice;
-				//Custom path to the floder with shaders, default is "shaders/");
-				if (sizeof(SHADER_DIR) > 255) {
-					printf("SHADER_DIR length must be <256\n");
-					return 1;
-				}
-				sprintf(forward_configuration.shaderPath, SHADER_DIR);
-
-				//Allocate buffer for the input data.
-				VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(float) * 2 * (forward_configuration.size[0] / 2 + 1) * forward_configuration.size[1] * forward_configuration.size[2];;
-				VkBuffer buffer = {};
-				VkDeviceMemory bufferDeviceMemory = {};
-
-				VkBuffer tempBuffer = {};
-				VkDeviceMemory tempBufferDeviceMemory = {};
-				allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
-				allocateFFTBuffer(&tempBuffer, &tempBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
-				forward_configuration.buffer = &buffer;
-				forward_configuration.tempBuffer = &tempBuffer;
-				forward_configuration.isInputFormatted = false; //set to true if input is a different buffer, so it can have zeropadding/R2C added  
-				forward_configuration.inputBuffer = &buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
-				forward_configuration.isOutputFormatted = false;//set to true if output is a different buffer, so it can have zeropadding/C2R automatically removed
-				forward_configuration.outputBuffer = &buffer;
-				forward_configuration.bufferSize = &bufferSize;
-				forward_configuration.inputBufferSize = &bufferSize;
-				forward_configuration.outputBufferSize = &bufferSize;
-				//Now we will create a similar configuration for inverse FFT and change inverse parameter to true.
-				inverse_configuration = forward_configuration;
-				inverse_configuration.inputBuffer = &buffer;//If you continue working with previous data, select the FFT buffer as initial
-				inverse_configuration.outputBuffer = &buffer;
-				inverse_configuration.inverse = true;
-
-				//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
-				/*float* buffer_input = (float*)malloc(bufferSize);
-
-				for (uint32_t v = 0; v < forward_configuration.coordinateFeatures; v++) {
-					for (uint32_t k = 0; k < forward_configuration.size[2]; k++) {
-						for (uint32_t j = 0; j < forward_configuration.size[1]; j++) {
-							for (uint32_t i = 0; i < forward_configuration.size[0]; i++) {
-								buffer_input[i + j * forward_configuration.size[0] + k * (forward_configuration.size[0] + 2) * forward_configuration.size[1] + v * (forward_configuration.size[0] + 2) * forward_configuration.size[1] * forward_configuration.size[2]] = i;//[-1,1]
-							}
-						}
-					}
-				}*/
-				//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
-				transferDataFromCPU(buffer_input, &buffer, bufferSize);
-				//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-				initializeVulkanFFT(&app_forward, forward_configuration);
-				initializeVulkanFFT(&app_inverse, inverse_configuration);
-				//Submit FFT+iFFT.
-				uint32_t batch = ((4096.0 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096.0 * 1024.0 * 1024.0) / bufferSize;
-				if (batch == 0) batch = 1;
-
-				//batch *= 5; //makes result more smooth, takes longer time
-				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
-				//float* buffer_output = (float*)malloc(bufferSize);
-				run_time[r] = totTime;
-				if (n > 0) {
-					if (r == num_runs - 1) {
-						double std_error = 0;
-						double avg_time = 0;
-						for (uint32_t t = 0; t < num_runs; t++) {
-							avg_time += run_time[t];
-						}
-						avg_time /= num_runs;
-						for (uint32_t t = 0; t < num_runs; t++) {
-							std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
-						}
-						std_error = sqrt(std_error / num_runs);
-						if (file_output)
-							fprintf(output, "VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error %0.3f batch: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch);
-
-						printf("VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error %0.3f batch: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch);
-						benchmark_result += ((double)bufferSize / 1024) / avg_time;
-					}
-
-				}
-				//printf("Benchmark score: %f\n", ((double)bufferSize / 1024) / totTime);
-				//Transfer data from GPU using staging buffer.
-				//transferDataToCPU(buffer_output, &buffer, bufferSize);
-				//Print data, if needed.
-				/*for (uint32_t v = 0; v < inverse_configuration.coordinateFeatures; v++) {
-					printf("\ncoordinate: %d\n\n", v);
-					for (uint32_t k = 0; k < inverse_configuration.size[2]; k++) {
-						for (uint32_t j = 0; j < inverse_configuration.size[1]; j++) {
-							for (uint32_t i = 0; i < inverse_configuration.size[0]; i++) {
-								printf("%.6f ", buffer_output[i + j * inverse_configuration.size[0] + k * (inverse_configuration.size[0] + 2) * inverse_configuration.size[1] + v * (inverse_configuration.size[0] + 2) * inverse_configuration.size[1] * inverse_configuration.size[2]]);
-							}
-							std::cout << "\n";
-						}
-					}
-				}*/
-				//free(buffer_input);
-				//free(buffer_output);
-				vkDestroyBuffer(device, buffer, NULL);
-				vkFreeMemory(device, bufferDeviceMemory, NULL);
-				vkDestroyBuffer(device, tempBuffer, NULL);
-				vkFreeMemory(device, tempBufferDeviceMemory, NULL);
-				deleteVulkanFFT(&app_forward);
-				deleteVulkanFFT(&app_inverse);
-			}
-		}
-		free(buffer_input);
-		benchmark_result /= ((num_benchmark_samples - 1));
-		if (file_output) {
-			fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
-			printf("Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
-		}
-		printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
-		printf("Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
-
-		vkDestroyFence(device, fence, NULL);
-		vkDestroyCommandPool(device, commandPool, NULL);
-		vkDestroyDevice(device, NULL);
-		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
-		vkDestroyInstance(instance, NULL);
-		break;
-	}
 	}
 	return 0;
 }
@@ -2061,16 +2468,18 @@ int main(int argc, char* argv[])
 	if (findFlag(argv, argv + argc, "-h"))
 	{
 		//print help
-		printf("VkFFT v1.0.4 (17-11-2020). Author: Tolmachev Dmitrii\n");
+		printf("VkFFT v1.0.5 (19-11-2020). Author: Tolmachev Dmitrii\n");
 		printf("	-h: print help\n");
 		printf("	-devices: print the list of available GPU devices\n");
 		printf("	-d X: select GPU device (default 0)\n");
 		printf("	-o NAME: specify output file path\n");
-		printf("	-vkfft X: launch VkFFT sample X (0-7):\n		0 - FFT + iFFT C2C single precision benchmark\n		1 - double precision benchmark\n		2 - half precision benchmark\n		3 - convolution\n		4 - zeropadding convolution\n		5 - multiple feature(kernel) convolution\n		6 - Big FFTs (>16k)\n		7 - R2C/C2R benchmark\n");
+		printf("	-vkfft X: launch VkFFT sample X (0-9):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n");
 #ifdef USE_cuFFT
-		printf("	-cufft X: launch cuFFT sample X (0-2):\n		0 - FFT + iFFT C2C single precision benchmark\n		1 - double precision benchmark\n		2 - half precision benchmark\n");
+		printf("	-cufft X: launch cuFFT sample X (0-3):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n");
+		printf("	-test: (or no -vkfft and -cufft keys) run vkfft benchmarks 0-6 and cufft benchmarks 0-3\n");
 #else
-		printf("	-cufft command is disabled in CMakeLists.txt\n");
+		printf("	-test: (or no -vkfft and -cufft keys) run vkfft benchmarks 0-6\n");
+		printf("	-cufft command is disabled\n");
 #endif
 		return 0;
 	}
@@ -2110,7 +2519,7 @@ int main(int argc, char* argv[])
 		//select sample_id
 		char* value = getFlagValue(argv, argv + argc, "-vkfft");
 		if (value != 0) {
-			uint32_t sample_id = 0;//setting parameter for VkFFT samples. 0 - FFT + iFFT C2C benchmark. 1 - convolution. 2 - zeropadding convolution. 3 - multiple feature(kernel) convolution. 4 - Big FFTs (>16k) 5 - R2C/C2R benchmark 6 - double precision benchmark 7 - half precision benchmark
+			uint32_t sample_id = 0;
 			sscanf(value, "%d", &sample_id);
 			launchVkFFT(device_id, sample_id, file_output, output);
 		}
@@ -2125,7 +2534,7 @@ int main(int argc, char* argv[])
 		//select sample_id
 		char* value = getFlagValue(argv, argv + argc, "-cufft");
 		if (value != 0) {
-			uint32_t sample_id = 0;//setting parameter for cuFFT samples. 0 - single precision benchmark. 1 - double precision benchmark. 2 - half precision benchmark. 
+			uint32_t sample_id = 0; 
 			sscanf(value, "%d", &sample_id);
 			switch (sample_id) {
 			case 0:
@@ -2137,6 +2546,9 @@ int main(int argc, char* argv[])
 			case 2:
 				launch_benchmark_cuFFT_half(file_output, output);
 				break;
+			case 3:
+				launch_benchmark_cuFFT_single_3d(file_output, output);
+				break;
 			}
 		}
 		else {
@@ -2145,4 +2557,20 @@ int main(int argc, char* argv[])
 		}
 	}
 #endif
+	if ((findFlag(argv, argv + argc, "-test"))||((!findFlag(argv, argv + argc, "-cufft"))&& (!findFlag(argv, argv + argc, "-vkfft"))))
+	{
+		if (output == NULL) {
+			file_output = true;
+			output = fopen("result.txt", "a");
+		}
+		for (uint32_t i = 0; i < 7; i++) {
+			launchVkFFT(device_id, i, file_output, output);
+		}
+		#ifdef USE_cuFFT
+			launch_benchmark_cuFFT_single(file_output, output);
+			launch_benchmark_cuFFT_double(file_output, output);
+			launch_benchmark_cuFFT_half(file_output, output);
+			launch_benchmark_cuFFT_single_3d(file_output, output);
+		#endif
+	}
 }

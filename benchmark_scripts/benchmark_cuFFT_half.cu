@@ -18,32 +18,30 @@
 
 void launch_benchmark_cuFFT_half(bool file_output, FILE* output)
 {
-
-	const int num_benchmark_samples = 26;
-	const int num_runs = 7;
-
-	uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
-		{32,32,1,2},{64,64,1,2},{256,256,1,2},{1024, 256, 1, 2}, {512, 512, 1, 2},  {1024, 1024, 1, 2} , {4096, 1024, 1, 2}, {2048, 2048, 1, 2}, {4096, 4096, 1, 2},
-		{64,64,64,3}, {128,128,128, 3}, {256,256,256,3}, {512, 256, 64, 3}, {1024, 1024, 64, 3}, {4096, 256, 32, 3},  {2048, 256, 256, 3},{4096, 4096, 8, 3},
-		{(uint32_t)pow(2,15), 64, 1, 2}, {(uint32_t)pow(2,16), 64, 1, 2}, {(uint32_t)pow(2,17), 64, 1, 2}, {(uint32_t)pow(2,18), 64, 1, 2},  {(uint32_t)pow(2,20), 64, 1, 2},  {(uint32_t)pow(2,22), 64, 1, 2},
-		{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,14), 1, 2},
-	};
-
+	const int num_runs = 3;
+	if (file_output)
+		fprintf(output, "2 - cuFFT FFT + iFFT C2C benchmark 1D batched in half precision\n");
+	printf("2 - cuFFT FFT + iFFT C2C benchmark 1D batched in half precision\n");
 	double benchmark_result[2] = { 0,0 };//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
-	half2* inputC = (half2*)malloc((uint64_t)sizeof(half2) * 4096 * 4096 * 2 * 8);
-	for (uint64_t i = 0; i < 4096 * 4096 * 2 * 8; i++) {
+	half2* inputC = (half2*)malloc((uint64_t)sizeof(half2) * pow(2, 27));
+	for (uint64_t i = 0; i < pow(2, 27); i++) {
 		inputC[i].x = (half) (2 * ((double)rand()) / RAND_MAX - 1.0);
 		inputC[i].y = (half) (2 * ((double)rand()) / RAND_MAX - 1.0);
 	}
-	for (int n = 0; n < num_benchmark_samples; n++) {
+	for (int n = 0; n < 23; n++) {
 		double run_time[num_runs][2];
 		for (int r = 0; r < num_runs; r++) {
 			cufftHandle planHalf;
 			half2* dataC_in;
 			half2* dataC_out;
 
-			uint64_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
-
+			uint32_t dims[3];
+			dims[0] = 32 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
+			if (n == 0) dims[0] = 4096;
+			dims[1] = 64 * 32 * pow(2, 16) / dims[0];
+			if (dims[1] == 0) dims[1] = 1;
+			//dims[1] = (dims[1] > 32768) ? 32768 : dims[1];
+			dims[2] = 1;
 			cudaMalloc((void**)&dataC_in, sizeof(half2) * dims[0] * dims[1] * dims[2]);
 			cudaMalloc((void**)&dataC_out, sizeof(half2) * dims[0] * dims[1] * dims[2]);
 			cudaMemcpy(dataC_in, inputC, sizeof(half2) * dims[0] * dims[1] * dims[2], cudaMemcpyHostToDevice);
@@ -55,26 +53,26 @@ void launch_benchmark_cuFFT_half(bool file_output, FILE* output)
 			cufftResult res = cufftCreate(&planHalf);
 			size_t ws = 0;
 			long long local_dims[3];
-			switch (benchmark_dimensions[n][3]){
+			switch (1){
 			case 1:
-				local_dims[0] = (long long)benchmark_dimensions[n][0];
-				local_dims[1] = (long long)benchmark_dimensions[n][1];
-				local_dims[2] = (long long)benchmark_dimensions[n][2];
+				local_dims[0] = (long long)dims[0];
+				local_dims[1] = (long long)dims[1];
+				local_dims[2] = (long long)dims[2];
 				break;
 			case 2:
-				local_dims[0] = (long long)benchmark_dimensions[n][1];
-				local_dims[1] = (long long)benchmark_dimensions[n][0];
-				local_dims[2] = (long long)benchmark_dimensions[n][2];
+				local_dims[0] = (long long)dims[1];
+				local_dims[1] = (long long)dims[0];
+				local_dims[2] = (long long)dims[2];
 				break;
 			case 3:
-				local_dims[0] = (long long)benchmark_dimensions[n][2];
-				local_dims[1] = (long long)benchmark_dimensions[n][1];
-				local_dims[2] = (long long)benchmark_dimensions[n][0];
+				local_dims[0] = (long long)dims[2];
+				local_dims[1] = (long long)dims[1];
+				local_dims[2] = (long long)dims[0];
 				break;
 			}
 			res = cufftXtMakePlanMany(
-				planHalf, benchmark_dimensions[n][3], local_dims, NULL, 1, 1, CUDA_C_16F,
-				NULL, 1, 1, CUDA_C_16F, 1, &ws, CUDA_C_16F);
+				planHalf, 1, local_dims, NULL, 1, 1, CUDA_C_16F,
+				NULL, 1, 1, CUDA_C_16F, dims[1], &ws, CUDA_C_16F);
 			
 			assert(res == CUFFT_SUCCESS);
 
@@ -86,9 +84,9 @@ void launch_benchmark_cuFFT_half(bool file_output, FILE* output)
 			for (int i = 0; i < batch; i++) {
 
 				res=cufftXtExec(planHalf, dataC_in, dataC_out, CUFFT_FORWARD);
-				assert(res == CUFFT_SUCCESS);
+				//assert(res == CUFFT_SUCCESS);
 				res=cufftXtExec(planHalf, dataC_out, dataC_in, CUFFT_INVERSE);
-				assert(res == CUFFT_SUCCESS);
+				//assert(res == CUFFT_SUCCESS);
 			}
 			cudaDeviceSynchronize();
 			auto timeEnd = std::chrono::steady_clock::now();
@@ -107,9 +105,9 @@ void launch_benchmark_cuFFT_half(bool file_output, FILE* output)
 					}
 					std_error = sqrt(std_error / num_runs);
 					if (file_output)
-						fprintf(output, "cuFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], cuBufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)cuBufferSize * sizeof(float) / sizeof(half) / 1024) / avg_time));
+						fprintf(output, "cuFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", (int)log2(dims[0]), dims[0], dims[1], cuBufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)cuBufferSize * sizeof(float) / sizeof(half) / 1024) / avg_time));
 
-					printf("cuFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], cuBufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)cuBufferSize * sizeof(float) / sizeof(half) / 1024) / avg_time));
+					printf("cuFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", (int)log2(dims[0]), dims[0], dims[1], cuBufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)cuBufferSize * sizeof(float) / sizeof(half) / 1024) / avg_time));
 					benchmark_result[0] += ((double)cuBufferSize * sizeof(float) / sizeof(half) / 1024) / avg_time;
 				}
 
@@ -126,7 +124,7 @@ void launch_benchmark_cuFFT_half(bool file_output, FILE* output)
 		}
 	}
 	free(inputC);
-	benchmark_result[0] /= (num_benchmark_samples - 1);
+	benchmark_result[0] /= (23 - 1);
 	if (file_output)
 		fprintf(output, "Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));
 	printf("Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));

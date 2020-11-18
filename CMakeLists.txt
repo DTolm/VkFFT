@@ -20,13 +20,23 @@ target_link_libraries(${PROJECT_NAME} PUBLIC Vulkan::Vulkan VkFFT)
 
 if(build_VkFFT_cuFFT_benchmark)
 	add_definitions(-DUSE_cuFFT)
-	find_package(CUDA 8.0 REQUIRED)
+	find_package(CUDA 11.0 REQUIRED)
 	enable_language(CUDA)
+
 	add_library(benchmark_scripts STATIC
 	benchmark_scripts/benchmark_cuFFT.cu
 	benchmark_scripts/benchmark_cuFFT_double.cu
-	benchmark_scripts/benchmark_cuFFT_half.cu)
+	benchmark_scripts/benchmark_cuFFT_half.cu
+	benchmark_scripts/benchmark_cuFFT_3d.cu)
+	set_property(TARGET benchmark_scripts PROPERTY CUDA_ARCHITECTURES 35 60 70 75 80 86)
 	CUDA_ADD_CUFFT_TO_TARGET(benchmark_scripts)
+	target_compile_options(benchmark_scripts PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:
+	-gencode arch=compute_35,code=compute_35
+	-gencode arch=compute_60,code=compute_60
+	-gencode arch=compute_70,code=compute_70 
+	-gencode arch=compute_75,code=compute_75 
+	-gencode arch=compute_80,code=compute_80 
+	-gencode arch=compute_86,code=compute_86>")
 	target_include_directories(benchmark_scripts PUBLIC "benchmark_scripts/")
 	set_target_properties(benchmark_scripts PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 	set_target_properties(benchmark_scripts PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
