@@ -66,9 +66,8 @@ void launch_benchmark_cuFFT_double(bool file_output, FILE* output)
 
 			double totTime = 0;
 			uint64_t cuBufferSize = sizeof(double) * 2 * dims[0] * dims[1] * dims[2];
-			uint64_t batch = ((4096 * 1024.0 * 1024.0) / cuBufferSize / 5 > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / cuBufferSize / 5;
+			uint64_t batch = ((4096 * 1024.0 * 1024.0) / cuBufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / cuBufferSize ;
 			if (batch == 0) batch = 1;
-			batch *= 5;
 			auto timeSubmit = std::chrono::steady_clock::now();
 			for (int i = 0; i < batch; i++) {
 

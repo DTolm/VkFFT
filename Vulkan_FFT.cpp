@@ -613,7 +613,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				//Submit FFT+iFFT.
 				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 				if (batch == 0) batch = 1;
-				batch *= 5;
+				if (physicalDeviceProperties.vendorID!= 0x8086) batch *= 5;
 				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
 
 				run_time[r] = totTime;
@@ -800,9 +800,9 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				initializeVulkanFFT(&app_forward, forward_configuration);
 				initializeVulkanFFT(&app_inverse, inverse_configuration);
 				//Submit FFT+iFFT.
-				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize / 5 > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize / 5;
+				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 				if (batch == 0) batch = 1;
-				batch *= 5;
+				
 				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
 
 				run_time[r] = totTime;
@@ -901,7 +901,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
-					forward_configuration.performHalfBandwidthBoost = false;
+					forward_configuration.performHalfBandwidthBoost = true;
 					break;
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 64;
@@ -1047,8 +1047,8 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 	case 3:
 	{
 		if (file_output)
-			fprintf(output, "VkFFT 3 - FFT + iFFT C2C multidimensional benchmark in single precision\n");
-		printf("VkFFT 3 - FFT + iFFT C2C multidimensional benchmark in single precision\n");
+			fprintf(output, "3 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
+		printf("3 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
 
 		const int num_benchmark_samples = 16;
 		const int num_runs = 3;
@@ -1243,8 +1243,8 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 	case 4:
 	{
 		if (file_output)
-			fprintf(output, "VkFFT 4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
-		printf("VkFFT 4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
+			fprintf(output, "4 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
+		printf("4 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
 
 		const int num_benchmark_samples = 16;
 		const int num_runs = 3;
@@ -1567,7 +1567,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				//Submit FFT+iFFT.
 				uint32_t batch = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 				if (batch == 0) batch = 1;
-				batch *= 5;
+				if (physicalDeviceProperties.vendorID != 0x8086) batch *= 5;
 				float totTime = performVulkanFFTiFFT(&app_forward, &app_inverse, batch);
 
 				run_time[r] = totTime;

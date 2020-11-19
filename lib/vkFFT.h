@@ -1317,7 +1317,7 @@ extern "C" {
 				}*/
 				descriptorBufferInfo.offset = 0;
 			}
-			if (i == 2) {
+			if ((i == 2) && (app->configuration.performConvolution)) {
 				descriptorBufferInfo.buffer = app->configuration.kernel[0];
 				descriptorBufferInfo.offset = 0;
 				descriptorBufferInfo.range = app->configuration.kernelSize[0];
