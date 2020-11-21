@@ -393,7 +393,7 @@ void main()
 	vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physicalDeviceMemoryProperties);
 
-	const int num_benchmark_samples = 60;
+	const int num_benchmark_samples = 64;
 	const int num_runs = 1;
 
 	int benchmark_dimensions[num_benchmark_samples][4] = { {(uint32_t)pow(2,5), 1, 1, 1},{(uint32_t)pow(2,6), 1, 1, 1},{(uint32_t)pow(2,7), 1, 1, 1},{(uint32_t)pow(2,8), 1, 1, 1},{(uint32_t)pow(2,9), 1, 1, 1},{(uint32_t)pow(2,10), 1, 1, 1},
@@ -404,10 +404,10 @@ void main()
 		{8, (uint32_t)pow(2,11), 1, 2},{8, (uint32_t)pow(2,12), 1, 2},{8, (uint32_t)pow(2,13), 1, 2},{8, (uint32_t)pow(2,14), 1, 2},{8, (uint32_t)pow(2,15), 1, 2},{8, (uint32_t)pow(2,16), 1, 2},{8, (uint32_t)pow(2,17), 1, 2},{8, (uint32_t)pow(2,18), 1, 2},
 		{8, (uint32_t)pow(2,19), 1, 2},{8, (uint32_t)pow(2,20), 1, 2},{8, (uint32_t)pow(2,21), 1, 2},{8, (uint32_t)pow(2,22), 1, 2},{8, (uint32_t)pow(2,23), 1, 2},{8, (uint32_t)pow(2,24), 1, 2},
 
-		{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},
+		{ (uint32_t)pow(2,3), (uint32_t)pow(2,3), 1, 2},{ (uint32_t)pow(2,4), (uint32_t)pow(2,4), 1, 2},{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},
 		{ (uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},{ (uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},{ (uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},{ (uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{ (uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
 
-		{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3},
+		{ (uint32_t)pow(2,3), (uint32_t)pow(2,3), (uint32_t)pow(2,3), 3},{ (uint32_t)pow(2,4), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3},{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3},
 	};
 
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
@@ -535,7 +535,7 @@ void main()
 			VkDeviceMemory tempBufferDeviceMemory = {};
 			allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 			allocateFFTBuffer(&tempBuffer, &tempBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
-			
+
 			forward_configuration.buffer = &buffer;
 			forward_configuration.tempBuffer = &tempBuffer;
 			forward_configuration.isInputFormatted = false; //set to true if input is a different buffer, so it can have zeropadding/R2C added  
@@ -578,7 +578,7 @@ void main()
 						if (app_forward.localFFTPlan.numAxisUploads[2] > 1)
 							loc_l = l / app_forward.localFFTPlan.axes[2][1].specializationConstants.fftDim + app_forward.localFFTPlan.axes[2][0].specializationConstants.fftDim * (l % app_forward.localFFTPlan.axes[2][1].specializationConstants.fftDim);
 */
-						//printf("%f %f - %f %f - %f %f\n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0], output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1], output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].x, output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].y, output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])].x, output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])].y);
+//printf("%f %f - %f %f - %f %f\n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0], output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1], output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].x, output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].y, output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])].x, output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])].y);
 
 						float current_diff_x_cuFFT = ((double)output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].x - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0]);
 						float current_diff_y_cuFFT = ((double)output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].y - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);

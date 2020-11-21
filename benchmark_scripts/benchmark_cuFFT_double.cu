@@ -28,14 +28,14 @@ void launch_benchmark_cuFFT_double(bool file_output, FILE* output)
 		inputC[i].x = 2 * ((double)rand()) / RAND_MAX - 1.0;
 		inputC[i].y = 2 * ((double)rand()) / RAND_MAX - 1.0;
 	}
-	for (int n = 0; n < 21; n++) {
+	for (int n = 0; n < 24; n++) {
 		double run_time[num_runs][2];
 		for (int r = 0; r < num_runs; r++) {
 			cufftHandle planZ2Z;
 			cufftDoubleComplex* dataC;
 
 			uint32_t dims[3];
-			dims[0] = 32 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
+			dims[0] = 4 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 			if (n == 0) dims[0] = 2048;
 			dims[1] = 64 * 32 * pow(2, 15) / dims[0];
 			//dims[1] = (dims[1] > 32768) ? 32768 : dims[1];
@@ -109,7 +109,7 @@ void launch_benchmark_cuFFT_double(bool file_output, FILE* output)
 		}
 	}
 	free(inputC);
-	benchmark_result[0] /= (21 - 1);
+	benchmark_result[0] /= (24 - 1);
 	if (file_output)
 		fprintf(output, "Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));
 	printf("Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));

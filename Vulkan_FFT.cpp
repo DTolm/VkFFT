@@ -489,7 +489,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
 			buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 		}
-		for (uint32_t n = 0; n < 23; n++) {
+		for (uint32_t n = 0; n < 26; n++) {
 			double run_time[num_runs];
 			for (uint32_t r = 0; r < num_runs; r++) {
 				//Configuration + FFT application .
@@ -500,7 +500,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				//FFT + iFFT sample code.
 				//Setting up FFT configuration for forward and inverse FFT.
 				forward_configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
-				forward_configuration.size[0] = 32 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
+				forward_configuration.size[0] = 4 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 				if (n == 0) forward_configuration.size[0] = 4096;
 				forward_configuration.size[1] = 64 * 32 * pow(2, 16) / forward_configuration.size[0];
 				if (forward_configuration.size[1] < 1) forward_configuration.size[1] = 1;
@@ -513,6 +513,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 4;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -521,6 +522,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -529,6 +531,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 64;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 19;
@@ -537,6 +540,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				default:
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -652,7 +656,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 			}
 		}
 		free(buffer_input);
-		benchmark_result /= (23 - 1);
+		benchmark_result /= (26 - 1);
 
 		if (file_output) {
 			fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
@@ -679,7 +683,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
 			buffer_input[i] = 2 * ((double)rand()) / RAND_MAX - 1.0;
 		}
-		for (uint32_t n = 0; n < 21; n++) {
+		for (uint32_t n = 0; n < 24; n++) {
 			double run_time[num_runs];
 			for (uint32_t r = 0; r < num_runs; r++) {
 				//Configuration + FFT application .
@@ -690,7 +694,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				//FFT + iFFT sample code.
 				//Setting up FFT configuration for forward and inverse FFT.
 				forward_configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
-				forward_configuration.size[0] = 32 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
+				forward_configuration.size[0] = 4 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 				if (n == 0) forward_configuration.size[0] = 2048;
 				forward_configuration.size[1] = 64 * 32 * pow(2, 15) / forward_configuration.size[0];
 				if (forward_configuration.size[1] < 1) forward_configuration.size[1] = 1;
@@ -700,6 +704,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA - change to 128 before Pascal
 					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
 					forward_configuration.useLUT = true;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;//registerBoost is not implemented for double yet.
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -708,6 +713,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -716,6 +722,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = true;
+					forward_configuration.warpSize = 64;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 19;
@@ -724,6 +731,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				default:
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -841,7 +849,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 			}
 		}
 		free(buffer_input);
-		benchmark_result /= (21 - 1);
+		benchmark_result /= (24 - 1);
 		if (file_output) {
 			fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
 			fprintf(output, "Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
@@ -868,7 +876,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
 			buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 		}
-		for (uint32_t n = 0; n < 23; n++) {
+		for (uint32_t n = 0; n < 26; n++) {
 			double run_time[num_runs];
 			for (uint32_t r = 0; r < num_runs; r++) {
 				//Configuration + FFT application .
@@ -879,7 +887,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				//FFT + iFFT sample code.
 				//Setting up FFT configuration for forward and inverse FFT.
 				forward_configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
-				forward_configuration.size[0] = 32 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
+				forward_configuration.size[0] = 4 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 				if (n == 0) forward_configuration.size[0] = 4096;
 				forward_configuration.size[1] = 64 * 32 * pow(2, 16) / forward_configuration.size[0];
 				if (forward_configuration.size[1] < 1) forward_configuration.size[1] = 1;
@@ -890,6 +898,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA - change to 128 before Pascal
 					forward_configuration.coalescedMemory = 64;//have to set coalesce more, as calculations are still float, while uploads are half.
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 4;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -898,6 +907,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 128;
 					forward_configuration.useLUT = true;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -906,6 +916,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 64;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 19;
@@ -914,6 +925,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				default:
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -1030,7 +1042,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 			}
 		}
 		free(buffer_input);
-		benchmark_result /= (23 - 1);
+		benchmark_result /= (26 - 1);
 		if (file_output) {
 			fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
 			fprintf(output, "Device name: %s API:%d.%d.%d\n", physicalDeviceProperties.deviceName, (physicalDeviceProperties.apiVersion >> 22), ((physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (physicalDeviceProperties.apiVersion & 0xfff));
@@ -1050,15 +1062,16 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 			fprintf(output, "3 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
 		printf("3 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
 
-		const int num_benchmark_samples = 16;
+		const int num_benchmark_samples = 33;
 		const int num_runs = 3;
 
 		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
-		{(uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{(uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2}, {(uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{(uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},
-		{(uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},{(uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},{(uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},{(uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},
-		{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
-		{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},
-		{(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3},
+		{(uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},	{(uint32_t)pow(2,7), (uint32_t)pow(2,6), 1, 2}, {(uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},	{(uint32_t)pow(2,8), (uint32_t)pow(2,7), 1, 2},{(uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},
+		{(uint32_t)pow(2,9), (uint32_t)pow(2,8), 1, 2},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},	{(uint32_t)pow(2,10), (uint32_t)pow(2,9), 1, 2},{(uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},	{(uint32_t)pow(2,11), (uint32_t)pow(2,10), 1, 2},{(uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},
+		{(uint32_t)pow(2,12), (uint32_t)pow(2,11), 1, 2},{(uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
+		{(uint32_t)pow(2,4), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{(uint32_t)pow(2,6), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3} ,{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,5), 3} ,
+		{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{(uint32_t)pow(2,7), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3} ,{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,6), 3} ,{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{(uint32_t)pow(2,8), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3} , {(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,7), 3} ,
+		{(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3}, {(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3}
 		};
 		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 		//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
@@ -1086,6 +1099,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 4;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -1094,6 +1108,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -1102,6 +1117,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 64;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 19;
@@ -1110,6 +1126,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				default:
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -1246,15 +1263,16 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 			fprintf(output, "4 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
 		printf("4 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
 
-		const int num_benchmark_samples = 16;
+		const int num_benchmark_samples = 33;
 		const int num_runs = 3;
 
 		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
-		{(uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{(uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2}, {(uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{(uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},
-		{(uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},{(uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},{(uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},{(uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},
-		{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
-		{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},
-		{(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3},
+		{(uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},	{(uint32_t)pow(2,7), (uint32_t)pow(2,6), 1, 2}, {(uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},	{(uint32_t)pow(2,8), (uint32_t)pow(2,7), 1, 2},{(uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},
+		{(uint32_t)pow(2,9), (uint32_t)pow(2,8), 1, 2},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},	{(uint32_t)pow(2,10), (uint32_t)pow(2,9), 1, 2},{(uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},	{(uint32_t)pow(2,11), (uint32_t)pow(2,10), 1, 2},{(uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},
+		{(uint32_t)pow(2,12), (uint32_t)pow(2,11), 1, 2},{(uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
+		{(uint32_t)pow(2,4), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{(uint32_t)pow(2,6), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3} ,{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,5), 3} ,
+		{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{(uint32_t)pow(2,7), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3} ,{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,6), 3} ,{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{(uint32_t)pow(2,8), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3} , {(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,7), 3} ,
+		{(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3}, {(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3}
 		};
 		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 		//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
@@ -1282,6 +1300,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -1290,6 +1309,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -1298,6 +1318,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 64;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 19;
@@ -1306,6 +1327,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				default:
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -1447,7 +1469,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
 			buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 		}
-		for (uint32_t n = 0; n < 23; n++) {
+		for (uint32_t n = 0; n < 26; n++) {
 			double run_time[num_runs];
 			for (uint32_t r = 0; r < num_runs; r++) {
 				//Configuration + FFT application .
@@ -1458,7 +1480,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				//FFT + iFFT sample code.
 				//Setting up FFT configuration for forward and inverse FFT.
 				forward_configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
-				forward_configuration.size[0] = 32 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
+				forward_configuration.size[0] = 4 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 				if (n == 0) forward_configuration.size[0] = 4096;
 				forward_configuration.size[1] = 64 * 32 * pow(2, 16) / forward_configuration.size[0];
 				if (forward_configuration.size[1] < 1) forward_configuration.size[1] = 1;
@@ -1471,6 +1493,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 4;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -1479,6 +1502,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -1487,6 +1511,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 64;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 21;
@@ -1495,6 +1520,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				default:
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -1604,7 +1630,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 			}
 		}
 		free(buffer_input);
-		benchmark_result /= (23 - 1);
+		benchmark_result /= (26 - 1);
 
 		if (file_output) {
 			fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
@@ -1648,6 +1674,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x10DE://NVIDIA
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 4;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -1656,6 +1683,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x8086://INTEL
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = true;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -1664,6 +1692,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				case 0x1002://AMD
 					forward_configuration.coalescedMemory = 32;
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 64;
 					forward_configuration.registerBoost = 4;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 19;
@@ -1672,6 +1701,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 				default:
 					forward_configuration.coalescedMemory = 64;
 					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
 					forward_configuration.registerBoost = 1;
 					forward_configuration.registerBoost4Step = 1;
 					forward_configuration.swapTo3Stage4Step = 0;
@@ -1833,6 +1863,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		case 0x10DE://NVIDIA
 			forward_configuration.coalescedMemory = 32;
 			forward_configuration.useLUT = false;
+			forward_configuration.warpSize = 32;
 			forward_configuration.registerBoost = 1;
 			forward_configuration.registerBoost4Step = 1;
 			forward_configuration.swapTo3Stage4Step = 0;
@@ -1841,6 +1872,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		case 0x8086://INTEL
 			forward_configuration.coalescedMemory = 64;
 			forward_configuration.useLUT = true;
+			forward_configuration.warpSize = 32;
 			forward_configuration.registerBoost = 1;
 			forward_configuration.registerBoost4Step = 1;
 			forward_configuration.swapTo3Stage4Step = 0;
@@ -1849,6 +1881,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		case 0x1002://AMD
 			forward_configuration.coalescedMemory = 32;
 			forward_configuration.useLUT = false;
+			forward_configuration.warpSize = 64;
 			forward_configuration.registerBoost = 1;
 			forward_configuration.registerBoost4Step = 1;
 			forward_configuration.swapTo3Stage4Step = 21;
@@ -1856,6 +1889,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		default:
 			forward_configuration.coalescedMemory = 64;
 			forward_configuration.useLUT = false;
+			forward_configuration.warpSize = 32;
 			forward_configuration.registerBoost = 1;
 			forward_configuration.registerBoost4Step = 1;
 			forward_configuration.swapTo3Stage4Step = 0;
@@ -2039,6 +2073,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		case 0x10DE://NVIDIA
 			forward_configuration.coalescedMemory = 32;
 			forward_configuration.useLUT = false;
+			forward_configuration.warpSize = 32;
 			forward_configuration.registerBoost = 1;
 			forward_configuration.registerBoost4Step = 1;
 			forward_configuration.swapTo3Stage4Step = 0;
@@ -2047,6 +2082,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		case 0x8086://INTEL
 			forward_configuration.coalescedMemory = 64;
 			forward_configuration.useLUT = true;
+			forward_configuration.warpSize = 32;
 			forward_configuration.registerBoost = 1;
 			forward_configuration.registerBoost4Step = 1;
 			forward_configuration.swapTo3Stage4Step = 0;
@@ -2055,6 +2091,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		case 0x1002://AMD
 			forward_configuration.coalescedMemory = 32;
 			forward_configuration.useLUT = false;
+			forward_configuration.warpSize = 64;
 			forward_configuration.registerBoost = 1;
 			forward_configuration.registerBoost4Step = 1;
 			forward_configuration.swapTo3Stage4Step = 21;
@@ -2062,6 +2099,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		default:
 			forward_configuration.coalescedMemory = 64;
 			forward_configuration.useLUT = false;
+			forward_configuration.warpSize = 32;
 			forward_configuration.registerBoost = 1;
 			forward_configuration.registerBoost4Step = 1;
 			forward_configuration.swapTo3Stage4Step = 0;
@@ -2246,6 +2284,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		case 0x10DE://NVIDIA
 			forward_configuration.coalescedMemory = 32;
 			forward_configuration.useLUT = false;
+			forward_configuration.warpSize = 32;
 			forward_configuration.registerBoost = 1;
 			forward_configuration.registerBoost4Step = 1;
 			forward_configuration.swapTo3Stage4Step = 0;
@@ -2254,6 +2293,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		case 0x8086://INTEL
 			forward_configuration.coalescedMemory = 64;
 			forward_configuration.useLUT = true;
+			forward_configuration.warpSize = 32;
 			forward_configuration.registerBoost = 1;
 			forward_configuration.registerBoost4Step = 1;
 			forward_configuration.swapTo3Stage4Step = 0;
@@ -2262,6 +2302,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		case 0x1002://AMD
 			forward_configuration.coalescedMemory = 32;
 			forward_configuration.useLUT = false;
+			forward_configuration.warpSize = 64;
 			forward_configuration.registerBoost = 1;
 			forward_configuration.registerBoost4Step = 1;
 			forward_configuration.swapTo3Stage4Step = 21;
@@ -2269,6 +2310,7 @@ int launchVkFFT(uint32_t device_id, uint32_t sample_id, bool file_output, FILE* 
 		default:
 			forward_configuration.coalescedMemory = 64;
 			forward_configuration.useLUT = false;
+			forward_configuration.warpSize = 32;
 			forward_configuration.registerBoost = 1;
 			forward_configuration.registerBoost4Step = 1;
 			forward_configuration.swapTo3Stage4Step = 0;
@@ -2468,7 +2510,7 @@ int main(int argc, char* argv[])
 	if (findFlag(argv, argv + argc, "-h"))
 	{
 		//print help
-		printf("VkFFT v1.0.5 (19-11-2020). Author: Tolmachev Dmitrii\n");
+		printf("VkFFT v1.0.6 (21-11-2020). Author: Tolmachev Dmitrii\n");
 		printf("	-h: print help\n");
 		printf("	-devices: print the list of available GPU devices\n");
 		printf("	-d X: select GPU device (default 0)\n");

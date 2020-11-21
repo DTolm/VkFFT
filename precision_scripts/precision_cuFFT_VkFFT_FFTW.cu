@@ -373,7 +373,7 @@ void main()
 	vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physicalDeviceMemoryProperties);
 
-	const int num_benchmark_samples = 60;
+	const int num_benchmark_samples = 64;
 	const int num_runs = 1;
 
 	int benchmark_dimensions[num_benchmark_samples][4] = { {(uint32_t)pow(2,5), 1, 1, 1},{(uint32_t)pow(2,6), 1, 1, 1},{(uint32_t)pow(2,7), 1, 1, 1},{(uint32_t)pow(2,8), 1, 1, 1},{(uint32_t)pow(2,9), 1, 1, 1},{(uint32_t)pow(2,10), 1, 1, 1},
@@ -384,10 +384,10 @@ void main()
 		{8, (uint32_t)pow(2,11), 1, 2},{8, (uint32_t)pow(2,12), 1, 2},{8, (uint32_t)pow(2,13), 1, 2},{8, (uint32_t)pow(2,14), 1, 2},{8, (uint32_t)pow(2,15), 1, 2},{8, (uint32_t)pow(2,16), 1, 2},{8, (uint32_t)pow(2,17), 1, 2},{8, (uint32_t)pow(2,18), 1, 2},
 		{8, (uint32_t)pow(2,19), 1, 2},{8, (uint32_t)pow(2,20), 1, 2},{8, (uint32_t)pow(2,21), 1, 2},{8, (uint32_t)pow(2,22), 1, 2},{8, (uint32_t)pow(2,23), 1, 2},{8, (uint32_t)pow(2,24), 1, 2},
 
-		{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},
+		{ (uint32_t)pow(2,3), (uint32_t)pow(2,3), 1, 2},{ (uint32_t)pow(2,4), (uint32_t)pow(2,4), 1, 2},{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},
 		{ (uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},{ (uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},{ (uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},{ (uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{ (uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
 
-		{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3},
+		{ (uint32_t)pow(2,3), (uint32_t)pow(2,3), (uint32_t)pow(2,3), 3},{ (uint32_t)pow(2,4), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3},{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3},
 	};
 
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
@@ -542,14 +542,14 @@ void main()
 						int loc_i = i;
 						int loc_j = j;
 						int loc_l = l;
-						
-					/*	if (app_forward.localFFTPlan.numAxisUploads[0] > 1)
-							loc_i = i / app_forward.localFFTPlan.axes[0][1].specializationConstants.fftDim + app_forward.localFFTPlan.axes[0][0].specializationConstants.fftDim * (i % app_forward.localFFTPlan.axes[0][1].specializationConstants.fftDim);
-						if (app_forward.localFFTPlan.numAxisUploads[1] > 1)
-							loc_j = j / app_forward.localFFTPlan.axes[1][1].specializationConstants.fftDim + app_forward.localFFTPlan.axes[1][0].specializationConstants.fftDim * (j % app_forward.localFFTPlan.axes[1][1].specializationConstants.fftDim);
-						if (app_forward.localFFTPlan.numAxisUploads[2] > 1)
-							loc_l = l / app_forward.localFFTPlan.axes[2][1].specializationConstants.fftDim + app_forward.localFFTPlan.axes[2][0].specializationConstants.fftDim * (l % app_forward.localFFTPlan.axes[2][1].specializationConstants.fftDim);
-							*/
+
+						/*	if (app_forward.localFFTPlan.numAxisUploads[0] > 1)
+								loc_i = i / app_forward.localFFTPlan.axes[0][1].specializationConstants.fftDim + app_forward.localFFTPlan.axes[0][0].specializationConstants.fftDim * (i % app_forward.localFFTPlan.axes[0][1].specializationConstants.fftDim);
+							if (app_forward.localFFTPlan.numAxisUploads[1] > 1)
+								loc_j = j / app_forward.localFFTPlan.axes[1][1].specializationConstants.fftDim + app_forward.localFFTPlan.axes[1][0].specializationConstants.fftDim * (j % app_forward.localFFTPlan.axes[1][1].specializationConstants.fftDim);
+							if (app_forward.localFFTPlan.numAxisUploads[2] > 1)
+								loc_l = l / app_forward.localFFTPlan.axes[2][1].specializationConstants.fftDim + app_forward.localFFTPlan.axes[2][0].specializationConstants.fftDim * (l % app_forward.localFFTPlan.axes[2][1].specializationConstants.fftDim);
+								*/
 						int N = (forward_configuration.inverse) ? dims[0] * dims[1] * dims[2] : 1;
 						//printf("%f %f - %f %f - %f %f\n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0]/N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]/N, output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].x/N, output_cuFFT[i + j * dims[0] + l * dims[0] * dims[1]].y/N, output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])].x, output_VkFFT[(loc_i + loc_j * dims[0]+ loc_l * dims[0] * dims[1])].y);
 

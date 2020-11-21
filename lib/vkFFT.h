@@ -38,6 +38,7 @@ extern "C" {
 		VkBool32 doublePrecision; //1 to enable
 		VkBool32 halfPrecision; //1 to enable
 		uint32_t sharedMemorySize;//in bytes. For now Vulkan is optimized for 32KB of shared memory
+		uint32_t warpSize;//number of threads per warp/wavefront. Default 32
 		uint32_t registerBoost; //specify if register file size is bigger than shared memory (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4). Default 1, max 4
 		uint32_t registerBoost4Step; //specify if register file overutilization should be used in big sequences (>2^14), same value or lower as above. Default 1, max 4
 		uint32_t swapTo3Stage4Step; //specify at which power of 2 to switch from 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled. Must be at least 17
@@ -63,7 +64,7 @@ extern "C" {
 		VkBuffer* kernel;
 	} VkFFTConfiguration;
 
-	VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {65535,65535,65535},1,1,1,1,1,8,{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 32768, 1, 1, 0, 1,"shaders/", 32, 0,0,0,0,0, 0,0,0,0,0,0,0,0,0 };
+	VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {65535,65535,65535},1,1,1,1,1,8,{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 32768, 32, 1, 1, 0, 1,"shaders/", 32, 0,0,0,0,0, 0,0,0,0,0,0,0,0,0 };
 
 	typedef struct {
 		uint32_t localSize[3];
@@ -439,18 +440,22 @@ extern "C" {
 				numPasses += (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStrided));
 		}
 		uint32_t maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
-		if (app->configuration.performHalfBandwidthBoost) {
+		if ((app->configuration.performHalfBandwidthBoost)) {
 			maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / 2 > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory / 2) : app->configuration.sharedMemorySize / complexSize;
 			temp = (axis_id == 0) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStridedHalfBandwidth;
+			//temp = app->configuration.size[axis_id] / maxSingleSizeNonStrided;
 			if (temp > 1) {//more passes than two
+				temp = (!app->configuration.reorderFourStep) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStridedHalfBandwidth;
+				numPassesHalfBandwidth = 1 + (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStrided));
+				/*
 				temp = ((axis_id == 0) && (!app->configuration.reorderFourStep)) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStridedHalfBandwidth;
+				
 				if (app->configuration.reorderFourStep)
 					numPassesHalfBandwidth = (uint32_t)ceil(log2(app->configuration.size[axis_id]) / log2(maxSingleSizeStridedHalfBandwidth));
 				else
 					numPassesHalfBandwidth = 1 + (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStridedHalfBandwidth));
-				if ((numPassesHalfBandwidth == 2)&& (!app->configuration.reorderFourStep)&&(registerBoost>1)) {//switch back for two step and don't do half bandwidth on strided accesses if register boost and no 4-step reordering
-					numPassesHalfBandwidth = 1 + (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStrided));
-				}
+				if ((numPassesHalfBandwidth == 2)&& (!app->configuration.reorderFourStep)&&(registerBoost>1)) //switch back for two step and don't do half bandwidth on strided accesses if register boost and no 4-step reordering
+				*/				
 			}
 			if (numPassesHalfBandwidth < numPasses) numPasses = numPassesHalfBandwidth;
 		}
@@ -1613,6 +1618,7 @@ extern "C" {
 		axis->specializationConstants.stageStartSize = 1;
 		for (uint32_t i = 0; i < axis_upload_id; i++)
 			axis->specializationConstants.stageStartSize *= app->localFFTPlan.axisSplit[axis_id][i];
+		
 		axis->specializationConstants.firstStageStartSize = app->configuration.size[axis_id] / app->localFFTPlan.axisSplit[axis_id][app->localFFTPlan.numAxisUploads[axis_id] - 1];
 
 		if (axis_id == 0) {
@@ -2105,8 +2111,10 @@ extern "C" {
 						if (axis->axisBlock[0] > 512) axis->axisBlock[0] = 512;
 						if (app->configuration.reorderFourStep && (FFTPlan->numAxisUploads[axis_id] > 1))
 							axis->axisBlock[1] = axis->groupedBatch;
-						else
-							axis->axisBlock[1] = 1;
+						else {
+							axis->axisBlock[1] = (axis->axisBlock[0] < app->configuration.warpSize) ? app->configuration.warpSize / axis->axisBlock[0] : 1;
+							if (app->configuration.size[1] < axis->axisBlock[1]) axis->axisBlock[1] = app->configuration.size[1];
+						}
 						axis->axisBlock[2] = 1;
 						axis->axisBlock[3] = axis->specializationConstants.fftDim;
 					}
@@ -2184,8 +2192,10 @@ extern "C" {
 
 						if (app->configuration.reorderFourStep && (FFTPlan->numAxisUploads[axis_id] > 1))
 							axis->axisBlock[1] = axis->groupedBatch;
-						else
-							axis->axisBlock[1] = 1;
+						else {
+							axis->axisBlock[1] = (axis->axisBlock[0] < app->configuration.warpSize) ? app->configuration.warpSize / axis->axisBlock[0] : 1;
+							if (app->configuration.size[1] < axis->axisBlock[1]) axis->axisBlock[1] = app->configuration.size[1];
+						}
 						axis->axisBlock[2] = 1;
 						axis->axisBlock[3] = axis->specializationConstants.fftDim;
 					}
@@ -2886,12 +2896,20 @@ extern "C" {
 						vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 						uint32_t dispatchBlock[3];
-						if (l == 0)
-							dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[1];
-						else
+						if (l == 0) {
+							if (app->localFFTPlan.numAxisUploads[0] > 1) {
+								dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[1];
+								dispatchBlock[1] = app->configuration.size[1];
+							}
+							else {
+								dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
+								dispatchBlock[1] = app->configuration.size[1]/ axis->axisBlock[1];
+							}
+						}
+						else {
 							dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[0];
-
-						dispatchBlock[1] = app->configuration.size[1];
+							dispatchBlock[1] = app->configuration.size[1];
+						}
 						dispatchBlock[2] = app->configuration.size[2];
 						if (app->configuration.performR2C == 1) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
 						if (app->configuration.performZeropadding[1]) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
@@ -3284,11 +3302,20 @@ extern "C" {
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 							uint32_t dispatchBlock[3];
-							if (l == 0)
-								dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[1];
-							else
+							if (l == 0) {
+								if (app->localFFTPlan.numAxisUploads[0] > 1) {
+									dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[1];
+									dispatchBlock[1] = app->configuration.size[1];
+								}
+								else {
+									dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
+									dispatchBlock[1] = app->configuration.size[1] / axis->axisBlock[1];
+								}
+							}
+							else {
 								dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[0];
-							dispatchBlock[1] = app->configuration.size[1];
+								dispatchBlock[1] = app->configuration.size[1];
+							}
 							dispatchBlock[2] = app->configuration.size[2];
 							if (app->configuration.performR2C == 1) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
 							if (app->configuration.performZeropadding[1]) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
@@ -3456,11 +3483,20 @@ extern "C" {
 						vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 						uint32_t dispatchBlock[3];
-						if (l == 0)
-							dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[1];
-						else
+						if (l == 0) {
+							if (app->localFFTPlan.numAxisUploads[0] > 1) {
+								dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[1];
+								dispatchBlock[1] = app->configuration.size[1];
+							}
+							else {
+								dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
+								dispatchBlock[1] = app->configuration.size[1] / axis->axisBlock[1];
+							}
+						}
+						else {
 							dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[0];
-						dispatchBlock[1] = app->configuration.size[1];
+							dispatchBlock[1] = app->configuration.size[1];
+						}
 						dispatchBlock[2] = app->configuration.size[2];
 						if (app->configuration.performR2C == 1) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
 						if (app->configuration.performZeropadding[1]) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
