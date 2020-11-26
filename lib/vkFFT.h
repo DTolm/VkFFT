@@ -37,6 +37,8 @@ extern "C" {
 		VkBool32 useLUT; //1 to enable - switches from calculating sincos to using precomputed LUT tables
 		VkBool32 doublePrecision; //1 to enable
 		VkBool32 halfPrecision; //1 to enable
+		uint32_t devicePageSize;//in KB, the size of a page on the GPU. Setting to 0 disables local buffer split in pages. 2048 for AMD, Nvidia manages TLB misses better so 0 works for it
+		uint32_t localPageSize;//in KB, the size to split page into if sequence spans multiple devicePageSize pages. For AMD 16KB works well
 		uint32_t sharedMemorySize;//in bytes. For now Vulkan is optimized for 32KB of shared memory
 		uint32_t warpSize;//number of threads per warp/wavefront. Default 32
 		uint32_t registerBoost; //specify if register file size is bigger than shared memory (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4). Default 1, max 4
@@ -51,20 +53,26 @@ extern "C" {
 		VkFence* fence;
 		VkPhysicalDevice* physicalDevice;
 
+		uint32_t bufferNum;
+		uint32_t tempBufferNum;
+		uint32_t inputBufferNum;
+		uint32_t outputBufferNum;
+		uint32_t kernelNum;
+
 		VkDeviceSize* bufferSize;
+		VkDeviceSize* tempBufferSize;
 		VkDeviceSize* inputBufferSize;
 		VkDeviceSize* outputBufferSize;
+		VkDeviceSize* kernelSize;
 
 		VkBuffer* buffer;
 		VkBuffer* tempBuffer;//needed if reorderFourStep is enabled to transpose the array. Same size as buffer
 		VkBuffer* inputBuffer;
 		VkBuffer* outputBuffer;
-
-		VkDeviceSize* kernelSize;
 		VkBuffer* kernel;
 	} VkFFTConfiguration;
 
-	VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {65535,65535,65535},1,1,1,1,1,8,{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 32768, 32, 1, 1, 0, 1,"shaders/", 32, 0,0,0,0,0, 0,0,0,0,0,0,0,0,0 };
+	VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {65535,65535,65535},1,1,1,1,1,8,{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 0, 0, 32768, 32, 1, 1, 0, 1,"shaders/", 32, 0,0,0,0,0, 1,1,1,1,1, 0,0,0,0,0, 0,0,0,0,0 };
 
 	typedef struct {
 		uint32_t localSize[3];
@@ -83,6 +91,12 @@ extern "C" {
 		uint32_t outputOffset;
 		VkBool32 reorderFourStep;
 		uint32_t performWorkGroupShift[3];
+		uint32_t inputBufferBlockNum;
+		uint32_t inputBufferBlockSize;
+		uint32_t outputBufferBlockNum;
+		uint32_t outputBufferBlockSize;
+		uint32_t kernelBlockNum;
+		uint32_t kernelBlockSize;
 	} VkFFTSpecializationConstantsLayout;
 
 	typedef struct {
@@ -449,17 +463,17 @@ extern "C" {
 				numPassesHalfBandwidth = 1 + (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStrided));
 				/*
 				temp = ((axis_id == 0) && (!app->configuration.reorderFourStep)) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStridedHalfBandwidth;
-				
+
 				if (app->configuration.reorderFourStep)
 					numPassesHalfBandwidth = (uint32_t)ceil(log2(app->configuration.size[axis_id]) / log2(maxSingleSizeStridedHalfBandwidth));
 				else
 					numPassesHalfBandwidth = 1 + (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStridedHalfBandwidth));
 				if ((numPassesHalfBandwidth == 2)&& (!app->configuration.reorderFourStep)&&(registerBoost>1)) //switch back for two step and don't do half bandwidth on strided accesses if register boost and no 4-step reordering
-				*/				
+				*/
 			}
 			if (numPassesHalfBandwidth < numPasses) numPasses = numPassesHalfBandwidth;
 		}
-		if (((uint32_t)log2(app->configuration.size[axis_id]) >= app->configuration.swapTo3Stage4Step)&&(app->configuration.swapTo3Stage4Step>=17)) numPasses = 3;//Force set to 3 stage 4 step algorithm
+		if (((uint32_t)log2(app->configuration.size[axis_id]) >= app->configuration.swapTo3Stage4Step) && (app->configuration.swapTo3Stage4Step >= 17)) numPasses = 3;//Force set to 3 stage 4 step algorithm
 		FFTPlan->numAxisUploads[axis_id] = numPasses;
 		switch (numPasses) {
 		case 1: {
@@ -554,7 +568,7 @@ extern "C" {
 				FFTPlan->axisSplit[axis_id][1] = (uint32_t)pow(2, (uint32_t)log2axis / 3);
 				if (log2axis % 3 > 1) FFTPlan->axisSplit[axis_id][1] *= 2;
 				FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0] / FFTPlan->axisSplit[axis_id][1];*/
-				uint32_t maxSingleSizeStrided128 = app->configuration.sharedMemorySize / (128) ;
+				uint32_t maxSingleSizeStrided128 = app->configuration.sharedMemorySize / (128);
 				uint32_t maxPow8_128 = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided128)) / 3);
 				//unit stride
 				if (app->configuration.size[axis_id] / maxPow8_128 <= maxPow8Strided * maxSingleSizeStrided)
@@ -562,7 +576,7 @@ extern "C" {
 				//non-unit stride
 				else {
 
-					if ((app->configuration.size[axis_id] / (maxPow8_128*2) <= maxPow8Strided * maxSingleSizeStrided)&&(maxPow8_128 * 2<= maxSingleSizeStrided128)) {
+					if ((app->configuration.size[axis_id] / (maxPow8_128 * 2) <= maxPow8Strided * maxSingleSizeStrided) && (maxPow8_128 * 2 <= maxSingleSizeStrided128)) {
 						FFTPlan->axisSplit[axis_id][0] = maxPow8_128 * 2;
 					}
 					else {
@@ -599,7 +613,7 @@ extern "C" {
 				}
 			}
 			if (FFTPlan->axisSplit[axis_id][2] < 64) {
-				FFTPlan->axisSplit[axis_id][1] = (FFTPlan->axisSplit[axis_id][2] == 0 ) ? FFTPlan->axisSplit[axis_id][1] / (64) : FFTPlan->axisSplit[axis_id][1] / (64 / FFTPlan->axisSplit[axis_id][2]);
+				FFTPlan->axisSplit[axis_id][1] = (FFTPlan->axisSplit[axis_id][2] == 0) ? FFTPlan->axisSplit[axis_id][1] / (64) : FFTPlan->axisSplit[axis_id][1] / (64 / FFTPlan->axisSplit[axis_id][2]);
 				FFTPlan->axisSplit[axis_id][2] = 64;
 			}
 			if (FFTPlan->axisSplit[axis_id][2] > FFTPlan->axisSplit[axis_id][1]) {
@@ -620,6 +634,14 @@ extern "C" {
 		VkFFTAxis* axis = &FFTPlan->supportAxes[axis_id - 1][axis_upload_id];
 		uint32_t maxSequenceLengthSharedMemory;
 		uint32_t maxSingleSizeNonStrided;
+		uint32_t storageComplexSize;
+		if (app->configuration.doublePrecision)
+			storageComplexSize = (2 * sizeof(double));
+		else
+			if (app->configuration.halfPrecision)
+				storageComplexSize = (2 * 2);
+			else
+				storageComplexSize = (2 * sizeof(float));
 		if (app->configuration.doublePrecision)
 			maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / (2 * sizeof(double));
 		else
@@ -1242,31 +1264,96 @@ extern "C" {
 		axis->specializationConstants.outputOffset = app->configuration.size[0] * app->configuration.size[1] / 2;
 
 		VkDescriptorPoolSize descriptorPoolSize = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
-		descriptorPoolSize.descriptorCount = 2;
-		if ((axis_id == 1) && (axis_upload_id == 0) && (app->configuration.FFTdim == 2) && (app->configuration.performConvolution))
-			descriptorPoolSize.descriptorCount = 3;
-		if ((axis_id == 2) && (axis_upload_id == 0) && (app->configuration.FFTdim == 3) && (app->configuration.performConvolution))
-			descriptorPoolSize.descriptorCount = 3;
-		if (app->configuration.useLUT)
+		uint32_t initPageSize = 0;
+		for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+			initPageSize += app->configuration.bufferSize[i];
+		}
+		if (axis_id == 1) {
+			if ((axis->specializationConstants.inputStride[1] * storageComplexSize > app->configuration.devicePageSize * 1024)&&(app->configuration.devicePageSize>0)){
+				initPageSize = app->configuration.localPageSize * 1024;
+			}
+		}
+		if (axis_id == 2) {
+			if ((axis->specializationConstants.inputStride[1] * app->configuration.size[2] * storageComplexSize > app->configuration.devicePageSize * 1024) && (app->configuration.devicePageSize > 0)) {
+				initPageSize = app->configuration.localPageSize * 1024;
+			}
+		}
+		uint32_t locPageSize = initPageSize;
+		uint64_t totalSize = 0;
+		for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+			totalSize += app->configuration.bufferSize[i];
+			if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
+		}
+		axis->specializationConstants.inputBufferBlockSize = locPageSize / storageComplexSize;
+		axis->specializationConstants.inputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+		//if (axis->specializationConstants.inputBufferBlockNum == 1) axis->specializationConstants.inputBufferBlockSize = totalSize / storageComplexSize;
+		locPageSize = initPageSize;
+		totalSize = 0;
+		for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+			totalSize += app->configuration.bufferSize[i];
+			if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
+		}
+		axis->specializationConstants.outputBufferBlockSize = locPageSize / storageComplexSize;
+		axis->specializationConstants.outputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+		//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
+
+		if (app->configuration.performConvolution) {
+			totalSize = 0;
+			locPageSize = initPageSize;
+			for (uint32_t i = 0; i < app->configuration.kernelNum; i++) {
+				totalSize += app->configuration.kernelSize[i];
+				if (app->configuration.kernelSize[i] < locPageSize) locPageSize = app->configuration.kernelSize[i];
+			}
+			axis->specializationConstants.kernelBlockSize = locPageSize / storageComplexSize;
+			axis->specializationConstants.kernelBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.kernelBlockSize * storageComplexSize));
+			//if (axis->specializationConstants.kernelBlockNum == 1) axis->specializationConstants.kernelBlockSize = totalSize / storageComplexSize;
+		}
+		else {
+			axis->specializationConstants.kernelBlockSize = 0;
+			axis->specializationConstants.kernelBlockNum = 0;
+		}
+
+		uint32_t numBindings = 2;
+		uint32_t numBuffersBound[4] = { axis->specializationConstants.inputBufferBlockNum , axis->specializationConstants.outputBufferBlockNum, 0, 0 };
+		descriptorPoolSize.descriptorCount = axis->specializationConstants.inputBufferBlockNum + axis->specializationConstants.outputBufferBlockNum;
+		if ((axis_id == 0) && (axis_upload_id == 0) && (app->configuration.FFTdim == 1) && (app->configuration.performConvolution)) {
+			numBuffersBound[numBindings] = axis->specializationConstants.kernelBlockNum;
+			descriptorPoolSize.descriptorCount += axis->specializationConstants.kernelBlockNum;
+			numBindings++;
+		}
+		if ((axis_id == 1) && (axis_upload_id == 0) && (app->configuration.FFTdim == 2) && (app->configuration.performConvolution)) {
+			numBuffersBound[numBindings] = axis->specializationConstants.kernelBlockNum;
+			descriptorPoolSize.descriptorCount += axis->specializationConstants.kernelBlockNum;
+			numBindings++;
+		}
+		if ((axis_id == 2) && (axis_upload_id == 0) && (app->configuration.FFTdim == 3) && (app->configuration.performConvolution)) {
+			numBuffersBound[numBindings] = axis->specializationConstants.kernelBlockNum;
+			descriptorPoolSize.descriptorCount += axis->specializationConstants.kernelBlockNum;
+			numBindings++;
+		}
+		if (app->configuration.useLUT) {
+			numBuffersBound[numBindings] = 1;
 			descriptorPoolSize.descriptorCount++;
+			numBindings++;
+		}
 		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
 		descriptorPoolCreateInfo.poolSizeCount = 1;
 		descriptorPoolCreateInfo.pPoolSizes = &descriptorPoolSize;
 		descriptorPoolCreateInfo.maxSets = 1;
 		vkCreateDescriptorPool(app->configuration.device[0], &descriptorPoolCreateInfo, NULL, &axis->descriptorPool);
 
-		const VkDescriptorType descriptorType[4] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
+		const VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		VkDescriptorSetLayoutBinding* descriptorSetLayoutBindings;
-		descriptorSetLayoutBindings = (VkDescriptorSetLayoutBinding*)malloc(descriptorPoolSize.descriptorCount * sizeof(VkDescriptorSetLayoutBinding));
-		for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
+		descriptorSetLayoutBindings = (VkDescriptorSetLayoutBinding*)malloc(numBindings * sizeof(VkDescriptorSetLayoutBinding));
+		for (uint32_t i = 0; i < numBindings; ++i) {
 			descriptorSetLayoutBindings[i].binding = i;
-			descriptorSetLayoutBindings[i].descriptorType = descriptorType[i];
-			descriptorSetLayoutBindings[i].descriptorCount = 1;
+			descriptorSetLayoutBindings[i].descriptorType = descriptorType;
+			descriptorSetLayoutBindings[i].descriptorCount = numBuffersBound[i];
 			descriptorSetLayoutBindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 		}
 
 		VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-		descriptorSetLayoutCreateInfo.bindingCount = descriptorPoolSize.descriptorCount;
+		descriptorSetLayoutCreateInfo.bindingCount = numBindings;
 		descriptorSetLayoutCreateInfo.pBindings = descriptorSetLayoutBindings;
 
 		vkCreateDescriptorSetLayout(app->configuration.device[0], &descriptorSetLayoutCreateInfo, NULL, &axis->descriptorSetLayout);
@@ -1276,71 +1363,77 @@ extern "C" {
 		descriptorSetAllocateInfo.descriptorSetCount = 1;
 		descriptorSetAllocateInfo.pSetLayouts = &axis->descriptorSetLayout;
 		vkAllocateDescriptorSets(app->configuration.device[0], &descriptorSetAllocateInfo, &axis->descriptorSet);
-		for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
-			VkDescriptorBufferInfo descriptorBufferInfo = { 0 };
+		for (uint32_t i = 0; i < numBindings; ++i) {
+			for (uint32_t j = 0; j < numBuffersBound[i]; ++j) {
+				VkDescriptorBufferInfo descriptorBufferInfo = { 0 };
 
-			if (i == 0) {
-				descriptorBufferInfo.buffer = app->configuration.buffer[0];
-				descriptorBufferInfo.range = app->configuration.bufferSize[0];
-				/*if (app->configuration.isInputFormatted && (
-						((axis_id == 0) && (!inverse))
-						|| ((axis_id == app->configuration.FFTdim-1) && (inverse)))
-					) {
-					descriptorBufferInfo.buffer = app->configuration.inputBuffer[0];
-					descriptorBufferInfo.range = app->configuration.inputBufferSize[0];
-				}
-				else {
-					if ((app->configuration.numberKernels > 1) && (inverse)) {
-						descriptorBufferInfo.buffer = app->configuration.outputBuffer[0];
-						descriptorBufferInfo.range = app->configuration.outputBufferSize[0];
-					}
-					else {
-						descriptorBufferInfo.buffer = app->configuration.buffer[0];
-						descriptorBufferInfo.range = app->configuration.bufferSize[0];
-					}
-				}*/
-				descriptorBufferInfo.offset = 0;
-			}
-			if (i == 1) {
-				descriptorBufferInfo.buffer = app->configuration.buffer[0];
-				descriptorBufferInfo.range = app->configuration.bufferSize[0];
-				/*if ((app->configuration.isOutputFormatted && (
-						((axis_id == 0) && (inverse))
-						|| ((axis_id == app->configuration.FFTdim-1) && (!inverse) && (!app->configuration.performConvolution))
-						|| ((axis_id == 0) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)))
-					)||
-					((app->configuration.numberKernels>1)&&(
-						(inverse)
-						||(axis_id== app->configuration.FFTdim-1)))
-					) {
-					descriptorBufferInfo.buffer = app->configuration.outputBuffer[0];
-					descriptorBufferInfo.range = app->configuration.outputBufferSize[0];
-				}
-				else {
-					descriptorBufferInfo.buffer = app->configuration.buffer[0];
-					descriptorBufferInfo.range = app->configuration.bufferSize[0];
-				}*/
-				descriptorBufferInfo.offset = 0;
-			}
-			if ((i == 2) && (app->configuration.performConvolution)) {
-				descriptorBufferInfo.buffer = app->configuration.kernel[0];
-				descriptorBufferInfo.offset = 0;
-				descriptorBufferInfo.range = app->configuration.kernelSize[0];
-			}
-			if ((i == descriptorPoolSize.descriptorCount - 1) && (app->configuration.useLUT)) {
-				descriptorBufferInfo.buffer = axis->bufferLUT;
-				descriptorBufferInfo.offset = 0;
-				descriptorBufferInfo.range = axis->bufferLUTSize;
-			}
-			VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-			writeDescriptorSet.dstSet = axis->descriptorSet;
-			writeDescriptorSet.dstBinding = i;
-			writeDescriptorSet.dstArrayElement = 0;
-			writeDescriptorSet.descriptorType = descriptorType[i];
-			writeDescriptorSet.descriptorCount = 1;
-			writeDescriptorSet.pBufferInfo = &descriptorBufferInfo;
-			vkUpdateDescriptorSets(app->configuration.device[0], 1, &writeDescriptorSet, 0, NULL);
+				if (i == 0) {
+					uint32_t bufferId=0;
+					uint32_t offset = j;
+					for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
+						if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+							bufferId++;
+							offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+						}
+						else {
+							l = app->configuration.bufferNum;
+						}
 
+					}
+
+					descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
+					descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
+					descriptorBufferInfo.offset = offset * (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
+				}
+				if (i == 1) {
+					uint32_t bufferId = 0;
+					uint32_t offset = j;
+					for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
+						if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+							bufferId++;
+							offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+						}
+						else {
+							l = app->configuration.bufferNum;
+						}
+
+					}
+
+					descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
+					descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
+					descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
+				}
+				if ((i == 2) && (app->configuration.performConvolution)) {
+					uint32_t bufferId = 0;
+					uint32_t offset = j;
+					for (uint32_t l = 0; l < app->configuration.kernelNum; ++l) {
+						if (offset >= (uint32_t)ceil(app->configuration.kernelSize[l] / (double)(axis->specializationConstants.kernelBlockSize * storageComplexSize))) {
+							bufferId++;
+							offset -= (uint32_t)ceil(app->configuration.kernelSize[l] / (double)(axis->specializationConstants.kernelBlockSize * storageComplexSize));
+						}
+						else {
+							l = app->configuration.bufferNum;
+						}
+
+					}
+					descriptorBufferInfo.buffer = app->configuration.kernel[bufferId];
+					descriptorBufferInfo.range = (axis->specializationConstants.kernelBlockSize * storageComplexSize);
+					descriptorBufferInfo.offset = offset * (axis->specializationConstants.kernelBlockSize * storageComplexSize);
+				}
+				if ((i == numBindings - 1) && (app->configuration.useLUT)) {
+					descriptorBufferInfo.buffer = axis->bufferLUT;
+					descriptorBufferInfo.offset = 0;
+					descriptorBufferInfo.range = axis->bufferLUTSize;
+				}
+				VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+				writeDescriptorSet.dstSet = axis->descriptorSet;
+				writeDescriptorSet.dstBinding = i;
+				writeDescriptorSet.dstArrayElement = j;
+				writeDescriptorSet.descriptorType = descriptorType;
+				writeDescriptorSet.descriptorCount = 1;
+				writeDescriptorSet.pBufferInfo = &descriptorBufferInfo;
+				vkUpdateDescriptorSets(app->configuration.device[0], 1, &writeDescriptorSet, 0, NULL);
+			}
 		}
 
 		{
@@ -1418,15 +1511,15 @@ extern "C" {
 				else  axis->specializationConstants.performWorkGroupShift[2] = 0;
 
 			}
-			VkSpecializationMapEntry specializationMapEntries[30] = { {} };
-			for (uint32_t i = 0; i < 30; i++) {
+			VkSpecializationMapEntry specializationMapEntries[36] = { {} };
+			for (uint32_t i = 0; i < 36; i++) {
 				specializationMapEntries[i].constantID = i + 1;
 				specializationMapEntries[i].size = sizeof(uint32_t);
 				specializationMapEntries[i].offset = i * sizeof(uint32_t);
 			}
 			VkSpecializationInfo specializationInfo = { 0 };
-			specializationInfo.dataSize = 30 * sizeof(uint32_t);
-			specializationInfo.mapEntryCount = 30;
+			specializationInfo.dataSize = 36 * sizeof(uint32_t);
+			specializationInfo.mapEntryCount = 36;
 			specializationInfo.pMapEntries = specializationMapEntries;
 			axis->specializationConstants.localSize[0] = axis->axisBlock[0];
 			axis->specializationConstants.localSize[1] = axis->axisBlock[1];
@@ -1588,7 +1681,7 @@ extern "C" {
 		uint32_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
 		uint32_t maxSingleSizeStrided = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
 
-		uint32_t logSize = log2(app->localFFTPlan.axisSplit[axis_id][axis_upload_id]);
+		uint32_t logSize = log2(FFTPlan->axisSplit[axis_id][axis_upload_id]);
 
 		uint32_t stage8 = logSize / 3;
 		uint32_t stage4 = 0;
@@ -1617,9 +1710,9 @@ extern "C" {
 
 		axis->specializationConstants.stageStartSize = 1;
 		for (uint32_t i = 0; i < axis_upload_id; i++)
-			axis->specializationConstants.stageStartSize *= app->localFFTPlan.axisSplit[axis_id][i];
-		
-		axis->specializationConstants.firstStageStartSize = app->configuration.size[axis_id] / app->localFFTPlan.axisSplit[axis_id][app->localFFTPlan.numAxisUploads[axis_id] - 1];
+			axis->specializationConstants.stageStartSize *= FFTPlan->axisSplit[axis_id][i];
+
+		axis->specializationConstants.firstStageStartSize = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][FFTPlan->numAxisUploads[axis_id] - 1];
 
 		if (axis_id == 0) {
 			//configure radix stages
@@ -1651,7 +1744,7 @@ extern "C" {
 			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
 		}
 		//shared memory bank conflict resolve
-		if ((FFTPlan->numAxisUploads[axis_id] == 3) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory/16)) {
+		if ((FFTPlan->numAxisUploads[axis_id] == 3) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory / 16)) {
 			axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 		}
 		//half bandiwdth technique
@@ -1978,34 +2071,202 @@ extern "C" {
 		axis->specializationConstants.outputOffset = 0;
 
 		VkDescriptorPoolSize descriptorPoolSize = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
-		descriptorPoolSize.descriptorCount = 2;
-		if ((axis_id == 0) && (axis_upload_id == 0) && (app->configuration.FFTdim == 1) && (app->configuration.performConvolution))
-			descriptorPoolSize.descriptorCount = 3;
-		if ((axis_id == 1) && (axis_upload_id == 0) && (app->configuration.FFTdim == 2) && (app->configuration.performConvolution))
-			descriptorPoolSize.descriptorCount = 3;
-		if ((axis_id == 2) && (axis_upload_id == 0) && (app->configuration.FFTdim == 3) && (app->configuration.performConvolution))
-			descriptorPoolSize.descriptorCount = 3;
+		uint32_t storageComplexSize;
+		if (app->configuration.doublePrecision)
+			storageComplexSize = (2 * sizeof(double));
+		else
+			if (app->configuration.halfPrecision)
+				storageComplexSize = (2 * 2);
+			else
+				storageComplexSize = (2 * sizeof(float));
+		
+		uint32_t initPageSize = 0;
+		for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+			initPageSize+=app->configuration.bufferSize[i];
+		}
+		if (axis_id == 0) {
+			if ((!((!app->configuration.reorderFourStep) && (axis_upload_id==0)))&&(axis->specializationConstants.inputStride[1] * storageComplexSize > app->configuration.devicePageSize * 1024) && (app->configuration.devicePageSize > 0)) {
+				initPageSize = app->configuration.localPageSize * 1024;
+			}
+		}
+		if (axis_id == 1) {
+			if ((axis->specializationConstants.inputStride[1] * app->configuration.size[1] * storageComplexSize > app->configuration.devicePageSize * 1024) && (app->configuration.devicePageSize > 0)) {
+				initPageSize = app->configuration.localPageSize * 1024;
+			}
+		}
+		if (axis_id == 2) {
+			if ((axis->specializationConstants.inputStride[1] * app->configuration.size[2]* storageComplexSize > app->configuration.devicePageSize * 1024) && (app->configuration.devicePageSize > 0)) {
+				initPageSize = app->configuration.localPageSize * 1024;
+			}
+		}
+		
+		if ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted) && (
+			((axis_id == 0) && (!inverse))
+			|| ((axis_id == app->configuration.FFTdim - 1) && (inverse) && (!app->configuration.performConvolution)))
+			) {
+			uint64_t totalSize = 0;
+			uint32_t locPageSize = initPageSize;
+			for (uint32_t i = 0; i < app->configuration.inputBufferNum; i++) {
+				totalSize += app->configuration.inputBufferSize[i];
+				if (app->configuration.inputBufferSize[i] < locPageSize) locPageSize = app->configuration.inputBufferSize[i];
+			}
+			axis->specializationConstants.inputBufferBlockSize = locPageSize / storageComplexSize;
+			axis->specializationConstants.inputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+			//if (axis->specializationConstants.inputBufferBlockNum == 1) axis->specializationConstants.inputBufferBlockSize = totalSize / storageComplexSize;
 
-		if (app->configuration.useLUT)
+		}
+		else {
+			if ((axis_upload_id == 0) && (app->configuration.numberKernels > 1) && (inverse) && (!app->configuration.performConvolution)) {
+				uint64_t totalSize = 0;
+				uint32_t locPageSize = initPageSize;
+				for (uint32_t i = 0; i < app->configuration.outputBufferNum; i++) {
+					totalSize += app->configuration.outputBufferSize[i];
+					if (app->configuration.outputBufferSize[i] < locPageSize) locPageSize = app->configuration.outputBufferSize[i];
+				}
+
+				axis->specializationConstants.inputBufferBlockSize = locPageSize / storageComplexSize;
+				axis->specializationConstants.inputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+				//if (axis->specializationConstants.inputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
+
+			}
+			else {
+				uint64_t totalSize = 0;
+				uint32_t locPageSize = initPageSize;
+				if ((FFTPlan->axes[axis_id]->specializationConstants.reorderFourStep == 1) && (FFTPlan->numAxisUploads[axis_id] > 1))
+					if (axis_upload_id > 0) {
+						for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+							totalSize += app->configuration.bufferSize[i];
+							if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
+
+						}
+					}
+					else {
+						for (uint32_t i = 0; i < app->configuration.tempBufferNum; i++) {
+							totalSize += app->configuration.tempBufferSize[i];
+							if (app->configuration.tempBufferSize[i] < locPageSize) locPageSize = app->configuration.tempBufferSize[i];
+
+						}
+					}
+				else {
+					for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+						totalSize += app->configuration.bufferSize[i];
+						if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
+
+					}
+				}
+
+				axis->specializationConstants.inputBufferBlockSize = locPageSize / storageComplexSize;
+				axis->specializationConstants.inputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+				//if (axis->specializationConstants.inputBufferBlockNum == 1) axis->specializationConstants.inputBufferBlockSize = totalSize / storageComplexSize;
+
+			}
+		}
+		if ((axis_upload_id == 0) && (app->configuration.isOutputFormatted && (
+			((axis_id == 0) && (inverse))
+			|| ((axis_id == app->configuration.FFTdim - 1) && (!inverse) && (!app->configuration.performConvolution))
+			|| ((axis_id == 0) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)))
+			) ||
+			((app->configuration.numberKernels > 1) && (
+				(inverse)
+				|| (axis_id == app->configuration.FFTdim - 1)))
+			) {
+			uint64_t totalSize = 0;
+			uint32_t locPageSize = initPageSize;
+			for (uint32_t i = 0; i < app->configuration.outputBufferNum; i++) {
+				totalSize += app->configuration.outputBufferSize[i];
+				if (app->configuration.outputBufferSize[i] < locPageSize) locPageSize = app->configuration.outputBufferSize[i];
+			}
+
+			axis->specializationConstants.outputBufferBlockSize = locPageSize / storageComplexSize;
+			axis->specializationConstants.outputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+			//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
+
+		}
+		else {
+			uint64_t totalSize = 0;
+			uint32_t locPageSize = initPageSize;
+			if ((FFTPlan->axes[axis_id]->specializationConstants.reorderFourStep == 1) && (FFTPlan->numAxisUploads[axis_id] > 1))
+				if (axis_upload_id == 1) {
+					for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+						totalSize += app->configuration.bufferSize[i];
+						if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
+					}
+				}
+				else {
+					for (uint32_t i = 0; i < app->configuration.tempBufferNum; i++) {
+						totalSize += app->configuration.tempBufferSize[i];
+						if (app->configuration.tempBufferSize[i] < locPageSize) locPageSize = app->configuration.tempBufferSize[i];
+					}
+				}
+			else {
+				for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+					totalSize += app->configuration.bufferSize[i];
+					if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
+				}
+			}
+			axis->specializationConstants.outputBufferBlockSize = locPageSize / storageComplexSize;
+			axis->specializationConstants.outputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+			//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
+
+		}							
+
+		if (app->configuration.performConvolution) {
+			uint64_t totalSize = 0;
+			uint32_t locPageSize = initPageSize;
+			for (uint32_t i = 0; i < app->configuration.kernelNum; i++) {
+				totalSize += app->configuration.kernelSize[i];
+				if (app->configuration.kernelSize[i] < locPageSize) locPageSize = app->configuration.kernelSize[i];
+			}
+			axis->specializationConstants.kernelBlockSize = locPageSize / storageComplexSize;
+			axis->specializationConstants.kernelBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.kernelBlockSize * storageComplexSize));
+			//if (axis->specializationConstants.kernelBlockNum == 1) axis->specializationConstants.inputBufferBlockSize = totalSize / storageComplexSize;
+		}
+		else {
+			axis->specializationConstants.kernelBlockSize = 0;
+			axis->specializationConstants.kernelBlockNum = 0;
+		}
+		uint32_t numBindings = 2;
+		uint32_t numBuffersBound[4] = { axis->specializationConstants.inputBufferBlockNum , axis->specializationConstants.outputBufferBlockNum, 0 , 0 };
+		descriptorPoolSize.descriptorCount = axis->specializationConstants.inputBufferBlockNum + axis->specializationConstants.outputBufferBlockNum;
+		
+		if ((axis_id == 0) && (axis_upload_id == 0) && (app->configuration.FFTdim == 1) && (app->configuration.performConvolution)) {
+			numBuffersBound[numBindings]= axis->specializationConstants.kernelBlockNum;
+			descriptorPoolSize.descriptorCount+= axis->specializationConstants.kernelBlockNum;
+			numBindings++;
+		}
+		if ((axis_id == 1) && (axis_upload_id == 0) && (app->configuration.FFTdim == 2) && (app->configuration.performConvolution)) {
+			numBuffersBound[numBindings] = axis->specializationConstants.kernelBlockNum;
+			descriptorPoolSize.descriptorCount+= axis->specializationConstants.kernelBlockNum;
+			numBindings++;
+		}
+		if ((axis_id == 2) && (axis_upload_id == 0) && (app->configuration.FFTdim == 3) && (app->configuration.performConvolution)) {
+			numBuffersBound[numBindings] = axis->specializationConstants.kernelBlockNum;
+			descriptorPoolSize.descriptorCount+= axis->specializationConstants.kernelBlockNum;
+			numBindings++;
+		}
+		if (app->configuration.useLUT) {
+			numBuffersBound[numBindings] = 1;
 			descriptorPoolSize.descriptorCount++;
+			numBindings++;
+		}
 		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
 		descriptorPoolCreateInfo.poolSizeCount = 1;
 		descriptorPoolCreateInfo.pPoolSizes = &descriptorPoolSize;
 		descriptorPoolCreateInfo.maxSets = 1;
 		vkCreateDescriptorPool(app->configuration.device[0], &descriptorPoolCreateInfo, NULL, &axis->descriptorPool);
 
-		const VkDescriptorType descriptorType[4] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
+		const VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		VkDescriptorSetLayoutBinding* descriptorSetLayoutBindings;
-		descriptorSetLayoutBindings = (VkDescriptorSetLayoutBinding*)malloc(descriptorPoolSize.descriptorCount * sizeof(VkDescriptorSetLayoutBinding));
-		for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
+		descriptorSetLayoutBindings = (VkDescriptorSetLayoutBinding*)malloc(numBindings * sizeof(VkDescriptorSetLayoutBinding));
+		for (uint32_t i = 0; i < numBindings; ++i) {
 			descriptorSetLayoutBindings[i].binding = i;
-			descriptorSetLayoutBindings[i].descriptorType = descriptorType[i];
-			descriptorSetLayoutBindings[i].descriptorCount = 1;
+			descriptorSetLayoutBindings[i].descriptorType = descriptorType;
+			descriptorSetLayoutBindings[i].descriptorCount = numBuffersBound[i];
 			descriptorSetLayoutBindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 		}
 
 		VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-		descriptorSetLayoutCreateInfo.bindingCount = descriptorPoolSize.descriptorCount;
+		descriptorSetLayoutCreateInfo.bindingCount = numBindings;
 		descriptorSetLayoutCreateInfo.pBindings = descriptorSetLayoutBindings;
 
 		vkCreateDescriptorSetLayout(app->configuration.device[0], &descriptorSetLayoutCreateInfo, NULL, &axis->descriptorSetLayout);
@@ -2015,81 +2276,213 @@ extern "C" {
 		descriptorSetAllocateInfo.descriptorSetCount = 1;
 		descriptorSetAllocateInfo.pSetLayouts = &axis->descriptorSetLayout;
 		vkAllocateDescriptorSets(app->configuration.device[0], &descriptorSetAllocateInfo, &axis->descriptorSet);
-		for (uint32_t i = 0; i < descriptorPoolSize.descriptorCount; ++i) {
-			VkDescriptorBufferInfo descriptorBufferInfo = { 0 };
+		for (uint32_t i = 0; i < numBindings; ++i) {
+			for (uint32_t j = 0; j < numBuffersBound[i]; ++j) {
+				VkDescriptorBufferInfo descriptorBufferInfo = { 0 };
+				if (i == 0) {
+					if ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted) && (
+						((axis_id == 0) && (!inverse))
+						|| ((axis_id == app->configuration.FFTdim - 1) && (inverse) && (!app->configuration.performConvolution)))
+						) {
+						uint32_t bufferId = 0;
+						uint32_t offset = j;
+						for (uint32_t l = 0; l < app->configuration.inputBufferNum; ++l) {
+							if (offset >= (uint32_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+								bufferId++;
+								offset -= (uint32_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+							}
+							else {
+								l = app->configuration.inputBufferNum;
+							}
 
-			if (i == 0) {
-				if ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted) && (
-					((axis_id == 0) && (!inverse))
-					|| ((axis_id == app->configuration.FFTdim - 1) && (inverse) && (!app->configuration.performConvolution)))
-					) {
-					descriptorBufferInfo.buffer = app->configuration.inputBuffer[0];
-					descriptorBufferInfo.range = app->configuration.inputBufferSize[0];
-				}
-				else {
-					if ((axis_upload_id == 0) && (app->configuration.numberKernels > 1) && (inverse) && (!app->configuration.performConvolution)) {
-						descriptorBufferInfo.buffer = app->configuration.outputBuffer[0];
-						descriptorBufferInfo.range = app->configuration.outputBufferSize[0];
+						}
+
+						descriptorBufferInfo.buffer = app->configuration.inputBuffer[bufferId];
+						descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
+						descriptorBufferInfo.offset = offset * (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
+					
 					}
 					else {
-						if ((FFTPlan->axes[axis_id]->specializationConstants.reorderFourStep == 1) && (FFTPlan->numAxisUploads[axis_id] > 1))
-							if (axis_upload_id > 0)
-								descriptorBufferInfo.buffer = app->configuration.buffer[0];
-							else
-								descriptorBufferInfo.buffer = app->configuration.tempBuffer[0];
-						else
-							descriptorBufferInfo.buffer = app->configuration.buffer[0];
-						descriptorBufferInfo.range = app->configuration.bufferSize[0];
+						if ((axis_upload_id == 0) && (app->configuration.numberKernels > 1) && (inverse) && (!app->configuration.performConvolution)) {
+							uint32_t bufferId = 0;
+							uint32_t offset = j;
+							for (uint32_t l = 0; l < app->configuration.outputBufferNum; ++l) {
+								if (offset >= (uint32_t)ceil(app->configuration.outputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+									bufferId++;
+									offset -= (uint32_t)ceil(app->configuration.outputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+								}
+								else {
+									l = app->configuration.outputBufferNum;
+								}
+
+							}
+
+							descriptorBufferInfo.buffer = app->configuration.outputBuffer[bufferId];
+							descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
+							descriptorBufferInfo.offset = offset * (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
+						}
+						else {
+							uint32_t bufferId = 0;
+							uint32_t offset = j;
+							if ((FFTPlan->axes[axis_id]->specializationConstants.reorderFourStep == 1) && (FFTPlan->numAxisUploads[axis_id] > 1))
+								if (axis_upload_id > 0) {
+									for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
+										if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+											bufferId++;
+											offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+										}
+										else {
+											l = app->configuration.bufferNum;
+										}
+
+									}
+
+									descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
+								}
+								else {
+									for (uint32_t l = 0; l < app->configuration.tempBufferNum; ++l) {
+										if (offset >= (uint32_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+											bufferId++;
+											offset -= (uint32_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+										}
+										else {
+											l = app->configuration.tempBufferNum;
+										}
+
+									}
+
+									descriptorBufferInfo.buffer = app->configuration.tempBuffer[bufferId];
+								}
+							else {
+								for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
+									if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+										bufferId++;
+										offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+									}
+									else {
+										l = app->configuration.bufferNum;
+									}
+
+								}
+
+								descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
+							}
+							descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
+							descriptorBufferInfo.offset = offset * (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
+						}
 					}
+					//descriptorBufferInfo.offset = 0;
 				}
-				descriptorBufferInfo.offset = 0;
-			}
-			if (i == 1) {
-				if ((axis_upload_id == 0) && (app->configuration.isOutputFormatted && (
-					((axis_id == 0) && (inverse))
-					|| ((axis_id == app->configuration.FFTdim - 1) && (!inverse) && (!app->configuration.performConvolution))
-					|| ((axis_id == 0) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)))
-					) ||
-					((app->configuration.numberKernels > 1) && (
-						(inverse)
-						|| (axis_id == app->configuration.FFTdim - 1)))
-					) {
-					descriptorBufferInfo.buffer = app->configuration.outputBuffer[0];
-					descriptorBufferInfo.range = app->configuration.outputBufferSize[0];
-				}
-				else {
-					if ((FFTPlan->axes[axis_id]->specializationConstants.reorderFourStep == 1) && (FFTPlan->numAxisUploads[axis_id] > 1))
-						if (axis_upload_id == 1)
-							descriptorBufferInfo.buffer = app->configuration.tempBuffer[0];
-						else
-							descriptorBufferInfo.buffer = app->configuration.buffer[0];
-					else
-						descriptorBufferInfo.buffer = app->configuration.buffer[0];
-					descriptorBufferInfo.range = app->configuration.bufferSize[0];
-				}
-				descriptorBufferInfo.offset = 0;
-			}
-			if ((i == 2) && (app->configuration.performConvolution)) {
-				descriptorBufferInfo.buffer = app->configuration.kernel[0];
-				descriptorBufferInfo.offset = 0;
-				descriptorBufferInfo.range = app->configuration.kernelSize[0];
-			}
-			if ((i == descriptorPoolSize.descriptorCount - 1) && (app->configuration.useLUT)) {
-				descriptorBufferInfo.buffer = axis->bufferLUT;
-				descriptorBufferInfo.offset = 0;
-				descriptorBufferInfo.range = axis->bufferLUTSize;
-			}
-			VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-			writeDescriptorSet.dstSet = axis->descriptorSet;
-			writeDescriptorSet.dstBinding = i;
-			writeDescriptorSet.dstArrayElement = 0;
-			writeDescriptorSet.descriptorType = descriptorType[i];
-			writeDescriptorSet.descriptorCount = 1;
-			writeDescriptorSet.pBufferInfo = &descriptorBufferInfo;
-			vkUpdateDescriptorSets(app->configuration.device[0], 1, &writeDescriptorSet, 0, NULL);
+				if (i == 1) {
+					if ((axis_upload_id == 0) && (app->configuration.isOutputFormatted && (
+						((axis_id == 0) && (inverse))
+						|| ((axis_id == app->configuration.FFTdim - 1) && (!inverse) && (!app->configuration.performConvolution))
+						|| ((axis_id == 0) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)))
+						) ||
+						((app->configuration.numberKernels > 1) && (
+							(inverse)
+							|| (axis_id == app->configuration.FFTdim - 1)))
+						) {
+						uint32_t bufferId = 0;
+						uint32_t offset = j;
 
+						for (uint32_t l = 0; l < app->configuration.outputBufferNum; ++l) {
+							if (offset >= (uint32_t)ceil(app->configuration.outputBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+								bufferId++;
+								offset -= (uint32_t)ceil(app->configuration.outputBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+							}
+							else {
+								l = app->configuration.outputBufferNum;
+							}
+
+						}
+						descriptorBufferInfo.buffer = app->configuration.outputBuffer[bufferId];
+						descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
+						descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
+					}
+					else {
+						uint32_t bufferId = 0;
+						uint32_t offset = j;
+
+						if ((FFTPlan->axes[axis_id]->specializationConstants.reorderFourStep == 1) && (FFTPlan->numAxisUploads[axis_id] > 1))
+							if (axis_upload_id == 1) {
+								for (uint32_t l = 0; l < app->configuration.tempBufferNum; ++l) {
+									if (offset >= (uint32_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+										bufferId++;
+										offset -= (uint32_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+									}
+									else {
+										l = app->configuration.tempBufferNum;
+									}
+
+								}
+								descriptorBufferInfo.buffer = app->configuration.tempBuffer[bufferId];
+							}
+							else {
+								for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
+									if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+										bufferId++;
+										offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+									}
+									else {
+										l = app->configuration.bufferNum;
+									}
+
+								}
+								descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
+							}
+								
+						else {
+							for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
+								if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+									bufferId++;
+									offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+								}
+								else {
+									l = app->configuration.bufferNum;
+								}
+
+							}
+							descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
+						}
+
+						descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
+						descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
+					}
+					//descriptorBufferInfo.offset = 0;
+				}
+				if ((i == 2) && (app->configuration.performConvolution)) {
+					uint32_t bufferId = 0;
+					uint32_t offset = j;
+					for (uint32_t l = 0; l < app->configuration.kernelNum; ++l) {
+						if (offset >= (uint32_t)ceil(app->configuration.kernelSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+							bufferId++;
+							offset -= (uint32_t)ceil(app->configuration.kernelSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+						}
+						else {
+							l = app->configuration.kernelNum;
+						}
+
+					}
+					descriptorBufferInfo.buffer = app->configuration.kernel[bufferId];
+					descriptorBufferInfo.range = (axis->specializationConstants.kernelBlockSize * storageComplexSize);
+					descriptorBufferInfo.offset = offset * (axis->specializationConstants.kernelBlockSize * storageComplexSize);
+				}
+				if ((i == numBindings - 1) && (app->configuration.useLUT)) {
+					descriptorBufferInfo.buffer = axis->bufferLUT;
+					descriptorBufferInfo.offset = 0;
+					descriptorBufferInfo.range = axis->bufferLUTSize;
+				}
+				VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+				writeDescriptorSet.dstSet = axis->descriptorSet;
+				writeDescriptorSet.dstBinding = i;
+				writeDescriptorSet.dstArrayElement = j;
+				writeDescriptorSet.descriptorType = descriptorType;
+				writeDescriptorSet.descriptorCount = 1;
+				writeDescriptorSet.pBufferInfo = &descriptorBufferInfo;
+				vkUpdateDescriptorSets(app->configuration.device[0], 1, &writeDescriptorSet, 0, NULL);
+			}
 		}
-
 		{
 			VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
 			pipelineLayoutCreateInfo.setLayoutCount = 1;
@@ -2315,15 +2708,15 @@ extern "C" {
 				else  axis->specializationConstants.performWorkGroupShift[2] = 0;
 
 			}
-			VkSpecializationMapEntry specializationMapEntries[30] = { {} };
-			for (uint32_t i = 0; i < 30; i++) {
+			VkSpecializationMapEntry specializationMapEntries[36] = { {} };
+			for (uint32_t i = 0; i < 36; i++) {
 				specializationMapEntries[i].constantID = i + 1;
 				specializationMapEntries[i].size = sizeof(uint32_t);
 				specializationMapEntries[i].offset = i * sizeof(uint32_t);
 			}
 			VkSpecializationInfo specializationInfo = { 0 };
-			specializationInfo.dataSize = 30 * sizeof(uint32_t);
-			specializationInfo.mapEntryCount = 30;
+			specializationInfo.dataSize = 36 * sizeof(uint32_t);
+			specializationInfo.mapEntryCount = 36;
 			specializationInfo.pMapEntries = specializationMapEntries;
 			axis->specializationConstants.localSize[0] = axis->axisBlock[0];
 			axis->specializationConstants.localSize[1] = axis->axisBlock[1];
@@ -2845,8 +3238,8 @@ extern "C" {
 
 			app->configuration.inverse = 0;
 			for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
-				VkFFTScheduler(app, &app->localFFTPlan, i);
-				for (uint32_t j = 0; j < app->localFFTPlan.numAxisUploads[i]; j++)
+				VkFFTScheduler(app, &app->localFFTPlan_inverse_convolution, i);
+				for (uint32_t j = 0; j < app->localFFTPlan_inverse_convolution.numAxisUploads[i]; j++)
 					VkFFTPlanAxis(app, &app->localFFTPlan_inverse_convolution, i, j, 1);
 			}
 
@@ -2903,7 +3296,7 @@ extern "C" {
 							}
 							else {
 								dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
-								dispatchBlock[1] = app->configuration.size[1]/ axis->axisBlock[1];
+								dispatchBlock[1] = app->configuration.size[1] / axis->axisBlock[1];
 							}
 						}
 						else {

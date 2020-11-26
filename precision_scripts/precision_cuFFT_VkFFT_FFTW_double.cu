@@ -379,11 +379,11 @@ void main()
 	int benchmark_dimensions[num_benchmark_samples][4] = { {(uint32_t)pow(2,5), 1, 1, 1},{(uint32_t)pow(2,6), 1, 1, 1},{(uint32_t)pow(2,7), 1, 1, 1},{(uint32_t)pow(2,8), 1, 1, 1},{(uint32_t)pow(2,9), 1, 1, 1},{(uint32_t)pow(2,10), 1, 1, 1},
 		{(uint32_t)pow(2,11), 1, 1, 1},{(uint32_t)pow(2,12), 1, 1, 1},{(uint32_t)pow(2,13), 1, 1, 1},{(uint32_t)pow(2,14), 1, 1, 1},{(uint32_t)pow(2,15), 1, 1, 1},{(uint32_t)pow(2,16), 1, 1, 1},{(uint32_t)pow(2,17), 1, 1, 1},{(uint32_t)pow(2,18), 1, 1, 1},
 		{(uint32_t)pow(2,19), 1, 1, 1},{(uint32_t)pow(2,20), 1, 1, 1},{(uint32_t)pow(2,21), 1, 1, 1},{(uint32_t)pow(2,22), 1, 1, 1},{(uint32_t)pow(2,23), 1, 1, 1},{(uint32_t)pow(2,24), 1, 1, 1},{(uint32_t)pow(2,25), 1, 1, 1},{(uint32_t)pow(2,26), 1, 1, 1},
-	
+
 		{8, (uint32_t)pow(2,3), 1, 2},{8, (uint32_t)pow(2,4), 1, 2},{8, (uint32_t)pow(2,5), 1, 2},{8, (uint32_t)pow(2,6), 1, 2},{8, (uint32_t)pow(2,7), 1, 2},{8, (uint32_t)pow(2,8), 1, 2},{8, (uint32_t)pow(2,9), 1, 2},{8, (uint32_t)pow(2,10), 1, 2},
 		{8, (uint32_t)pow(2,11), 1, 2},{8, (uint32_t)pow(2,12), 1, 2},{8, (uint32_t)pow(2,13), 1, 2},{8, (uint32_t)pow(2,14), 1, 2},{8, (uint32_t)pow(2,15), 1, 2},{8, (uint32_t)pow(2,16), 1, 2},{8, (uint32_t)pow(2,17), 1, 2},{8, (uint32_t)pow(2,18), 1, 2},
 		{8, (uint32_t)pow(2,19), 1, 2},{8, (uint32_t)pow(2,20), 1, 2},{8, (uint32_t)pow(2,21), 1, 2},{8, (uint32_t)pow(2,22), 1, 2},{8, (uint32_t)pow(2,23), 1, 2},
-		
+
 		{ (uint32_t)pow(2,3), (uint32_t)pow(2,3), 1, 2}, { (uint32_t)pow(2,4), (uint32_t)pow(2,4), 1, 2},{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},
 		{ (uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},{ (uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},{ (uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},{ (uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},
 
@@ -496,30 +496,54 @@ void main()
 			forward_configuration.doublePrecision = true;
 			forward_configuration.useLUT = true;
 			forward_configuration.reorderFourStep = true;
+			forward_configuration.devicePageSize = 2048;
+			forward_configuration.localPageSize = 16;
 			//Custom path to the folder with shaders, default is "shaders");
 			sprintf(forward_configuration.shaderPath, "shaders\\");
+			uint32_t numBuf = 2;
 
-			//Allocate buffer for the input data.
-			VkDeviceSize bufferSize = forward_configuration.coordinateFeatures * sizeof(double) * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2];;
-			VkBuffer buffer = {};
-			VkDeviceMemory bufferDeviceMemory = {};
-			VkBuffer tempBuffer = {};
-			VkDeviceMemory tempBufferDeviceMemory = {};
-			allocateFFTBuffer(&buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
-			allocateFFTBuffer(&tempBuffer, &tempBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
-
-			forward_configuration.buffer = &buffer;
-			forward_configuration.tempBuffer = &tempBuffer;
+			//Allocate buffers for the input data. - we use 4 in this example
+			VkDeviceSize* bufferSize = (VkDeviceSize*)malloc(sizeof(VkDeviceSize) * numBuf);
+			for (uint32_t i = 0; i < numBuf; i++) {
+				bufferSize[i] = {};
+				bufferSize[i] = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(double) * 2 * forward_configuration.size[0] * forward_configuration.size[1] * forward_configuration.size[2] / numBuf;
+			}
+			VkBuffer* buffer = (VkBuffer*)malloc(numBuf * sizeof(VkBuffer));
+			VkDeviceMemory* bufferDeviceMemory = (VkDeviceMemory*)malloc(numBuf * sizeof(VkDeviceMemory));
+			VkBuffer* tempBuffer = (VkBuffer*)malloc(numBuf * sizeof(VkBuffer));
+			VkDeviceMemory* tempBufferDeviceMemory = (VkDeviceMemory*)malloc(numBuf * sizeof(VkDeviceMemory));
+			for (uint32_t i = 0; i < numBuf; i++) {
+				buffer[i] = {};
+				bufferDeviceMemory[i] = {};
+				tempBuffer[i] = {};
+				tempBufferDeviceMemory[i] = {};
+				allocateFFTBuffer(&buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				allocateFFTBuffer(&tempBuffer[i], &tempBufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+			}
 			forward_configuration.isInputFormatted = false; //set to true if input is a different buffer, so it can have zeropadding/R2C added  
-			forward_configuration.inputBuffer = &buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
 			forward_configuration.isOutputFormatted = false;//set to true if output is a different buffer, so it can have zeropadding/C2R automatically removed
-			forward_configuration.outputBuffer = &buffer;
-			forward_configuration.bufferSize = &bufferSize;
-			forward_configuration.inputBufferSize = &bufferSize;
-			forward_configuration.outputBufferSize = &bufferSize;
+
+			forward_configuration.bufferNum = numBuf;
+			forward_configuration.tempBufferNum = numBuf;
+			forward_configuration.inputBufferNum = numBuf;
+			forward_configuration.outputBufferNum = numBuf;
+
+			forward_configuration.buffer = buffer;
+			forward_configuration.tempBuffer = tempBuffer;
+			forward_configuration.inputBuffer = buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
+			forward_configuration.outputBuffer = buffer;
+
+			forward_configuration.bufferSize = bufferSize;
+			forward_configuration.tempBufferSize = bufferSize;
+			forward_configuration.inputBufferSize = bufferSize;
+			forward_configuration.outputBufferSize = bufferSize;
 
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
-			transferDataFromCPU(inputC_double, &buffer, bufferSize);
+			uint64_t shift = 0;
+			for (uint32_t i = 0; i < numBuf; i++) {
+				transferDataFromCPU((float*)(inputC + shift / sizeof(cufftDoubleComplex)), &buffer[i], bufferSize[i]);
+				shift += bufferSize[i];
+			}
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 			initializeVulkanFFT(&app_forward, forward_configuration);
 			//forward_configuration.inverse = true;
@@ -528,11 +552,14 @@ void main()
 			//batch = 1;
 			totTime = performVulkanFFT(&app_forward, batch);
 			//totTime = performVulkanFFT(&app_inverse, batch);
-			fftw_complex* output_VkFFT = (fftw_complex*)malloc(bufferSize);
+			fftw_complex* output_VkFFT = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
 
 			//Transfer data from GPU using staging buffer.
-			transferDataToCPU(output_VkFFT, &buffer, bufferSize);
-
+			shift = 0;
+			for (uint32_t i = 0; i < numBuf; i++) {
+				transferDataToCPU((float*)(output_VkFFT + shift / sizeof(fftw_complex)), &buffer[i], bufferSize[i]);
+				shift += bufferSize[i];
+			}
 			double avg_difference[2] = { 0,0 };
 			double max_difference[2] = { 0,0 };
 			double avg_eps[2] = { 0,0 };
@@ -543,7 +570,7 @@ void main()
 						int loc_i = i;
 						int loc_j = j;
 						int loc_l = l;
-						
+
 						/*if (app_forward.localFFTPlan.numAxisUploads[0] > 1)
 							loc_i = i / app_forward.localFFTPlan.axes[0][1].specializationConstants.fftDim + app_forward.localFFTPlan.axes[0][0].specializationConstants.fftDim * (i % app_forward.localFFTPlan.axes[0][1].specializationConstants.fftDim);
 						if (app_forward.localFFTPlan.numAxisUploads[1] > 1)
@@ -592,10 +619,14 @@ void main()
 			printf("VkFFT System: %dx%dx%d avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
 			free(output_cuFFT);
 			free(output_VkFFT);
-			vkDestroyBuffer(device, buffer, NULL);
-			vkDestroyBuffer(device, tempBuffer, NULL);
-			vkFreeMemory(device, bufferDeviceMemory, NULL);
-			vkFreeMemory(device, tempBufferDeviceMemory, NULL);
+			for (uint32_t i = 0; i < numBuf; i++) {
+
+				vkDestroyBuffer(device, buffer[i], NULL);
+				vkDestroyBuffer(device, tempBuffer[i], NULL);
+				vkFreeMemory(device, bufferDeviceMemory[i], NULL);
+				vkFreeMemory(device, tempBufferDeviceMemory[i], NULL);
+
+			}
 			deleteVulkanFFT(&app_forward);
 			cufftDestroy(planZ2Z);
 			cudaFree(dataC);

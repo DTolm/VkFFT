@@ -40,6 +40,12 @@ layout (constant_id = 27) const bool reorderFourStep = false;
 layout (constant_id = 28) const uint performWorkGroupShiftX = 0;
 layout (constant_id = 29) const uint performWorkGroupShiftY = 0;
 layout (constant_id = 30) const uint performWorkGroupShiftZ = 0;
+layout (constant_id = 31) const uint inputBufferBlockNum = 1;
+layout (constant_id = 32) const uint inputBufferBlockSize = 1;
+layout (constant_id = 33) const uint outputBufferBlockNum = 1;
+layout (constant_id = 34) const uint outputBufferBlockSize = 1;
+layout (constant_id = 35) const uint kernelBlockNum = 1;
+layout (constant_id = 36) const uint kernelBlockSize = 1;
 const uint radixStride_0 = fft_dim/2;
 const uint radixStride_1 = fft_dim/4;
 const uint radixStride_2 = fft_dim/8;
@@ -55,16 +61,16 @@ layout(push_constant) uniform PushConsts
 
 
 layout(std430, binding = 0) buffer Data {
-    dvec2 inputs[];
-};
+    dvec2 inputs[inputBufferBlockSize];
+} inputBlocks[inputBufferBlockNum];
 
 layout(std430, binding = 1) buffer Data2 {
-    dvec2 outputs[];
-};
+    dvec2 outputs[outputBufferBlockSize];
+} outputBlocks[outputBufferBlockNum];
 
-layout(std430, binding = 2) readonly buffer Kernel_FFT {
-	dvec2 kernel [];
-};
+layout(std430, binding = 2) readonly buffer Kernel_FFT  {
+    dvec2 kernel[kernelBlockSize];
+} kernelBlocks[kernelBlockNum];
 layout(std430, binding = 3) readonly buffer Data3 {
     dvec2 twiddleLUT[];
 };
@@ -225,20 +231,35 @@ void main() {
 	for(uint coordinate=0; coordinate<3; coordinate++){
 		if ((zeropad_0)){
 			if(fft_dim==fft_dim_full){
-				for (uint i=0; i < 4; i++)
-					sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=inputs[indexInput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim), coordinate)];
+				for (uint i=0; i < 4; i++){
+					uint inputID = indexInput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim), coordinate);
+					if(inputBufferBlockNum==1)
+						sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=inputBlocks[0].inputs[inputID];
+					else
+						sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=inputBlocks[inputID/inputBufferBlockSize].inputs[inputID%inputBufferBlockSize];
+				}
 				for (uint i=4; i < 8; i++)
 					sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=dvec2(0,0);
 			}else{
-				for (uint i=0; i < 8; i++)
-					if((stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim))%fft_dim_full<fft_dim_full/2)
-						sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=inputs[indexInput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim), coordinate)];
+				for (uint i=0; i < 8; i++){
+					uint inputID = (stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim));
+					if(inputID%fft_dim_full<fft_dim_full/2)
+						if(inputBufferBlockNum==1)
+							sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=inputBlocks[0].inputs[indexInput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), inputID, coordinate)];
+						else
+							sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=inputBlocks[indexInput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), inputID, coordinate)/inputBufferBlockSize].inputs[indexInput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), inputID, coordinate)%inputBufferBlockSize];
 					else
 						sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=dvec2(0,0);
+				}
 			}
 		} else {
-			for (uint i=0; i < 8; i++)
-				sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=inputs[indexInput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim), coordinate)];
+			for (uint i=0; i < 8; i++){
+				uint inputID = indexInput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim), coordinate);
+				if(inputBufferBlockNum==1)
+						sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=inputBlocks[0].inputs[inputID];
+					else
+						sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))]=inputBlocks[inputID/inputBufferBlockSize].inputs[inputID%inputBufferBlockSize];
+			}
 		}
 		memoryBarrierShared();
 		barrier();
@@ -493,12 +514,12 @@ void main() {
 	//3x3 nonsymmetric convolution for a 3d vector
 	for (uint i=0; i<8; i++){
 		uint icellkernel= indexInput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), (gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(fft_dim), 0);
-		double temp_spin_real0 = kernel[icellkernel  ].x * temp0[i].x + kernel[icellkernel+inputStride_3].x * temp1[i].x + kernel[icellkernel+2*inputStride_3].x * temp2[i].x - kernel[icellkernel  ].y * temp0[i].y - kernel[icellkernel+inputStride_3].y * temp1[i].y - kernel[icellkernel+2*inputStride_3].y * temp2[i].y;
-		double temp_spin_imag0 = kernel[icellkernel  ].x * temp0[i].y + kernel[icellkernel+inputStride_3].x * temp1[i].y + kernel[icellkernel+2*inputStride_3].x * temp2[i].y + kernel[icellkernel  ].y * temp0[i].x + kernel[icellkernel+inputStride_3].y * temp1[i].x + kernel[icellkernel+2*inputStride_3].y * temp2[i].x;
-		double temp_spin_real1 = kernel[icellkernel+3*inputStride_3].x * temp0[i].x + kernel[icellkernel+4*inputStride_3].x * temp1[i].x + kernel[icellkernel+5*inputStride_3].x * temp2[i].x - kernel[icellkernel+3*inputStride_3].y * temp0[i].y - kernel[icellkernel+4*inputStride_3].y * temp1[i].y - kernel[icellkernel+5*inputStride_3].y * temp2[i].y;
-		double temp_spin_imag1 = kernel[icellkernel+3*inputStride_3].x * temp0[i].y + kernel[icellkernel+4*inputStride_3].x * temp1[i].y + kernel[icellkernel+5*inputStride_3].x * temp2[i].y + kernel[icellkernel+3*inputStride_3].y * temp0[i].x + kernel[icellkernel+4*inputStride_3].y * temp1[i].x + kernel[icellkernel+5*inputStride_3].y * temp2[i].x;
-		double temp_spin_real2 = kernel[icellkernel+6*inputStride_3].x * temp0[i].x + kernel[icellkernel+7*inputStride_3].x * temp1[i].x + kernel[icellkernel+8*inputStride_3].x * temp2[i].x - kernel[icellkernel+6*inputStride_3].y * temp0[i].y - kernel[icellkernel+7*inputStride_3].y * temp1[i].y - kernel[icellkernel+8*inputStride_3].y * temp2[i].y;
-		double temp_spin_imag2 = kernel[icellkernel+6*inputStride_3].x * temp0[i].y + kernel[icellkernel+7*inputStride_3].x * temp1[i].y + kernel[icellkernel+8*inputStride_3].x * temp2[i].y + kernel[icellkernel+6*inputStride_3].y * temp0[i].x + kernel[icellkernel+7*inputStride_3].y * temp1[i].x + kernel[icellkernel+8*inputStride_3].y * temp2[i].x;
+		double temp_spin_real0 = kernelBlocks[icellkernel/kernelBlockSize].kernel[icellkernel%kernelBlockSize].x * temp0[i].x + kernelBlocks[(icellkernel+inputStride_3)/kernelBlockSize].kernel[(icellkernel+inputStride_3)%kernelBlockSize].x * temp1[i].x + kernelBlocks[(icellkernel+2*inputStride_3)/kernelBlockSize].kernel[(icellkernel+2*inputStride_3)%kernelBlockSize].x * temp2[i].x - kernelBlocks[icellkernel/kernelBlockSize].kernel[icellkernel%kernelBlockSize].y * temp0[i].y - kernelBlocks[(icellkernel+inputStride_3)/kernelBlockSize].kernel[(icellkernel+inputStride_3)%kernelBlockSize].y * temp1[i].y - kernelBlocks[(icellkernel+2*inputStride_3)/kernelBlockSize].kernel[(icellkernel+2*inputStride_3)%kernelBlockSize].y * temp2[i].y;
+		double temp_spin_imag0 = kernelBlocks[icellkernel/kernelBlockSize].kernel[icellkernel%kernelBlockSize].x * temp0[i].y + kernelBlocks[(icellkernel+inputStride_3)/kernelBlockSize].kernel[(icellkernel+inputStride_3)%kernelBlockSize].x * temp1[i].y + kernelBlocks[(icellkernel+2*inputStride_3)/kernelBlockSize].kernel[(icellkernel+2*inputStride_3)%kernelBlockSize].x * temp2[i].y + kernelBlocks[icellkernel/kernelBlockSize].kernel[icellkernel%kernelBlockSize].y * temp0[i].x + kernelBlocks[(icellkernel+inputStride_3)/kernelBlockSize].kernel[(icellkernel+inputStride_3)%kernelBlockSize].y * temp1[i].x + kernelBlocks[(icellkernel+2*inputStride_3)/kernelBlockSize].kernel[(icellkernel+2*inputStride_3)%kernelBlockSize].y * temp2[i].x;
+		double temp_spin_real1 = kernelBlocks[(icellkernel+3*inputStride_3)/kernelBlockSize].kernel[(icellkernel+3*inputStride_3)%kernelBlockSize].x * temp0[i].x + kernelBlocks[(icellkernel+4*inputStride_3)/kernelBlockSize].kernel[(icellkernel+4*inputStride_3)%kernelBlockSize].x * temp1[i].x + kernelBlocks[(icellkernel+5*inputStride_3)/kernelBlockSize].kernel[(icellkernel+5*inputStride_3)%kernelBlockSize].x * temp2[i].x - kernelBlocks[(icellkernel+3*inputStride_3)/kernelBlockSize].kernel[(icellkernel+3*inputStride_3)%kernelBlockSize].y * temp0[i].y - kernelBlocks[(icellkernel+4*inputStride_3)/kernelBlockSize].kernel[(icellkernel+4*inputStride_3)%kernelBlockSize].y * temp1[i].y - kernelBlocks[(icellkernel+5*inputStride_3)/kernelBlockSize].kernel[(icellkernel+5*inputStride_3)%kernelBlockSize].y * temp2[i].y;
+		double temp_spin_imag1 = kernelBlocks[(icellkernel+3*inputStride_3)/kernelBlockSize].kernel[(icellkernel+3*inputStride_3)%kernelBlockSize].x * temp0[i].y + kernelBlocks[(icellkernel+4*inputStride_3)/kernelBlockSize].kernel[(icellkernel+4*inputStride_3)%kernelBlockSize].x * temp1[i].y + kernelBlocks[(icellkernel+5*inputStride_3)/kernelBlockSize].kernel[(icellkernel+5*inputStride_3)%kernelBlockSize].x * temp2[i].y + kernelBlocks[(icellkernel+3*inputStride_3)/kernelBlockSize].kernel[(icellkernel+3*inputStride_3)%kernelBlockSize].y * temp0[i].x + kernelBlocks[(icellkernel+4*inputStride_3)/kernelBlockSize].kernel[(icellkernel+4*inputStride_3)%kernelBlockSize].y * temp1[i].x + kernelBlocks[(icellkernel+5*inputStride_3)/kernelBlockSize].kernel[(icellkernel+5*inputStride_3)%kernelBlockSize].y * temp2[i].x;
+		double temp_spin_real2 = kernelBlocks[(icellkernel+6*inputStride_3)/kernelBlockSize].kernel[(icellkernel+6*inputStride_3)%kernelBlockSize].x * temp0[i].x + kernelBlocks[(icellkernel+7*inputStride_3)/kernelBlockSize].kernel[(icellkernel+7*inputStride_3)%kernelBlockSize].x * temp1[i].x + kernelBlocks[(icellkernel+8*inputStride_3)/kernelBlockSize].kernel[(icellkernel+8*inputStride_3)%kernelBlockSize].x * temp2[i].x - kernelBlocks[(icellkernel+6*inputStride_3)/kernelBlockSize].kernel[(icellkernel+6*inputStride_3)%kernelBlockSize].y * temp0[i].y - kernelBlocks[(icellkernel+7*inputStride_3)/kernelBlockSize].kernel[(icellkernel+7*inputStride_3)%kernelBlockSize].y * temp1[i].y - kernelBlocks[(icellkernel+8*inputStride_3)/kernelBlockSize].kernel[(icellkernel+8*inputStride_3)%kernelBlockSize].y * temp2[i].y;
+		double temp_spin_imag2 = kernelBlocks[(icellkernel+6*inputStride_3)/kernelBlockSize].kernel[(icellkernel+6*inputStride_3)%kernelBlockSize].x * temp0[i].y + kernelBlocks[(icellkernel+7*inputStride_3)/kernelBlockSize].kernel[(icellkernel+7*inputStride_3)%kernelBlockSize].x * temp1[i].y + kernelBlocks[(icellkernel+8*inputStride_3)/kernelBlockSize].kernel[(icellkernel+8*inputStride_3)%kernelBlockSize].x * temp2[i].y + kernelBlocks[(icellkernel+6*inputStride_3)/kernelBlockSize].kernel[(icellkernel+6*inputStride_3)%kernelBlockSize].y * temp0[i].x + kernelBlocks[(icellkernel+7*inputStride_3)/kernelBlockSize].kernel[(icellkernel+7*inputStride_3)%kernelBlockSize].y * temp1[i].x + kernelBlocks[(icellkernel+8*inputStride_3)/kernelBlockSize].kernel[(icellkernel+8*inputStride_3)%kernelBlockSize].y * temp2[i].x;
 		temp0[i].x= temp_spin_real0;
 		temp0[i].y= temp_spin_imag0;
 		temp1[i].x= temp_spin_real1;
@@ -754,19 +775,34 @@ void main() {
 		}
 		
 		
-		if ((zeropad_0)&&(inverse)){
+		if ((zeropad_0)){
 			if(fft_dim==fft_dim_full){
-				for (uint i=0; i < 4; i++)
-					outputs[indexOutput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim), coordinate)]=sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))];
-		
+				for (uint i=0; i < 4; i++){
+					uint outputId = indexOutput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim), coordinate);
+					if(outputBufferBlockNum==1)
+						outputBlocks[0].outputs[outputId]=sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))];
+					else
+						outputBlocks[outputId/outputBufferBlockSize].outputs[outputId%outputBufferBlockSize]=sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))];
+				}
 			}else{
-				for (uint i=0; i < 8; i++)
-					if((stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim))%fft_dim_full<fft_dim_full/2)
-						outputs[indexOutput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim), coordinate)]=sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))];
+				for (uint i=0; i < 8; i++){
+					uint outputId = (stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim));
+					if(outputId%fft_dim_full<fft_dim_full/2)
+						if(outputBufferBlockNum==1)
+							outputBlocks[0].outputs[indexOutput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), outputId, coordinate)]=sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))];
+						else
+							outputBlocks[indexOutput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), outputId, coordinate)/outputBufferBlockSize].outputs[indexOutput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), outputId, coordinate)%outputBufferBlockSize]=sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))];
+			
+				}
 			}
 		} else {
-			for (uint i=0; i < 8; i++)
-				outputs[indexOutput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim), coordinate)]=sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))];
+			for (uint i=0; i < 8; i++){
+				uint outputId = indexOutput((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)%(fft_dim_x), stageStartSize*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x)%(stageStartSize)+((gl_GlobalInvocationID.x + consts.workGroupShiftX*performWorkGroupShiftX*gl_WorkGroupSize.x)/fft_dim_x/stageStartSize)*(stageStartSize*fft_dim), coordinate);
+				if(outputBufferBlockNum==1)
+						outputBlocks[0].outputs[outputId]=sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))];
+					else
+						outputBlocks[outputId/outputBufferBlockSize].outputs[outputId%outputBufferBlockSize]=sdata[(gl_LocalInvocationID.x+gl_WorkGroupSize.x*(gl_LocalInvocationID.y+i*gl_WorkGroupSize.y))];
+			}
 		}
 		memoryBarrierShared();
 		barrier();

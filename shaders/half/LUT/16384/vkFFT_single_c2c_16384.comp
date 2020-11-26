@@ -39,6 +39,12 @@ layout (constant_id = 27) const bool reorderFourStep = false;
 layout (constant_id = 28) const uint performWorkGroupShiftX = 0;
 layout (constant_id = 29) const uint performWorkGroupShiftY = 0;
 layout (constant_id = 30) const uint performWorkGroupShiftZ = 0;
+layout (constant_id = 31) const uint inputBufferBlockNum = 1;
+layout (constant_id = 32) const uint inputBufferBlockSize = 1;
+layout (constant_id = 33) const uint outputBufferBlockNum = 1;
+layout (constant_id = 34) const uint outputBufferBlockSize = 1;
+layout (constant_id = 35) const uint kernelBlockNum = 1;
+layout (constant_id = 36) const uint kernelBlockSize = 1;
 const uint radixStride_0 = fft_dim/2;
 const uint radixStride_1 = fft_dim/4;
 const uint radixStride_2 = fft_dim/8;
@@ -54,12 +60,12 @@ layout(push_constant) uniform PushConsts
 
 
 layout(std430, binding = 0) buffer Data {
-    f16vec2 inputs[];
-};
+    f16vec2 inputs[inputBufferBlockSize];
+} inputBlocks[inputBufferBlockNum];
 
 layout(std430, binding = 1) buffer Data2 {
-    f16vec2 outputs[];
-};
+    f16vec2 outputs[outputBufferBlockSize];
+} outputBlocks[outputBufferBlockNum];
 layout(std430, binding = 2) readonly buffer Data3 {
     vec2 twiddleLUT[];
 };
@@ -221,8 +227,16 @@ void main() {
 	if ((zeropad_0)&&(!inverse)){
 		if(fft_dim==fft_dim_full){
 			for (uint i=0; i < 8; i++){
-				temp0[i]=vec2(inputs[indexInput(gl_LocalInvocationID.x+(i)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]);
-				temp1[i]=vec2(inputs[indexInput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]);
+				uint inputID=indexInput(gl_LocalInvocationID.x+(i)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+				if(inputBufferBlockNum==1)
+					temp0[i]=vec2(inputBlocks[0].inputs[inputID]);
+				else
+					temp0[i]=vec2(inputBlocks[inputID/inputBufferBlockSize].inputs[inputID%inputBufferBlockSize]);
+				inputID= indexInput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+				if(inputBufferBlockNum==1)
+					temp1[i]=vec2(inputBlocks[0].inputs[inputID]);
+				else
+					temp1[i]=vec2(inputBlocks[inputID/inputBufferBlockSize].inputs[inputID%inputBufferBlockSize]);
 			}
 			for (uint i=0; i < 8; i++){
 				temp2[i]=vec2(0,0);
@@ -231,10 +245,26 @@ void main() {
 		}else{
 			if((gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*gl_WorkGroupSize.y*fft_dim)%fft_dim_full<fft_dim_full/2)
 				for(uint i = 0; i < 8; ++i){
-					temp0[i]=vec2(inputs[indexInput(gl_LocalInvocationID.x+(i)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]);
-					temp1[i]=vec2(inputs[indexInput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]);
-					temp2[i]=vec2(inputs[indexInput(gl_LocalInvocationID.x+(i+16)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]);
-					temp3[i]=vec2(inputs[indexInput(gl_LocalInvocationID.x+(i+24)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]);
+					uint inputID=indexInput(gl_LocalInvocationID.x+(i)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+					if(inputBufferBlockNum==1)
+					temp0[i]=vec2(inputBlocks[0].inputs[inputID]);
+				else
+					temp0[i]=vec2(inputBlocks[inputID/inputBufferBlockSize].inputs[inputID%inputBufferBlockSize]);
+					inputID=indexInput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+					if(inputBufferBlockNum==1)
+					temp1[i]=vec2(inputBlocks[0].inputs[inputID]);
+				else
+					temp1[i]=vec2(inputBlocks[inputID/inputBufferBlockSize].inputs[inputID%inputBufferBlockSize]);
+					inputID=indexInput(gl_LocalInvocationID.x+(i+16)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+					if(inputBufferBlockNum==1)
+					temp2[i]=vec2(inputBlocks[0].inputs[inputID]);
+				else
+					temp2[i]=vec2(inputBlocks[inputID/inputBufferBlockSize].inputs[inputID%inputBufferBlockSize]);
+					inputID=indexInput(gl_LocalInvocationID.x+(i+24)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+					if(inputBufferBlockNum==1)
+					temp3[i]=vec2(inputBlocks[0].inputs[inputID]);
+				else
+					temp3[i]=vec2(inputBlocks[inputID/inputBufferBlockSize].inputs[inputID%inputBufferBlockSize]);
 				}
 			else
 				for(uint i = 0; i < 8; ++i){
@@ -247,13 +277,28 @@ void main() {
 		
 	} else {
 		for(uint i = 0; i < 8; ++i){
-			temp0[i]=vec2(inputs[indexInput(gl_LocalInvocationID.x+(i)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]);
-			temp1[i]=vec2(inputs[indexInput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]);
-			temp2[i]=vec2(inputs[indexInput(gl_LocalInvocationID.x+(i+16)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]);
-			temp3[i]=vec2(inputs[indexInput(gl_LocalInvocationID.x+(i+24)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]);
+			uint inputID=indexInput(gl_LocalInvocationID.x+(i)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+			if(inputBufferBlockNum==1)
+					temp0[i]=vec2(inputBlocks[0].inputs[inputID]);
+				else
+					temp0[i]=vec2(inputBlocks[inputID/inputBufferBlockSize].inputs[inputID%inputBufferBlockSize]);
+			inputID=indexInput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+			if(inputBufferBlockNum==1)
+					temp1[i]=vec2(inputBlocks[0].inputs[inputID]);
+				else
+					temp1[i]=vec2(inputBlocks[inputID/inputBufferBlockSize].inputs[inputID%inputBufferBlockSize]);
+			inputID=indexInput(gl_LocalInvocationID.x+(i+16)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+			if(inputBufferBlockNum==1)
+					temp2[i]=vec2(inputBlocks[0].inputs[inputID]);
+				else
+					temp2[i]=vec2(inputBlocks[inputID/inputBufferBlockSize].inputs[inputID%inputBufferBlockSize]);
+			inputID=indexInput(gl_LocalInvocationID.x+(i+24)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+			if(inputBufferBlockNum==1)
+					temp3[i]=vec2(inputBlocks[0].inputs[inputID]);
+				else
+					temp3[i]=vec2(inputBlocks[inputID/inputBufferBlockSize].inputs[inputID%inputBufferBlockSize]);
 		}
 	}
-	
 	for (uint n=0; n < numStages-1; n++){//all stages but last are radix-8
 		{
 			vec2 sort0[8];
@@ -545,16 +590,40 @@ void main() {
 		float stageNormalization = (inverse) ? 0.25 : 1.0;
 		if(fft_dim==fft_dim_full){
 			for (uint i=0; i<8; i++){
-				outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]=f16vec2(temp0[i]*stageNormalization);
-				outputs[indexOutput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]=f16vec2(temp1[i]*stageNormalization);
+				uint outputId = indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+				if (outputBufferBlockNum==1)
+					outputBlocks[0].outputs[outputId]=f16vec2(temp0[i]*stageNormalization);
+				else
+					outputBlocks[outputId/outputBufferBlockSize].outputs[outputId%outputBufferBlockSize]=f16vec2(temp0[i]*stageNormalization);
+				outputId = indexOutput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+				if (outputBufferBlockNum==1)
+					outputBlocks[0].outputs[outputId]=f16vec2(temp1[i]*stageNormalization);
+				else
+					outputBlocks[outputId/outputBufferBlockSize].outputs[outputId%outputBufferBlockSize]=f16vec2(temp1[i]*stageNormalization);
 			}
 		}else{
 			if((gl_LocalInvocationID.y*fft_dim+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*gl_WorkGroupSize.y*fft_dim)%fft_dim_full<fft_dim_full/2)
 				for (uint i=0; i<8; i++){
-					outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]=f16vec2(temp0[i]*stageNormalization);
-					outputs[indexOutput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]=f16vec2(temp1[i]*stageNormalization);
-					outputs[indexOutput(gl_LocalInvocationID.x+(i+16)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]=f16vec2(temp2[i]*stageNormalization);
-					outputs[indexOutput(gl_LocalInvocationID.x+(i+24)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]=f16vec2(temp3[i]*stageNormalization);
+					uint outputId = indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+					if (outputBufferBlockNum==1)
+					outputBlocks[0].outputs[outputId]=f16vec2(temp0[i]*stageNormalization);
+				else
+					outputBlocks[outputId/outputBufferBlockSize].outputs[outputId%outputBufferBlockSize]=f16vec2(temp0[i]*stageNormalization);
+					outputId = indexOutput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+					if (outputBufferBlockNum==1)
+					outputBlocks[0].outputs[outputId]=f16vec2(temp1[i]*stageNormalization);
+				else
+					outputBlocks[outputId/outputBufferBlockSize].outputs[outputId%outputBufferBlockSize]=f16vec2(temp1[i]*stageNormalization);
+					outputId = indexOutput(gl_LocalInvocationID.x+(i+16)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+					if (outputBufferBlockNum==1)
+					outputBlocks[0].outputs[outputId]=f16vec2(temp2[i]*stageNormalization);
+				else
+					outputBlocks[outputId/outputBufferBlockSize].outputs[outputId%outputBufferBlockSize]=f16vec2(temp2[i]*stageNormalization);
+					outputId = indexOutput(gl_LocalInvocationID.x+(i+24)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+					if (outputBufferBlockNum==1)
+					outputBlocks[0].outputs[outputId]=f16vec2(temp3[i]*stageNormalization);
+				else
+					outputBlocks[outputId/outputBufferBlockSize].outputs[outputId%outputBufferBlockSize]=f16vec2(temp3[i]*stageNormalization);
 				}
 		}
 		
@@ -562,10 +631,26 @@ void main() {
 		float stageNormalization = (inverse) ? 0.25 : 1.0;
 			
 		for (uint i=0; i<8; i++){
-			outputs[indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]=f16vec2(temp0[i]*stageNormalization);
-			outputs[indexOutput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]=f16vec2(temp1[i]*stageNormalization);
-			outputs[indexOutput(gl_LocalInvocationID.x+(i+16)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]=f16vec2(temp2[i]*stageNormalization);
-			outputs[indexOutput(gl_LocalInvocationID.x+(i+24)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim)]=f16vec2(temp3[i]*stageNormalization);
+			uint outputId = indexOutput(gl_LocalInvocationID.x+i*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+			if (outputBufferBlockNum==1)
+					outputBlocks[0].outputs[outputId]=f16vec2(temp0[i]*stageNormalization);
+				else
+					outputBlocks[outputId/outputBufferBlockSize].outputs[outputId%outputBufferBlockSize]=f16vec2(temp0[i]*stageNormalization);
+			outputId = indexOutput(gl_LocalInvocationID.x+(i+8)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+			if (outputBufferBlockNum==1)
+					outputBlocks[0].outputs[outputId]=f16vec2(temp1[i]*stageNormalization);
+				else
+					outputBlocks[outputId/outputBufferBlockSize].outputs[outputId%outputBufferBlockSize]=f16vec2(temp1[i]*stageNormalization);
+			outputId = indexOutput(gl_LocalInvocationID.x+(i+16)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+			if (outputBufferBlockNum==1)
+					outputBlocks[0].outputs[outputId]=f16vec2(temp2[i]*stageNormalization);
+				else
+					outputBlocks[outputId/outputBufferBlockSize].outputs[outputId%outputBufferBlockSize]=f16vec2(temp2[i]*stageNormalization);
+			outputId = indexOutput(gl_LocalInvocationID.x+(i+24)*gl_WorkGroupSize.x+(gl_WorkGroupID.x + consts.workGroupShiftX*performWorkGroupShiftX)*fft_dim);
+			if (outputBufferBlockNum==1)
+					outputBlocks[0].outputs[outputId]=f16vec2(temp3[i]*stageNormalization);
+				else
+					outputBlocks[outputId/outputBufferBlockSize].outputs[outputId%outputBufferBlockSize]=f16vec2(temp3[i]*stageNormalization);
 		}
 
 	}
