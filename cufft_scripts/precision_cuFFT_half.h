@@ -1,0 +1,1 @@
+void launch_precision_cuFFT_half(void* inputC, void* output_cuFFT, uint32_t* dims);

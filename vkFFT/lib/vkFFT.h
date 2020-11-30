@@ -5,6 +5,8 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/. 
+#ifndef VKFFT_H
+#define VKFFT_H
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -37,8 +39,8 @@ extern "C" {
 		VkBool32 useLUT; //1 to enable - switches from calculating sincos to using precomputed LUT tables
 		VkBool32 doublePrecision; //1 to enable
 		VkBool32 halfPrecision; //1 to enable
-		uint32_t devicePageSize;//in KB, the size of a page on the GPU. Setting to 0 disables local buffer split in pages. 2048 for AMD, Nvidia manages TLB misses better so 0 works for it
-		uint32_t localPageSize;//in KB, the size to split page into if sequence spans multiple devicePageSize pages. For AMD 16KB works well
+		uint32_t devicePageSize;//in KB, the size of a page on the GPU. Setting to 0 disables local buffer split in pages
+		uint32_t localPageSize;//in KB, the size to split page into if sequence spans multiple devicePageSize pages
 		uint32_t sharedMemorySize;//in bytes. For now Vulkan is optimized for 32KB of shared memory
 		uint32_t warpSize;//number of threads per warp/wavefront. Default 32
 		uint32_t registerBoost; //specify if register file size is bigger than shared memory (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4). Default 1, max 4
@@ -72,7 +74,7 @@ extern "C" {
 		VkBuffer* kernel;
 	} VkFFTConfiguration;
 
-	VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {65535,65535,65535},1,1,1,1,1,8,{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 0, 0, 32768, 32, 1, 1, 0, 1,"shaders/", 32, 0,0,0,0,0, 1,1,1,1,1, 0,0,0,0,0, 0,0,0,0,0 };
+	static VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {65535,65535,65535},1,1,1,1,1,8,{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 0, 0, 32768, 32, 1, 1, 0, 1,"shaders/", 32, 0,0,0,0,0, 1,1,1,1,1, 0,0,0,0,0, 0,0,0,0,0 };
 
 	typedef struct {
 		uint32_t localSize[3];
@@ -149,8 +151,8 @@ extern "C" {
 		VkFFTPlan localFFTPlan;
 		VkFFTPlan localFFTPlan_inverse_convolution; //additional inverse plan for convolution.
 	} VkFFTApplication;
-	VkFFTApplication defaultVkFFTApplication = { {}, {}, {} };
-	uint32_t* VkFFTReadShader(uint32_t* length, const char* filename) {
+	static VkFFTApplication defaultVkFFTApplication = { {}, {}, {} };
+	static inline uint32_t* VkFFTReadShader(uint32_t* length, const char* filename) {
 
 		FILE* fp = fopen(filename, "rb");
 		if (fp == NULL) {
@@ -175,7 +177,7 @@ extern "C" {
 		length[0] = filesizepadded;
 		return (uint32_t*)str;
 	}
-	void VkFFTInitShader(VkFFTApplication* app, uint32_t shader_id, VkShaderModule* shaderModule) {
+	static inline void VkFFTInitShader(VkFFTApplication* app, uint32_t shader_id, VkShaderModule* shaderModule) {
 		char filename[512];
 		char precision[20];
 		if (app->configuration.doublePrecision)
@@ -363,7 +365,7 @@ extern "C" {
 		free(code);
 
 	}
-	uint32_t findMemoryType(VkFFTApplication* app, uint32_t memoryTypeBits, uint32_t memorySize, VkMemoryPropertyFlags properties) {
+	static inline uint32_t findMemoryType(VkFFTApplication* app, uint32_t memoryTypeBits, uint32_t memorySize, VkMemoryPropertyFlags properties) {
 		VkPhysicalDeviceMemoryProperties memoryProperties = { 0 };
 
 		vkGetPhysicalDeviceMemoryProperties(app->configuration.physicalDevice[0], &memoryProperties);
@@ -374,7 +376,7 @@ extern "C" {
 		}
 		return -1;
 	}
-	void allocateFFTBuffer(VkFFTApplication* app, VkBuffer* buffer, VkDeviceMemory* deviceMemory, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags propertyFlags, VkDeviceSize size) {
+	static inline void allocateFFTBuffer(VkFFTApplication* app, VkBuffer* buffer, VkDeviceMemory* deviceMemory, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags propertyFlags, VkDeviceSize size) {
 		uint32_t queueFamilyIndices;
 		VkBufferCreateInfo bufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 		bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -391,7 +393,7 @@ extern "C" {
 		vkAllocateMemory(app->configuration.device[0], &memoryAllocateInfo, NULL, deviceMemory);
 		vkBindBufferMemory(app->configuration.device[0], buffer[0], deviceMemory[0], 0);
 	}
-	void transferDataFromCPU(VkFFTApplication* app, void* arr, VkBuffer* buffer, VkDeviceSize bufferSize) {
+	static inline void transferDataFromCPU(VkFFTApplication* app, void* arr, VkBuffer* buffer, VkDeviceSize bufferSize) {
 		VkDeviceSize stagingBufferSize = bufferSize;
 		VkBuffer stagingBuffer = { 0 };
 		VkDeviceMemory stagingBufferMemory = { 0 };
@@ -426,7 +428,7 @@ extern "C" {
 		vkDestroyBuffer(app->configuration.device[0], stagingBuffer, NULL);
 		vkFreeMemory(app->configuration.device[0], stagingBufferMemory, NULL);
 	}
-	void VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id) {
+	static inline void VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id) {
 		uint32_t complexSize;
 		if (app->configuration.doublePrecision)
 			complexSize = (2 * sizeof(double));
@@ -447,6 +449,7 @@ extern "C" {
 		temp = (axis_id == 0) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStrided;
 		if (temp > 1) {//more passes than one
 			registerBoost = app->configuration.registerBoost4Step;
+			if ((axis_id == 0) && (!app->configuration.performConvolution)) maxSingleSizeNonStrided = maxSequenceLengthSharedMemory*registerBoost;
 			temp = ((axis_id == 0) && (!app->configuration.reorderFourStep)) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStrided;
 			if (app->configuration.reorderFourStep)
 				numPasses = (uint32_t)ceil(log2(app->configuration.size[axis_id]) / log2(maxSingleSizeStrided));
@@ -629,7 +632,7 @@ extern "C" {
 		}
 		}
 	}
-	void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, VkBool32 inverse) {
+	static inline void VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, VkBool32 inverse) {
 		//get radix stages
 		VkFFTAxis* axis = &FFTPlan->supportAxes[axis_id - 1][axis_upload_id];
 		uint32_t maxSequenceLengthSharedMemory;
@@ -1667,7 +1670,7 @@ extern "C" {
 
 
 	}
-	void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, VkBool32 inverse) {
+	static inline void VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, VkBool32 inverse) {
 		//get radix stages
 		VkFFTAxis* axis = &FFTPlan->axes[axis_id][axis_upload_id];
 		uint32_t complexSize;
@@ -3023,7 +3026,7 @@ extern "C" {
 
 
 	}
-	void VkFFTPlanTranspose(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, VkBool32 inverse) {
+	static inline void VkFFTPlanTranspose(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, VkBool32 inverse) {
 		if (axis_id == 0) {
 			if (app->configuration.performR2C) {
 				FFTPlan->transpose[0].specializationConstants.ratio = (app->configuration.size[0] / app->configuration.size[1] / 2 >= 1) ? app->configuration.size[0] / app->configuration.size[1] / 2 : 2 * app->configuration.size[1] / app->configuration.size[0];
@@ -3204,7 +3207,7 @@ extern "C" {
 		vkDestroyShaderModule(app->configuration.device[0], pipelineShaderStageCreateInfo.module, NULL);
 
 	}
-	void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
+	static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
 		if (app->configuration.useLUT) {
 			vkDestroyBuffer(app->configuration.device[0], axis->bufferLUT, NULL);
 			vkFreeMemory(app->configuration.device[0], axis->bufferLUTDeviceMemory, NULL);
@@ -3216,7 +3219,7 @@ extern "C" {
 
 
 	}
-	void deleteTranspose(VkFFTApplication* app, VkFFTTranspose* transpose) {
+	static inline void deleteTranspose(VkFFTApplication* app, VkFFTTranspose* transpose) {
 		vkDestroyDescriptorPool(app->configuration.device[0], transpose->descriptorPool, NULL);
 		vkDestroyDescriptorSetLayout(app->configuration.device[0], transpose->descriptorSetLayout, NULL);
 		vkDestroyPipelineLayout(app->configuration.device[0], transpose->pipelineLayout, NULL);
@@ -3224,7 +3227,7 @@ extern "C" {
 
 
 	}
-	void initializeVulkanFFT(VkFFTApplication* app, VkFFTConfiguration inputLaunchConfiguration) {
+	static inline void initializeVulkanFFT(VkFFTApplication* app, VkFFTConfiguration inputLaunchConfiguration) {
 		VkPhysicalDeviceProperties physicalDeviceProperties = {};
 		vkGetPhysicalDeviceProperties(inputLaunchConfiguration.physicalDevice[0], &physicalDeviceProperties);
 		app->configuration = inputLaunchConfiguration;
@@ -3251,7 +3254,7 @@ extern "C" {
 		}
 
 	}
-	void dispatchEnchanced(VkFFTApplication* app, VkCommandBuffer commandBuffer, VkFFTAxis* axis, uint32_t* dispatchBlock) {
+	static inline void dispatchEnchanced(VkFFTApplication* app, VkCommandBuffer commandBuffer, VkFFTAxis* axis, uint32_t* dispatchBlock) {
 		uint32_t maxBlockPow2Size[3] = { (uint32_t)pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[0])),(uint32_t)pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[1])),(uint32_t)pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[2])) };
 		uint32_t blockNumber[3] = { (uint32_t)ceil(dispatchBlock[0] / (float)maxBlockPow2Size[0]),(uint32_t)ceil(dispatchBlock[1] / (float)maxBlockPow2Size[1]),(uint32_t)ceil(dispatchBlock[2] / (float)maxBlockPow2Size[2]) };
 		for (uint32_t i = 0; i < 3; i++)
@@ -3268,7 +3271,7 @@ extern "C" {
 			}
 		}
 	}
-	void VkFFTAppend(VkFFTApplication* app, VkCommandBuffer commandBuffer) {
+	static inline void VkFFTAppend(VkFFTApplication* app, VkCommandBuffer commandBuffer) {
 		VkMemoryBarrier memory_barrier = {
 				VK_STRUCTURE_TYPE_MEMORY_BARRIER,
 				0,
@@ -3906,7 +3909,7 @@ extern "C" {
 		}
 
 	}
-	void deleteVulkanFFT(VkFFTApplication* app) {
+	static inline void deleteVulkanFFT(VkFFTApplication* app) {
 		for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
 			for (uint32_t j = 0; j < app->localFFTPlan.numAxisUploads[i]; j++)
 				deleteAxis(app, &app->localFFTPlan.axes[i][j]);
@@ -3937,4 +3940,5 @@ extern "C" {
 	}
 #ifdef __cplusplus
 }
+#endif
 #endif

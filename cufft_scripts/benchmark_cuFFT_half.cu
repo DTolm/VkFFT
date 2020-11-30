@@ -28,7 +28,7 @@ void launch_benchmark_cuFFT_half(bool file_output, FILE* output)
 		inputC[i].x = (half) (2 * ((double)rand()) / RAND_MAX - 1.0);
 		inputC[i].y = (half) (2 * ((double)rand()) / RAND_MAX - 1.0);
 	}
-	for (int n = 0; n < 26; n++) {
+	for (int n = 0; n < 25; n++) {
 		double run_time[num_runs][2];
 		for (int r = 0; r < num_runs; r++) {
 			cufftHandle planHalf;
@@ -124,7 +124,7 @@ void launch_benchmark_cuFFT_half(bool file_output, FILE* output)
 		}
 	}
 	free(inputC);
-	benchmark_result[0] /= (26 - 1);
+	benchmark_result[0] /= (25 - 1);
 	if (file_output)
 		fprintf(output, "Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));
 	printf("Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));

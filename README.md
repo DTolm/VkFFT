@@ -41,7 +41,7 @@ VkFFT has a command-line interface with the following set of commands:\
 -devices: print the list of available GPU devices\
 -d X: select GPU device (default 0)\
 -o NAME: specify output file path\
--vkfft X: launch VkFFT sample X (0-10)\
+-vkfft X: launch VkFFT sample X (0-13) (if FFTW is enabled in CMakeLists.txt)\
 -cufft X: launch cuFFT sample X (0-3) (if enabled in CMakeLists.txt)\
 -test: (or no other keys) launch all VkFFT and cuFFT benchmarks\
 So, the command to launch single precision benchmark of VkFFT and cuFFT and save log to output.txt file on device 0 will look like this on Windows:\
@@ -54,7 +54,7 @@ VkFFT achieves striding by grouping nearby FFTs instead of transpositions.
 ## Benchmark results in comparison to cuFFT
 To measure how Vulkan FFT implementation works in comparison to cuFFT, we will perform a number of 1D, 2D and 3D tests, ranging from the small systems to the big ones. The test will consist of performing C2C FFT and inverse C2C FFT consecutively multiple times to calculate average time required. The results are obtained on Nvidia RTX 3080, AMD Radeon VII and AMD Radeon 6800XT graphics cards with no other GPU load. Launching -test key from Vulkan_FFT.cpp performs VkFFT/cuFFT benchmark. The overall benchmark score is calculated as an averaged performance score over presented set of systems (the bigger - the better): sum(system_size/average_iteration_time) /num_benchmark_samples
 
-The stable flat lines present for small sequence lengths indicate that time scales linearly with the system size, so the bigger the bandwidth the better the result will be. The stepwise drops occur once the amount of transfers increases from to 2x and to 3x when compute unit can't hold full sequence and splits it into combination of smaller ones. Radeon VII is faster than RTX 3080 below 2^18 (=2MB - page file size on AMD due to it having HBM2 memory with a higher bandwidth, however, this GPU apparently has TLB miss problems on large buffer sizes. The TLB problems are solved with logical split of buffer in 16KB chunks if sequence spans more than 2MB. Note: benchmark of 6800XT were on a version without a TLB fix. On RTX 3080, VkFFT is faster than cuFFT in single precision batched 1D FFTs on the whole range from 2^7 to 2^28:
+The stable flat lines present for small sequence lengths indicate that time scales linearly with the system size, so the bigger the bandwidth the better the result will be. The stepwise drops occur once the amount of transfers increases from to 2x and to 3x when compute unit can't hold full sequence and splits it into combination of smaller ones. Radeon VII is faster than RTX 3080 below 2^18 (=2MB - page file size on AMD due to it having HBM2 memory with a higher bandwidth, however, this GPU apparently has TLB miss problems on large buffer sizes. On RTX 3080, VkFFT is faster than cuFFT in single precision batched 1D FFTs on the range from 2^3 to 2^27:
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_single.png?raw=true)
 In double precision Radeon VII is able to get advantage due to its high double precision core count. Radeon RX 6800XT can store LUT in L3 cache and has higher double precision core count as well:
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_double.png?raw=true)
@@ -64,13 +64,14 @@ Multidimensional systems are optimized as well. Benchmark shows Radeon RX 6800XT
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_2d.png?raw=true)
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_3d.png?raw=true)
 ## Precision comparison of cuFFT/VkFFT/FFTW
-To measure how VkFFT (single/double precision) results compare to cuFFT (single/double precision) and FFTW (double precision), a set of ~50 systems covering full FFT range was filled with random complex data on the scale of [-1,1] and one C2C transform was performed on each system. The precision_cuFFT_VkFFT_FFTW.cu script in benchmark_precision_scripts folder contains the comparison code, which calculates for each value of the transformed system:
+To measure how VkFFT (single/double/half precision) results compare to cuFFT (single/double/half precision) and FFTW (double precision), a set of ~60 systems covering full FFT range was filled with random complex data on the scale of [-1,1] and one C2C transform was performed on each system. Samples 11(single), 12(double), 13(half) calculate for each value of the transformed system:
 
 - Max difference between cuFFT/VkFFT result and FFTW result
 - Average difference between cuFFT/VkFFT result and FFTW result
 - Max ratio of the difference between cuFFT/VkFFT result and FFTW result to the FFTW result
 - Average ratio of the difference between cuFFT/VkFFT result and FFTW result to the FFTW result
 
+FFTW is required to launch these samples (specify in CMakeLists include and library directories). If cuFFT is disabled, only FFTW/VkFFT results are calculated.\
 The precision_cuFFT_VkFFT_FFTW.txt file contains the single precision results for Nvidia's 1660Ti GPU and AMD Ryzen 2700 CPU. On average, the results fluctuate both for cuFFT and VkFFT with no clear winner in single precision. Max ratio stays in range of 2% for both cuFFT and VkFFT, while average ratio stays below 1e-6.\
 The precision_cuFFT_VkFFT_FFTW_double.txt file contains the double precision results for Nvidia's 1660Ti GPU and AMD Ryzen 2700 CPU. On average, VkFFT is more precise than cuFFT in double precision (see: max_difference and max_eps coloumns), however it is also ~20% slower (vkfft_benchmark_double.png). Note that double precision is still in testing and these results may change in the future. Max ratio stays in range of 5e-10% for both cuFFT and VkFFT, while average ratio stays below 1e-15. Overall, double precision is ~7 times slower than single on Nvidia's 1660Ti GPU.\
 The precision_cuFFT_VkFFT_FFTW_half.txt file contains the half precision results for Nvidia's 1660Ti GPU and AMD Ryzen 2700 CPU. On average, VkFFT is at least two times more precise than cuFFT in half precision (see: max_difference and max_eps coloumns), while being faster on average (vkfft_benchmark_half.png). Note that half precision is still in testing and is only used to store data in VkFFT. cuFFT script can probably also be improved. Average ratio stays in range of 0.2% for both cuFFT and VkFFT. Overall, half precision of VkFFT is ~50%-100% times faster than single on Nvidia's 1660Ti GPU.
