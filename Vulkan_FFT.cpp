@@ -7,7 +7,7 @@
 #include <algorithm>
 #include "vkFFT.h"
 #include "vulkan/vulkan.h"
-#include "Half.hpp"
+#include "half.hpp"
 
 #ifdef USE_cuFFT
 #include "benchmark_cuFFT.h"

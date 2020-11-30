@@ -1087,11 +1087,12 @@ extern "C" {
 		axis->groupedBatch = maxBatchCoalesced;
 		if ((app->configuration.size[0] < 4096) && (app->configuration.size[1] < 512) && (app->configuration.size[2] == 1)) {
 			if (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) {
-				if (1024 / axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim)
+				if (1024 / axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim) {
 					if (1024 / axis->specializationConstants.fftDim > axis->groupedBatch)
 						axis->groupedBatch = 1024 / axis->specializationConstants.fftDim;
 					else
 						axis->groupedBatch = maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim;
+				}
 			}
 		}
 		else {
@@ -1736,11 +1737,12 @@ extern "C" {
 		axis->groupedBatch = maxBatchCoalesced;
 		if ((app->configuration.size[0] < 4096) && (app->configuration.size[1] < 512) && (app->configuration.size[2] == 1)) {
 			if (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) {
-				if (1024 / axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim)
+				if (1024 / axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim) {
 					if (1024 / axis->specializationConstants.fftDim > axis->groupedBatch)
 						axis->groupedBatch = 1024 / axis->specializationConstants.fftDim;
 					else
 						axis->groupedBatch = maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim;
+				}
 			}
 		}
 		else {

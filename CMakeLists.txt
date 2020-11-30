@@ -17,9 +17,9 @@ find_package(Vulkan REQUIRED)
 add_library(VkFFT INTERFACE)
 target_include_directories(VkFFT INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/lib/)
 
-add_library(Half INTERFACE)
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Half/)
-target_link_libraries(${PROJECT_NAME} PUBLIC Vulkan::Vulkan VkFFT Half)
+add_library(half INTERFACE)
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/half/)
+target_link_libraries(${PROJECT_NAME} PUBLIC Vulkan::Vulkan VkFFT half)
 
 if(build_VkFFT_FFTW_precision)
 	add_definitions(-DUSE_FFTW)
