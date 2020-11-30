@@ -18,7 +18,7 @@ add_library(VkFFT INTERFACE)
 target_include_directories(VkFFT INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/lib/)
 
 add_library(half INTERFACE)
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/half/)
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/half_lib/)
 target_link_libraries(${PROJECT_NAME} PUBLIC Vulkan::Vulkan VkFFT half)
 
 if(build_VkFFT_FFTW_precision)
