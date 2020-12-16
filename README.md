@@ -4,7 +4,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
 
 ## I am looking for a PhD position/job that may be interested in my set of skills. Contact me by email: <d.tolmachev@fz-juelich.de> | <dtolm96@gmail.com>
 
-## Added Windows executables for benchmark: versions with CUDA benchmark (requires CUDA 11) and without (requires only graphics drivers). Both require shaders folder placed in the same location as executable. Uses ~3.5GB of VRAM. Located in Vulkan_FFT_CUDA_v1.0.5.zip and in Vulkan_FFT_noCUDA_v1.0.5.zip. Built with VS2019.
+## Added Windows executables for benchmark: versions with CUDA benchmark (requires CUDA 11) and without (requires only graphics drivers). Both require FFTW dll placed in the same location as executable. Uses ~3.5GB of VRAM. 
 
 ## Benchmark results of VkFFT can be found here: https://openbenchmarking.org/test/pts/vkfft
 
@@ -18,12 +18,12 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - No additional transposition uploads. Note: data can be reshuffled after the four step FFT algorithm with additional buffer (for big sequences). Doesn't matter for convolutions - they return to the input ordering (saves memory).
   - Complex to complex (C2C), real to complex (R2C) and complex to real (C2R) transformations. R2C and C2R are optimized to run up to 2x times faster than C2C (2D and 3D case only)
   - 1x1, 2x2, 3x3 convolutions with symmetric or nonsymmetric kernel (no register overutilization)
-  - Native zero padding to model open systems (up to 2x faster than simply padding input array with zeros)
+  - Native zero padding to model open systems (up to 2x faster than simply padding input array with zeros). Can specify the range of sequences filled with zeros and the direction where zeropadding is applied (read or write stage)
   - WHDCN layout - data is stored in the following order (sorted by increase in strides): the width, the height, the depth, the coordinate (the number of feature maps), the batch number
   - Multiple feature/batch convolutions - one input, multiple kernels
   - Multiple input/output/temporary buffer split. Allows to use data split between different memory allocations and mitigate 4GB single allocation limit.
   - Works on Nvidia, AMD and Intel GPUs (tested on Nvidia RTX 3080, GTX 1660 Ti, AMD Radeon VII and Intel UHD 620)
-  - Header-only (+precompiled shaders) library with Vulkan interface, which allows to append VkFFT directly to user's command buffer
+  - Header-only library with Vulkan interface, which allows to append VkFFT directly to user's command buffer. Shaders are compiled once during the plan creation stage
 ## Future release plan
  - ##### Planned
     - Publication based on implemented optimizations
@@ -33,7 +33,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
     - Multiple GPU job splitting
 
 ## Installation
-Include the vkFFT.h file and specify path to the shaders folder in CMake or from C interface. Sample CMakeLists.txt file configures project based on Vulkan_FFT.cpp file, which contains examples on how to use VkFFT to perform FFT, iFFT and convolution calculations, use zero padding, multiple feature/batch convolutions, C2C FFTs of big systems, R2C/C2R transforms, double precision FFTs, half precision FFTs.\
+Include the vkFFT.h file and glslang compiler. Sample CMakeLists.txt file configures project based on Vulkan_FFT.cpp file, which contains examples on how to use VkFFT to perform FFT, iFFT and convolution calculations, use zero padding, multiple feature/batch convolutions, C2C FFTs of big systems, R2C/C2R transforms, double precision FFTs, half precision FFTs.\
 For single and double precision, Vulkan 1.0 is required. For half precision, Vulkan 1.1 is required.
 ## Command-line interface
 VkFFT has a command-line interface with the following set of commands:\
@@ -60,7 +60,7 @@ In double precision Radeon VII is able to get advantage due to its high double p
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_double.png?raw=true)
 In half precision mode, VkFFT only uses it for data storage, all computations are performed in single.It still proves to be enough to get stable 2x performance gain on RTX 3080: 
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_half.png?raw=true)
-Multidimensional systems are optimized as well. Benchmark shows Radeon RX 6800XT can store systems up to 128MB in L3 cache for big performance gains. Native support for zero-padding allows to transfer less data and get up to 3x performance boost in multidimensional FFTs:
+Multidimensional systems are optimized as well. Benchmark shows Radeon RX 6800XT can store systems up to 128MB in L3 cache for big performance gains. Native support for zero padding allows to transfer less data and get up to 3x performance boost in multidimensional FFTs:
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_2d.png?raw=true)
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_3d.png?raw=true)
 ## Precision comparison of cuFFT/VkFFT/FFTW

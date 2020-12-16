@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.11)
 project(Vulkan_FFT)
 set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
+set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
 option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" OFF)
 option(build_VkFFT_FFTW_precision "Build VkFFT FFTW precision comparison" OFF)
 if (MSVC)
@@ -10,16 +11,21 @@ endif()
 
 add_executable(${PROJECT_NAME} Vulkan_FFT.cpp)
 
-target_compile_definitions(${PROJECT_NAME} PUBLIC -DSHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/shaders/")
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_11)
 
 find_package(Vulkan REQUIRED)
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glslang-master/glslang/Include/)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-master)
+
 add_library(VkFFT INTERFACE)
-target_include_directories(VkFFT INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/lib/)
+target_include_directories(VkFFT INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/)
+target_include_directories(VkFFT INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/glslang-master/glslang/Include/)
 
 add_library(half INTERFACE)
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/half_lib/)
-target_link_libraries(${PROJECT_NAME} PUBLIC Vulkan::Vulkan VkFFT half)
+
+target_link_libraries(${PROJECT_NAME} PUBLIC SPIRV glslang Vulkan::Vulkan VkFFT half)
+
 
 if(build_VkFFT_FFTW_precision)
 	add_definitions(-DUSE_FFTW)
@@ -78,35 +84,3 @@ if(build_VkFFT_cuFFT_benchmark)
 	set_target_properties(cufft_scripts PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 	target_link_libraries(${PROJECT_NAME} PUBLIC cufft_scripts)
 endif()
-
-
-#Build shaders routine
-
-find_program(
-	GLSL_VALIDATOR
-	glslangValidator
-	DOC "Vulkan Shader Compiler (glslangValidator)"
-	REQUIRED
-)
-
-file(GLOB_RECURSE COMP_SOURCE_FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.comp"
-    )
-
-foreach(INPUT_SHADER ${COMP_SOURCE_FILES})
-	get_filename_component(DIR ${INPUT_SHADER} DIRECTORY)
-	get_filename_component(FILE_NAME ${INPUT_SHADER} NAME_WE)
-	set(OUTPUT_BINARY "${DIR}/${FILE_NAME}.spv")
-
-	add_custom_command(
-		OUTPUT ${OUTPUT_BINARY}
-		COMMAND ${GLSL_VALIDATOR} -V ${INPUT_SHADER} -o ${OUTPUT_BINARY}
-		DEPENDS ${INPUT_SHADER})
-	list(APPEND SPIRV_BINARY_FILES ${OUTPUT_BINARY})
-endforeach(INPUT_SHADER)
-
-add_custom_target(
-    compile_shaders
-    DEPENDS ${SPIRV_BINARY_FILES}
-    )
-add_dependencies(VkFFT compile_shaders)
