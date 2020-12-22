@@ -1155,7 +1155,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 
 	}
-	static inline void appendZeropadReturn(char* output, VkFFTSpecializationConstantsLayout sc) {
+	static inline void appendZeropadStart(char* output, VkFFTSpecializationConstantsLayout sc) {
 		//return if sequence is full of zeros from the start
 		if (sc.inverse) {
 			switch (sc.axis_id) {
@@ -1170,7 +1170,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					else
 						sprintf(idX, "gl_GlobalInvocationID.x");
 					if (sc.performZeropaddingInput[0])
-						sprintf(output + strlen(output), "		if((%s >= %d)&&(%s < %d)) return;\n", idX, sc.fft_zeropad_left_read[0], idX, sc.fft_zeropad_right_read[0]);
+						sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idX, sc.fft_zeropad_left_read[0], idX, sc.fft_zeropad_right_read[0]);
 				}
 				break;
 			}
@@ -1189,12 +1189,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						sprintf(idX, "gl_GlobalInvocationID.x");
 					if (sc.fft_zeropad_left_read[0] < sc.fft_zeropad_right_read[0]) {
 						if (sc.performZeropaddingInput[0])
-							sprintf(output + strlen(output), "		if((%s >= %d)&&(%s < %d)) return;\n", idX, sc.fft_zeropad_left_read[0], idX, sc.fft_zeropad_right_read[0]);
+							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idX, sc.fft_zeropad_left_read[0], idX, sc.fft_zeropad_right_read[0]);
 					}
 
 					if (sc.fft_zeropad_left_read[1] < sc.fft_zeropad_right_read[1]) {
 						if (sc.performZeropaddingInput[1])
-							sprintf(output + strlen(output), "		if((%s >= %d)&&(%s < %d)) return;\n", idY, sc.fft_zeropad_left_read[1], idY, sc.fft_zeropad_right_read[1]);
+							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc.fft_zeropad_left_read[1], idY, sc.fft_zeropad_right_read[1]);
 					}
 				}
 				else {
@@ -1205,7 +1205,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						sprintf(idY, "gl_GlobalInvocationID.x");
 					if (sc.fft_zeropad_left_read[1] < sc.fft_zeropad_right_read[1]) {
 						if (sc.performZeropaddingInput[1])
-							sprintf(output + strlen(output), "		if((%s >= %d)&&(%s < %d)) return;\n", idY, sc.fft_zeropad_left_read[1], idY, sc.fft_zeropad_right_read[1]);
+							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc.fft_zeropad_left_read[1], idY, sc.fft_zeropad_right_read[1]);
 					}
 				}
 				break;
@@ -1228,11 +1228,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sprintf(idZ, "gl_GlobalInvocationID.z");
 				if (sc.fft_zeropad_left_read[1] < sc.fft_zeropad_right_read[1]) {
 					if (sc.performZeropaddingInput[1])
-						sprintf(output + strlen(output), "		if((%s >= %d)&&(%s < %d)) return;\n", idY, sc.fft_zeropad_left_read[1], idY, sc.fft_zeropad_right_read[1]);
+						sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc.fft_zeropad_left_read[1], idY, sc.fft_zeropad_right_read[1]);
 				}
 				if (sc.fft_zeropad_left_read[2] < sc.fft_zeropad_right_read[2]) {
 					if (sc.performZeropaddingInput[2])
-						sprintf(output + strlen(output), "		if((%s >= %d)&&(%s < %d)) return;\n", idZ, sc.fft_zeropad_left_read[2], idZ, sc.fft_zeropad_right_read[2]);
+						sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idZ, sc.fft_zeropad_left_read[2], idZ, sc.fft_zeropad_right_read[2]);
 				}
 				break;
 			}
@@ -1244,7 +1244,107 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sprintf(idZ, "gl_GlobalInvocationID.z");
 				if (sc.fft_zeropad_left_read[2] < sc.fft_zeropad_right_read[2]) {
 					if (sc.performZeropaddingInput[2])
-						sprintf(output + strlen(output), "		if((%s >= %d)&&(%s < %d)) return;\n", idZ, sc.fft_zeropad_left_read[2], idZ, sc.fft_zeropad_right_read[2]);
+						sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idZ, sc.fft_zeropad_left_read[2], idZ, sc.fft_zeropad_right_read[2]);
+				}
+				break;
+			}
+			case 2: {
+
+				break;
+			}
+			}
+		}
+	}
+	static inline void appendZeropadEnd(char* output, VkFFTSpecializationConstantsLayout sc) {
+		//return if sequence is full of zeros from the start
+		if (sc.inverse) {
+			switch (sc.axis_id) {
+			case 0: {
+				break;
+			}
+			case 1: {
+				if (!sc.supportAxis) {
+					char idX[100] = "";
+					if (sc.performWorkGroupShift[0])
+						sprintf(idX, "(gl_GlobalInvocationID.x + consts.workGroupShiftX * gl_WorkGroupSize.x)");
+					else
+						sprintf(idX, "gl_GlobalInvocationID.x");
+					if (sc.performZeropaddingInput[0])
+						sprintf(output + strlen(output), "		}\n");
+				}
+				break;
+			}
+			case 2: {
+				if (!sc.supportAxis) {
+					char idY[100] = "";
+					if (sc.performWorkGroupShift[1])//y axis is along z workgroup here
+						sprintf(idY, "(gl_GlobalInvocationID.z + consts.workGroupShiftZ * gl_WorkGroupSize.z)");
+					else
+						sprintf(idY, "gl_GlobalInvocationID.z");
+
+					char idX[100] = "";
+					if (sc.performWorkGroupShift[0])
+						sprintf(idX, "(gl_GlobalInvocationID.x + consts.workGroupShiftX * gl_WorkGroupSize.x)");
+					else
+						sprintf(idX, "gl_GlobalInvocationID.x");
+					if (sc.fft_zeropad_left_read[0] < sc.fft_zeropad_right_read[0]) {
+						if (sc.performZeropaddingInput[0])
+							sprintf(output + strlen(output), "		}\n");
+					}
+
+					if (sc.fft_zeropad_left_read[1] < sc.fft_zeropad_right_read[1]) {
+						if (sc.performZeropaddingInput[1])
+							sprintf(output + strlen(output), "		}\n");
+					}
+				}
+				else {
+					char idY[100] = "";
+					if (sc.performWorkGroupShift[1])//for support axes y is along x workgroup
+						sprintf(idY, "(gl_GlobalInvocationID.x + consts.workGroupShiftX * gl_WorkGroupSize.x)");
+					else
+						sprintf(idY, "gl_GlobalInvocationID.x");
+					if (sc.fft_zeropad_left_read[1] < sc.fft_zeropad_right_read[1]) {
+						if (sc.performZeropaddingInput[1])
+							sprintf(output + strlen(output), "		}\n");
+					}
+				}
+				break;
+			}
+			}
+		}
+		else {
+			switch (sc.axis_id) {
+			case 0: {
+				char idY[100] = "";
+				if (sc.performWorkGroupShift[1])
+					sprintf(idY, "(gl_GlobalInvocationID.y + consts.workGroupShiftY * gl_WorkGroupSize.y)");
+				else
+					sprintf(idY, "gl_GlobalInvocationID.y");
+
+				char idZ[100] = "";
+				if (sc.performWorkGroupShift[2])
+					sprintf(idZ, "(gl_GlobalInvocationID.z + consts.workGroupShiftZ * gl_WorkGroupSize.z)");
+				else
+					sprintf(idZ, "gl_GlobalInvocationID.z");
+				if (sc.fft_zeropad_left_read[1] < sc.fft_zeropad_right_read[1]) {
+					if (sc.performZeropaddingInput[1])
+						sprintf(output + strlen(output), "		}\n");
+				}
+				if (sc.fft_zeropad_left_read[2] < sc.fft_zeropad_right_read[2]) {
+					if (sc.performZeropaddingInput[2])
+						sprintf(output + strlen(output), "		}\n");
+				}
+				break;
+			}
+			case 1: {
+				char idZ[100] = "";
+				if (sc.performWorkGroupShift[2])
+					sprintf(idZ, "(gl_GlobalInvocationID.z + consts.workGroupShiftZ * gl_WorkGroupSize.z)");
+				else
+					sprintf(idZ, "gl_GlobalInvocationID.z");
+				if (sc.fft_zeropad_left_read[2] < sc.fft_zeropad_right_read[2]) {
+					if (sc.performZeropaddingInput[2])
+						sprintf(output + strlen(output), "		}\n");
 				}
 				break;
 			}
@@ -1447,7 +1547,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
-			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x* sc.stageStartSize, sc.fftDim* sc.stageStartSize, sc.size[sc.axis_id]);
+			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x * sc.stageStartSize, sc.fftDim * sc.stageStartSize, sc.size[sc.axis_id]);
 
 
 			if (sc.zeropad[0]) {
@@ -1506,7 +1606,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
 
 			//sprintf(output + strlen(output), "		if(gl_GlobalInvolcationID.x%s >= %d) return; \n", shiftX, sc.size[0] / axis->specializationConstants.fftDim);
-			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.stageStartSize, sc.stageStartSize* sc.fftDim, sc.fft_dim_full);
+			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.stageStartSize, sc.stageStartSize * sc.fftDim, sc.fft_dim_full);
 
 			if (sc.zeropad[0]) {
 				for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
@@ -3610,7 +3710,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
-			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x* sc.stageStartSize, sc.fftDim* sc.stageStartSize, sc.size[sc.axis_id]);
+			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x * sc.stageStartSize, sc.fftDim * sc.stageStartSize, sc.size[sc.axis_id]);
 			if ((sc.reorderFourStep) && (sc.stageStartSize == 1)) {
 				if (sc.zeropad[1]) {
 					for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
@@ -3705,7 +3805,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
-			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.stageStartSize, sc.stageStartSize* sc.fftDim, sc.fft_dim_full);
+			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.stageStartSize, sc.stageStartSize * sc.fftDim, sc.fft_dim_full);
 			if (sc.zeropad[1]) {
 				for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 					sprintf(output + strlen(output), "		inoutID = (gl_GlobalInvocationID.x%s) %% (%d) + %d * (gl_LocalInvocationID.y + %d) + ((gl_GlobalInvocationID.x%s) / %d) * (%d);\n", shiftX, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1], shiftX, sc.stageStartSize, sc.stageStartSize * sc.fftDim);
@@ -4262,13 +4362,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}*/
 		appendSharedMemoryVkFFT(output, sc, floatType, uintType, type);
 		sprintf(output + strlen(output), "void main() {\n");
-		appendZeropadReturn(output, sc);
 		//if (type==0) sprintf(output + strlen(output), "return;\n");
 		appendInitialization(output, sc, floatType, uintType, type);
 		if ((sc.convolutionStep) && (sc.matrixConvolution > 1))
 			sprintf(output + strlen(output), "	for (uint coordinate=%d; coordinate > 0; coordinate--){\n\
 	coordinate--;\n", sc.matrixConvolution);
+		appendZeropadStart(output, sc);
 		appendReadDataVkFFT(output, sc, floatType, floatTypeMemory, uintType, type);
+		appendZeropadEnd(output, sc);
 		//appendBarrierVkFFT(output, 1);
 		appendReorder4StepRead(output, sc, floatType, uintType, type);
 		uint32_t stageSize = 1;
@@ -4322,8 +4423,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		}
 		appendReorder4StepWrite(output, sc, floatType, uintType, type);
+		appendZeropadStart(output, sc);
 		appendWriteDataVkFFT(output, sc, floatType, floatTypeMemory, uintType, type);
-
+		appendZeropadEnd(output, sc);
 		if ((sc.convolutionStep) && (sc.matrixConvolution > 1))
 			sprintf(output + strlen(output), "	}\n");
 		if ((sc.convolutionStep) && (sc.numKernels > 1))
@@ -4814,6 +4916,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				FFTPlan->axes[axis_id][k].specializationConstants.stageRadix[0] = j;
 			}
 		}
+		return VK_SUCCESS;
 	}
 	static inline VkResult VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, VkBool32 inverse, uint32_t convolutionInverseStage) {
 		//get radix stages
@@ -5546,16 +5649,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				/* .maxDualSourceDrawBuffersEXT = */ 1,
 
 				/* .limits = */ {
-					/* .nonInductiveForLoops = */ 1,
-					/* .whileLoops = */ 1,
-					/* .doWhileLoops = */ 1,
-					/* .generalUniformIndexing = */ 1,
-					/* .generalAttributeMatrixVectorIndexing = */ 1,
-					/* .generalVaryingIndexing = */ 1,
-					/* .generalSamplerIndexing = */ 1,
-					/* .generalVariableIndexing = */ 1,
-					/* .generalConstantMatrixVectorIndexing = */ 1,
-				} };
+				/* .nonInductiveForLoops = */ 1,
+				/* .whileLoops = */ 1,
+				/* .doWhileLoops = */ 1,
+				/* .generalUniformIndexing = */ 1,
+				/* .generalAttributeMatrixVectorIndexing = */ 1,
+				/* .generalVaryingIndexing = */ 1,
+				/* .generalSamplerIndexing = */ 1,
+				/* .generalVariableIndexing = */ 1,
+				/* .generalConstantMatrixVectorIndexing = */ 1,
+			} };
 			glslang_target_client_version_t client_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_VULKAN_1_1 : GLSLANG_TARGET_VULKAN_1_0;
 			glslang_target_language_version_t target_language_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_SPV_1_3 : GLSLANG_TARGET_SPV_1_0;
 			const glslang_input_t input =
@@ -6221,7 +6324,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			|| ((axis_id == 0) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)))
 			) ||
 			((app->configuration.numberKernels > 1) && (
-				(inverse)
+			(inverse)
 				|| (axis_id == app->configuration.FFTdim - 1)))
 			) {
 			uint64_t totalSize = 0;
@@ -6434,7 +6537,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						|| ((axis_id == 0) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)))
 						) ||
 						((app->configuration.numberKernels > 1) && (
-							(inverse)
+						(inverse)
 							|| (axis_id == app->configuration.FFTdim - 1)))
 						) {
 						uint32_t bufferId = 0;
@@ -7008,16 +7111,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				/* .maxDualSourceDrawBuffersEXT = */ 1,
 
 				/* .limits = */ {
-					/* .nonInductiveForLoops = */ 1,
-					/* .whileLoops = */ 1,
-					/* .doWhileLoops = */ 1,
-					/* .generalUniformIndexing = */ 1,
-					/* .generalAttributeMatrixVectorIndexing = */ 1,
-					/* .generalVaryingIndexing = */ 1,
-					/* .generalSamplerIndexing = */ 1,
-					/* .generalVariableIndexing = */ 1,
-					/* .generalConstantMatrixVectorIndexing = */ 1,
-				} };
+				/* .nonInductiveForLoops = */ 1,
+				/* .whileLoops = */ 1,
+				/* .doWhileLoops = */ 1,
+				/* .generalUniformIndexing = */ 1,
+				/* .generalAttributeMatrixVectorIndexing = */ 1,
+				/* .generalVaryingIndexing = */ 1,
+				/* .generalSamplerIndexing = */ 1,
+				/* .generalVariableIndexing = */ 1,
+				/* .generalConstantMatrixVectorIndexing = */ 1,
+			} };
 			glslang_target_client_version_t client_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_VULKAN_1_1 : GLSLANG_TARGET_VULKAN_1_0;
 			glslang_target_language_version_t target_language_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_SPV_1_3 : GLSLANG_TARGET_SPV_1_0;
 			const glslang_input_t input =
