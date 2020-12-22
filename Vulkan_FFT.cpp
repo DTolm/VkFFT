@@ -1226,10 +1226,10 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			fprintf(output, "3 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
 		printf("3 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
 
-		const int num_benchmark_samples = 33;
-		const int num_runs = 5;
-
+		const int num_benchmark_samples = 39;
+		const int num_runs = 3;
 		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
+		{720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},{7680, 4320, 1, 2},
 		{(uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},	{(uint32_t)pow(2,7), (uint32_t)pow(2,6), 1, 2}, {(uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},	{(uint32_t)pow(2,8), (uint32_t)pow(2,7), 1, 2},{(uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},
 		{(uint32_t)pow(2,9), (uint32_t)pow(2,8), 1, 2},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},	{(uint32_t)pow(2,10), (uint32_t)pow(2,9), 1, 2},{(uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},	{(uint32_t)pow(2,11), (uint32_t)pow(2,10), 1, 2},{(uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},
 		{(uint32_t)pow(2,12), (uint32_t)pow(2,11), 1, 2},{(uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
@@ -1450,10 +1450,10 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			fprintf(output, "4 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
 		printf("4 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
 
-		const int num_benchmark_samples = 33;
+		const int num_benchmark_samples = 39;
 		const int num_runs = 3;
-
 		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
+		{720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},{7680, 4320, 1, 2},
 		{(uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},	{(uint32_t)pow(2,7), (uint32_t)pow(2,6), 1, 2}, {(uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},	{(uint32_t)pow(2,8), (uint32_t)pow(2,7), 1, 2},{(uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},
 		{(uint32_t)pow(2,9), (uint32_t)pow(2,8), 1, 2},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},	{(uint32_t)pow(2,10), (uint32_t)pow(2,9), 1, 2},{(uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},	{(uint32_t)pow(2,11), (uint32_t)pow(2,10), 1, 2},{(uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},
 		{(uint32_t)pow(2,12), (uint32_t)pow(2,11), 1, 2},{(uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
@@ -1879,10 +1879,10 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 		if (file_output)
 			fprintf(output, "6 - VkFFT FFT + iFFT R2C/C2R benchmark\n");
 		printf("6 - VkFFT FFT + iFFT R2C/C2R benchmark\n");
-		const uint32_t num_benchmark_samples = 19;
+		const uint32_t num_benchmark_samples = 24;
 		const uint32_t num_runs = 3;
 		//printf("First %d runs are a warmup\n", num_runs);
-		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {64, 64, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2},  {4096, 256, 1, 2}, {2048, 1024, 1, 2},{4096, 2048, 1, 2}, {4096, 4096, 1, 2},
+		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {64, 64, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2},  {4096, 256, 1, 2}, {2048, 1024, 1, 2},{4096, 2048, 1, 2}, {4096, 4096, 1, 2}, {720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},
 																	{32, 32, 32, 3}, {64, 64, 64, 3}, {256, 256, 32, 3},  {1024, 256, 32, 3},  {256, 256, 256, 3}, {2048, 1024, 8, 3},  {512, 512, 128, 3}, {2048, 256, 256, 3}, {4096, 512, 8, 3} };
 		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 		float* buffer_input = (float*)malloc((uint64_t)4 * 2 * pow(2, 27));
@@ -3871,6 +3871,270 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 		glslang_finalize_process();//destroy compiler after use
 		break;
 	}
+	case 14:
+	{
+		if (file_output)
+			fprintf(output, "14 - VkFFT/FFTW C2C power 3/5 precision test in single precision\n");
+		printf("14 - VkFFT/FFTW C2C power 3/5 precision test in single precision\n");
+
+		const int num_benchmark_samples = 96;
+		const int num_runs = 1;
+
+		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {3, 1, 1, 1},{5, 1, 1, 1},{6, 1, 1, 1},{9, 1, 1, 1},{10, 1, 1, 1},{12, 1, 1, 1},
+			{15, 1, 1, 1},{24, 1, 1, 1},{25, 1, 1, 1},{27, 1, 1, 1},{30, 1, 1, 1},{45, 1, 1, 1},{60, 1, 1, 1},{81, 1, 1, 1},
+			{125, 1, 1, 1},{243, 1, 1, 1},{625, 1, 1, 1},{720, 1, 1, 1},{1080, 1, 1, 1},{1440, 1, 1, 1},{1920, 1, 1, 1},{2160, 1, 1, 1},
+			{3840, 1, 1, 1},{4000 , 1, 1, 1},{4050, 1, 1, 1},{4320 , 1, 1, 1},{7680, 1, 1, 1},{9000, 1, 1, 1},{7680 * 5, 1, 1, 1},
+			{(uint32_t)pow(3,10), 1, 1, 1},{(uint32_t)pow(3,11), 1, 1, 1},{(uint32_t)pow(3,12), 1, 1, 1},{(uint32_t)pow(3,13), 1, 1, 1},{(uint32_t)pow(3,14), 1, 1, 1},{(uint32_t)pow(3,15), 1, 1, 1},
+			{(uint32_t)pow(5,5), 1, 1, 1},{(uint32_t)pow(5,6), 1, 1, 1},{(uint32_t)pow(5,7), 1, 1, 1},{(uint32_t)pow(5,8), 1, 1, 1},{(uint32_t)pow(5,9), 1, 1, 1},
+			{8, 3, 1, 2},{8, 5, 1, 2},{8, 6, 1, 2},{8, 9, 1, 2},{8, 10, 1, 2},{8, 12, 1, 2},{8, 15, 1, 2},{8, 24, 1, 2},
+			{8, 25, 1, 2},{8, 27, 1, 2},{8, 30, 1, 2},{8, 45, 1, 2},{8, 60, 1, 2},{8, 81, 1, 2},{8, 125, 1, 2},{8, 243, 1, 2},
+			{8, 625, 1, 2},{8, 720, 1, 2},{8, 1080, 1, 2},{8, 1440, 1, 2},{8, 1920, 1, 2},{8, 2160, 1, 2},
+			{8, 3840, 1, 2},{8, 4000, 1, 2},{8, 4050, 1, 2},{8, 4320, 1, 2},{8, 7680, 1, 2},{8, 4050 * 3, 1, 2},{8, 7680 * 5, 1, 2},
+			{8, (uint32_t)pow(3,10), 1, 2},	{8, (uint32_t)pow(3,11), 1, 2}, {8, (uint32_t)pow(3,12), 1, 2}, {8, (uint32_t)pow(3,13), 1, 2}, {8, (uint32_t)pow(3,14), 1, 2}, {8, (uint32_t)pow(3,15), 1, 2},
+			{8, (uint32_t)pow(5,5), 1, 2},	{8, (uint32_t)pow(5,6), 1, 2}, {8, (uint32_t)pow(5,7), 1, 2}, {8, (uint32_t)pow(5,8), 1, 2}, {8, (uint32_t)pow(5,9), 1, 2},
+			{3, 3, 3, 3},{5, 5, 5, 3},{6, 6, 6, 3},{9, 9, 9, 3},{10, 10, 10, 3},{12, 12, 12, 3},
+			{15, 15, 15, 3},{24, 24, 24, 3},{25, 25, 25, 3},{27, 27, 27, 3},{30, 30, 30, 3},{45, 45, 45, 3},{60, 60, 60, 3},{81, 81, 81, 3},
+			{125, 125, 125, 3},{243, 243, 243, 3}
+		};
+
+		double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
+
+		for (int n = 0; n < num_benchmark_samples; n++) {
+			for (int r = 0; r < num_runs; r++) {
+
+				fftwf_complex* inputC;
+				fftw_complex* inputC_double;
+				uint32_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
+
+				inputC = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * dims[0] * dims[1] * dims[2]));
+				inputC_double = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
+				for (int l = 0; l < dims[2]; l++) {
+					for (int j = 0; j < dims[1]; j++) {
+						for (int i = 0; i < dims[0]; i++) {
+							inputC[i + j * dims[0] + l * dims[0] * dims[1]][0] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+							inputC[i + j * dims[0] + l * dims[0] * dims[1]][1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+							inputC_double[i + j * dims[0] + l * dims[0] * dims[1]][0] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]][0];
+							inputC_double[i + j * dims[0] + l * dims[0] * dims[1]][1] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]][1];
+						}
+					}
+				}
+
+				fftw_plan p;
+
+				fftw_complex* output_FFTW = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
+
+				switch (benchmark_dimensions[n][3]) {
+				case 1:
+					p = fftw_plan_dft_1d(benchmark_dimensions[n][0], inputC_double, output_FFTW, 1, FFTW_ESTIMATE);
+					break;
+				case 2:
+					p = fftw_plan_dft_2d(benchmark_dimensions[n][1], benchmark_dimensions[n][0], inputC_double, output_FFTW, 1, FFTW_ESTIMATE);
+					break;
+				case 3:
+					p = fftw_plan_dft_3d(benchmark_dimensions[n][2], benchmark_dimensions[n][1], benchmark_dimensions[n][0], inputC_double, output_FFTW, 1, FFTW_ESTIMATE);
+					break;
+				}
+
+				fftw_execute(p);
+
+				float totTime = 0;
+				int batch = 1;
+
+				//VkFFT part
+
+				VkFFTConfiguration forward_configuration = defaultVkFFTConfiguration;
+				VkFFTApplication app_forward = defaultVkFFTApplication;
+				//VkFFTApplication app_inverse = defaultVkFFTApplication;
+				forward_configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
+				forward_configuration.size[0] = benchmark_dimensions[n][0]; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
+				forward_configuration.size[1] = benchmark_dimensions[n][1];
+				forward_configuration.size[2] = benchmark_dimensions[n][2];
+				for (uint32_t i = 0; i < 3; i++) {
+					forward_configuration.bufferStride[i] = forward_configuration.size[i];//can specify arbitrary buffer strides, if buffer is bigger than data - can be used for upscaling - you put data in the bigger buffer (2x in each dimension) in the corner, transform forward, zeropad to full buffer size and inverse
+				}
+				//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
+				switch (vkGPU->physicalDeviceProperties.vendorID) {
+				case 0x10DE://NVIDIA
+					forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
+					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
+					forward_configuration.registerBoost = 4;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				case 0x8086://INTEL
+					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
+					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				case 0x1002://AMD
+					forward_configuration.coalescedMemory = 32;
+					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 64;
+					forward_configuration.registerBoost = 2;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 19;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				default:
+					forward_configuration.coalescedMemory = 64;
+					forward_configuration.useLUT = false;
+					forward_configuration.warpSize = 32;
+					forward_configuration.registerBoost = 1;
+					forward_configuration.registerBoost4Step = 1;
+					forward_configuration.swapTo3Stage4Step = 0;
+					forward_configuration.performHalfBandwidthBoost = false;
+					break;
+				}
+				forward_configuration.performZeropaddingInput[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropaddingInput[1] = false;
+				forward_configuration.performZeropaddingInput[2] = false;
+				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
+				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
+				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
+				forward_configuration.inverse = false; //Direction of FFT. false - forward, true - inverse.
+				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [VkDeviceSize *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [VkDeviceSize *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
+				forward_configuration.device = &vkGPU->device;
+				forward_configuration.queue = &vkGPU->queue; //to allocate memory for LUT, we have to pass a queue, vkGPU->fence, commandPool and physicalDevice pointers 
+				forward_configuration.fence = &vkGPU->fence;
+				forward_configuration.commandPool = &vkGPU->commandPool;
+				forward_configuration.physicalDevice = &vkGPU->physicalDevice;
+				forward_configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+				//forward_configuration.compiler = &compiler;
+				//forward_configuration.options = &options;
+				//forward_configuration.code0 = code0;
+				forward_configuration.reorderFourStep = true;
+				//Custom path to the folder with shaders, default is "shaders");
+
+
+				uint32_t numBuf = 1;
+
+				//Allocate buffers for the input data. - we use 4 in this example
+				VkDeviceSize* bufferSize = (VkDeviceSize*)malloc(sizeof(VkDeviceSize) * numBuf);
+				for (uint32_t i = 0; i < numBuf; i++) {
+					bufferSize[i] = {};
+					bufferSize[i] = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(float) * 2 * forward_configuration.bufferStride[0] * forward_configuration.bufferStride[1] * forward_configuration.bufferStride[2] / numBuf;
+				}
+				VkBuffer* buffer = (VkBuffer*)malloc(numBuf * sizeof(VkBuffer));
+				VkDeviceMemory* bufferDeviceMemory = (VkDeviceMemory*)malloc(numBuf * sizeof(VkDeviceMemory));
+				VkBuffer* tempBuffer = (VkBuffer*)malloc(numBuf * sizeof(VkBuffer));
+				VkDeviceMemory* tempBufferDeviceMemory = (VkDeviceMemory*)malloc(numBuf * sizeof(VkDeviceMemory));
+				for (uint32_t i = 0; i < numBuf; i++) {
+					buffer[i] = {};
+					bufferDeviceMemory[i] = {};
+					tempBuffer[i] = {};
+					tempBufferDeviceMemory[i] = {};
+					allocateFFTBuffer(vkGPU, &buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+					allocateFFTBuffer(vkGPU, &tempBuffer[i], &tempBufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				}
+				forward_configuration.isInputFormatted = false; //set to true if input is a different buffer, so it can have zeropadding/R2C added . Have to specifiy corresponding inputBufferStride
+				forward_configuration.isOutputFormatted = false;//set to true if output is a different buffer, so it can have zeropadding/C2R automatically removed. Have to specifiy corresponding outputBufferStride
+
+				forward_configuration.bufferNum = numBuf;
+				forward_configuration.tempBufferNum = numBuf;
+				forward_configuration.inputBufferNum = numBuf;
+				forward_configuration.outputBufferNum = numBuf;
+
+				forward_configuration.buffer = buffer;
+				forward_configuration.tempBuffer = tempBuffer;
+				forward_configuration.inputBuffer = buffer; //you can specify first buffer to read data from to be different from the buffer FFT is performed on. FFT is still in-place on the second buffer, this is here just for convenience.
+				forward_configuration.outputBuffer = buffer;
+
+				forward_configuration.bufferSize = bufferSize;
+				forward_configuration.tempBufferSize = bufferSize;
+				forward_configuration.inputBufferSize = bufferSize;
+				forward_configuration.outputBufferSize = bufferSize;
+
+				//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
+				uint64_t shift = 0;
+				for (uint32_t i = 0; i < numBuf; i++) {
+					transferDataFromCPU(vkGPU, (float*)(inputC + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
+					shift += bufferSize[i];
+				}
+				//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
+				res = initializeVulkanFFT(&app_forward, forward_configuration);
+				if (res != VK_SUCCESS) return res;
+				//forward_configuration.inverse = true;
+				//res = initializeVulkanFFT(&app_inverse,forward_configuration);
+				//Submit FFT+iFFT.
+				//batch = 1;
+				performVulkanFFT(vkGPU, &app_forward, batch);
+				//totTime = performVulkanFFT(vkGPU, &app_inverse, batch);
+				fftwf_complex* output_VkFFT = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * dims[0] * dims[1] * dims[2]));
+
+				//Transfer data from GPU using staging buffer.
+				shift = 0;
+				for (uint32_t i = 0; i < numBuf; i++) {
+					transferDataToCPU(vkGPU, (float*)(output_VkFFT + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
+					shift += bufferSize[i];
+				}
+				float avg_difference[2] = { 0,0 };
+				float max_difference[2] = { 0,0 };
+				float avg_eps[2] = { 0,0 };
+				float max_eps[2] = { 0,0 };
+				for (int l = 0; l < dims[2]; l++) {
+					for (int j = 0; j < dims[1]; j++) {
+						for (int i = 0; i < dims[0]; i++) {
+							int loc_i = i;
+							int loc_j = j;
+							int loc_l = l;
+
+							int N = (forward_configuration.inverse) ? dims[0] * dims[1] * dims[2] : 1;
+
+							//if (file_output) fprintf(output, "%f %f - %f %f \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
+							//if (i > dims[0] - 10)
+							//	printf("%f %f - %f %f \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
+							float current_data_norm = sqrt(output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] + output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
+
+							float current_diff_x_VkFFT = (output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]][0] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0]);
+							float current_diff_y_VkFFT = (output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]][1] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
+							float current_diff_norm_VkFFT = sqrt(current_diff_x_VkFFT * current_diff_x_VkFFT + current_diff_y_VkFFT * current_diff_y_VkFFT);
+							if (current_diff_norm_VkFFT > max_difference[1]) max_difference[1] = current_diff_norm_VkFFT;
+							avg_difference[1] += current_diff_norm_VkFFT;
+							if ((current_diff_norm_VkFFT / current_data_norm > max_eps[1]) && (current_data_norm > 1e-10)) {
+								max_eps[1] = current_diff_norm_VkFFT / current_data_norm;
+							}
+							avg_eps[1] += (current_data_norm > 1e-10) ? current_diff_norm_VkFFT / current_data_norm : 0;
+						}
+					}
+				}
+				avg_difference[0] /= (dims[0] * dims[1] * dims[2]);
+				avg_eps[0] /= (dims[0] * dims[1] * dims[2]);
+				avg_difference[1] /= (dims[0] * dims[1] * dims[2]);
+				avg_eps[1] /= (dims[0] * dims[1] * dims[2]);
+				if (file_output)
+					fprintf(output, "VkFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+				printf("VkFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+				free(output_VkFFT);
+				for (uint32_t i = 0; i < numBuf; i++) {
+
+					vkDestroyBuffer(vkGPU->device, buffer[i], NULL);
+					vkDestroyBuffer(vkGPU->device, tempBuffer[i], NULL);
+					vkFreeMemory(vkGPU->device, bufferDeviceMemory[i], NULL);
+					vkFreeMemory(vkGPU->device, tempBufferDeviceMemory[i], NULL);
+
+				}
+				free(bufferSize);
+				deleteVulkanFFT(&app_forward);
+				free(inputC);
+				fftw_destroy_plan(p);
+				free(inputC_double);
+				free(output_FFTW);
+			}
+		}
+		vkDestroyFence(vkGPU->device, vkGPU->fence, NULL);
+		vkDestroyCommandPool(vkGPU->device, vkGPU->commandPool, NULL);
+		vkDestroyDevice(vkGPU->device, NULL);
+		DestroyDebugUtilsMessengerEXT(vkGPU, NULL);
+		vkDestroyInstance(vkGPU->instance, NULL);
+		glslang_finalize_process();//destroy compiler after use
+		break;
+	}
 #endif
 	}
 	return VK_SUCCESS;
@@ -3897,16 +4161,16 @@ int main(int argc, char* argv[])
 	if (findFlag(argv, argv + argc, "-h"))
 	{
 		//print help
-		printf("VkFFT v1.1.1 (16-12-2020). Author: Tolmachev Dmitrii\n");
+		printf("VkFFT v1.1.2 (22-12-2020). Author: Tolmachev Dmitrii\n");
 		printf("	-h: print help\n");
 		printf("	-devices: print the list of available GPU devices\n");
 		printf("	-d X: select GPU device (default 0)\n");
 		printf("	-o NAME: specify output file path\n");
 #ifdef USE_FFTW
 #ifdef USE_cuFFT
-		printf("	-vkfft X: launch VkFFT sample X (0-13):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n		10 - multiple buffer (4 by default) split version of benchmark 0\n		11 - VkFFT / cuFFT / FFTW C2C precision test in single precision\n		12 - VkFFT / cuFFT / FFTW C2C precision test in double precision\n		13 - VkFFT / cuFFT / FFTW C2C precision test in half precision\n");
+		printf("	-vkfft X: launch VkFFT sample X (0-14):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n		10 - multiple buffer (4 by default) split version of benchmark 0\n		11 - VkFFT / cuFFT / FFTW C2C precision test in single precision\n		12 - VkFFT / cuFFT / FFTW C2C precision test in double precision\n		13 - VkFFT / cuFFT / FFTW C2C precision test in half precision\n		14 - VkFFT/FFTW C2C power 3/5 precision test in single precision\n");
 #else
-		printf("	-vkfft X: launch VkFFT sample X (0-13):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n		10 - multiple buffer (4 by default) split version of benchmark 0\n		11 - VkFFT / FFTW C2C precision test in single precision\n		12 - VkFFT / FFTW C2C precision test in double precision\n		13 - VkFFT / FFTW C2C precision test in half precision\n");
+		printf("	-vkfft X: launch VkFFT sample X (0-14):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n		10 - multiple buffer (4 by default) split version of benchmark 0\n		11 - VkFFT / FFTW C2C precision test in single precision\n		12 - VkFFT / FFTW C2C precision test in double precision\n		13 - VkFFT / FFTW C2C precision test in half precision\n		14 - VkFFT/FFTW C2C power 3/5 precision test in single precision\n");
 #endif
 #else
 		printf("	-vkfft X: launch VkFFT sample X (0-10):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n		10 - multiple buffer (4 by default) split version of benchmark 0\n");

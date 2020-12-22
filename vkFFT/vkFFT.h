@@ -53,7 +53,7 @@ extern "C" {
 		uint32_t devicePageSize;//in KB, the size of a page on the GPU. Setting to 0 disables local buffer split in pages
 		uint32_t localPageSize;//in KB, the size to split page into if sequence spans multiple devicePageSize pages
 		uint32_t sharedMemorySize;//in bytes. Vulkan aims at power of 2 shared memory sizes
-		uint32_t sharedMemorySizeNonPow2;//in bytes. For now Vulkan is optimized for 32KB of shared memory
+		uint32_t sharedMemorySizePow2;//in bytes. For now Vulkan is optimized for 32KB of shared memory
 		uint32_t warpSize;//number of threads per warp/wavefront. Default 32
 		uint32_t registerBoost; //specify if register file size is bigger than shared memory (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4). Default 1, max 4
 		uint32_t registerBoost4Step; //specify if register file overutilization should be used in big sequences (>2^14), same value or lower as above. Default 1, max 4
@@ -101,6 +101,9 @@ extern "C" {
 		uint32_t axis_id;
 		uint32_t axis_upload_id;
 		uint32_t registers_per_thread;
+		uint32_t min_registers_per_thread;
+		uint32_t readToRegisters;
+		uint32_t writeFromRegisters;
 		uint32_t LUT;
 		uint32_t performR2C;
 		VkBool32 performZeropaddingInput[3]; // don't read if input is zeropadded (0 - off, 1 - on)
@@ -116,7 +119,7 @@ extern "C" {
 		uint32_t firstStageStartSize;
 		uint32_t fft_dim_x;
 		uint32_t numStages;
-		uint32_t stageRadix[10];
+		uint32_t stageRadix[20];
 		uint32_t inputOffset;
 		uint32_t outputOffset;
 		VkBool32 reorderFourStep;
@@ -132,7 +135,7 @@ extern "C" {
 		uint32_t numBatches;
 		uint32_t numKernels;
 		uint32_t sharedMemSize;
-		uint32_t sharedMemSizeNonPow2;
+		uint32_t sharedMemSizePow2;
 		uint32_t normalize;
 		uint32_t complexSize;
 		uint32_t maxStageSumLUT;
@@ -715,7 +718,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 	}
 
-	static inline void appendRadixKernelVkFFT(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t radix) {
+	static inline void inlineRadixKernelVkFFT(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t radix, double stageAngle, uint32_t* regID) {
 		char vecType[10];
 		if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
@@ -723,226 +726,337 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (sc.convolutionStep) sprintf(convolutionInverse, ", uint inverse");
 		switch (radix) {
 		case 2: {
-			if (sc.LUT) {
+			/*if (sc.LUT) {
 				sprintf(output + strlen(output), "void radix2(inout %s temp_0, inout %s temp_1, %s LUTId) {\n", vecType, vecType, uintType);
 			}
 			else {
 				sprintf(output + strlen(output), "void radix2(inout %s temp_0, inout %s temp_1, %s angle) {\n", vecType, vecType, floatType);
-			}
-			sprintf(output + strlen(output), "	%s temp;\n", vecType);
-			if (sc.LUT)
-				sprintf(output + strlen(output), "	%s w = twiddleLUT[LUTId];\n\n", vecType);
-			else {
-				if (!strcmp(floatType, "float"))
-					sprintf(output + strlen(output), "		%s w = %s(cos(angle), sin(angle));\n\n", vecType, vecType);
-				if (!strcmp(floatType, "double"))
-					sprintf(output + strlen(output), "		%s w = sincos_20(angle);\n", vecType);
-			}
-			sprintf(output + strlen(output), "\
-	temp.x = temp_1.x * w.x - temp_1.y * w.y;\n\
-	temp.y = temp_1.y * w.x + temp_1.x * w.y;\n\
-	temp_1 = temp_0 - temp;\n\
-	temp_0 = temp_0 + temp;\n\
-}\n\n");
-			break;
-		}
-		case 4: {
-			if (sc.LUT)
-				sprintf(output + strlen(output), "void radix4(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, %s LUTId%s) {\n", vecType, vecType, vecType, vecType, uintType, convolutionInverse);
-			else
-				sprintf(output + strlen(output), "void radix4(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, %s angle%s) {\n", vecType, vecType, vecType, vecType, floatType, convolutionInverse);
-			sprintf(output + strlen(output), "\
-	//DIF 1st stage with double angle\n\
+			}*/
+			sprintf(output + strlen(output), "	{\n\
 	%s temp;\n", vecType);
 			if (sc.LUT)
 				sprintf(output + strlen(output), "	%s w = twiddleLUT[LUTId];\n\n", vecType);
 			else {
 				if (!strcmp(floatType, "float"))
-					sprintf(output + strlen(output), "		%s w = %s(cos(angle), sin(angle));\n\n", vecType, vecType);
+					sprintf(output + strlen(output), "	%s w = %s(cos(angle), sin(angle));\n\n", vecType, vecType);
 				if (!strcmp(floatType, "double"))
-					sprintf(output + strlen(output), "		%s w = sincos_20(angle);\n", vecType);
+					sprintf(output + strlen(output), "	%s w = sincos_20(angle);\n", vecType);
 			}
 			sprintf(output + strlen(output), "\
-	temp.x=temp_2.x*w.x-temp_2.y*w.y;\n\
-	temp.y = temp_2.y * w.x + temp_2.x * w.y;\n\
-	temp_2 = temp_0 - temp;\n\
-	temp_0 = temp_0 + temp;\n\n\
-	temp.x=temp_3.x*w.x-temp_3.y*w.y;\n\
-	temp.y = temp_3.y * w.x + temp_3.x * w.y;\n\
-	temp_3 = temp_1 - temp;\n\
-	temp_1 = temp_1 + temp;\n\n\
-	//DIF 2nd stage with angle\n");
+	temp.x = temp_%d.x * w.x - temp_%d.y * w.y;\n\
+	temp.y = temp_%d.y * w.x + temp_%d.x * w.y;\n\
+	temp_%d = temp_%d - temp;\n\
+	temp_%d = temp_%d + temp;\n\
+}\n", regID[1], regID[1], regID[1], regID[1], regID[1], regID[0], regID[0], regID[0]);
+			break;
+		}
+		case 3: {
+			/*	if (sc.LUT) {
+					sprintf(output + strlen(output), "void radix3(inout %s temp_0, inout %s temp_1, inout %s temp_2, %s LUTId) {\n", vecType, vecType, vecType, uintType);
+				}
+				else {
+					sprintf(output + strlen(output), "void radix3(inout %s temp_0, inout %s temp_1, inout %s temp_2, %s angle) {\n", vecType, vecType, vecType, floatType);
+				}*/
+			sprintf(output + strlen(output), "	{\n\
+	%s loc_0;\n	%s loc_1;\n	%s loc_2;\n", vecType, vecType, vecType);
+			if (sc.LUT)
+				sprintf(output + strlen(output), "	%s w = twiddleLUT[LUTId];\n\n", vecType);
+			else {
+				if (!strcmp(floatType, "float"))
+					sprintf(output + strlen(output), "	%s w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, vecType, 4.0 / 3.0, 4.0 / 3.0);
+				if (!strcmp(floatType, "double"))
+					sprintf(output + strlen(output), "	%s w = sincos_20(angle*%.17f);\n", vecType, 4.0 / 3.0);
+			}
+			sprintf(output + strlen(output), "\
+	loc_2.x = temp_%d.x * w.x - temp_%d.y * w.y;\n\
+	loc_2.y = temp_%d.y * w.x + temp_%d.x * w.y;\n", regID[2], regID[2], regID[2], regID[2]);
+			if (sc.LUT)
+				sprintf(output + strlen(output), "	w = twiddleLUT[LUTId];\n\n");
+			else {
+				if (!strcmp(floatType, "float"))
+					sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 / 3.0, 2.0 / 3.0);
+				if (!strcmp(floatType, "double"))
+					sprintf(output + strlen(output), "	w=sincos_20(angle*%.17f);\n", 2.0 / 3.0);
+			}
+			sprintf(output + strlen(output), "\
+	loc_1.x = temp_%d.x * w.x - temp_%d.y * w.y;\n\
+	loc_1.y = temp_%d.y * w.x + temp_%d.x * w.y;\n", regID[1], regID[1], regID[1], regID[1]);
+			sprintf(output + strlen(output), "\
+	temp_%d = loc_1 + loc_2;\n\
+	temp_%d = loc_1 - loc_2;\n", regID[1], regID[2]);
+			sprintf(output + strlen(output), "\
+	loc_0 = temp_%d + temp_%d;\n\
+	loc_1 = temp_%d - 0.5 * temp_%d;\n\
+	loc_2 = -0.8660254037844386467637231707529 * temp_%d;\n\
+	temp_%d = loc_0;\n", regID[0], regID[1], regID[0], regID[1], regID[2], regID[0]);
+
+			if (stageAngle < 0)
+			{
+				sprintf(output + strlen(output), "\
+	temp_%d.x = loc_1.x - loc_2.y; \n\
+	temp_%d.y = loc_1.y + loc_2.x; \n\
+	temp_%d.x = loc_1.x + loc_2.y; \n\
+	temp_%d.y = loc_1.y - loc_2.x; \n", regID[1], regID[1], regID[2], regID[2]);
+			}
+			else {
+				sprintf(output + strlen(output), "\
+	temp_%d.x = loc_1.x + loc_2.y; \n\
+	temp_%d.y = loc_1.y - loc_2.x; \n\
+	temp_%d.x = loc_1.x - loc_2.y; \n\
+	temp_%d.y = loc_1.y + loc_2.x; \n", regID[1], regID[1], regID[2], regID[2]);
+			}
+
+			sprintf(output + strlen(output), "\
+}\n");
+			break;
+		}
+		case 4: {
+			/*if (sc.LUT)
+				sprintf(output + strlen(output), "void radix4(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, %s LUTId%s) {\n", vecType, vecType, vecType, vecType, uintType, convolutionInverse);
+			else
+				sprintf(output + strlen(output), "void radix4(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, %s angle%s) {\n", vecType, vecType, vecType, vecType, floatType, convolutionInverse);
+			*/
+			sprintf(output + strlen(output), "\
+	//DIF 1st stage with double angle\n\
+	{\n\
+	%s temp;\n", vecType);
+			if (sc.LUT)
+				sprintf(output + strlen(output), "	%s w = twiddleLUT[LUTId];\n\n", vecType);
+			else {
+				if (!strcmp(floatType, "float"))
+					sprintf(output + strlen(output), "	%s w = %s(cos(angle), sin(angle));\n\n", vecType, vecType);
+				if (!strcmp(floatType, "double"))
+					sprintf(output + strlen(output), "	%s w = sincos_20(angle);\n", vecType);
+			}
+			sprintf(output + strlen(output), "\
+	temp.x=temp_%d.x*w.x-temp_%d.y*w.y;\n\
+	temp.y = temp_%d.y * w.x + temp_%d.x * w.y;\n\
+	temp_%d = temp_%d - temp;\n\
+	temp_%d = temp_%d + temp;\n\n\
+	temp.x=temp_%d.x*w.x-temp_%d.y*w.y;\n\
+	temp.y = temp_%d.y * w.x + temp_%d.x * w.y;\n\
+	temp_%d = temp_%d - temp;\n\
+	temp_%d = temp_%d + temp;\n\n\
+	//DIF 2nd stage with angle\n", regID[2], regID[2], regID[2], regID[2], regID[2], regID[0], regID[0], regID[0], regID[3], regID[3], regID[3], regID[3], regID[3], regID[1], regID[1], regID[1]);
 			if (sc.LUT)
 				sprintf(output + strlen(output), "	w=twiddleLUT[LUTId+%d];\n\n", sc.maxStageSumLUT);
 			else {
 				if (!strcmp(floatType, "float"))
-					sprintf(output + strlen(output), "		w = %s(cos(0.5*angle), sin(0.5*angle));\n\n", vecType);
+					sprintf(output + strlen(output), "	w = %s(cos(0.5*angle), sin(0.5*angle));\n\n", vecType);
 				if (!strcmp(floatType, "double"))
-					sprintf(output + strlen(output), "		w=normalize(w + %s(1.0, 0.0));\n", vecType);
+					sprintf(output + strlen(output), "	w=normalize(w + %s(1.0, 0.0));\n", vecType);
 			}
 			sprintf(output + strlen(output), "\
-	temp.x = temp_1.x * w.x - temp_1.y * w.y;\n\
-	temp.y = temp_1.y * w.x + temp_1.x * w.y;\n\
-	temp_1 = temp_0 - temp;\n\
-	temp_0 = temp_0 + temp;\n\n");
-			if (sc.convolutionStep) {
-				sprintf(output + strlen(output), "	w = (inverse>0) ? %s(w.y, -w.x) : %s(-w.y, w.x);\n\n", vecType, vecType);
+	temp.x = temp_%d.x * w.x - temp_%d.y * w.y;\n\
+	temp.y = temp_%d.y * w.x + temp_%d.x * w.y;\n\
+	temp_%d = temp_%d - temp;\n\
+	temp_%d = temp_%d + temp;\n\n", regID[1], regID[1], regID[1], regID[1], regID[1], regID[0], regID[0], regID[0]);
+			if (stageAngle < 0)
+				sprintf(output + strlen(output), "	w = %s(w.y, -w.x);\n\n", vecType);
+			else
+				sprintf(output + strlen(output), "	w = %s(-w.y, w.x);\n\n", vecType);
+			sprintf(output + strlen(output), "\
+	temp.x = temp_%d.x * w.x - temp_%d.y * w.y;\n\
+	temp.y = temp_%d.y * w.x + temp_%d.x * w.y;\n\
+	temp_%d = temp_%d - temp;\n\
+	temp_%d = temp_%d + temp;\n\n\
+	temp = temp_%d;\n\
+	temp_%d = temp_%d;\n\
+	temp_%d = temp;\n\
+}\n", regID[3], regID[3], regID[3], regID[3], regID[3], regID[2], regID[2], regID[2], regID[1], regID[1], regID[2], regID[2]);
+			break;
+		}
+		case 5: {
+			/*if (sc.LUT) {
+				sprintf(output + strlen(output), "void radix5(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, inout %s temp_4, %s LUTId) {\n", vecType, vecType, vecType, vecType, vecType, uintType);
 			}
 			else {
-				if (sc.inverse)
-					sprintf(output + strlen(output), "	w = %s(w.y, -w.x);\n\n", vecType);
-				else
-					sprintf(output + strlen(output), "	w = %s(-w.y, w.x);\n\n", vecType);
+				sprintf(output + strlen(output), "void radix5(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, inout %s temp_4, %s angle) {\n", vecType, vecType, vecType, vecType, vecType, floatType);
+			}*/
+			sprintf(output + strlen(output), "	{\n\
+	%s loc_0;\n	%s loc_1;\n	%s loc_2;\n	%s loc_3;\n	%s loc_4;\n", vecType, vecType, vecType, vecType, vecType);
+			for (uint32_t i = radix - 1; i > 0; i--) {
+				if (i == radix - 1) {
+					if (sc.LUT)
+						sprintf(output + strlen(output), "	%s w = twiddleLUT[LUTId];\n\n", vecType);
+					else {
+						if (!strcmp(floatType, "float"))
+							sprintf(output + strlen(output), "	%s w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, vecType, 2.0 * i / radix, 2.0 * i / radix);
+						if (!strcmp(floatType, "double"))
+							sprintf(output + strlen(output), "	%s w = sincos_20(angle*%.17f);\n", vecType, 2.0 * i / radix);
+					}
+				}
+				else {
+					if (sc.LUT)
+						sprintf(output + strlen(output), "	w = twiddleLUT[LUTId];\n\n");
+					else {
+						if (!strcmp(floatType, "float"))
+							sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						if (!strcmp(floatType, "double"))
+							sprintf(output + strlen(output), "	w = sincos_20(angle*%.17f);\n", 2.0 * i / radix);
+					}
+				}
+				sprintf(output + strlen(output), "\
+	loc_%d.x = temp_%d.x * w.x - temp_%d.y * w.y;\n\
+	loc_%d.y = temp_%d.y * w.x + temp_%d.x * w.y;\n", i, regID[i], regID[i], i, regID[i], regID[i]);
 			}
 			sprintf(output + strlen(output), "\
-	temp.x = temp_3.x * w.x - temp_3.y * w.y;\n\
-	temp.y = temp_3.y * w.x + temp_3.x * w.y;\n\
-	temp_3 = temp_2 - temp;\n\
-	temp_2 = temp_2 + temp;\n\n\
-	temp = temp_1;\n\
-	temp_1 = temp_2;\n\
-	temp_2 = temp;\n\
+	temp_%d = loc_1 + loc_4;\n\
+	temp_%d = loc_2 + loc_3;\n\
+	temp_%d = loc_2 - loc_3;\n\
+	temp_%d = loc_1 - loc_4;\n\
+	loc_3 = temp_%d - temp_%d;\n\
+	loc_4 = temp_%d + temp_%d;\n", regID[1], regID[2], regID[3], regID[4], regID[1], regID[2], regID[3], regID[4]);
+			sprintf(output + strlen(output), "\
+	loc_0 = temp_%d + temp_%d + temp_%d;\n\
+	loc_1 = temp_%d - 0.5 * temp_%d;\n\
+	loc_2 = temp_%d - 0.5 * temp_%d;\n\
+	temp_%d *= 1.538841768587626701285145288018455;\n\
+	temp_%d *= -0.363271264002680442947733378740309;\n\
+	loc_3 *= -0.809016994374947424102293417182819;\n\
+	loc_4 *= -0.587785252292473129168705954639073;\n", regID[0], regID[1], regID[2], regID[0], regID[1], regID[0], regID[2], regID[3], regID[4]);
+			sprintf(output + strlen(output), "\
+	loc_1 -= loc_3;\n\
+	loc_2 += loc_3;\n\
+	loc_3 = temp_%d+loc_4;\n\
+	loc_4 += temp_%d;\n\
+	temp_%d = loc_0;\n", regID[3], regID[4], regID[0]);
+
+			if (stageAngle < 0)
+			{
+				sprintf(output + strlen(output), "\
+	temp_%d.x = loc_1.x - loc_4.y; \n\
+	temp_%d.y = loc_1.y + loc_4.x; \n\
+	temp_%d.x = loc_2.x - loc_3.y; \n\
+	temp_%d.y = loc_2.y + loc_3.x; \n\
+	temp_%d.x = loc_2.x + loc_3.y; \n\
+	temp_%d.y = loc_2.y - loc_3.x; \n\
+	temp_%d.x = loc_1.x + loc_4.y; \n\
+	temp_%d.y = loc_1.y - loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID[3], regID[3], regID[4], regID[4]);
+			}
+			else {
+				sprintf(output + strlen(output), "\
+	temp_%d.x = loc_1.x + loc_4.y; \n\
+	temp_%d.y = loc_1.y - loc_4.x; \n\
+	temp_%d.x = loc_2.x + loc_3.y; \n\
+	temp_%d.y = loc_2.y - loc_3.x; \n\
+	temp_%d.x = loc_2.x - loc_3.y; \n\
+	temp_%d.y = loc_2.y + loc_3.x; \n\
+	temp_%d.x = loc_1.x - loc_4.y; \n\
+	temp_%d.y = loc_1.y + loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID[3], regID[3], regID[4], regID[4]);
+			}
+
+
+			sprintf(output + strlen(output), "\
 }\n\n");
 			break;
 		}
 		case 8: {
-			if (sc.LUT)
+			/*if (sc.LUT)
 				sprintf(output + strlen(output), "void radix8(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, inout %s temp_4, inout %s temp_5, inout %s temp_6, inout %s temp_7, %s LUTId%s) {\n", vecType, vecType, vecType, vecType, vecType, vecType, vecType, vecType, uintType, convolutionInverse);
 			else
 				sprintf(output + strlen(output), "void radix8(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, inout %s temp_4, inout %s temp_5, inout %s temp_6, inout %s temp_7, %s angle%s) {\n", vecType, vecType, vecType, vecType, vecType, vecType, vecType, vecType, floatType, convolutionInverse);
+			*/
 			sprintf(output + strlen(output), "\
 	//DIF 1st stage with quadruple angle\n\
+	{\n\
 	%s temp;\n", vecType);
 			if (sc.LUT)
 				sprintf(output + strlen(output), "	%s w = twiddleLUT[LUTId];\n\n", vecType);
 			else {
 				if (!strcmp(floatType, "float"))
-					sprintf(output + strlen(output), "		%s w = %s(cos(angle), sin(angle));\n\n", vecType, vecType);
+					sprintf(output + strlen(output), "	%s w = %s(cos(angle), sin(angle));\n\n", vecType, vecType);
 				if (!strcmp(floatType, "double"))
-					sprintf(output + strlen(output), "		%s w = sincos_20(angle);\n", vecType);
+					sprintf(output + strlen(output), "	%s w = sincos_20(angle);\n", vecType);
 			}
-			sprintf(output + strlen(output), "\
-	temp.x=temp_4.x*w.x-temp_4.y*w.y;\n\
-	temp.y = temp_4.y * w.x + temp_4.x * w.y;\n\
-	temp_4 = temp_0 - temp;\n\
-	temp_0 = temp_0 + temp;\n\n\
-	temp.x = temp_5.x * w.x - temp_5.y * w.y;\n\
-	temp.y = temp_5.y * w.x + temp_5.x * w.y;\n\
-	temp_5 = temp_1 - temp;\n\
-	temp_1 = temp_1 + temp;\n\n\
-	temp.x = temp_6.x * w.x - temp_6.y * w.y;\n\
-	temp.y = temp_6.y * w.x + temp_6.x * w.y;\n\
-	temp_6 = temp_2 - temp;\n\
-	temp_2 = temp_2 + temp;\n\n\
-	temp.x = temp_7.x * w.x - temp_7.y * w.y;\n\
-	temp.y = temp_7.y * w.x + temp_7.x * w.y;\n\
-	temp_7 = temp_3 - temp;\n\
-	temp_3 = temp_3 + temp;\n\n\
-	//DIF 2nd stage with double angle\n");
+			for (uint32_t i = 0; i < 4; i++) {
+				sprintf(output + strlen(output), "\
+	temp.x=temp_%d.x*w.x-temp_%d.y*w.y;\n\
+	temp.y = temp_%d.y * w.x + temp_%d.x * w.y;\n\
+	temp_%d = temp_%d - temp;\n\
+	temp_%d = temp_%d + temp;\n\n", regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 0], regID[i + 0], regID[i + 0]);
+			}
 			if (sc.LUT)
 				sprintf(output + strlen(output), "	w=twiddleLUT[LUTId+%d];\n\n", sc.maxStageSumLUT);
 			else {
 				if (!strcmp(floatType, "float"))
-					sprintf(output + strlen(output), "		w = %s(cos(0.5*angle), sin(0.5*angle));\n\n", vecType);
+					sprintf(output + strlen(output), "	w = %s(cos(0.5*angle), sin(0.5*angle));\n\n", vecType);
 				if (!strcmp(floatType, "double"))
-					sprintf(output + strlen(output), "		w=normalize(w + %s(1.0, 0.0));\n", vecType);
+					sprintf(output + strlen(output), "	w=normalize(w + %s(1.0, 0.0));\n", vecType);
 			}
-			sprintf(output + strlen(output), "\
-	temp.x=temp_2.x*w.x-temp_2.y*w.y;\n\
-	temp.y = temp_2.y * w.x + temp_2.x * w.y;\n\
-	temp_2 = temp_0 - temp;\n\
-	temp_0 = temp_0 + temp;\n\n\
-	temp.x = temp_3.x * w.x - temp_3.y * w.y;\n\
-	temp.y = temp_3.y * w.x + temp_3.x * w.y;\n\
-	temp_3 = temp_1 - temp;\n\
-	temp_1 = temp_1 + temp;\n\n");
-			if (sc.convolutionStep) {
-				sprintf(output + strlen(output), "	%s iw = (inverse>0) ? %s(w.y, -w.x) : %s(-w.y, w.x);\n\n", vecType, vecType, vecType);
+			for (uint32_t i = 0; i < 2; i++) {
+				sprintf(output + strlen(output), "\
+	temp.x=temp_%d.x*w.x-temp_%d.y*w.y;\n\
+	temp.y = temp_%d.y * w.x + temp_%d.x * w.y;\n\
+	temp_%d = temp_%d - temp;\n\
+	temp_%d = temp_%d + temp;\n\n", regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 0], regID[i + 0], regID[i + 0]);
 			}
+			if (stageAngle < 0)
+				sprintf(output + strlen(output), "	%s iw = %s(w.y, -w.x);\n\n", vecType, vecType);
 			else
-			{
-				if (sc.inverse)
-					sprintf(output + strlen(output), "	%s iw = %s(w.y, -w.x);\n\n", vecType, vecType);
-				else
-					sprintf(output + strlen(output), "	%s iw = %s(-w.y, w.x);\n\n", vecType, vecType);
+				sprintf(output + strlen(output), "	%s iw = %s(-w.y, w.x);\n\n", vecType, vecType);
+
+			for (uint32_t i = 4; i < 6; i++) {
+				sprintf(output + strlen(output), "\
+	temp.x = temp_%d.x * iw.x - temp_%d.y * iw.y;\n\
+	temp.y = temp_%d.y * iw.x + temp_%d.x * iw.y;\n\
+	temp_%d = temp_%d - temp;\n\
+	temp_%d = temp_%d + temp;\n\n", regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 0], regID[i + 0], regID[i + 0]);
 			}
-			sprintf(output + strlen(output), "\
-	temp.x = temp_6.x * iw.x - temp_6.y * iw.y;\n\
-	temp.y = temp_6.y * iw.x + temp_6.x * iw.y;\n\
-	temp_6 = temp_4 - temp;\n\
-	temp_4 = temp_4 + temp;\n\n\
-	temp.x = temp_7.x * iw.x - temp_7.y * iw.y;\n\
-	temp.y = temp_7.y * iw.x + temp_7.x * iw.y;\n\
-	temp_7 = temp_5 - temp;\n\
-	temp_5 = temp_5 + temp;\n\n");
+
 			if (sc.LUT)
 				sprintf(output + strlen(output), "	w=twiddleLUT[LUTId+%d];\n\n", 2 * sc.maxStageSumLUT);
 			else {
 				if (!strcmp(floatType, "float"))
-					sprintf(output + strlen(output), "		w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
+					sprintf(output + strlen(output), "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
 				if (!strcmp(floatType, "double"))
-					sprintf(output + strlen(output), "		w=normalize(w + %s(1.0, 0.0));\n", vecType);
+					sprintf(output + strlen(output), "	w=normalize(w + %s(1.0, 0.0));\n", vecType);
 			}
 			sprintf(output + strlen(output), "\
-	temp.x=temp_1.x*w.x-temp_1.y*w.y;\n\
-	temp.y = temp_1.y * w.x + temp_1.x * w.y;\n\
-	temp_1 = temp_0 - temp;\n\
-	temp_0 = temp_0 + temp;\n\n");
-			if (sc.convolutionStep) {
-				sprintf(output + strlen(output), "	iw = (inverse>0) ? %s(w.y, -w.x) : %s(-w.y, w.x);\n\n", vecType, vecType);
-			}
+	temp.x=temp_%d.x*w.x-temp_%d.y*w.y;\n\
+	temp.y = temp_%d.y * w.x + temp_%d.x * w.y;\n\
+	temp_%d = temp_%d - temp;\n\
+	temp_%d = temp_%d + temp;\n\n", regID[1], regID[1], regID[1], regID[1], regID[1], regID[0], regID[0], regID[0]);
+			if (stageAngle < 0)
+				sprintf(output + strlen(output), "	iw = %s(w.y, -w.x);\n\n", vecType);
 			else
-			{
-				if (sc.inverse)
-					sprintf(output + strlen(output), "	iw = %s(w.y, -w.x);\n\n", vecType);
-				else
-					sprintf(output + strlen(output), "	iw = %s(-w.y, w.x);\n\n", vecType);
-			}
+				sprintf(output + strlen(output), "	iw = %s(-w.y, w.x);\n\n", vecType);
+
 			sprintf(output + strlen(output), "\
-	temp.x = temp_3.x * iw.x - temp_3.y * iw.y;\n\
-	temp.y = temp_3.y * iw.x + temp_3.x * iw.y;\n\
-	temp_3 = temp_2 - temp;\n\
-	temp_2 = temp_2 + temp;\n\n");
-			if (sc.convolutionStep) {
-				sprintf(output + strlen(output), "	iw.x = (inverse>0) ? w.x * M_SQRT1_2 + w.y * M_SQRT1_2 : w.x * M_SQRT1_2 - w.y * M_SQRT1_2;\n");
-				sprintf(output + strlen(output), "	iw.y = (inverse>0) ? w.y * M_SQRT1_2 - w.x * M_SQRT1_2 : w.y * M_SQRT1_2 + w.x * M_SQRT1_2;\n\n");
+	temp.x = temp_%d.x * iw.x - temp_%d.y * iw.y;\n\
+	temp.y = temp_%d.y * iw.x + temp_%d.x * iw.y;\n\
+	temp_%d = temp_%d - temp;\n\
+	temp_%d = temp_%d + temp;\n\n", regID[3], regID[3], regID[3], regID[3], regID[3], regID[2], regID[2], regID[2]);
+			if (stageAngle < 0) {
+				sprintf(output + strlen(output), "	iw.x = w.x * M_SQRT1_2 + w.y * M_SQRT1_2;\n");
+				sprintf(output + strlen(output), "	iw.y = w.y * M_SQRT1_2 - w.x * M_SQRT1_2;\n\n");
 			}
 			else {
-				if (sc.inverse) {
-					sprintf(output + strlen(output), "	iw.x = w.x * M_SQRT1_2 + w.y * M_SQRT1_2;\n");
-					sprintf(output + strlen(output), "	iw.y = w.y * M_SQRT1_2 - w.x * M_SQRT1_2;\n\n");
-				}
-				else {
-					sprintf(output + strlen(output), "	iw.x = w.x * M_SQRT1_2 - w.y * M_SQRT1_2;\n");
-					sprintf(output + strlen(output), "	iw.y = w.y * M_SQRT1_2 + w.x * M_SQRT1_2;\n\n");
-				}
+				sprintf(output + strlen(output), "	iw.x = w.x * M_SQRT1_2 - w.y * M_SQRT1_2;\n");
+				sprintf(output + strlen(output), "	iw.y = w.y * M_SQRT1_2 + w.x * M_SQRT1_2;\n\n");
 			}
+
 			sprintf(output + strlen(output), "\
-	temp.x = temp_5.x * iw.x - temp_5.y * iw.y;\n\
-	temp.y = temp_5.y * iw.x + temp_5.x * iw.y;\n\
-	temp_5 = temp_4 - temp;\n\
-	temp_4 = temp_4 + temp;\n\n");
-			if (sc.convolutionStep) {
-				sprintf(output + strlen(output), "	w = (inverse>0) ? %s(iw.y, -iw.x) : %s(-iw.y, iw.x);\n\n", vecType, vecType);
-			}
-			else {
-				if (sc.inverse)
-					sprintf(output + strlen(output), "	w = %s(iw.y, -iw.x);\n\n", vecType);
-				else
-					sprintf(output + strlen(output), "	w = %s(-iw.y, iw.x);\n\n", vecType);
-			}
+	temp.x = temp_%d.x * iw.x - temp_%d.y * iw.y;\n\
+	temp.y = temp_%d.y * iw.x + temp_%d.x * iw.y;\n\
+	temp_%d = temp_%d - temp;\n\
+	temp_%d = temp_%d + temp;\n\n", regID[5], regID[5], regID[5], regID[5], regID[5], regID[4], regID[4], regID[4]);
+			if (stageAngle < 0)
+				sprintf(output + strlen(output), "	w = %s(iw.y, -iw.x);\n\n", vecType);
+			else
+				sprintf(output + strlen(output), "	w = %s(-iw.y, iw.x);\n\n", vecType);
 			sprintf(output + strlen(output), "\
-	temp.x = temp_7.x * w.x - temp_7.y * w.y;\n\
-	temp.y = temp_7.y * w.x + temp_7.x * w.y;\n\
-	temp_7 = temp_6 - temp;\n\
-	temp_6 = temp_6 + temp;\n\n\
-	temp = temp_1;\n\
-	temp_1 = temp_4;\n\
-	temp_4 = temp;\n\n\
-	temp = temp_3;\n\
-	temp_3 = temp_6;\n\
-	temp_6 = temp;\n\
-}\n\n");
+	temp.x = temp_%d.x * w.x - temp_%d.y * w.y;\n\
+	temp.y = temp_%d.y * w.x + temp_%d.x * w.y;\n\
+	temp_%d = temp_%d - temp;\n\
+	temp_%d = temp_%d + temp;\n\n\
+	temp = temp_%d;\n\
+	temp_%d = temp_%d;\n\
+	temp_%d = temp;\n\n\
+	temp = temp_%d;\n\
+	temp_%d = temp_%d;\n\
+	temp_%d = temp;\n\
+}\n\n", regID[7], regID[7], regID[7], regID[7], regID[7], regID[6], regID[6], regID[6], regID[1], regID[1], regID[4], regID[4], regID[3], regID[3], regID[6], regID[6]);
 			break;
 		}
 		}
@@ -950,22 +1064,22 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	static inline void appendSharedMemoryVkFFT(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t sharedType) {
 		char vecType[10];
 		uint32_t maxSequenceSharedMemory = 0;
-		uint32_t maxSequenceSharedMemoryNonPow2 = 0;
+		uint32_t maxSequenceSharedMemoryPow2 = 0;
 		if (!strcmp(floatType, "float"))
 		{
 			sprintf(vecType, "vec2");
 			maxSequenceSharedMemory = sc.sharedMemSize / 8;
-			maxSequenceSharedMemoryNonPow2 = sc.sharedMemSizeNonPow2 / 8;
+			maxSequenceSharedMemoryPow2 = sc.sharedMemSizePow2 / 8;
 		}
 		if (!strcmp(floatType, "double")) {
 			sprintf(vecType, "dvec2");
 			maxSequenceSharedMemory = sc.sharedMemSize / 16;
-			maxSequenceSharedMemoryNonPow2 = sc.sharedMemSizeNonPow2 / 16;
+			maxSequenceSharedMemoryPow2 = sc.sharedMemSizePow2 / 16;
 		}
 		switch (sharedType) {
 		case 0: case 5: case 6://single_c2c + single_r2c
 		{
-			uint32_t sharedStride = ((maxSequenceSharedMemoryNonPow2 - sc.localSize[1] * sc.fftDim) * (sc.localSize[1] - 1) == 0) ? sc.fftDim : sc.fftDim + 1;
+			uint32_t sharedStride = ((maxSequenceSharedMemory - sc.localSize[1] * sc.fftDim) * (sc.localSize[1] - 1) == 0) ? sc.fftDim : sc.fftDim + 1;
 			sprintf(output + strlen(output), "const %s sharedStride = %d; //to avoid bank conflict if we transpose\n", uintType, sharedStride);
 			sprintf(output + strlen(output), "shared %s sdata[%d];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", vecType, sc.localSize[1] * sharedStride);
 			break;
@@ -977,7 +1091,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		case 3: case 4: //registerBoost
 		{
-			sprintf(output + strlen(output), "shared %s sdata[%d];\n\n", vecType, maxSequenceSharedMemory);
+			sprintf(output + strlen(output), "shared %s sdata[%d];\n\n", vecType, maxSequenceSharedMemoryPow2);
 			break;
 		}
 		}
@@ -1032,8 +1146,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		if (sc.cacheShuffle) {
 			sprintf(output + strlen(output), "\
-	uint tshuffle= ((gl_LocalInvocationID.x)>>1)&(%d);\n\
-	%s shuffle[%d];\n", sc.registers_per_thread - 1, vecType, sc.registers_per_thread);
+	uint tshuffle= ((gl_LocalInvocationID.x>>1))%%(%d);\n\
+	%s shuffle[%d];\n", sc.registers_per_thread, vecType, sc.registers_per_thread);
 			for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
 				sprintf(output + strlen(output), "\
 	shuffle[%d]=%s(0,0);\n", i, vecType);
@@ -1179,6 +1293,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(requestBatch, ", 0");//if one buffer - multiple kernel convolution
 			}
 		}
+
 		switch (readType) {
 		case 0://single_c2c
 		{
@@ -1186,9 +1301,26 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX ");
+			char shiftY[100] = "";
+			if (sc.performWorkGroupShift[1])
+				sprintf(shiftY, " + consts.workGroupShiftY*gl_WorkGroupSize.y ");
+			char shiftY2[100] = "";
+			if (sc.performWorkGroupShift[1])
+				sprintf(shiftY, " + consts.workGroupShiftY ");
+			if (sc.fftDim < sc.fft_dim_full) {
+				sprintf(output + strlen(output), "		if(gl_LocalInvocationID.y * %d + (((gl_WorkGroupID.x%s) %% %d) * %d + ((gl_WorkGroupID.x%s) / %d) * %d) < %d) {\n", sc.firstStageStartSize, shiftX, sc.firstStageStartSize / sc.fftDim, sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1] * sc.firstStageStartSize, sc.fft_dim_full);
+			}
+			else {
+				sprintf(output + strlen(output), "		{ \n");
+			}
+
+			if ((sc.localSize[1] > 1) || ((sc.performR2C) && (sc.inverse)) || (sc.localSize[0] * sc.stageRadix[0] * (sc.registers_per_thread / sc.stageRadix[0]) > sc.fftDim))
+				sc.readToRegisters = 0;
+			else
+				sc.readToRegisters = 1;
 			if (sc.zeropad[0]) {
 				if (sc.fftDim == sc.fft_dim_full) {
-					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+					for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 
 						if (sc.localSize[1] == 1)
 							sprintf(output + strlen(output), "		combinedId = gl_LocalInvocationID.x + %d;\n", i * sc.localSize[0]);
@@ -1200,8 +1332,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						else
 							sprintf(output + strlen(output), "		inoutID = (combinedId %% %d) + (combinedId / %d) * %d;\n", sc.fftDim, sc.fftDim, sc.inputStride[1]);
 
+						if (sc.size[sc.axis_id + 1] % sc.localSize[1] != 0)
+							sprintf(output + strlen(output), "		if(combinedId / %d + (gl_WorkGroupID.y%s)*gl_WorkGroupSize.y< %d){", sc.fftDim, shiftY2, sc.size[sc.axis_id + 1]);
+
 						sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc.fft_dim_full, sc.fft_zeropad_left_read[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_read[sc.axis_id]);
-						if (sc.localSize[1] == 1) {
+						if (sc.readToRegisters) {
 							if (sc.inputBufferBlockNum == 1)
 								sprintf(output + strlen(output), "		temp_%d = %sinputBlocks[0].inputs[indexInput(inoutID%s%s)]%s;\n", i, convTypeLeft, requestCoordinate, requestBatch, convTypeRight);
 							else
@@ -1220,14 +1355,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						else
 							sprintf(output + strlen(output), "			sdata[(combinedId %% %d) + (combinedId / %d) * sharedStride] = %s(0,0);\n", sc.fftDim, sc.fftDim, vecType);
 						sprintf(output + strlen(output), "		}\n");
+						if (sc.size[sc.axis_id + 1] % sc.localSize[1] != 0)
+							sprintf(output + strlen(output), "		}");
+
 					}
 
 				}
 				else {
-					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+					for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 						sprintf(output + strlen(output), "		inoutID = gl_LocalInvocationID.x+%d+gl_LocalInvocationID.y * %d + (((gl_WorkGroupID.x%s) %% %d) * %d + ((gl_WorkGroupID.x%s) / %d) * %d);\n", i * sc.localSize[0], sc.firstStageStartSize, shiftX, sc.firstStageStartSize / sc.fftDim, sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1] * sc.firstStageStartSize);
 						sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc.fft_dim_full, sc.fft_zeropad_left_read[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_read[sc.axis_id]);
-						if (sc.localSize[1] == 1) {
+						if (sc.readToRegisters) {
 							if (sc.inputBufferBlockNum == 1)
 								sprintf(output + strlen(output), "			temp_%d = %sinputBlocks[0].inputs[indexInput(inoutID%s%s)]%s;\n", i, convTypeLeft, requestCoordinate, requestBatch, convTypeRight);
 							else
@@ -1250,8 +1388,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				if (sc.fftDim == sc.fft_dim_full) {
-					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
-
+					for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 						if (sc.localSize[1] == 1)
 							sprintf(output + strlen(output), "		combinedId = gl_LocalInvocationID.x + %d;\n", i * sc.localSize[0]);
 						else
@@ -1261,7 +1398,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							sprintf(output + strlen(output), "		inoutID = indexInput((combinedId %% %d) * %d + (combinedId / %d) * %d%s%s);\n", sc.fftDim, sc.inputStride[0], sc.fftDim, sc.inputStride[1], requestCoordinate, requestBatch);
 						else
 							sprintf(output + strlen(output), "		inoutID = indexInput((combinedId %% %d) + (combinedId / %d) * %d%s%s);\n", sc.fftDim, sc.fftDim, sc.inputStride[1], requestCoordinate, requestBatch);
-						if (sc.localSize[1] == 1) {
+						if (sc.size[sc.axis_id + 1] % sc.localSize[1] != 0)
+							sprintf(output + strlen(output), "		if(combinedId / %d + (gl_WorkGroupID.y%s)*gl_WorkGroupSize.y< %d){", sc.fftDim, shiftY2, sc.size[sc.axis_id + 1]);
+						if (sc.readToRegisters) {
 							if (sc.inputBufferBlockNum == 1)
 								sprintf(output + strlen(output), "		temp_%d = %sinputBlocks[0].inputs[inoutID]%s;\n", i, convTypeLeft, convTypeRight);
 							else
@@ -1273,13 +1412,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							else
 								sprintf(output + strlen(output), "		sdata[(combinedId %% %d) + (combinedId / %d) * sharedStride] = %sinputBlocks[inoutID / %d].inputs[inoutID %% %d]%s;\n", sc.fftDim, sc.fftDim, convTypeLeft, sc.inputBufferBlockSize, sc.inputBufferBlockSize, convTypeRight);
 						}
+						if (sc.size[sc.axis_id + 1] % sc.localSize[1] != 0)
+							sprintf(output + strlen(output), "		}");
 					}
 
 				}
 				else {
-					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+					for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 						sprintf(output + strlen(output), "		inoutID = indexInput(gl_LocalInvocationID.x+%d+gl_LocalInvocationID.y * %d + (((gl_WorkGroupID.x%s) %% %d) * %d + ((gl_WorkGroupID.x%s) / %d) * %d)%s%s);\n", i * sc.localSize[0], sc.firstStageStartSize, shiftX, sc.firstStageStartSize / sc.fftDim, sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1] * sc.firstStageStartSize, requestCoordinate, requestBatch);
-						if (sc.localSize[1] == 1) {
+						if (sc.readToRegisters) {
 							if (sc.inputBufferBlockNum == 1)
 								sprintf(output + strlen(output), "		temp_%d = %sinputBlocks[0].inputs[inoutID]%s;\n", i, convTypeLeft, convTypeRight);
 							else
@@ -1294,23 +1435,38 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 			}
+			sprintf(output + strlen(output), "	}\n");
 			break;
 		}
 		case 1://grouped_c2c
 		{
+			if (sc.localSize[1] * sc.stageRadix[0] * (sc.registers_per_thread / sc.stageRadix[0]) > sc.fftDim)
+				sc.readToRegisters = 0;
+			else
+				sc.readToRegisters = 1;
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
+			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x* sc.stageStartSize, sc.fftDim* sc.stageStartSize, sc.size[sc.axis_id]);
+
+
 			if (sc.zeropad[0]) {
-				for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+				for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 					sprintf(output + strlen(output), "		inoutID = (%d * (gl_LocalInvocationID.y + %d) + ((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d));\n", sc.stageStartSize, i * sc.localSize[1], shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x * sc.stageStartSize, sc.fftDim * sc.stageStartSize);
 
 					sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc.fft_dim_full, sc.fft_zeropad_left_read[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_read[sc.axis_id]);
-
-					if (sc.inputBufferBlockNum == 1)
-						sprintf(output + strlen(output), "			temp_%d=%sinputBlocks[0].inputs[indexInput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s)]%s;\n", i, convTypeLeft, shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, convTypeRight);
-					else
-						sprintf(output + strlen(output), "			temp_%d=%sinputBlocks[indexInput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s) / %d].inputs[indexInput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s) %% %d]%s;\n", i, convTypeLeft, shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, sc.inputBufferBlockSize, shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, sc.inputBufferBlockSize, convTypeRight);
+					if (sc.readToRegisters) {
+						if (sc.inputBufferBlockNum == 1)
+							sprintf(output + strlen(output), "			temp_%d=%sinputBlocks[0].inputs[indexInput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s)]%s;\n", i, convTypeLeft, shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, convTypeRight);
+						else
+							sprintf(output + strlen(output), "			temp_%d=%sinputBlocks[indexInput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s) / %d].inputs[indexInput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s) %% %d]%s;\n", i, convTypeLeft, shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, sc.inputBufferBlockSize, shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, sc.inputBufferBlockSize, convTypeRight);
+					}
+					else {
+						if (sc.inputBufferBlockNum == 1)
+							sprintf(output + strlen(output), "			sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x]=%sinputBlocks[0].inputs[indexInput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s)]%s;\n", i * sc.localSize[1], convTypeLeft, shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, convTypeRight);
+						else
+							sprintf(output + strlen(output), "			sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x]=%sinputBlocks[indexInput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s) / %d].inputs[indexInput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s) %% %d]%s;\n", i * sc.localSize[1], convTypeLeft, shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, sc.inputBufferBlockSize, shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, sc.inputBufferBlockSize, convTypeRight);
+					}
 					sprintf(output + strlen(output), "		}\n");
 					sprintf(output + strlen(output), "		else\n");
 					sprintf(output + strlen(output), "			temp_%d = %s(0,0);\n", i, vecType);
@@ -1318,49 +1474,80 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			}
 			else {
-				for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+				for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 
 					sprintf(output + strlen(output), "		inoutID = indexInput((gl_GlobalInvocationID.x%s) %% (%d), %d * (gl_LocalInvocationID.y + %d) + ((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d)%s%s);\n", shiftX, sc.fft_dim_x, sc.stageStartSize, i * sc.localSize[1], shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x * sc.stageStartSize, sc.fftDim * sc.stageStartSize, requestCoordinate, requestBatch);
-					if (sc.inputBufferBlockNum == 1)
-						sprintf(output + strlen(output), "		temp_%d = %sinputBlocks[0].inputs[inoutID]%s;\n", i, convTypeLeft, convTypeRight);
-					else
-						sprintf(output + strlen(output), "		temp_%d = %sinputBlocks[inoutID / %d].inputs[inoutID %% %d]%s;\n", i, convTypeLeft, sc.inputBufferBlockSize, sc.inputBufferBlockSize, convTypeRight);
-
+					if (sc.readToRegisters) {
+						if (sc.inputBufferBlockNum == 1)
+							sprintf(output + strlen(output), "		temp_%d = %sinputBlocks[0].inputs[inoutID]%s;\n", i, convTypeLeft, convTypeRight);
+						else
+							sprintf(output + strlen(output), "		temp_%d = %sinputBlocks[inoutID / %d].inputs[inoutID %% %d]%s;\n", i, convTypeLeft, sc.inputBufferBlockSize, sc.inputBufferBlockSize, convTypeRight);
+					}
+					else {
+						if (sc.inputBufferBlockNum == 1)
+							sprintf(output + strlen(output), "		sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x] = %sinputBlocks[0].inputs[inoutID]%s;\n", i * sc.localSize[1], convTypeLeft, convTypeRight);
+						else
+							sprintf(output + strlen(output), "		sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x] = %sinputBlocks[inoutID / %d].inputs[inoutID %% %d]%s;\n", i * sc.localSize[1], convTypeLeft, sc.inputBufferBlockSize, sc.inputBufferBlockSize, convTypeRight);
+					}
 				}
 
 			}
+			sprintf(output + strlen(output), "	}\n");
 			break;
 		}
 		case 2://single_c2c_strided
 		{
+			if (sc.localSize[1] * sc.stageRadix[0] * (sc.registers_per_thread / sc.stageRadix[0]) > sc.fftDim)
+				sc.readToRegisters = 0;
+			else
+				sc.readToRegisters = 1;
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
+
+			//sprintf(output + strlen(output), "		if(gl_GlobalInvolcationID.x%s >= %d) return; \n", shiftX, sc.size[0] / axis->specializationConstants.fftDim);
+			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.stageStartSize, sc.stageStartSize* sc.fftDim, sc.fft_dim_full);
+
 			if (sc.zeropad[0]) {
-				for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+				for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 					sprintf(output + strlen(output), "		inoutID = (gl_GlobalInvocationID.x%s) %% (%d) + %d * (gl_LocalInvocationID.y + %d) + ((gl_GlobalInvocationID.x%s) / %d) * (%d);\n", shiftX, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1], shiftX, sc.stageStartSize, sc.stageStartSize * sc.fftDim);
 					sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d))\n", sc.fft_dim_full, sc.fft_zeropad_left_read[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_read[sc.axis_id]);
-
-					if (sc.inputBufferBlockNum == 1)
-						sprintf(output + strlen(output), "			temp_%d=%sinputBlocks[0].inputs[indexInput(inoutID)]%s;\n", i, convTypeLeft, convTypeRight);
-					else
-						sprintf(output + strlen(output), "			temp_%d=%sinputBlocks[indexInput(inoutID) / %d].inputs[indexInput(inoutID) %% %d]%s;\n", i, convTypeLeft, sc.inputBufferBlockSize, sc.inputBufferBlockSize, convTypeRight);
+					if (sc.readToRegisters) {
+						if (sc.inputBufferBlockNum == 1)
+							sprintf(output + strlen(output), "			temp_%d=%sinputBlocks[0].inputs[indexInput(inoutID)]%s;\n", i, convTypeLeft, convTypeRight);
+						else
+							sprintf(output + strlen(output), "			temp_%d=%sinputBlocks[indexInput(inoutID) / %d].inputs[indexInput(inoutID) %% %d]%s;\n", i, convTypeLeft, sc.inputBufferBlockSize, sc.inputBufferBlockSize, convTypeRight);
+					}
+					else {
+						if (sc.inputBufferBlockNum == 1)
+							sprintf(output + strlen(output), "			sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x]=%sinputBlocks[0].inputs[indexInput(inoutID)]%s;\n", i * sc.localSize[1], convTypeLeft, convTypeRight);
+						else
+							sprintf(output + strlen(output), "			sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x]=%sinputBlocks[indexInput(inoutID) / %d].inputs[indexInput(inoutID) %% %d]%s;\n", i * sc.localSize[1], convTypeLeft, sc.inputBufferBlockSize, sc.inputBufferBlockSize, convTypeRight);
+					}
 					sprintf(output + strlen(output), "		else\n");
 					sprintf(output + strlen(output), "			temp_%d = %s(0,0);\n", i, vecType);
 				}
 			}
 			else {
-				for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+				for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 
 					sprintf(output + strlen(output), "		inoutID = indexInput((gl_GlobalInvocationID.x%s) %% (%d) + %d * (gl_LocalInvocationID.y + %d) + ((gl_GlobalInvocationID.x%s) / %d) * (%d));\n", shiftX, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1], shiftX, sc.stageStartSize, sc.stageStartSize * sc.fftDim);
-					if (sc.inputBufferBlockNum == 1)
-						sprintf(output + strlen(output), "		temp_%d = %sinputBlocks[0].inputs[inoutID]%s;\n", i, convTypeLeft, convTypeRight);
-					else
-						sprintf(output + strlen(output), "		temp_%d = %sinputBlocks[inoutID / %d].inputs[inoutID %% %d]%s;\n", i, convTypeLeft, sc.inputBufferBlockSize, sc.inputBufferBlockSize, convTypeRight);
-
+					if (sc.readToRegisters) {
+						if (sc.inputBufferBlockNum == 1)
+							sprintf(output + strlen(output), "		temp_%d = %sinputBlocks[0].inputs[inoutID]%s;\n", i, convTypeLeft, convTypeRight);
+						else
+							sprintf(output + strlen(output), "		temp_%d = %sinputBlocks[inoutID / %d].inputs[inoutID %% %d]%s;\n", i, convTypeLeft, sc.inputBufferBlockSize, sc.inputBufferBlockSize, convTypeRight);
+					}
+					else {
+						if (sc.inputBufferBlockNum == 1)
+							sprintf(output + strlen(output), "		sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x] = %sinputBlocks[0].inputs[inoutID]%s;\n", i * sc.localSize[1], convTypeLeft, convTypeRight);
+						else
+							sprintf(output + strlen(output), "		sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x] = %sinputBlocks[inoutID / %d].inputs[inoutID %% %d]%s;\n", i * sc.localSize[1], convTypeLeft, sc.inputBufferBlockSize, sc.inputBufferBlockSize, convTypeRight);
+					}
 				}
 
 			}
+			sprintf(output + strlen(output), "	}\n");
 			break;
 		}
 		case 3://single_c2c - registerBoost - 2x
@@ -1461,7 +1648,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), "		inoutID = (combinedId %% %d) + (combinedId / %d) * %d;\n", sc.fftDim, sc.fftDim, sc.inputStride[1]);
 
 							sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc.fft_dim_full, sc.fft_zeropad_left_read[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_read[sc.axis_id]);
-							if (sc.localSize[1] == 1) {
+							if (sc.readToRegisters) {
 								if (sc.inputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		temp_%d = %sinputBlocks[0].inputs[indexInput(inoutID%s%s)]%s;\n", (i + j * sc.registers_per_thread), convTypeLeft, requestCoordinate, requestBatch, convTypeRight);
 								else
@@ -1532,12 +1719,19 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		case 5://single_r2c
 		{
+			if ((sc.localSize[1] > 1) || ((sc.performR2C) && (sc.inverse)) || (sc.localSize[0] * sc.stageRadix[0] * (sc.registers_per_thread / sc.stageRadix[0]) > sc.fftDim))
+				sc.readToRegisters = 0;
+			else
+				sc.readToRegisters = 1;
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX ");
+			char shiftY[100] = "";
+			if (sc.performWorkGroupShift[1])
+				sprintf(shiftY, " + consts.workGroupShiftY ");
 			if (sc.zeropad[0]) {
 				if (sc.fftDim == sc.fft_dim_full) {
-					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+					for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 
 						if (sc.localSize[1] == 1)
 							sprintf(output + strlen(output), "		combinedId = gl_LocalInvocationID.x + %d;\n", i * sc.localSize[0]);
@@ -1548,8 +1742,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							sprintf(output + strlen(output), "		inoutID = (combinedId %% %d) * %d + (combinedId / %d) * %d;\n", sc.fftDim, sc.inputStride[0], sc.fftDim, 2 * sc.inputStride[1]);
 						else
 							sprintf(output + strlen(output), "		inoutID = (combinedId %% %d) + (combinedId / %d) * %d;\n", sc.fftDim, sc.fftDim, 2 * sc.inputStride[1]);
+						if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+							sprintf(output + strlen(output), "		if(combinedId / %d + (gl_WorkGroupID.y%s)*gl_WorkGroupSize.y< %d){", sc.fftDim, shiftY, (uint32_t)ceil(sc.size[1] / 2.0));
+
 						sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc.fft_dim_full, sc.fft_zeropad_left_read[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_read[sc.axis_id]);
-						if (sc.localSize[1] == 1) {
+						if (sc.readToRegisters) {
 							if (sc.inputBufferBlockNum == 1)
 								sprintf(output + strlen(output), "		temp_%d.x = %sinputBlocks[0].inputs[indexInput(inoutID)]%s;\n", i, convTypeLeft, convTypeRight);
 							else
@@ -1576,6 +1773,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						else
 							sprintf(output + strlen(output), "		sdata[(combinedId %% %d) + (combinedId / %d) * sharedStride] = %s(0,0);\n", sc.fftDim, sc.fftDim, vecType);
 						sprintf(output + strlen(output), "	}\n");
+						if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+							sprintf(output + strlen(output), "		}");
 					}
 				}
 				else {
@@ -1584,7 +1783,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				if (sc.fftDim == sc.fft_dim_full) {
-					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+					for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 
 						if (sc.localSize[1] == 1)
 							sprintf(output + strlen(output), "		combinedId = gl_LocalInvocationID.x + %d;\n", i * sc.localSize[0]);
@@ -1595,7 +1794,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							sprintf(output + strlen(output), "		inoutID = indexInput((combinedId %% %d) * %d + (combinedId / %d) * %d);\n", sc.fftDim, sc.inputStride[0], sc.fftDim, 2 * sc.inputStride[1]);
 						else
 							sprintf(output + strlen(output), "		inoutID = indexInput((combinedId %% %d) + (combinedId / %d) * %d);\n", sc.fftDim, sc.fftDim, 2 * sc.inputStride[1]);
-						if (sc.localSize[1] == 1) {
+						if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+							sprintf(output + strlen(output), "		if(combinedId / %d + (gl_WorkGroupID.y%s)*gl_WorkGroupSize.y< %d){", sc.fftDim, shiftY, (uint32_t)ceil(sc.size[sc.axis_id + 1] / 2.0));
+
+						if (sc.readToRegisters) {
 							if (sc.inputBufferBlockNum == 1)
 								sprintf(output + strlen(output), "		temp_%d.x = %sinputBlocks[0].inputs[inoutID]%s;\n", i, convTypeLeft, convTypeRight);
 							else
@@ -1618,6 +1820,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), "		sdata[(combinedId %% %d) + (combinedId / %d) * sharedStride].y = %sinputBlocks[inoutID / %d].inputs[inoutID %% %d]%s;\n", sc.fftDim, sc.fftDim, convTypeLeft, sc.inputBufferBlockSize, sc.inputBufferBlockSize, convTypeRight);
 
 						}
+						if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+							sprintf(output + strlen(output), "		}");
 					}
 
 				}
@@ -1628,12 +1832,18 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			break;
 		}
 		case 6: {//single_c2r
+			if ((sc.localSize[1] > 1) || ((sc.performR2C) && (sc.inverse)) || (sc.localSize[0] * sc.stageRadix[0] * (sc.registers_per_thread / sc.stageRadix[0]) > sc.fftDim))
+				sc.readToRegisters = 0;
+			else
+				sc.readToRegisters = 1;
 			char shiftY[100] = "";
 			if (sc.performWorkGroupShift[1])
 				sprintf(shiftY, " + consts.workGroupShiftY * %d", sc.localSize[1]);
 			if (sc.zeropad[0]) {
 				if (sc.fftDim == sc.fft_dim_full) {
-					for (uint32_t i = 0; i < 4; i++) {
+					for (uint32_t i = 0; i < ceil(sc.min_registers_per_thread / 2.0); i++) {
+						if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+							sprintf(output + strlen(output), "		if(gl_GlobalInvocationID.y%s < %d){", shiftY, (uint32_t)ceil(sc.size[1] / 2.0));
 
 						sprintf(output + strlen(output), "		inoutID = gl_LocalInvocationID.x+%d;\n", i * sc.localSize[0]);
 
@@ -1690,11 +1900,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		sdata[sharedStride * gl_LocalInvocationID.y].x = (temp_0.x - temp_1.y);\n\
 		sdata[sharedStride * gl_LocalInvocationID.y].y = (temp_0.y + temp_1.x);\n");
 					sprintf(output + strlen(output), "	}\n");
+					if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+						sprintf(output + strlen(output), "		}");
 				}
 			}
 			else {
 				if (sc.fftDim == sc.fft_dim_full) {
-					for (uint32_t i = 0; i < 4; i++) {
+					for (uint32_t i = 0; i < ceil(sc.min_registers_per_thread / 2.0); i++) {
+						if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+							sprintf(output + strlen(output), "		if(gl_GlobalInvocationID.y%s < %d){", shiftY, (uint32_t)ceil(sc.size[1] / 2.0));
 
 						sprintf(output + strlen(output), "		inoutID = indexInput(gl_LocalInvocationID.x + %d, (gl_GlobalInvocationID.y%s));\n", i * sc.localSize[0], shiftY);
 
@@ -1744,7 +1958,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		sdata[sharedStride * gl_LocalInvocationID.y].x = (temp_0.x - temp_1.y);\n\
 		sdata[sharedStride * gl_LocalInvocationID.y].y = (temp_0.y + temp_1.x);\n");
 					sprintf(output + strlen(output), "	}\n");
-
+					if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+						sprintf(output + strlen(output), "		}");
 				}
 				else {
 					//Not implemented
@@ -1769,7 +1984,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
 			if ((sc.stageStartSize > 1) && (!sc.reorderFourStep) && (sc.inverse)) {
-				for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+				if (sc.localSize[1] * sc.stageRadix[0] * (sc.registers_per_thread / sc.stageRadix[0]) > sc.fftDim) {
+					appendBarrierVkFFT(output, 1);
+					sc.readToRegisters = 0;
+				}
+				else
+					sc.readToRegisters = 1;
+				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
 						sprintf(output + strlen(output), "		mult = twiddleLUT[%d+(((gl_GlobalInvocationID.x%s)/%d) %% (%d))+%d*(gl_LocalInvocationID.y+%d)];\n", 3 * sc.maxStageSumLUT, shiftX, sc.fft_dim_x, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1]);
 					else {
@@ -1779,8 +2000,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						if (!strcmp(floatType, "double"))
 							sprintf(output + strlen(output), "		mult = sincos_20(-angle);\n");
 					}
-					sprintf(output + strlen(output), "\
+					if (sc.readToRegisters) {
+						sprintf(output + strlen(output), "\
 		temp_%d = %s(temp_%d.x * mult.x - temp_%d.y * mult.y, temp_%d.y * mult.x + temp_%d.x * mult.y);\n", i, vecType, i, i, i, i);
+					}
+					else {
+						sprintf(output + strlen(output), "\
+		sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x] = %s(sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.x - sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.y, sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.x + sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.y);\n", i * sc.localSize[1], vecType, i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1]);
+					}
 				}
 				//appendBarrierVkFFT(output, 1);
 			}
@@ -1792,7 +2019,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
 			if ((!sc.reorderFourStep) && (sc.inverse)) {
-				for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+				if (sc.localSize[1] * sc.stageRadix[0] * (sc.registers_per_thread / sc.stageRadix[0]) > sc.fftDim) {
+					appendBarrierVkFFT(output, 1);
+					sc.readToRegisters = 0;
+				}
+				else
+					sc.readToRegisters = 1;
+				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
 						sprintf(output + strlen(output), "		mult = twiddleLUT[%d + ((gl_GlobalInvocationID.x%s) %% (%d)) + (gl_LocalInvocationID.y + %d) * %d];\n", 3 * sc.maxStageSumLUT, shiftX, sc.stageStartSize, i * sc.localSize[1], sc.stageStartSize);
 					else {
@@ -1803,8 +2036,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						if (!strcmp(floatType, "double"))
 							sprintf(output + strlen(output), "		mult = sincos_20(-angle);\n");
 					}
-					sprintf(output + strlen(output), "\
+					if (sc.readToRegisters) {
+						sprintf(output + strlen(output), "\
 		temp_%d = %s(temp_%d.x * mult.x - temp_%d.y * mult.y, temp_%d.y * mult.x + temp_%d.x * mult.y);\n", i, vecType, i, i, i, i);
+					}
+					else {
+						sprintf(output + strlen(output), "\
+		sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x] = %s(sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.x - sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.y, sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.x + sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.y);\n", i * sc.localSize[1], vecType, i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1]);
+					}
 				}
 			}
 			//appendBarrierVkFFT(output, 1);
@@ -1827,7 +2066,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
 			if ((sc.stageStartSize > 1) && (!((sc.stageStartSize > 1) && (!sc.reorderFourStep) && (sc.inverse)))) {
-				for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+				if (sc.localSize[1] * sc.stageRadix[sc.numStages - 1] * (sc.registers_per_thread / sc.stageRadix[sc.numStages - 1]) > sc.fftDim) {
+					appendBarrierVkFFT(output, 1);
+					sc.writeFromRegisters = 0;
+				}
+				else
+					sc.writeFromRegisters = 1;
+				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
 						sprintf(output + strlen(output), "		mult = twiddleLUT[%d+(((gl_GlobalInvocationID.x%s)/%d) %% (%d))+%d*(gl_LocalInvocationID.y+%d)];\n", 3 * sc.maxStageSumLUT, shiftX, sc.fft_dim_x, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1]);
 					else {
@@ -1845,8 +2090,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), "		mult = sincos_20(angle);\n");
 						}
 					}
-					sprintf(output + strlen(output), "\
+					if (sc.writeFromRegisters) {
+						sprintf(output + strlen(output), "\
 		temp_%d = %s(temp_%d.x * mult.x - temp_%d.y * mult.y, temp_%d.y * mult.x + temp_%d.x * mult.y);\n", i, vecType, i, i, i, i);
+					}
+					else {
+						sprintf(output + strlen(output), "\
+		sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x] = %s(sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.x - sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.y, sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.x + sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.y);\n", i * sc.localSize[1], vecType, i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1]);
+					}
 				}
 				//appendBarrierVkFFT(output, 1);
 			}
@@ -1857,7 +2108,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
 			if (!((!sc.reorderFourStep) && (sc.inverse))) {
-				for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+				if (sc.localSize[1] * sc.stageRadix[sc.numStages - 1] * (sc.registers_per_thread / sc.stageRadix[sc.numStages - 1]) > sc.fftDim) {
+					appendBarrierVkFFT(output, 1);
+					sc.writeFromRegisters = 0;
+				}
+				else
+					sc.writeFromRegisters = 1;
+				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
 						sprintf(output + strlen(output), "		mult = twiddleLUT[%d + ((gl_GlobalInvocationID.x%s) %% (%d)) + (gl_LocalInvocationID.y + %d) * %d];\n", 3 * sc.maxStageSumLUT, shiftX, sc.stageStartSize, i * sc.localSize[1], sc.stageStartSize);
 					else {
@@ -1875,8 +2132,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), "		mult = sincos_20(angle);\n");
 						}
 					}
-					sprintf(output + strlen(output), "\
+					if (sc.writeFromRegisters) {
+						sprintf(output + strlen(output), "\
 		temp_%d = %s(temp_%d.x * mult.x - temp_%d.y * mult.y, temp_%d.y * mult.x + temp_%d.x * mult.y);\n", i, vecType, i, i, i, i);
+					}
+					else {
+						sprintf(output + strlen(output), "\
+		sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x] = %s(sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.x - sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.y, sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.x + sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.y);\n", i * sc.localSize[1], vecType, i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1]);
+					}
 				}
 			}
 			//appendBarrierVkFFT(output, 1);
@@ -1901,41 +2164,54 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else
 				sprintf(convolutionInverse, ", 1");
 		}
-		if ((stageSize > 1) || (sc.localSize[1] > 1) || ((sc.performR2C) && (sc.inverse)) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle < 0)))
+		uint32_t logicalRegistersPerThread = stageRadix * (sc.registers_per_thread / stageRadix);
+		uint32_t logicalGroupSize = sc.fftDim / logicalRegistersPerThread;
+		if ((sc.localSize[0] * logicalRegistersPerThread > sc.fftDim) || (stageSize > 1) || (sc.localSize[1] > 1) || ((sc.performR2C) && (sc.inverse)) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle < 0)))
 			appendBarrierVkFFT(output, 1);
 
-		for (uint32_t j = 0; j < sc.registers_per_thread / stageRadix; j++) {
+		if (sc.localSize[0] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "\
-		stageInvocationID = (gl_LocalInvocationID.x+ %d) & (%d);\n", j * sc.localSize[0], stageSize - 1u);
+		if (gl_LocalInvocationID.x * %d < %d) {\n", logicalRegistersPerThread, sc.fftDim);
+		for (uint32_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
+			sprintf(output + strlen(output), "\
+		stageInvocationID = (gl_LocalInvocationID.x+ %d) %% (%d);\n", j * logicalGroupSize, stageSize);
 			if (sc.LUT)
 				sprintf(output + strlen(output), "		LUTId = stageInvocationID + %d;\n", stageSizeSum);
 			else
 				sprintf(output + strlen(output), "		angle = stageInvocationID * %.17f%s;\n", stageAngle, LFending);
-			if ((stageSize > 1) || (sc.localSize[1] > 1) || ((sc.performR2C) && (sc.inverse)) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle < 0))) {
+			if ((sc.localSize[0] * logicalRegistersPerThread > sc.fftDim) || (stageSize > 1) || (sc.localSize[1] > 1) || ((sc.performR2C) && (sc.inverse)) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle < 0))) {
 				for (uint32_t i = 0; i < stageRadix; i++) {
 					sprintf(output + strlen(output), "\
-		temp_%d = sdata[sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %d];\n", j + i * sc.registers_per_thread / stageRadix, j * sc.localSize[0] + i * sc.fftDim / stageRadix);
+		temp_%d = sdata[sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %d];\n", j + i * logicalRegistersPerThread / stageRadix, j * logicalGroupSize + i * sc.fftDim / stageRadix);
 				}
 			}
-			sprintf(output + strlen(output), "		radix%d(", stageRadix);
+			uint32_t* regID = (uint32_t*)malloc(sizeof(uint32_t) * stageRadix);
 			for (uint32_t i = 0; i < stageRadix; i++) {
-				sprintf(output + strlen(output), "temp_%d, ", j + i * sc.registers_per_thread / stageRadix);
+				regID[i] = j + i * logicalRegistersPerThread / stageRadix;
+			}
+			inlineRadixKernelVkFFT(output, sc, floatType, uintType, stageRadix, stageAngle, regID);
+			/*sprintf(output + strlen(output), "		radix%d(", stageRadix);
+			for (uint32_t i = 0; i < stageRadix; i++) {
+				sprintf(output + strlen(output), "temp_%d, ", j + i * logicalRegistersPerThread / stageRadix);
 			}
 			if (sc.LUT)
 				sprintf(output + strlen(output), "LUTId%s);\n", convolutionInverse);
 			else
-				sprintf(output + strlen(output), "angle%s);\n", convolutionInverse);
+				sprintf(output + strlen(output), "angle%s);\n", convolutionInverse);*/
+			free(regID);
 		}
-		if ((stageSize == 1) && (sc.cacheShuffle) && (stageRadix == sc.registers_per_thread)) {
-			for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+		if ((stageSize == 1) && (sc.cacheShuffle)) {
+			for (uint32_t i = 0; i < logicalRegistersPerThread; i++) {
 				sprintf(output + strlen(output), "\
 		shuffle[%d]=temp_%d;\n", i, i);
 			}
-			for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+			for (uint32_t i = 0; i < logicalRegistersPerThread; i++) {
 				sprintf(output + strlen(output), "\
-		temp_%d=shuffle[(%d+tshuffle)&(%d)];\n", i, i, sc.registers_per_thread - 1);
+		temp_%d=shuffle[(%d+tshuffle)%%(%d)];\n", i, i, logicalRegistersPerThread);
 			}
 		}
+		if (sc.localSize[0] * logicalRegistersPerThread > sc.fftDim)
+			sprintf(output + strlen(output), "		}\n");
 
 	}
 	static inline void appendRadixStageNonStridedBoost2x(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix) {
@@ -1952,7 +2228,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			for (uint32_t j = 0; j < 2; j++) {
 				for (uint32_t l = 0; l < 4; l++) {
 					sprintf(output + strlen(output), "\
-		stageInvocationID = (gl_LocalInvocationID.x + %d) & (%d);\n", (l + 4 * j) * sc.localSize[0], stageSize - 1u);
+		stageInvocationID = (gl_LocalInvocationID.x + %d) %% (%d);\n", (l + 4 * j) * sc.localSize[0], stageSize);
 					if (sc.LUT)
 						sprintf(output + strlen(output), "		LUTId = stageInvocationID + %d;\n", stageSizeSum);
 					else
@@ -1974,7 +2250,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			for (uint32_t j = 0; j < 2; j++) {
 				for (uint32_t l = 0; l < 2; l++) {
 					sprintf(output + strlen(output), "\
-		stageInvocationID = (gl_LocalInvocationID.x + %d) & (%d);\n", (l + 2 * j) * sc.localSize[0], stageSize - 1u);
+		stageInvocationID = (gl_LocalInvocationID.x + %d) %% (%d);\n", (l + 2 * j) * sc.localSize[0], stageSize);
 					if (sc.LUT)
 						sprintf(output + strlen(output), "		LUTId = stageInvocationID + %d;\n", stageSizeSum);
 					else
@@ -1995,7 +2271,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		{
 			for (uint32_t j = 0; j < 2; j++) {
 				sprintf(output + strlen(output), "\
-		stageInvocationID = (gl_LocalInvocationID.x + %d) & (%d);\n", j * sc.localSize[0], stageSize - 1u);
+		stageInvocationID = (gl_LocalInvocationID.x + %d) %% (%d);\n", j * sc.localSize[0], stageSize);
 				if (sc.LUT)
 					sprintf(output + strlen(output), "		LUTId = stageInvocationID + %d;\n", stageSizeSum);
 				else
@@ -2008,14 +2284,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sprintf(output + strlen(output), "LUTId);\n");
 				else
 					sprintf(output + strlen(output), "angle);\n");
-				if ((stageSize == 1) && (sc.cacheShuffle) && (stageRadix == sc.registers_per_thread)) {
+				if ((stageSize == 1) && (sc.cacheShuffle)) {
 					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
 						sprintf(output + strlen(output), "\
 		shuffle[%d]=temp_%d;\n", i, j * sc.registers_per_thread + i);
 					}
 					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
 						sprintf(output + strlen(output), "\
-		temp_%d=shuffle[(%d+tshuffle)&(%d)];\n", j * sc.registers_per_thread + i, i, sc.registers_per_thread - 1);
+		temp_%d=shuffle[(%d+tshuffle)%%(%d)];\n", j * sc.registers_per_thread + i, i, sc.registers_per_thread);
 					}
 				}
 			}
@@ -2037,7 +2313,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			for (uint32_t j = 0; j < 4; j++) {
 				for (uint32_t l = 0; l < 4; l++) {
 					sprintf(output + strlen(output), "\
-		stageInvocationID = (gl_LocalInvocationID.x + %d) & (%d);\n", (l + 4 * j) * sc.localSize[0], stageSize - 1u);
+		stageInvocationID = (gl_LocalInvocationID.x + %d) %% (%d);\n", (l + 4 * j) * sc.localSize[0], stageSize);
 					if (sc.LUT)
 						sprintf(output + strlen(output), "		LUTId = stageInvocationID + %d;\n", stageSizeSum);
 					else
@@ -2059,7 +2335,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			for (uint32_t j = 0; j < 4; j++) {
 				for (uint32_t l = 0; l < 2; l++) {
 					sprintf(output + strlen(output), "\
-		stageInvocationID = (gl_LocalInvocationID.x + %d) & (%d);\n", (l + 2 * j) * sc.localSize[0], stageSize - 1u);
+		stageInvocationID = (gl_LocalInvocationID.x + %d) %% (%d);\n", (l + 2 * j) * sc.localSize[0], stageSize);
 					if (sc.LUT)
 						sprintf(output + strlen(output), "		LUTId = stageInvocationID + %d;\n", stageSizeSum);
 					else
@@ -2080,7 +2356,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		{
 			for (uint32_t j = 0; j < 4; j++) {
 				sprintf(output + strlen(output), "\
-		stageInvocationID = (gl_LocalInvocationID.x + %d) & (%d);\n", j * sc.localSize[0], stageSize - 1u);
+		stageInvocationID = (gl_LocalInvocationID.x + %d) %% (%d);\n", j * sc.localSize[0], stageSize);
 				if (sc.LUT)
 					sprintf(output + strlen(output), "		LUTId = stageInvocationID + %d;\n", stageSizeSum);
 				else
@@ -2093,14 +2369,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sprintf(output + strlen(output), "LUTId);\n");
 				else
 					sprintf(output + strlen(output), "angle);\n");
-				if ((stageSize == 1) && (sc.cacheShuffle) && (stageRadix == sc.registers_per_thread)) {
+				if ((stageSize == 1) && (sc.cacheShuffle)) {
 					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
 						sprintf(output + strlen(output), "\
 		shuffle[%d]=temp_%d;\n", i, j * sc.registers_per_thread + i);
 					}
 					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
 						sprintf(output + strlen(output), "\
-		temp_%d=shuffle[(%d+tshuffle)&(%d)];\n", j * sc.registers_per_thread + i, i, sc.registers_per_thread - 1);
+		temp_%d=shuffle[(%d+tshuffle)%%(%d)];\n", j * sc.registers_per_thread + i, i, sc.registers_per_thread);
 					}
 				}
 			}
@@ -2123,30 +2399,42 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else
 				sprintf(convolutionInverse, ", 1");
 		}
-		if ((stageSize > 1) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle < 0)))
+		uint32_t logicalRegistersPerThread = stageRadix * (sc.registers_per_thread / stageRadix);
+		uint32_t logicalGroupSize = sc.fftDim / logicalRegistersPerThread;
+		if ((sc.localSize[1] * logicalRegistersPerThread > sc.fftDim) || (stageSize > 1) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle < 0)))
 			appendBarrierVkFFT(output, 1);
-		for (uint32_t j = 0; j < sc.registers_per_thread / stageRadix; j++) {
+		if (sc.localSize[1] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "\
-		stageInvocationID = (gl_LocalInvocationID.y+ %d) & (%d);\n", j * sc.localSize[1], stageSize - 1u);
+		if (gl_LocalInvocationID.y * %d < %d) {\n", logicalRegistersPerThread, sc.fftDim);
+		for (uint32_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
+			sprintf(output + strlen(output), "\
+		stageInvocationID = (gl_LocalInvocationID.y+ %d) %% (%d);\n", j * logicalGroupSize, stageSize);
 			if (sc.LUT)
 				sprintf(output + strlen(output), "		LUTId = stageInvocationID + %d;\n", stageSizeSum);
 			else
 				sprintf(output + strlen(output), "		angle = stageInvocationID * %.17f%s;\n", stageAngle, LFending);
-			if ((stageSize > 1) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle < 0))) {
+			if ((sc.localSize[1] * logicalRegistersPerThread > sc.fftDim) || (stageSize > 1) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle < 0))) {
 				for (uint32_t i = 0; i < stageRadix; i++) {
 					sprintf(output + strlen(output), "\
-		temp_%d = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x];\n", j + i * sc.registers_per_thread / stageRadix, j * sc.localSize[1] + i * sc.fftDim / stageRadix);
+		temp_%d = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x];\n", j + i * logicalRegistersPerThread / stageRadix, j * logicalGroupSize + i * sc.fftDim / stageRadix);
 				}
 			}
-			sprintf(output + strlen(output), "		radix%d(", stageRadix);
+			uint32_t* regID = (uint32_t*)malloc(sizeof(uint32_t) * stageRadix);
 			for (uint32_t i = 0; i < stageRadix; i++) {
-				sprintf(output + strlen(output), "temp_%d, ", j + i * sc.registers_per_thread / stageRadix);
+				regID[i] = j + i * logicalRegistersPerThread / stageRadix;
+			}
+			inlineRadixKernelVkFFT(output, sc, floatType, uintType, stageRadix, stageAngle, regID);
+			/*sprintf(output + strlen(output), "		radix%d(", stageRadix);
+			for (uint32_t i = 0; i < stageRadix; i++) {
+				sprintf(output + strlen(output), "temp_%d, ", j + i * logicalRegistersPerThread / stageRadix);
 			}
 			if (sc.LUT)
 				sprintf(output + strlen(output), "LUTId%s);\n", convolutionInverse);
 			else
-				sprintf(output + strlen(output), "angle%s);\n", convolutionInverse);
+				sprintf(output + strlen(output), "angle%s);\n", convolutionInverse);*/
 		}
+		if (sc.localSize[1] * logicalRegistersPerThread > sc.fftDim)
+			sprintf(output + strlen(output), "		}\n");
 	}
 	static inline void appendRadixStage(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix, uint32_t shuffleType) {
 		switch (shuffleType) {
@@ -2389,35 +2677,45 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		char stageNormalization[10] = "";
 		if (((sc.inverse) && (sc.normalize)) || ((sc.convolutionStep) && (stageAngle < 0)))
 			sprintf(stageNormalization, " / %d", stageRadix);
-		if ((stageSize < sc.fftDim / stageRadix) || ((sc.reorderFourStep) && (sc.fftDim < sc.fft_dim_full) && (sc.localSize[1] > 1)) || (sc.localSize[1] > 1) || ((sc.performR2C) && (!sc.inverse) && (sc.axis_id == 0)) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle > 0))) {
+		uint32_t logicalRegistersPerThread = stageRadix * (sc.registers_per_thread / stageRadix);
+		uint32_t logicalGroupSize = sc.fftDim / logicalRegistersPerThread;
+		if ((sc.localSize[0] * logicalRegistersPerThread > sc.fftDim) || (stageSize < sc.fftDim / stageRadix) || ((sc.reorderFourStep) && (sc.fftDim < sc.fft_dim_full) && (sc.localSize[1] > 1)) || (sc.localSize[1] > 1) || ((sc.performR2C) && (!sc.inverse) && (sc.axis_id == 0)) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle > 0)))
 			appendBarrierVkFFT(output, 1);
-			for (uint32_t j = 0; j < sc.registers_per_thread / stageRadix; j++) {
+		if (sc.localSize[0] * logicalRegistersPerThread > sc.fftDim)
+			sprintf(output + strlen(output), "\
+	if (gl_GlobalInvocationID.x * %d < %d) {\n", logicalRegistersPerThread, sc.fftDim);
+		if ((sc.localSize[0] * logicalRegistersPerThread > sc.fftDim) || (stageSize < sc.fftDim / stageRadix) || ((sc.reorderFourStep) && (sc.fftDim < sc.fft_dim_full) && (sc.localSize[1] > 1)) || (sc.localSize[1] > 1) || ((sc.performR2C) && (!sc.inverse) && (sc.axis_id == 0)) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle > 0))) {
+			//appendBarrierVkFFT(output, 1);
+			for (uint32_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
 				sprintf(output + strlen(output), "\
-		stageInvocationID = (gl_LocalInvocationID.x + %d) & (%d);\n\
+		stageInvocationID = (gl_LocalInvocationID.x + %d) %% (%d);\n\
 		blockInvocationID = (gl_LocalInvocationID.x + %d) - stageInvocationID;\n\
-		inoutID = stageInvocationID + blockInvocationID * %d;\n", j * sc.localSize[0], stageSize - 1u, j * sc.localSize[0], stageRadix);
-				if ((stageSize == 1) && (sc.cacheShuffle) && (stageRadix == sc.registers_per_thread)) {
+		inoutID = stageInvocationID + blockInvocationID * %d;\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);
+				if ((stageSize == 1) && (sc.cacheShuffle)) {
 					for (uint32_t i = 0; i < stageRadix; i++) {
 						sprintf(output + strlen(output), "\
-	sdata[sharedStride * gl_LocalInvocationID.y + inoutID + ((%d+tshuffle)&(%d))*%d] = temp_%d%s;\n", i, sc.registers_per_thread - 1, stageSize, j + i * sc.registers_per_thread / stageRadix, stageNormalization);
+	sdata[sharedStride * gl_LocalInvocationID.y + inoutID + ((%d+tshuffle) %% (%d))*%d] = temp_%d%s;\n", i, logicalRegistersPerThread, stageSize, j + i * logicalRegistersPerThread / stageRadix, stageNormalization);
 					}
 				}
 				else {
 					for (uint32_t i = 0; i < stageRadix; i++) {
 						sprintf(output + strlen(output), "\
-	sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %d] = temp_%d%s;\n", i * stageSize, j + i * sc.registers_per_thread / stageRadix, stageNormalization);
+	sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %d] = temp_%d%s;\n", i * stageSize, j + i * logicalRegistersPerThread / stageRadix, stageNormalization);
 					}
 				}
 			}
 		}
 		else {
 			if (((sc.inverse) && (sc.normalize)) || ((sc.convolutionStep) && (stageAngle < 0))) {
-				for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+				for (uint32_t i = 0; i < logicalRegistersPerThread; i++) {
 					sprintf(output + strlen(output), "\
 		temp_%d = temp_%d%s;\n", i, i, stageNormalization);
 				}
 			}
 		}
+		if (sc.localSize[0] * logicalRegistersPerThread > sc.fftDim)
+			sprintf(output + strlen(output), "	}\n");
+
 	}
 	static inline void appendRadixShuffleNonStridedBoost2x(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix) {
 		char vecType[10];
@@ -2440,15 +2738,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if ((sc.inverse) && (sc.normalize))
 				sprintf(stageNormalization, " * 0.125");
 			sprintf(output + strlen(output), "\
-		stageInvocationID = (gl_LocalInvocationID.x) & (%d);\n\
+		stageInvocationID = (gl_LocalInvocationID.x) %% (%d);\n\
 		blockInvocationID = (gl_LocalInvocationID.x) - stageInvocationID;\n\
-		inoutID = stageInvocationID + blockInvocationID * 8;\n", stageSize - 1u);
+		inoutID = stageInvocationID + blockInvocationID * 8;\n", stageSize);
 			for (uint32_t j = 0; j < 2; ++j) {
 				appendBarrierVkFFT(output, 2);
-				if ((stageSize == 1) && (sc.cacheShuffle) && (stageRadix == sc.registers_per_thread)) {
+				if ((stageSize == 1) && (sc.cacheShuffle)) {
 					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
 						sprintf(output + strlen(output), "\
-			sdata[inoutID + ((%d+tshuffle)&(%d))*%d] = temp_%d%s;\n", i, sc.registers_per_thread - 1, stageSize, i + j * sc.registers_per_thread, stageNormalization);
+			sdata[inoutID + ((%d+tshuffle)%%(%d))*%d] = temp_%d%s;\n", i, sc.registers_per_thread, stageSize, i + j * sc.registers_per_thread, stageNormalization);
 					}
 				}
 				else {
@@ -2486,12 +2784,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(stageNormalization, " * 0.25");
 			sprintf(output + strlen(output), "\
 {\n\
-		stageInvocationID = (gl_LocalInvocationID.x) & (%d);\n\
+		stageInvocationID = (gl_LocalInvocationID.x) %% (%d);\n\
 		blockInvocationID = (gl_LocalInvocationID.x) - stageInvocationID;\n\
 		inoutID = stageInvocationID + blockInvocationID * 4;\n\
-		stageInvocationID = (gl_LocalInvocationID.x + gl_WorkGroupSize.x) & (%d);\n\
+		stageInvocationID = (gl_LocalInvocationID.x + gl_WorkGroupSize.x) %% (%d);\n\
 		blockInvocationID = (gl_LocalInvocationID.x + gl_WorkGroupSize.x) - stageInvocationID;\n\
-		%s inoutID2 = stageInvocationID + blockInvocationID * 4;\n", stageSize - 1u, stageSize - 1u, uintType);
+		%s inoutID2 = stageInvocationID + blockInvocationID * 4;\n", stageSize, stageSize, uintType);
 			for (uint32_t j = 0; j < 4; ++j) {
 				appendBarrierVkFFT(output, 2);
 				for (uint32_t i = 0; i < 4; ++i) {
@@ -2516,15 +2814,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if ((sc.inverse) && (sc.normalize))
 				sprintf(stageNormalization, " * 0.125");
 			sprintf(output + strlen(output), "\
-		stageInvocationID = (gl_LocalInvocationID.x) & (%d);\n\
+		stageInvocationID = (gl_LocalInvocationID.x) %% (%d);\n\
 		blockInvocationID = (gl_LocalInvocationID.x) - stageInvocationID;\n\
-		inoutID = stageInvocationID + blockInvocationID * 8;\n", stageSize - 1u);
+		inoutID = stageInvocationID + blockInvocationID * 8;\n", stageSize);
 			for (uint32_t j = 0; j < 4; ++j) {
 				appendBarrierVkFFT(output, 2);
-				if ((stageSize == 1) && (sc.cacheShuffle) && (stageRadix == sc.registers_per_thread)) {
+				if ((stageSize == 1) && (sc.cacheShuffle)) {
 					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
 						sprintf(output + strlen(output), "\
-			sdata[inoutID + ((%d+tshuffle)&(%d))*%d] = temp_%d%s;\n", i, sc.registers_per_thread - 1, stageSize, i + j * sc.registers_per_thread, stageNormalization);
+			sdata[inoutID + ((%d+tshuffle)%%(%d))*%d] = temp_%d%s;\n", i, sc.registers_per_thread, stageSize, i + j * sc.registers_per_thread, stageNormalization);
 					}
 				}
 				else {
@@ -2550,29 +2848,38 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
 
 		char stageNormalization[10] = "";
+		uint32_t logicalRegistersPerThread = stageRadix * (sc.registers_per_thread / stageRadix);
+		uint32_t logicalGroupSize = sc.fftDim / logicalRegistersPerThread;
+		if ((sc.localSize[1] * logicalRegistersPerThread > sc.fftDim) || (stageSize < sc.fftDim / stageRadix) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle > 0)))
+			appendBarrierVkFFT(output, 2);
 		if (((sc.inverse) && (sc.normalize)) || ((sc.convolutionStep) && (stageAngle < 0)))
 			sprintf(stageNormalization, " / %d", stageRadix);
-		if ((stageSize < sc.fftDim / stageRadix) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle > 0))) {
-			appendBarrierVkFFT(output, 2);
-			for (uint32_t j = 0; j < sc.registers_per_thread / stageRadix; j++) {
+		if (sc.localSize[1] * logicalRegistersPerThread > sc.fftDim)
+			sprintf(output + strlen(output), "\
+	if (gl_GlobalInvocationID.y * %d < %d) {\n", logicalRegistersPerThread, sc.fftDim);
+		if ((sc.localSize[1] * logicalRegistersPerThread > sc.fftDim) || (stageSize < sc.fftDim / stageRadix) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle > 0))) {
+			//appendBarrierVkFFT(output, 2);
+			for (uint32_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
 				sprintf(output + strlen(output), "\
-		stageInvocationID = (gl_LocalInvocationID.y + %d) & (%d);\n\
+		stageInvocationID = (gl_LocalInvocationID.y + %d) %% (%d);\n\
 		blockInvocationID = (gl_LocalInvocationID.y + %d) - stageInvocationID;\n\
-		inoutID = stageInvocationID + blockInvocationID * %d;\n", j * sc.localSize[1], stageSize - 1u, j * sc.localSize[1], stageRadix);
+		inoutID = stageInvocationID + blockInvocationID * %d;\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);
 				for (uint32_t i = 0; i < stageRadix; i++) {
 					sprintf(output + strlen(output), "\
-		sdata[gl_WorkGroupSize.x*(inoutID+%d)+gl_LocalInvocationID.x] = temp_%d%s;\n", i * stageSize, j + i * sc.registers_per_thread / stageRadix, stageNormalization);
+		sdata[gl_WorkGroupSize.x*(inoutID+%d)+gl_LocalInvocationID.x] = temp_%d%s;\n", i * stageSize, j + i * logicalRegistersPerThread / stageRadix, stageNormalization);
 				}
 			}
 		}
 		else {
 			if (((sc.inverse) && (sc.normalize)) || ((sc.convolutionStep) && (stageAngle < 0))) {
-				for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+				for (uint32_t i = 0; i < logicalRegistersPerThread; i++) {
 					sprintf(output + strlen(output), "\
 		temp_%d = temp_%d%s;\n", i, i, stageNormalization);
 				}
 			}
 		}
+		if (sc.localSize[1] * logicalRegistersPerThread > sc.fftDim)
+			sprintf(output + strlen(output), "	}\n");
 	}
 	static inline void appendRadixShuffle(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix, uint32_t shuffleType) {
 		switch (shuffleType) {
@@ -3002,12 +3309,34 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		switch (writeType) {
 		case 0:
 		{//single_c2c
+			if ((sc.localSize[1] > 1) || (sc.localSize[0] * sc.stageRadix[sc.numStages - 1] * (sc.registers_per_thread / sc.stageRadix[sc.numStages - 1]) > sc.fftDim)) {
+				sc.writeFromRegisters = 0;
+				appendBarrierVkFFT(output, 1);
+			}
+			else
+				sc.writeFromRegisters = 1;
+			char shiftX[100] = "";
+			if (sc.performWorkGroupShift[0])
+				sprintf(shiftX, " + consts.workGroupShiftX ");
+			char shiftY[100] = "";
+			if (sc.performWorkGroupShift[1])
+				sprintf(shiftY, " + consts.workGroupShiftY*gl_WorkGroupSize.y ");
+			char shiftY2[100] = "";
+			if (sc.performWorkGroupShift[1])
+				sprintf(shiftY, " + consts.workGroupShiftY ");
+			if (sc.fftDim < sc.fft_dim_full) {
+				//sprintf(output + strlen(output), "		if(gl_LocalInvocationID.y * %d + (((gl_WorkGroupID.x%s) %% %d) * %d + ((gl_WorkGroupID.x%s) / %d) * %d) < %d) {;;\n", sc.firstStageStartSize, shiftX, sc.firstStageStartSize / sc.fftDim, sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1] * sc.firstStageStartSize, sc.size[0]);
+				//sprintf(output + strlen(output), "		if ((gl_LocalInvocationID.x + %d * gl_LocalInvocationID.y) %% %d + ((gl_WorkGroupID.x%s) / %d)*%d < %d){\n", sc.localSize[0], sc.localSize[1], shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1], sc.fft_dim_full / sc.fftDim);
+				//sprintf(output + strlen(output), "		if ((gl_LocalInvocationID.x + %d * gl_LocalInvocationID.y+432) %% %d + (((gl_LocalInvocationID.x + %d * gl_LocalInvocationID.y+432)/%d) * %d)+ ((gl_WorkGroupID.x%s) / %d)*%d + ((gl_WorkGroupID.x%s) %% %d) * %d< %d){\n", sc.localSize[0], sc.localSize[1], sc.localSize[0], sc.localSize[1], sc.fft_dim_full / sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1], shiftX, sc.firstStageStartSize / sc.fftDim, sc.fft_dim_full / sc.firstStageStartSize, sc.fft_dim_full / sc.fftDim);
+				sprintf(output + strlen(output), "		if (((gl_LocalInvocationID.x + %d * gl_LocalInvocationID.y) %% %d + ((gl_WorkGroupID.x%s) / %d)*%d < %d)){\n", sc.localSize[0], sc.localSize[1], shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1], sc.fft_dim_full / sc.firstStageStartSize);
+			}
+			else {
+				sprintf(output + strlen(output), "		{ \n");
+			}
 			if (sc.reorderFourStep) {
 				if (sc.zeropad[1]) {
 					if (sc.fftDim == sc.fft_dim_full) {
-						if (sc.localSize[1] != 1)
-							appendBarrierVkFFT(output, 1);
-						for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+						for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 
 							if (sc.localSize[1] == 1)
 								sprintf(output + strlen(output), "		combinedId = gl_LocalInvocationID.x + %d;\n", i * sc.localSize[0]);
@@ -3018,9 +3347,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), "		inoutID = (combinedId %% %d) * %d + (combinedId / %d) * %d;\n", sc.fftDim, sc.outputStride[0], sc.fftDim, sc.outputStride[1]);
 							else
 								sprintf(output + strlen(output), "		inoutID = (combinedId %% %d) + (combinedId / %d) * %d;\n", sc.fftDim, sc.fftDim, sc.outputStride[1]);
-
+							if (sc.size[sc.axis_id + 1] % sc.localSize[1] != 0)
+								sprintf(output + strlen(output), "		if(combinedId / %d + (gl_WorkGroupID.y%s)*gl_WorkGroupSize.y< %d){", sc.fftDim, shiftY2, sc.size[sc.axis_id + 1]);
 							sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc.fft_dim_full, sc.fft_zeropad_left_write[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_write[sc.axis_id]);
-							if (sc.localSize[1] == 1) {
+							if (sc.writeFromRegisters) {
 								if (sc.outputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		outputBlocks[0].outputs[indexOutput(inoutID%s%s)] = %stemp_%d%s;\n", requestCoordinate, requestBatch, convTypeLeft, i, convTypeRight);
 								else
@@ -3033,16 +3363,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), "		outputBlocks[indexOutput(inoutID%s%s) / %d].outputs[indexOutput(inoutID%s%s) %% %d] = %ssdata[(combinedId %% %d) + (combinedId / %d) * sharedStride]%s;\n", requestCoordinate, requestBatch, sc.outputBufferBlockSize, requestCoordinate, requestBatch, sc.outputBufferBlockSize, convTypeLeft, sc.fftDim, sc.fftDim, convTypeRight);
 							}
 							sprintf(output + strlen(output), "	}\n");
+							if (sc.size[sc.axis_id + 1] % sc.localSize[1] != 0)
+								sprintf(output + strlen(output), "		}");
+
 						}
 					}
 					else {
-						if (sc.localSize[1] != 1)
-							appendBarrierVkFFT(output, 1);
-						for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+						for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 
-							char shiftX[100] = "";
-							if (sc.performWorkGroupShift[0])
-								sprintf(shiftX, " + consts.workGroupShiftX ");
 							if (sc.localSize[1] == 1)
 								sprintf(output + strlen(output), "		combinedId = gl_LocalInvocationID.x + %d;\n", i * sc.localSize[0]);
 							else
@@ -3053,7 +3381,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), "		inoutID = combinedId %% %d + ((gl_WorkGroupID.x%s) / %d)*%d + ((combinedId/%d) * %d)+ ((gl_WorkGroupID.x%s) %% %d) * %d;\n", sc.localSize[1], shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1], sc.localSize[1], sc.fft_dim_full / sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.fft_dim_full / sc.firstStageStartSize);
 
 							sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc.fft_dim_full, sc.fft_zeropad_left_write[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_write[sc.axis_id]);
-							if (sc.localSize[1] == 1) {
+							if (sc.writeFromRegisters) {
 								if (sc.outputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		outputBlocks[0].outputs[indexOutput(inoutID%s%s)] = %stemp_%d%s;\n", requestCoordinate, requestBatch, convTypeLeft, i, convTypeRight);
 								else
@@ -3083,9 +3411,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc.fftDim == sc.fft_dim_full) {
-						if (sc.localSize[1] != 1)
-							appendBarrierVkFFT(output, 1);
-						for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+						for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 
 							if (sc.localSize[1] == 1)
 								sprintf(output + strlen(output), "		combinedId = gl_LocalInvocationID.x + %d;\n", i * sc.localSize[0]);
@@ -3096,7 +3422,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), "		inoutID = indexOutput((combinedId %% %d) * %d + (combinedId / %d) * %d%s%s);\n", sc.fftDim, sc.outputStride[0], sc.fftDim, sc.outputStride[1], requestCoordinate, requestBatch);
 							else
 								sprintf(output + strlen(output), "		inoutID = indexOutput((combinedId %% %d) + (combinedId / %d) * %d%s%s);\n", sc.fftDim, sc.fftDim, sc.outputStride[1], requestCoordinate, requestBatch);
-							if (sc.localSize[1] == 1) {
+							if (sc.size[sc.axis_id + 1] % sc.localSize[1] != 0)
+								sprintf(output + strlen(output), "		if(combinedId / %d + gl_WorkGroupID.y*gl_WorkGroupSize.y< %d){", sc.fftDim, sc.size[sc.axis_id + 1]);
+							if (sc.writeFromRegisters) {
 								if (sc.outputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
 								else
@@ -3108,15 +3436,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								else
 									sprintf(output + strlen(output), "		outputBlocks[inoutID / %d].outputs[inoutID %% %d] = %ssdata[(combinedId %% %d) + (combinedId / %d) * sharedStride]%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, sc.fftDim, sc.fftDim, convTypeRight);
 							}
+							if (sc.size[sc.axis_id + 1] % sc.localSize[1] != 0)
+								sprintf(output + strlen(output), "		}");
+
 						}
 					}
 					else {
-						if (sc.localSize[1] != 1)
-							appendBarrierVkFFT(output, 1);
-						for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
-							char shiftX[100] = "";
-							if (sc.performWorkGroupShift[0])
-								sprintf(shiftX, " + consts.workGroupShiftX ");
+						for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 							if (sc.localSize[1] == 1)
 								sprintf(output + strlen(output), "		combinedId = gl_LocalInvocationID.x + %d;\n", i * sc.localSize[0]);
 							else
@@ -3125,7 +3451,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), "		inoutID = indexOutput((gl_WorkGroupID.x%s)/%d+ (combinedId * %d)+ ((gl_WorkGroupID.x%s) %% %d) * %d%s%s);\n", shiftX, sc.firstStageStartSize / sc.fftDim, sc.fft_dim_full / sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.fft_dim_full / sc.firstStageStartSize, requestCoordinate, requestBatch);
 							else
 								sprintf(output + strlen(output), "		inoutID = indexOutput(combinedId %% %d + ((gl_WorkGroupID.x%s) / %d)*%d + ((combinedId/%d) * %d)+ ((gl_WorkGroupID.x%s) %% %d) * %d%s%s);\n", sc.localSize[1], shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1], sc.localSize[1], sc.fft_dim_full / sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.fft_dim_full / sc.firstStageStartSize, requestCoordinate, requestBatch);
-							if (sc.localSize[1] == 1) {
+							if (sc.writeFromRegisters) {
 								if (sc.outputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
 								else
@@ -3156,9 +3482,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else {
 				if (sc.zeropad[1]) {
 					if (sc.fftDim == sc.fft_dim_full) {
-						if (sc.localSize[1] != 1)
-							appendBarrierVkFFT(output, 1);
-						for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+						for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 
 							if (sc.localSize[1] == 1)
 								sprintf(output + strlen(output), "		combinedId = gl_LocalInvocationID.x + %d;\n", i * sc.localSize[0]);
@@ -3169,8 +3493,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), "		inoutID = (combinedId %% %d) * %d + (combinedId / %d) * %d;\n", sc.fftDim, sc.outputStride[0], sc.fftDim, sc.outputStride[1]);
 							else
 								sprintf(output + strlen(output), "		inoutID = (combinedId %% %d) + (combinedId / %d) * %d;\n", sc.fftDim, sc.fftDim, sc.outputStride[1]);
+							if (sc.size[sc.axis_id + 1] % sc.localSize[1] != 0)
+								sprintf(output + strlen(output), "		if(combinedId / %d + gl_WorkGroupID.y*gl_WorkGroupSize.y< %d){", sc.fftDim, sc.size[sc.axis_id + 1]);
+
 							sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc.fft_dim_full, sc.fft_zeropad_left_write[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_write[sc.axis_id]);
-							if (sc.localSize[1] == 1) {
+							if (sc.writeFromRegisters) {
 								if (sc.outputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		outputBlocks[0].outputs[indexOutput(inoutID%s%s)] = %stemp_%d%s;\n", requestCoordinate, requestBatch, convTypeLeft, i, convTypeRight);
 								else
@@ -3183,15 +3510,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), "		outputBlocks[indexOutput(inoutID%s%s) / %d].outputs[indexOutput(inoutID%s%s) %% %d] = %ssdata[(combinedId %% %d) + (combinedId / %d) * sharedStride]%s;\n", requestCoordinate, requestBatch, sc.outputBufferBlockSize, requestCoordinate, requestBatch, sc.outputBufferBlockSize, convTypeLeft, sc.fftDim, sc.fftDim, convTypeRight);
 							}
 							sprintf(output + strlen(output), "	}\n");
+							if (sc.size[sc.axis_id + 1] % sc.localSize[1] != 0)
+								sprintf(output + strlen(output), "		}");
+
 						}
 					}
 					else {
-						if (sc.localSize[1] != 1)
-							appendBarrierVkFFT(output, 1);
-						for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
-							char shiftX[100] = "";
-							if (sc.performWorkGroupShift[0])
-								sprintf(shiftX, " + consts.workGroupShiftX ");
+						for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 							if (sc.localSize[1] == 1)
 								sprintf(output + strlen(output), "		combinedId = gl_LocalInvocationID.x + %d;\n", i * sc.localSize[0]);
 							else
@@ -3203,7 +3528,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc.fft_dim_full, sc.fft_zeropad_left_write[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_write[sc.axis_id]);
 
 							sprintf(output + strlen(output), "		inoutID = indexOutput(gl_LocalInvocationID.x+i*%d+gl_LocalInvocationID.y * %d + (((gl_WorkGroupID.x%s) %% %d) * %d + ((gl_WorkGroupID.x%s) / %d) * %d)%s%s);\n", sc.localSize[0], sc.firstStageStartSize, shiftX, sc.firstStageStartSize / sc.fftDim, sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1] * sc.firstStageStartSize, requestCoordinate, requestBatch);
-							if (sc.localSize[1] == 1) {
+							if (sc.writeFromRegisters) {
 								if (sc.outputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID]=%stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
 								else
@@ -3221,9 +3546,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc.fftDim == sc.fft_dim_full) {
-						if (sc.localSize[1] != 1)
-							appendBarrierVkFFT(output, 1);
-						for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+						for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 
 							if (sc.localSize[1] == 1)
 								sprintf(output + strlen(output), "		combinedId = gl_LocalInvocationID.x + %d;\n", i * sc.localSize[0]);
@@ -3234,7 +3557,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), "		inoutID = indexOutput((combinedId %% %d) * %d + (combinedId / %d) * %d%s%s);\n", sc.fftDim, sc.outputStride[0], sc.fftDim, sc.outputStride[1], requestCoordinate, requestBatch);
 							else
 								sprintf(output + strlen(output), "		inoutID = indexOutput((combinedId %% %d) + (combinedId / %d) * %d%s%s);\n", sc.fftDim, sc.fftDim, sc.outputStride[1], requestCoordinate, requestBatch);
-							if (sc.localSize[1] == 1) {
+							if (sc.size[sc.axis_id + 1] % sc.localSize[1] != 0)
+								sprintf(output + strlen(output), "		if(combinedId / %d + gl_WorkGroupID.y*gl_WorkGroupSize.y< %d){", sc.fftDim, sc.size[sc.axis_id + 1]);
+
+							if (sc.writeFromRegisters) {
 								if (sc.outputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
 								else
@@ -3246,18 +3572,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								else
 									sprintf(output + strlen(output), "		outputBlocks[inoutID / %d].outputs[inoutID %% %d] = %ssdata[(combinedId %% %d) + (combinedId / %d) * sharedStride]%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, sc.fftDim, sc.fftDim, convTypeRight);
 							}
+							if (sc.size[sc.axis_id + 1] % sc.localSize[1] != 0)
+								sprintf(output + strlen(output), "		}");
+
 						}
 
 					}
 					else {
-						if (sc.localSize[1] != 1)
-							appendBarrierVkFFT(output, 1);
-						for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
-							char shiftX[100] = "";
-							if (sc.performWorkGroupShift[0])
-								sprintf(shiftX, " + consts.workGroupShiftX ");
+						for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 							sprintf(output + strlen(output), "		inoutID = indexOutput(gl_LocalInvocationID.x+%d+gl_LocalInvocationID.y * %d + (((gl_WorkGroupID.x%s) %% %d) * %d + ((gl_WorkGroupID.x%s) / %d) * %d)%s%s);\n", i * sc.localSize[0], sc.firstStageStartSize, shiftX, sc.firstStageStartSize / sc.fftDim, sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1] * sc.firstStageStartSize, requestCoordinate, requestBatch);
-							if (sc.localSize[1] == 1) {
+							if (sc.writeFromRegisters) {
 								if (sc.outputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID]=%stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
 								else
@@ -3273,91 +3597,152 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 			}
+			sprintf(output + strlen(output), "	}\n");
 			break;
 		}
 		case 1: {//grouped_c2c
+			if (sc.localSize[1] * sc.stageRadix[sc.numStages - 1] * (sc.registers_per_thread / sc.stageRadix[sc.numStages - 1]) > sc.fftDim) {
+				sc.writeFromRegisters = 0;
+				appendBarrierVkFFT(output, 1);
+			}
+			else
+				sc.writeFromRegisters = 1;
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
+			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x* sc.stageStartSize, sc.fftDim* sc.stageStartSize, sc.size[sc.axis_id]);
 			if ((sc.reorderFourStep) && (sc.stageStartSize == 1)) {
 				if (sc.zeropad[1]) {
-					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+					for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 						sprintf(output + strlen(output), "		inoutID = (gl_LocalInvocationID.y + %d) * (%d) + (((gl_GlobalInvocationID.x%s) / %d) %% (%d)) * (%d) + ((gl_GlobalInvocationID.x%s) / %d);\n", i * sc.localSize[1], sc.fft_dim_full / sc.fftDim, shiftX, sc.fft_dim_x, sc.firstStageStartSize / sc.fftDim, sc.fft_dim_full / sc.firstStageStartSize, shiftX, sc.fft_dim_x * (sc.firstStageStartSize / sc.fftDim));
 
 						sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc.fft_dim_full, sc.fft_zeropad_left_write[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_write[sc.axis_id]);
+						if (sc.writeFromRegisters) {
+							if (sc.outputBufferBlockNum == 1)
+								sprintf(output + strlen(output), "			outputBlocks[0].outputs[indexOutput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s)] = %stemp_%d%s;\n", shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, convTypeLeft, i, convTypeRight);
+							else
+								sprintf(output + strlen(output), "			outputBlocks[indexOutput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s) / %d].outputs[indexOutput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s) %% %d] = %stemp_%d%s;\n", shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, sc.outputBufferBlockSize, shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, sc.outputBufferBlockSize, convTypeLeft, i, convTypeRight);
+						}
+						else {
+							if (sc.outputBufferBlockNum == 1)
+								sprintf(output + strlen(output), "			outputBlocks[0].outputs[indexOutput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s)] = %ssdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d) + gl_LocalInvocationID.x]%s;\n", shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, convTypeLeft, i * sc.localSize[1], convTypeRight);
+							else
+								sprintf(output + strlen(output), "			outputBlocks[indexOutput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s) / %d].outputs[indexOutput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s) %% %d] = %ssdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d) + gl_LocalInvocationID.x]%s;\n", shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, sc.outputBufferBlockSize, shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, sc.outputBufferBlockSize, convTypeLeft, i * sc.localSize[1], convTypeRight);
 
-						if (sc.outputBufferBlockNum == 1)
-							sprintf(output + strlen(output), "			outputBlocks[0].outputs[indexOutput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s)] = %stemp_%d%s;\n", shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, convTypeLeft, i, convTypeRight);
-						else
-							sprintf(output + strlen(output), "			outputBlocks[indexOutput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s) / %d].outputs[indexOutput((gl_GlobalInvocationID.x%s) %% (%d), inoutID%s%s) %% %d] = %stemp_%d%s;\n", shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, sc.outputBufferBlockSize, shiftX, sc.fft_dim_x, requestCoordinate, requestBatch, sc.outputBufferBlockSize, convTypeLeft, i, convTypeRight);
+						}
 						sprintf(output + strlen(output), "	}\n");
 					}
 				}
 				else {
-					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+					for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 						sprintf(output + strlen(output), "		inoutID = indexOutput((gl_GlobalInvocationID.x%s) %% (%d), (gl_LocalInvocationID.y + %d) * %d + (((gl_GlobalInvocationID.x%s) / %d) %% (%d)) * (%d) + ((gl_GlobalInvocationID.x%s) / %d )%s%s);\n", shiftX, sc.fft_dim_x, i * sc.localSize[1], sc.fft_dim_full / sc.fftDim, shiftX, sc.fft_dim_x, sc.firstStageStartSize / sc.fftDim, sc.fft_dim_full / sc.firstStageStartSize, shiftX, sc.fft_dim_x * (sc.firstStageStartSize / sc.fftDim), requestCoordinate, requestBatch);
-						if (sc.outputBufferBlockNum == 1)
-							sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
-						else
-							sprintf(output + strlen(output), "		outputBlocks[inoutID / %d].outputs[inoutID %% %d] = %stemp_%d%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i, convTypeRight);
-
+						if (sc.writeFromRegisters) {
+							if (sc.outputBufferBlockNum == 1)
+								sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
+							else
+								sprintf(output + strlen(output), "		outputBlocks[inoutID / %d].outputs[inoutID %% %d] = %stemp_%d%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i, convTypeRight);
+						}
+						else {
+							if (sc.outputBufferBlockNum == 1)
+								sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID] = %ssdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d) + gl_LocalInvocationID.x]%s;\n", convTypeLeft, i * sc.localSize[1], convTypeRight);
+							else
+								sprintf(output + strlen(output), "		outputBlocks[inoutID / %d].outputs[inoutID %% %d] = %ssdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d) + gl_LocalInvocationID.x]%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i * sc.localSize[1], convTypeRight);
+						}
 					}
 				}
 			}
 			else {
 				if (sc.zeropad[1]) {
-					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+					for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 						sprintf(output + strlen(output), "		inoutID = (gl_LocalInvocationID.y + %d) * %d + ((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d);\n", i * sc.localSize[1], sc.stageStartSize, shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x * sc.stageStartSize, sc.stageStartSize * sc.fftDim);
 
 						sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc.fft_dim_full, sc.fft_zeropad_left_write[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_write[sc.axis_id]);
 						sprintf(output + strlen(output), "		inoutID = indexOutput((gl_GlobalInvocationID.x%s) %% (%d), %d * (gl_LocalInvocationID.y + %d) + ((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d)%s%s);\n", shiftX, sc.fft_dim_x, sc.stageStartSize, i * sc.localSize[1], shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x * sc.stageStartSize, sc.stageStartSize * sc.fftDim, requestCoordinate, requestBatch);
-						if (sc.outputBufferBlockNum == 1)
-							sprintf(output + strlen(output), "			outputBlocks[0].outputs[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
-						else
-							sprintf(output + strlen(output), "			outputBlocks[inoutID / %d].outputs[inoutID %% %d] =  %stemp_%d%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i, convTypeRight);
+						if (sc.writeFromRegisters) {
+							if (sc.outputBufferBlockNum == 1)
+								sprintf(output + strlen(output), "			outputBlocks[0].outputs[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
+							else
+								sprintf(output + strlen(output), "			outputBlocks[inoutID / %d].outputs[inoutID %% %d] =  %stemp_%d%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i, convTypeRight);
+						}
+						else {
+							if (sc.outputBufferBlockNum == 1)
+								sprintf(output + strlen(output), "			outputBlocks[0].outputs[inoutID] = %ssdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d) + gl_LocalInvocationID.x]%s;\n", convTypeLeft, i * sc.localSize[1], convTypeRight);
+							else
+								sprintf(output + strlen(output), "			outputBlocks[inoutID / %d].outputs[inoutID %% %d] =  %ssdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d) + gl_LocalInvocationID.x]%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i * sc.localSize[1], convTypeRight);
+						}
 						sprintf(output + strlen(output), "	}\n");
 					}
 				}
 				else {
-					for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+					for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 						sprintf(output + strlen(output), "		inoutID = indexOutput((gl_GlobalInvocationID.x%s) %% (%d), %d * (gl_LocalInvocationID.y + %d) + ((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d)%s%s);\n", shiftX, sc.fft_dim_x, sc.stageStartSize, i * sc.localSize[1], shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x * sc.stageStartSize, sc.stageStartSize * sc.fftDim, requestCoordinate, requestBatch);
-						if (sc.outputBufferBlockNum == 1)
-							sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
-						else
-							sprintf(output + strlen(output), "		outputBlocks[inoutID / %d].outputs[inoutID %% %d] =  %stemp_%d%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i, convTypeRight);
-
+						if (sc.writeFromRegisters) {
+							if (sc.outputBufferBlockNum == 1)
+								sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
+							else
+								sprintf(output + strlen(output), "		outputBlocks[inoutID / %d].outputs[inoutID %% %d] =  %stemp_%d%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i, convTypeRight);
+						}
+						else {
+							if (sc.outputBufferBlockNum == 1)
+								sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID] = %ssdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d) + gl_LocalInvocationID.x]%s;\n", convTypeLeft, i * sc.localSize[1], convTypeRight);
+							else
+								sprintf(output + strlen(output), "		outputBlocks[inoutID / %d].outputs[inoutID %% %d] =  %ssdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d) + gl_LocalInvocationID.x]%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i * sc.localSize[1], convTypeRight);
+						}
 					}
 				}
 			}
+			sprintf(output + strlen(output), "	}\n");
 			break;
 
 		}
 		case 2: {//single_c2c_strided
+			if (sc.localSize[1] * sc.stageRadix[sc.numStages - 1] * (sc.registers_per_thread / sc.stageRadix[sc.numStages - 1]) > sc.fftDim) {
+				sc.writeFromRegisters = 0;
+				appendBarrierVkFFT(output, 1);
+			}
+			else
+				sc.writeFromRegisters = 1;
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
+			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.stageStartSize, sc.stageStartSize* sc.fftDim, sc.fft_dim_full);
 			if (sc.zeropad[1]) {
-				for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+				for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 					sprintf(output + strlen(output), "		inoutID = (gl_GlobalInvocationID.x%s) %% (%d) + %d * (gl_LocalInvocationID.y + %d) + ((gl_GlobalInvocationID.x%s) / %d) * (%d);\n", shiftX, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1], shiftX, sc.stageStartSize, sc.stageStartSize * sc.fftDim);
 					sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc.fft_dim_full, sc.fft_zeropad_left_write[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_write[sc.axis_id]);
-					if (sc.outputBufferBlockNum == 1)
-						sprintf(output + strlen(output), "			outputBlocks[0].outputs[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
-					else
-						sprintf(output + strlen(output), "			outputBlocks[inoutID / %d].outputs[inoutID %% %d] = %stemp_%d%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i, convTypeRight);
+					if (sc.writeFromRegisters) {
+						if (sc.outputBufferBlockNum == 1)
+							sprintf(output + strlen(output), "			outputBlocks[0].outputs[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
+						else
+							sprintf(output + strlen(output), "			outputBlocks[inoutID / %d].outputs[inoutID %% %d] = %stemp_%d%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i, convTypeRight);
+					}
+					else {
+						if (sc.outputBufferBlockNum == 1)
+							sprintf(output + strlen(output), "			outputBlocks[0].outputs[inoutID] = %ssdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d) + gl_LocalInvocationID.x]%s;\n", convTypeLeft, i * sc.localSize[1], convTypeRight);
+						else
+							sprintf(output + strlen(output), "			outputBlocks[inoutID / %d].outputs[inoutID %% %d] = %ssdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d) + gl_LocalInvocationID.x]%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i * sc.localSize[1], convTypeRight);
+					}
 					sprintf(output + strlen(output), "	}\n");
 				}
 			}
 			else {
-				for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
+				for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 					sprintf(output + strlen(output), "		inoutID = indexOutput((gl_GlobalInvocationID.x%s) %% (%d) + %d * (gl_LocalInvocationID.y + %d) + ((gl_GlobalInvocationID.x%s) / %d) * (%d));\n", shiftX, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1], shiftX, sc.stageStartSize, sc.stageStartSize * sc.fftDim);
-					if (sc.outputBufferBlockNum == 1)
-						sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
-					else
-						sprintf(output + strlen(output), "		outputBlocks[inoutID / %d].outputs[inoutID %% %d] = %stemp_%d%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i, convTypeRight);
-
+					if (sc.writeFromRegisters) {
+						if (sc.outputBufferBlockNum == 1)
+							sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
+						else
+							sprintf(output + strlen(output), "		outputBlocks[inoutID / %d].outputs[inoutID %% %d] = %stemp_%d%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i, convTypeRight);
+					}
+					else {
+						if (sc.outputBufferBlockNum == 1)
+							sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID] = %ssdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d) + gl_LocalInvocationID.x]%s;\n", convTypeLeft, i * sc.localSize[1], convTypeRight);
+						else
+							sprintf(output + strlen(output), "		outputBlocks[inoutID / %d].outputs[inoutID %% %d] = %ssdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d) + gl_LocalInvocationID.x]%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, i * sc.localSize[1], convTypeRight);
+					}
 				}
 			}
-
+			sprintf(output + strlen(output), "	}\n");
 			break;
 
 		}
@@ -3634,6 +4019,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftY[100] = "";
 			if (sc.performWorkGroupShift[1])
 				sprintf(shiftY, " + consts.workGroupShiftY * %d", sc.localSize[1]);
+			char shiftY2[100] = "";
+			if (sc.performWorkGroupShift[1])
+				sprintf(shiftY, " + consts.workGroupShiftY ");
 
 			if (sc.reorderFourStep) {
 				//Not implemented
@@ -3641,6 +4029,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else {
 				appendBarrierVkFFT(output, 1);
 				if (sc.fftDim == sc.fft_dim_full) {
+					if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+						sprintf(output + strlen(output), "		if(gl_GlobalInvocationID.y%s < %d){", shiftY, (uint32_t)ceil(sc.size[1] / 2.0));
 					sprintf(output + strlen(output), "\
 	if (gl_LocalInvocationID.x==0)\n\
 	{\n\
@@ -3664,7 +4054,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 					sprintf(output + strlen(output), "	}\n");
 
-					for (uint32_t i = 0; i < 4; i++) {
+					for (uint32_t i = 0; i < ceil(sc.min_registers_per_thread / 2.0); i++) {
 						if (sc.localSize[1] == 1)
 							sprintf(output + strlen(output), "\
 		temp_0.x = 0.5 * (sdata[%d + gl_LocalInvocationID.x].x + sdata[%d - gl_LocalInvocationID.x].x);\n\
@@ -3713,7 +4103,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 						}
 					}
-
+					if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+						sprintf(output + strlen(output), "		}");
 				}
 				else {
 					//Not implemented
@@ -3722,15 +4113,22 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			break;
 		}
 		case 6: {//single_c2r
+			char shiftY[100] = "";
+			if (sc.performWorkGroupShift[1])
+				sprintf(shiftY, " + consts.workGroupShiftY * %d", sc.localSize[1]);
+			if ((sc.localSize[1] > 1) || (sc.localSize[0] * sc.stageRadix[sc.numStages - 1] * (sc.registers_per_thread / sc.stageRadix[sc.numStages - 1]) > sc.fftDim)) {
+				sc.writeFromRegisters = 0;
+				appendBarrierVkFFT(output, 1);
+			}
+			else
+				sc.writeFromRegisters = 1;
 			if (sc.reorderFourStep) {
 				//Not implemented
 			}
 			else {
 				if (sc.zeropad[1]) {
 					if (sc.fftDim == sc.fft_dim_full) {
-						if (sc.localSize[1] != 1)
-							appendBarrierVkFFT(output, 1);
-						for (uint32_t i = 0; i < 8; i++) {
+						for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 
 							if (sc.localSize[1] == 1)
 								sprintf(output + strlen(output), "		combinedId = gl_LocalInvocationID.x + %d;\n", i * sc.localSize[0]);
@@ -3741,8 +4139,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), "		inoutID = (combinedId %% %d) * %d + (combinedId / %d) * %d;\n", sc.fftDim, sc.outputStride[0], sc.fftDim, 2 * sc.outputStride[1]);
 							else
 								sprintf(output + strlen(output), "		inoutID = (combinedId %% %d) + (combinedId / %d) * %d;\n", sc.fftDim, sc.fftDim, 2 * sc.outputStride[1]);
+							if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+								sprintf(output + strlen(output), "		if(combinedId / %d + (gl_WorkGroupID.y%s)*gl_WorkGroupSize.y< %d){", sc.fftDim, shiftY, (uint32_t)ceil(sc.size[1] / 2.0));
+
 							sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc.fft_dim_full, sc.fft_zeropad_left_write[sc.axis_id], sc.fft_dim_full, sc.fft_zeropad_right_write[sc.axis_id]);
-							if (sc.localSize[1] == 1) {
+							if (sc.writeFromRegisters) {
 								if (sc.outputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		outputBlocks[0].outputs[indexOutput(inoutID)] = %stemp_%d.x%s;\n", convTypeLeft, i, convTypeRight);
 								else
@@ -3764,6 +4165,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 							}
 							sprintf(output + strlen(output), "	}\n");
+							if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+								sprintf(output + strlen(output), "		}");
+
 						}
 					}
 					else {
@@ -3772,9 +4176,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc.fftDim == sc.fft_dim_full) {
-						if (sc.localSize[1] != 1)
-							appendBarrierVkFFT(output, 1);
-						for (uint32_t i = 0; i < 8; i++) {
+						for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 
 							if (sc.localSize[1] == 1)
 								sprintf(output + strlen(output), "		combinedId = gl_LocalInvocationID.x + %d;\n", i * sc.localSize[0]);
@@ -3785,7 +4187,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), "		inoutID = indexOutput((combinedId %% %d) * %d + (combinedId / %d) * %d);\n", sc.fftDim, sc.outputStride[0], sc.fftDim, 2 * sc.outputStride[1]);
 							else
 								sprintf(output + strlen(output), "		inoutID = indexOutput((combinedId %% %d) + (combinedId / %d) * %d);\n", sc.fftDim, sc.fftDim, 2 * sc.outputStride[1]);
-							if (sc.localSize[1] == 1) {
+							if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+								sprintf(output + strlen(output), "		if(combinedId / %d + (gl_WorkGroupID.y%s)*gl_WorkGroupSize.y< %d){", sc.fftDim, shiftY, (uint32_t)ceil(sc.size[1] / 2.0));
+
+							if (sc.writeFromRegisters) {
 								if (sc.outputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		outputBlocks[0].outputs[inoutID] = %stemp_%d.x%s;\n", convTypeLeft, i, convTypeRight);
 								else
@@ -3807,6 +4212,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								else
 									sprintf(output + strlen(output), "		outputBlocks[inoutID / %d].outputs[inoutID %% %d] = %ssdata[(combinedId %% %d) + (combinedId / %d) * sharedStride].y%s;\n", sc.outputBufferBlockSize, sc.outputBufferBlockSize, convTypeLeft, sc.fftDim, sc.fftDim, convTypeRight);
 							}
+							if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
+								sprintf(output + strlen(output), "		}", sc.fftDim, shiftY, (uint32_t)ceil(sc.size[1] / 2.0));
 						}
 
 					}
@@ -3846,13 +4253,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		appendIndexInputVkFFT(output, sc, uintType, type);
 		appendIndexOutputVkFFT(output, sc, uintType, type);
-		uint32_t appendedRadix[10] = { 0,0,0,0,0,0,0,0,0,0 };
+		/*uint32_t appendedRadix[10] = { 0,0,0,0,0,0,0,0,0,0 };
 		for (uint32_t i = 0; i < sc.numStages; i++) {
 			if (appendedRadix[sc.stageRadix[i]] == 0) {
 				appendedRadix[sc.stageRadix[i]] = 1;
 				appendRadixKernelVkFFT(output, sc, floatType, uintType, sc.stageRadix[i]);
 			}
-		}
+		}*/
 		appendSharedMemoryVkFFT(output, sc, floatType, uintType, type);
 		sprintf(output + strlen(output), "void main() {\n");
 		appendZeropadReturn(output, sc);
@@ -3988,7 +4395,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		vkDestroyBuffer(app->configuration.device[0], stagingBuffer, NULL);
 		vkFreeMemory(app->configuration.device[0], stagingBufferMemory, NULL);
 	}
-	static inline void VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id) {
+	static inline VkResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id) {
 		uint32_t complexSize;
 		if (app->configuration.doublePrecision)
 			complexSize = (2 * sizeof(double));
@@ -3997,8 +4404,19 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				complexSize = (2 * sizeof(float));
 			else
 				complexSize = (2 * sizeof(float));
-		uint32_t registerBoost = app->configuration.registerBoost;
+		uint32_t multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };//split the sequence
+		uint32_t isPowOf2 = (pow(2, (uint32_t)log2(app->configuration.size[axis_id])) == app->configuration.size[axis_id]) ? 1 : 0;
+		uint32_t tempSequence = app->configuration.size[axis_id];
+		for (uint32_t i = 2; i < 8; i++) {
+			if (tempSequence % i == 0) {
+				tempSequence /= i;
+				multipliers[i]++;
+				i--;
+			}
+		}
+		if (tempSequence != 1) return VK_ERROR_FORMAT_NOT_SUPPORTED;
 
+		uint32_t registerBoost = app->configuration.registerBoost;
 		uint32_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
 		uint32_t maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
 		if ((axis_id == 0) && (!app->configuration.performConvolution)) maxSingleSizeNonStrided *= registerBoost;
@@ -4006,7 +4424,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t numPasses = 1;
 		uint32_t numPassesHalfBandwidth = 1;
 		uint32_t temp;
-		temp = (axis_id == 0) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStrided;
+		temp = (axis_id == 0) ? ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStrided);
 		if (temp > 1) {//more passes than one
 			registerBoost = app->configuration.registerBoost4Step;
 			if ((axis_id == 0) && (!app->configuration.performConvolution)) maxSingleSizeNonStrided = maxSequenceLengthSharedMemory * registerBoost;
@@ -4017,7 +4435,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				numPasses += (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStrided));
 		}
 		uint32_t maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
-		if ((app->configuration.performHalfBandwidthBoost)) {
+		if ((app->configuration.performHalfBandwidthBoost) && (!((axis_id == 0) && (numPasses == 2)))) {
 			maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / 2 > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory / 2) : app->configuration.sharedMemorySize / complexSize;
 			temp = (axis_id == 0) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStridedHalfBandwidth;
 			//temp = app->configuration.size[axis_id] / maxSingleSizeNonStrided;
@@ -4037,159 +4455,364 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (numPassesHalfBandwidth < numPasses) numPasses = numPassesHalfBandwidth;
 		}
 		if (((uint32_t)log2(app->configuration.size[axis_id]) >= app->configuration.swapTo3Stage4Step) && (app->configuration.swapTo3Stage4Step >= 17)) numPasses = 3;//Force set to 3 stage 4 step algorithm
-		FFTPlan->numAxisUploads[axis_id] = numPasses;
-		switch (numPasses) {
-		case 1: {
+		if (numPasses == 1) {
 			FFTPlan->axisSplit[axis_id][0] = app->configuration.size[axis_id];
-			break;
 		}
-		case 2: {
-			if ((axis_id == 0) && (!app->configuration.reorderFourStep)) {
-				uint32_t maxPow8SharedMemory = (uint32_t)pow(8, ((uint32_t)log2(maxSequenceLengthSharedMemory)) / 3);
-				//unit stride
-				if (app->configuration.size[axis_id] / maxPow8SharedMemory <= maxSingleSizeStrided) {
-					FFTPlan->axisSplit[axis_id][0] = maxPow8SharedMemory;
-				}
-				else {
-					if (app->configuration.size[axis_id] / maxSequenceLengthSharedMemory <= maxSingleSizeStrided) {
-						FFTPlan->axisSplit[axis_id][0] = maxSequenceLengthSharedMemory;
+		if (numPasses == 2) {
+			if (isPowOf2) {
+				if ((axis_id == 0) && (!app->configuration.reorderFourStep)) {
+					uint32_t maxPow8SharedMemory = (uint32_t)pow(8, ((uint32_t)log2(maxSequenceLengthSharedMemory)) / 3);
+					//unit stride
+					if (app->configuration.size[axis_id] / maxPow8SharedMemory <= maxSingleSizeStrided) {
+						FFTPlan->axisSplit[axis_id][0] = maxPow8SharedMemory;
 					}
 					else {
-						if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * registerBoost) < maxSingleSizeStridedHalfBandwidth) {
-							for (uint32_t i = 1; i <= (uint32_t)log2(registerBoost); i++) {
-								if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i)) <= maxSingleSizeStrided) {
-									FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i));
-									i = (uint32_t)log2(registerBoost) + 1;
-								}
-							}
+						if (app->configuration.size[axis_id] / maxSequenceLengthSharedMemory <= maxSingleSizeStrided) {
+							FFTPlan->axisSplit[axis_id][0] = maxSequenceLengthSharedMemory;
 						}
 						else {
-							FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * registerBoost);
-						}
-					}
-				}
-			}
-			else {
-				uint32_t maxPow8Strided = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided)) / 3);
-				//all FFTs are considered as non-unit stride
-				if (app->configuration.size[axis_id] / maxPow8Strided <= maxSingleSizeStrided) {
-					FFTPlan->axisSplit[axis_id][0] = maxPow8Strided;
-				}
-				else {
-					if (app->configuration.size[axis_id] / maxSingleSizeStrided < maxSingleSizeStridedHalfBandwidth) {
-						FFTPlan->axisSplit[axis_id][0] = maxSingleSizeStrided;
-					}
-					else {
-						FFTPlan->axisSplit[axis_id][0] = maxSingleSizeStridedHalfBandwidth;
-					}
-				}
-			}
-			FFTPlan->axisSplit[axis_id][1] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0];
-			if (FFTPlan->axisSplit[axis_id][1] < 64) {
-				FFTPlan->axisSplit[axis_id][0] = (FFTPlan->axisSplit[axis_id][1] == 0) ? FFTPlan->axisSplit[axis_id][0] / (64) : FFTPlan->axisSplit[axis_id][0] / (64 / FFTPlan->axisSplit[axis_id][1]);
-				FFTPlan->axisSplit[axis_id][1] = 64;
-			}
-			if (FFTPlan->axisSplit[axis_id][1] > FFTPlan->axisSplit[axis_id][0]) {
-				uint32_t swap = FFTPlan->axisSplit[axis_id][0];
-				FFTPlan->axisSplit[axis_id][0] = FFTPlan->axisSplit[axis_id][1];
-				FFTPlan->axisSplit[axis_id][1] = swap;
-			}
-			break;
-		}
-		case 3: {
-
-
-			uint32_t maxPow8Strided = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided)) / 3);
-			if ((axis_id == 0) && (!app->configuration.reorderFourStep)) {
-				//unit stride
-				uint32_t maxPow8SharedMemory = (uint32_t)pow(8, ((uint32_t)log2(maxSequenceLengthSharedMemory)) / 3);
-				if (app->configuration.size[axis_id] / maxPow8SharedMemory <= maxPow8Strided * maxPow8Strided)
-					FFTPlan->axisSplit[axis_id][0] = maxPow8SharedMemory;
-				else {
-					if (app->configuration.size[axis_id] / maxSequenceLengthSharedMemory <= maxSingleSizeStrided * maxSingleSizeStrided)
-						FFTPlan->axisSplit[axis_id][0] = maxSequenceLengthSharedMemory;
-					else {
-						if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * registerBoost) <= maxSingleSizeStrided * maxSingleSizeStrided) {
-							for (uint32_t i = 0; i <= (uint32_t)log2(registerBoost); i++) {
-								if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i)) <= maxSingleSizeStrided * maxSingleSizeStrided) {
-									FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i));
-									i = (uint32_t)log2(registerBoost) + 1;
-								}
-							}
-						}
-						else {
-							FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * registerBoost);
-						}
-					}
-				}
-			}
-			else {
-				//to account for TLB misses, it is best to coalesce the unit-strided stage to 128 bytes
-				/*uint32_t log2axis = (uint32_t)log2(app->configuration.size[axis_id]);
-				FFTPlan->axisSplit[axis_id][0] = (uint32_t)pow(2, (uint32_t)log2axis / 3);
-				if (log2axis % 3 > 0) FFTPlan->axisSplit[axis_id][0] *= 2;
-				FFTPlan->axisSplit[axis_id][1] = (uint32_t)pow(2, (uint32_t)log2axis / 3);
-				if (log2axis % 3 > 1) FFTPlan->axisSplit[axis_id][1] *= 2;
-				FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0] / FFTPlan->axisSplit[axis_id][1];*/
-				uint32_t maxSingleSizeStrided128 = app->configuration.sharedMemorySize / (128);
-				uint32_t maxPow8_128 = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided128)) / 3);
-				//unit stride
-				if (app->configuration.size[axis_id] / maxPow8_128 <= maxPow8Strided * maxSingleSizeStrided)
-					FFTPlan->axisSplit[axis_id][0] = maxPow8_128;
-				//non-unit stride
-				else {
-
-					if ((app->configuration.size[axis_id] / (maxPow8_128 * 2) <= maxPow8Strided * maxSingleSizeStrided) && (maxPow8_128 * 2 <= maxSingleSizeStrided128)) {
-						FFTPlan->axisSplit[axis_id][0] = maxPow8_128 * 2;
-					}
-					else {
-						if ((app->configuration.size[axis_id] / (maxPow8_128 * 4) <= maxPow8Strided * maxSingleSizeStrided) && (maxPow8_128 * 4 <= maxSingleSizeStrided128)) {
-							FFTPlan->axisSplit[axis_id][0] = maxPow8_128 * 4;
-						}
-						else {
-							if (app->configuration.size[axis_id] / maxSingleSizeStrided <= maxSingleSizeStrided * maxSingleSizeStrided) {
-								for (uint32_t i = 0; i <= (uint32_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128); i++) {
-									if (app->configuration.size[axis_id] / (maxSingleSizeStrided128 * (uint32_t)pow(2, i)) <= maxSingleSizeStrided * maxSingleSizeStrided) {
-										FFTPlan->axisSplit[axis_id][0] = (maxSingleSizeStrided128 * (uint32_t)pow(2, i));
-										i = (uint32_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128) + 1;
+							if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * registerBoost) < maxSingleSizeStridedHalfBandwidth) {
+								for (uint32_t i = 1; i <= (uint32_t)log2(registerBoost); i++) {
+									if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i)) <= maxSingleSizeStrided) {
+										FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i));
+										i = (uint32_t)log2(registerBoost) + 1;
 									}
 								}
 							}
-							else
-								FFTPlan->axisSplit[axis_id][0] = maxSingleSizeStridedHalfBandwidth;
+							else {
+								FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * registerBoost);
+							}
 						}
 					}
 				}
-			}
-			if (app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0] / maxPow8Strided <= maxSingleSizeStrided) {
-				FFTPlan->axisSplit[axis_id][1] = maxPow8Strided;
-				FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][1] / FFTPlan->axisSplit[axis_id][0];
+				else {
+					uint32_t maxPow8Strided = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided)) / 3);
+					//all FFTs are considered as non-unit stride
+					if (app->configuration.size[axis_id] / maxPow8Strided <= maxSingleSizeStrided) {
+						FFTPlan->axisSplit[axis_id][0] = maxPow8Strided;
+					}
+					else {
+						if (app->configuration.size[axis_id] / maxSingleSizeStrided < maxSingleSizeStridedHalfBandwidth) {
+							FFTPlan->axisSplit[axis_id][0] = maxSingleSizeStrided;
+						}
+						else {
+							FFTPlan->axisSplit[axis_id][0] = maxSingleSizeStridedHalfBandwidth;
+						}
+					}
+				}
+				FFTPlan->axisSplit[axis_id][1] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0];
+				if (FFTPlan->axisSplit[axis_id][1] < 64) {
+					FFTPlan->axisSplit[axis_id][0] = (FFTPlan->axisSplit[axis_id][1] == 0) ? FFTPlan->axisSplit[axis_id][0] / (64) : FFTPlan->axisSplit[axis_id][0] / (64 / FFTPlan->axisSplit[axis_id][1]);
+					FFTPlan->axisSplit[axis_id][1] = 64;
+				}
+				if (FFTPlan->axisSplit[axis_id][1] > FFTPlan->axisSplit[axis_id][0]) {
+					uint32_t swap = FFTPlan->axisSplit[axis_id][0];
+					FFTPlan->axisSplit[axis_id][0] = FFTPlan->axisSplit[axis_id][1];
+					FFTPlan->axisSplit[axis_id][1] = swap;
+				}
 			}
 			else {
-				if (app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0] / maxSingleSizeStrided <= maxSingleSizeStrided) {
-					FFTPlan->axisSplit[axis_id][1] = maxSingleSizeStrided;
+				uint32_t successSplit = 0;
+				if ((axis_id == 0) && (!app->configuration.reorderFourStep)) {
+					for (uint32_t i = 0; i < maxSequenceLengthSharedMemory; i++) {
+						if (app->configuration.size[axis_id] % (maxSequenceLengthSharedMemory - i) == 0) {
+							if (((maxSequenceLengthSharedMemory - i) <= maxSequenceLengthSharedMemory) && (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i) <= maxSingleSizeStrided)) {
+								FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory - i);
+								FFTPlan->axisSplit[axis_id][1] = app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i);
+								i = maxSequenceLengthSharedMemory;
+								successSplit = 1;
+							}
+						}
+					}
+				}
+				else {
+					uint32_t sqrtSequence = ceil(sqrt(app->configuration.size[axis_id]));
+					for (uint32_t i = 0; i < sqrtSequence; i++) {
+						if (app->configuration.size[axis_id] % (sqrtSequence - i) == 0) {
+							if ((sqrtSequence - i <= maxSingleSizeStrided) && (app->configuration.size[axis_id] / (sqrtSequence - i) <= maxSingleSizeStridedHalfBandwidth)) {
+								FFTPlan->axisSplit[axis_id][0] = app->configuration.size[axis_id] / (sqrtSequence - i);
+								FFTPlan->axisSplit[axis_id][1] = sqrtSequence - i;
+								i = sqrtSequence;
+								successSplit = 1;
+							}
+						}
+					}
+				}
+				if (successSplit == 0)
+					numPasses = 3;
+			}
+		}
+		if (numPasses == 3) {
+			if (isPowOf2) {
+				uint32_t maxPow8Strided = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided)) / 3);
+				if ((axis_id == 0) && (!app->configuration.reorderFourStep)) {
+					//unit stride
+					uint32_t maxPow8SharedMemory = (uint32_t)pow(8, ((uint32_t)log2(maxSequenceLengthSharedMemory)) / 3);
+					if (app->configuration.size[axis_id] / maxPow8SharedMemory <= maxPow8Strided * maxPow8Strided)
+						FFTPlan->axisSplit[axis_id][0] = maxPow8SharedMemory;
+					else {
+						if (app->configuration.size[axis_id] / maxSequenceLengthSharedMemory <= maxSingleSizeStrided * maxSingleSizeStrided)
+							FFTPlan->axisSplit[axis_id][0] = maxSequenceLengthSharedMemory;
+						else {
+							if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * registerBoost) <= maxSingleSizeStrided * maxSingleSizeStrided) {
+								for (uint32_t i = 0; i <= (uint32_t)log2(registerBoost); i++) {
+									if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i)) <= maxSingleSizeStrided * maxSingleSizeStrided) {
+										FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i));
+										i = (uint32_t)log2(registerBoost) + 1;
+									}
+								}
+							}
+							else {
+								FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * registerBoost);
+							}
+						}
+					}
+				}
+				else {
+					//to account for TLB misses, it is best to coalesce the unit-strided stage to 128 bytes
+					/*uint32_t log2axis = (uint32_t)log2(app->configuration.size[axis_id]);
+					FFTPlan->axisSplit[axis_id][0] = (uint32_t)pow(2, (uint32_t)log2axis / 3);
+					if (log2axis % 3 > 0) FFTPlan->axisSplit[axis_id][0] *= 2;
+					FFTPlan->axisSplit[axis_id][1] = (uint32_t)pow(2, (uint32_t)log2axis / 3);
+					if (log2axis % 3 > 1) FFTPlan->axisSplit[axis_id][1] *= 2;
+					FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0] / FFTPlan->axisSplit[axis_id][1];*/
+					uint32_t maxSingleSizeStrided128 = app->configuration.sharedMemorySize / (128);
+					uint32_t maxPow8_128 = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided128)) / 3);
+					//unit stride
+					if (app->configuration.size[axis_id] / maxPow8_128 <= maxPow8Strided * maxSingleSizeStrided)
+						FFTPlan->axisSplit[axis_id][0] = maxPow8_128;
+					//non-unit stride
+					else {
+
+						if ((app->configuration.size[axis_id] / (maxPow8_128 * 2) <= maxPow8Strided * maxSingleSizeStrided) && (maxPow8_128 * 2 <= maxSingleSizeStrided128)) {
+							FFTPlan->axisSplit[axis_id][0] = maxPow8_128 * 2;
+						}
+						else {
+							if ((app->configuration.size[axis_id] / (maxPow8_128 * 4) <= maxPow8Strided * maxSingleSizeStrided) && (maxPow8_128 * 4 <= maxSingleSizeStrided128)) {
+								FFTPlan->axisSplit[axis_id][0] = maxPow8_128 * 4;
+							}
+							else {
+								if (app->configuration.size[axis_id] / maxSingleSizeStrided <= maxSingleSizeStrided * maxSingleSizeStrided) {
+									for (uint32_t i = 0; i <= (uint32_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128); i++) {
+										if (app->configuration.size[axis_id] / (maxSingleSizeStrided128 * (uint32_t)pow(2, i)) <= maxSingleSizeStrided * maxSingleSizeStrided) {
+											FFTPlan->axisSplit[axis_id][0] = (maxSingleSizeStrided128 * (uint32_t)pow(2, i));
+											i = (uint32_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128) + 1;
+										}
+									}
+								}
+								else
+									FFTPlan->axisSplit[axis_id][0] = maxSingleSizeStridedHalfBandwidth;
+							}
+						}
+					}
+				}
+				if (app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0] / maxPow8Strided <= maxSingleSizeStrided) {
+					FFTPlan->axisSplit[axis_id][1] = maxPow8Strided;
 					FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][1] / FFTPlan->axisSplit[axis_id][0];
 				}
 				else {
-					FFTPlan->axisSplit[axis_id][1] = maxSingleSizeStridedHalfBandwidth;
-					FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][1] / FFTPlan->axisSplit[axis_id][0];
+					if (app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0] / maxSingleSizeStrided <= maxSingleSizeStrided) {
+						FFTPlan->axisSplit[axis_id][1] = maxSingleSizeStrided;
+						FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][1] / FFTPlan->axisSplit[axis_id][0];
+					}
+					else {
+						FFTPlan->axisSplit[axis_id][1] = maxSingleSizeStridedHalfBandwidth;
+						FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][1] / FFTPlan->axisSplit[axis_id][0];
+					}
+				}
+				if (FFTPlan->axisSplit[axis_id][2] < 64) {
+					FFTPlan->axisSplit[axis_id][1] = (FFTPlan->axisSplit[axis_id][2] == 0) ? FFTPlan->axisSplit[axis_id][1] / (64) : FFTPlan->axisSplit[axis_id][1] / (64 / FFTPlan->axisSplit[axis_id][2]);
+					FFTPlan->axisSplit[axis_id][2] = 64;
+				}
+				if (FFTPlan->axisSplit[axis_id][2] > FFTPlan->axisSplit[axis_id][1]) {
+					uint32_t swap = FFTPlan->axisSplit[axis_id][1];
+					FFTPlan->axisSplit[axis_id][1] = FFTPlan->axisSplit[axis_id][2];
+					FFTPlan->axisSplit[axis_id][2] = swap;
 				}
 			}
-			if (FFTPlan->axisSplit[axis_id][2] < 64) {
-				FFTPlan->axisSplit[axis_id][1] = (FFTPlan->axisSplit[axis_id][2] == 0) ? FFTPlan->axisSplit[axis_id][1] / (64) : FFTPlan->axisSplit[axis_id][1] / (64 / FFTPlan->axisSplit[axis_id][2]);
-				FFTPlan->axisSplit[axis_id][2] = 64;
+			else {
+				uint32_t successSplit = 0;
+				if ((axis_id == 0) && (!app->configuration.reorderFourStep)) {
+					for (uint32_t i = 0; i < maxSequenceLengthSharedMemory; i++) {
+						if (app->configuration.size[axis_id] % (maxSequenceLengthSharedMemory - i) == 0) {
+							uint32_t sqrt3Sequence = ceil(sqrt(app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i)));
+							for (uint32_t j = 0; j < sqrt3Sequence; j++) {
+								if ((app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i)) % (sqrt3Sequence - j) == 0) {
+									if (((maxSequenceLengthSharedMemory - i) <= maxSequenceLengthSharedMemory) && (sqrt3Sequence - j <= maxSingleSizeStrided) && (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i) / (sqrt3Sequence - j) <= maxSingleSizeStrided)) {
+										FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory - i);
+										FFTPlan->axisSplit[axis_id][1] = sqrt3Sequence - j;
+										FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i) / (sqrt3Sequence - j);
+										i = maxSequenceLengthSharedMemory;
+										j = sqrt3Sequence;
+										successSplit = 1;
+									}
+								}
+							}
+						}
+					}
+				}
+				else {
+					uint32_t sqrt3Sequence = ceil(pow(app->configuration.size[axis_id], 1.0 / 3.0));
+					for (uint32_t i = 0; i < sqrt3Sequence; i++) {
+						if (app->configuration.size[axis_id] % (sqrt3Sequence - i) == 0) {
+							uint32_t sqrt2Sequence = ceil(sqrt(app->configuration.size[axis_id] / (sqrt3Sequence - i)));
+							for (uint32_t j = 0; j < sqrt2Sequence; j++) {
+								if ((app->configuration.size[axis_id] / (sqrt3Sequence - i)) % (sqrt2Sequence - j) == 0) {
+									if ((sqrt3Sequence - i <= maxSingleSizeStrided) && (sqrt2Sequence - j <= maxSingleSizeStrided) && (app->configuration.size[axis_id] / (sqrt3Sequence - i) / (sqrt2Sequence - j) <= maxSingleSizeStridedHalfBandwidth)) {
+										FFTPlan->axisSplit[axis_id][0] = app->configuration.size[axis_id] / (sqrt3Sequence - i) / (sqrt2Sequence - j);
+										FFTPlan->axisSplit[axis_id][1] = sqrt3Sequence - i;
+										FFTPlan->axisSplit[axis_id][2] = sqrt2Sequence - j;
+										i = sqrt3Sequence;
+										j = sqrt2Sequence;
+										successSplit = 1;
+									}
+								}
+							}
+						}
+					}
+				}
+				if (successSplit == 0)
+					numPasses = 4;
 			}
-			if (FFTPlan->axisSplit[axis_id][2] > FFTPlan->axisSplit[axis_id][1]) {
-				uint32_t swap = FFTPlan->axisSplit[axis_id][1];
-				FFTPlan->axisSplit[axis_id][1] = FFTPlan->axisSplit[axis_id][2];
-				FFTPlan->axisSplit[axis_id][2] = swap;
-			}
-			break;
 		}
-		default: {
+		if (numPasses > 3) {
 			printf("sequence length exceeds boundaries\n");
-			break;
+			return VK_ERROR_FORMAT_NOT_SUPPORTED;
 		}
+		for (uint32_t i = 0; i < numPasses; i++) {
+			if ((FFTPlan->axisSplit[axis_id][0] % 2 != 0) && (FFTPlan->axisSplit[axis_id][i] % 2 == 0)) {
+				uint32_t swap = FFTPlan->axisSplit[axis_id][0];
+				FFTPlan->axisSplit[axis_id][0] = FFTPlan->axisSplit[axis_id][i];
+				FFTPlan->axisSplit[axis_id][i] = swap;
+			}
+		}
+		for (uint32_t i = 0; i < numPasses; i++) {
+			if ((FFTPlan->axisSplit[axis_id][0] % 4 != 0) && (FFTPlan->axisSplit[axis_id][i] % 4 == 0)) {
+				uint32_t swap = FFTPlan->axisSplit[axis_id][0];
+				FFTPlan->axisSplit[axis_id][0] = FFTPlan->axisSplit[axis_id][i];
+				FFTPlan->axisSplit[axis_id][i] = swap;
+			}
+		}
+		for (uint32_t i = 0; i < numPasses; i++) {
+			if ((FFTPlan->axisSplit[axis_id][0] % 8 != 0) && (FFTPlan->axisSplit[axis_id][i] % 8 == 0)) {
+				uint32_t swap = FFTPlan->axisSplit[axis_id][0];
+				FFTPlan->axisSplit[axis_id][0] = FFTPlan->axisSplit[axis_id][i];
+				FFTPlan->axisSplit[axis_id][i] = swap;
+			}
+		}
+		FFTPlan->numAxisUploads[axis_id] = numPasses;
+		for (uint32_t k = 0; k < numPasses; k++) {
+			tempSequence = FFTPlan->axisSplit[axis_id][k];
+			uint32_t loc_multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };//split the smaller sequence
+			for (uint32_t i = 2; i < 8; i++) {
+				if (tempSequence % i == 0) {
+					tempSequence /= i;
+					loc_multipliers[i]++;
+					i--;
+				}
+			}
+			uint32_t registers_per_thread = 8;
+			uint32_t min_registers_per_thread = 8;
+			if (loc_multipliers[2] > 0) {
+				if (loc_multipliers[3] > 0) {
+					if (loc_multipliers[5] > 0) {
+						if ((loc_multipliers[2] == 1) || (app->configuration.doublePrecision)) {
+							registers_per_thread = 6;
+							min_registers_per_thread = 5;
+						}
+						else {
+							registers_per_thread = 12;
+							min_registers_per_thread = 10;
+						}
+					}
+					else
+					{
+						if ((loc_multipliers[2] == 1) || (app->configuration.doublePrecision)) {
+							registers_per_thread = 6;
+							min_registers_per_thread = 6;
+						}
+						else {
+							registers_per_thread = 12;
+							min_registers_per_thread = 12;
+						}
+					}
+				}
+				else {
+					if (loc_multipliers[5] > 0) {
+						registers_per_thread = 10;
+						min_registers_per_thread = 10;
+					}
+					else
+					{
+
+						registers_per_thread = (loc_multipliers[2] > 2) ? 8 : pow(2, loc_multipliers[2]);
+						min_registers_per_thread = (loc_multipliers[2] > 2) ? 8 : pow(2, loc_multipliers[2]);
+					}
+				}
+			}
+			else {
+				if (loc_multipliers[3] > 0) {
+					if (loc_multipliers[5] > 0) {
+						if (app->configuration.doublePrecision) {
+							registers_per_thread = 5;
+							min_registers_per_thread = 3;
+						}
+						else {
+							registers_per_thread = 15;
+							min_registers_per_thread = 15;
+						}
+					}
+					else
+					{
+						if ((loc_multipliers[3] == 1) || (app->configuration.doublePrecision)) {
+							registers_per_thread = 3;
+							min_registers_per_thread = 3;
+						}
+						else {
+							registers_per_thread = 9;
+							min_registers_per_thread = 9;
+						}
+					}
+				}
+				else {
+					if (loc_multipliers[5] > 0) {
+						registers_per_thread = 5;
+						min_registers_per_thread = 5;
+					}
+					else
+					{
+						return VK_ERROR_FORMAT_NOT_SUPPORTED;
+					}
+				}
+
+			}
+			if (registers_per_thread % 8 == 0) {
+				loc_multipliers[8] = loc_multipliers[2] / 3;
+				loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[8] * 3;
+			}
+			if (registers_per_thread % 4 == 0) {
+				loc_multipliers[4] = loc_multipliers[2] / 2;
+				loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[4] * 2;
+			}
+			uint32_t j = 0;
+			FFTPlan->axes[axis_id][k].specializationConstants.registers_per_thread = registers_per_thread;
+			FFTPlan->axes[axis_id][k].specializationConstants.min_registers_per_thread = min_registers_per_thread;
+			FFTPlan->axes[axis_id][k].specializationConstants.numStages = 0;
+			FFTPlan->axes[axis_id][k].specializationConstants.fftDim = FFTPlan->axisSplit[axis_id][k];
+			for (uint32_t i = 8; i > 1; i--) {
+				if (loc_multipliers[i] > 0) {
+					FFTPlan->axes[axis_id][k].specializationConstants.stageRadix[j] = i;
+					loc_multipliers[i]--;
+					i++;
+					j++;
+					FFTPlan->axes[axis_id][k].specializationConstants.numStages++;
+				}
+			}
+			if (min_registers_per_thread != registers_per_thread) {
+				j = FFTPlan->axes[axis_id][k].specializationConstants.stageRadix[FFTPlan->axes[axis_id][k].specializationConstants.numStages - 1];
+				FFTPlan->axes[axis_id][k].specializationConstants.stageRadix[FFTPlan->axes[axis_id][k].specializationConstants.numStages - 1] = FFTPlan->axes[axis_id][k].specializationConstants.stageRadix[0];
+				FFTPlan->axes[axis_id][k].specializationConstants.stageRadix[0] = j;
+			}
 		}
 	}
 	static inline VkResult VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, VkBool32 inverse, uint32_t convolutionInverseStage) {
@@ -4208,40 +4831,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				complexSize = (2 * sizeof(float));
 		axis->specializationConstants.complexSize = complexSize;
 		uint32_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
+		uint32_t maxSequenceLengthSharedMemoryPow2 = app->configuration.sharedMemorySizePow2 / complexSize;
 		uint32_t maxSingleSizeStrided = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
-
-		uint32_t logSize = log2(FFTPlan->axisSplit[axis_id][axis_upload_id]);
-
-		uint32_t stage8 = logSize / 3;
-		uint32_t stage4 = 0;
-		uint32_t stage2 = 0;
-		if (logSize % 3 == 2)
-			stage4 = 1;
-		if (logSize % 3 == 1)
-			stage2 = 1;
-		uint32_t totNumStages = stage8 + stage4 + stage2;
-
-		axis->specializationConstants.numStages = stage8;
-		axis->specializationConstants.fftDim = pow(8, stage8);
-		for (uint32_t i = 0; i < stage8; i++) {
-			axis->specializationConstants.stageRadix[i] = 8;
-		}
-		uint32_t reorganizeLastRadixRegisterBoost = 1;
-		if ((axis->specializationConstants.fftDim > maxSequenceLengthSharedMemory) && (logSize > stage8 * 3)) {
-			reorganizeLastRadixRegisterBoost = axis->specializationConstants.fftDim / maxSequenceLengthSharedMemory;
-			axis->specializationConstants.fftDim = maxSequenceLengthSharedMemory;
-			axis->specializationConstants.stageRadix[stage8 - 1] /= reorganizeLastRadixRegisterBoost;
-		}
-		if (stage4 == 1) {
-			axis->specializationConstants.numStages++;
-			axis->specializationConstants.stageRadix[stage8] = 4 * reorganizeLastRadixRegisterBoost;
-			axis->specializationConstants.fftDim *= 4 * reorganizeLastRadixRegisterBoost;
-		}
-		if (stage2 == 1) {
-			axis->specializationConstants.numStages++;
-			axis->specializationConstants.stageRadix[stage8] = 2 * reorganizeLastRadixRegisterBoost;
-			axis->specializationConstants.fftDim *= 2 * reorganizeLastRadixRegisterBoost;
-		}
+		uint32_t maxSingleSizeStridedPow2 = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySizePow2 / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySizePow2 / complexSize;
 
 		axis->specializationConstants.stageStartSize = 1;
 		for (uint32_t i = 0; i < axis_upload_id; i++)
@@ -4277,7 +4869,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		else {
 			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
 		}*/
-		axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
+		//axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
+		if (((FFTPlan->numAxisUploads[axis_id] == 1) && (axis_id == 0)) || ((axis_id == 0) && (!app->configuration.reorderFourStep) && (axis_upload_id == 0))) {
+			axis->groupedBatch = (maxSequenceLengthSharedMemoryPow2 / axis->specializationConstants.fftDim > axis->groupedBatch) ? maxSequenceLengthSharedMemoryPow2 / axis->specializationConstants.fftDim : axis->groupedBatch;
+		}
+		else {
+			axis->groupedBatch = (maxSingleSizeStridedPow2 / axis->specializationConstants.fftDim > 1) ? maxSingleSizeStridedPow2 / axis->specializationConstants.fftDim * axis->groupedBatch : axis->groupedBatch;
+		}
+		if (axis->groupedBatch < maxBatchCoalesced) axis->groupedBatch = maxBatchCoalesced;
+		axis->groupedBatch = (axis->groupedBatch / maxBatchCoalesced) * maxBatchCoalesced;
 		if (app->configuration.halfThreads)
 			axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 		//allocate LUT 
@@ -4683,17 +5283,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 
 			vkCreatePipelineLayout(app->configuration.device[0], &pipelineLayoutCreateInfo, NULL, &axis->pipelineLayout);
-			uint32_t maxThreadNum = maxSequenceLengthSharedMemory / 8;
+			uint32_t maxThreadNum = maxSequenceLengthSharedMemory / axis->specializationConstants.min_registers_per_thread;
 			if (axis_id == 1) {
 				if (axis_upload_id == 0) {
-					axis->axisBlock[0] = (axis->specializationConstants.fftDim / 8 > 1) ? axis->specializationConstants.fftDim / 8 : 1;
+					axis->axisBlock[0] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 					if (axis->axisBlock[0] > maxThreadNum) axis->axisBlock[0] = maxThreadNum;
 					axis->axisBlock[1] = 1;
 					axis->axisBlock[2] = 1;
 					axis->axisBlock[3] = axis->specializationConstants.fftDim;
 				}
 				else {
-					axis->axisBlock[1] = (axis->specializationConstants.fftDim / 8 > 1) ? axis->specializationConstants.fftDim / 8 : 1;
+					axis->axisBlock[1] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 
 					axis->axisBlock[0] = (axis->specializationConstants.stageStartSize > axis->groupedBatch) ? axis->groupedBatch : axis->specializationConstants.stageStartSize;
 
@@ -4702,7 +5302,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 			}
 			if (axis_id == 2) {
-				axis->axisBlock[1] = (axis->specializationConstants.fftDim / 8 > 1) ? axis->specializationConstants.fftDim / 8 : 1;
+				axis->axisBlock[1] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 
 				axis->axisBlock[0] = (app->configuration.size[1] > axis->groupedBatch) ? axis->groupedBatch : app->configuration.size[1];
 				/*if (axis->axisBlock[0] * axis->axisBlock[1] < 64)
@@ -4766,7 +5366,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->specializationConstants.numBatches = app->configuration.numberBatches;
 			axis->specializationConstants.numKernels = app->configuration.numberKernels;
 			axis->specializationConstants.sharedMemSize = app->configuration.sharedMemorySize;
-			axis->specializationConstants.sharedMemSizeNonPow2 = app->configuration.sharedMemorySizeNonPow2;
+			axis->specializationConstants.sharedMemSizePow2 = app->configuration.sharedMemorySizePow2;
 			axis->specializationConstants.normalize = 1;
 			axis->specializationConstants.size[0] = app->configuration.size[0];
 			axis->specializationConstants.size[1] = app->configuration.size[1];
@@ -4822,7 +5422,6 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char floatType[10];
 			axis->specializationConstants.unroll = 1;
 			axis->specializationConstants.LUT = app->configuration.useLUT;
-			axis->specializationConstants.registers_per_thread = 8;
 			if (app->configuration.doublePrecision) {
 				sprintf(floatType, "double");
 				sprintf(floatTypeMemory, "double");
@@ -4845,7 +5444,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if ((axis_id - 1 == 0) && (axis_upload_id == 0)) type = 0;
 			if (axis_id - 1 != 0) type = 1;
 			if ((axis_id - 1 == 0) && (axis_upload_id > 0)) type = 2;
-			axis->specializationConstants.cacheShuffle = ((!app->configuration.doublePrecision) && ((type == 0) || (type == 5) || (type == 6))) ? 1 : 0;
+			axis->specializationConstants.cacheShuffle = 0;// ((!app->configuration.doublePrecision) && ((type == 0) || (type == 5) || (type == 6))) ? 1 : 0;
 			//if ((axis->specializationConstants.fftDim == 2 * maxSequenceLengthSharedMemory) && (app->configuration.registerBoost >= 2)) type = 3;
 			//if ((axis->specializationConstants.fftDim == 4 * maxSequenceLengthSharedMemory) && (app->configuration.registerBoost >= 4)) type = 4;
 			char* code0 = (char*)malloc(sizeof(char) * 200000);
@@ -4947,16 +5546,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				/* .maxDualSourceDrawBuffersEXT = */ 1,
 
 				/* .limits = */ {
-				/* .nonInductiveForLoops = */ 1,
-				/* .whileLoops = */ 1,
-				/* .doWhileLoops = */ 1,
-				/* .generalUniformIndexing = */ 1,
-				/* .generalAttributeMatrixVectorIndexing = */ 1,
-				/* .generalVaryingIndexing = */ 1,
-				/* .generalSamplerIndexing = */ 1,
-				/* .generalVariableIndexing = */ 1,
-				/* .generalConstantMatrixVectorIndexing = */ 1,
-			} };
+					/* .nonInductiveForLoops = */ 1,
+					/* .whileLoops = */ 1,
+					/* .doWhileLoops = */ 1,
+					/* .generalUniformIndexing = */ 1,
+					/* .generalAttributeMatrixVectorIndexing = */ 1,
+					/* .generalVaryingIndexing = */ 1,
+					/* .generalSamplerIndexing = */ 1,
+					/* .generalVariableIndexing = */ 1,
+					/* .generalConstantMatrixVectorIndexing = */ 1,
+				} };
 			glslang_target_client_version_t client_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_VULKAN_1_1 : GLSLANG_TARGET_VULKAN_1_0;
 			glslang_target_language_version_t target_language_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_SPV_1_3 : GLSLANG_TARGET_SPV_1_0;
 			const glslang_input_t input =
@@ -5073,8 +5672,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		axis->specializationConstants.supportAxis = 0;
 		axis->specializationConstants.symmetricKernel = app->configuration.symmetricKernel;
 		uint32_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
+		uint32_t maxSequenceLengthSharedMemoryPow2 = app->configuration.sharedMemorySizePow2 / complexSize;
 		uint32_t maxSingleSizeStrided = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
+		uint32_t maxSingleSizeStridedPow2 = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySizePow2 / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySizePow2 / complexSize;
 
+		/*
 		uint32_t logSize = log2(FFTPlan->axisSplit[axis_id][axis_upload_id]);
 
 		uint32_t stage8 = logSize / 3;
@@ -5106,7 +5708,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->specializationConstants.numStages++;
 			axis->specializationConstants.stageRadix[stage8] = 2 * reorganizeLastRadixRegisterBoost;
 			axis->specializationConstants.fftDim *= 2 * reorganizeLastRadixRegisterBoost;
-		}
+		}*/
 
 		axis->specializationConstants.stageStartSize = 1;
 		for (uint32_t i = 0; i < axis_upload_id; i++)
@@ -5147,19 +5749,28 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
 		}*/
 		//if (axis->groupedBatch * ceil(axis->specializationConstants.fftDim / 8.0) < app->configuration.warpSize) axis->groupedBatch = app->configuration.warpSize / ceil(axis->specializationConstants.fftDim / 8.0);
-		axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
-
+		//axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
+		if (((FFTPlan->numAxisUploads[axis_id] == 1) && (axis_id == 0)) || ((axis_id == 0) && (!app->configuration.reorderFourStep) && (axis_upload_id == 0))) {
+			axis->groupedBatch = (maxSequenceLengthSharedMemoryPow2 / axis->specializationConstants.fftDim > axis->groupedBatch) ? maxSequenceLengthSharedMemoryPow2 / axis->specializationConstants.fftDim : axis->groupedBatch;
+		}
+		else {
+			axis->groupedBatch = (maxSingleSizeStridedPow2 / axis->specializationConstants.fftDim > 1) ? maxSingleSizeStridedPow2 / axis->specializationConstants.fftDim * axis->groupedBatch : axis->groupedBatch;
+		}
 		//axis->groupedBatch = 8;
 		//shared memory bank conflict resolve
 		if ((FFTPlan->numAxisUploads[axis_id] == 3) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory / (2 * complexSize))) {
 			axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 		}
+		if (axis->groupedBatch < maxBatchCoalesced) axis->groupedBatch = maxBatchCoalesced;
+		axis->groupedBatch = (axis->groupedBatch / maxBatchCoalesced) * maxBatchCoalesced;
 		//half bandiwdth technique
 		if (!((axis_id == 0) && (FFTPlan->numAxisUploads[axis_id] == 1)) && !((axis_id == 0) && (axis_upload_id == 0) && (!app->configuration.reorderFourStep)) && (axis->specializationConstants.fftDim > maxSingleSizeStrided)) {
 			axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 		}
+
 		if (app->configuration.halfThreads)
 			axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
+
 		//allocate LUT 
 		if (app->configuration.useLUT) {
 			double double_PI = 3.1415926535897932384626433832795;
@@ -5610,7 +6221,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			|| ((axis_id == 0) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)))
 			) ||
 			((app->configuration.numberKernels > 1) && (
-			(inverse)
+				(inverse)
 				|| (axis_id == app->configuration.FFTdim - 1)))
 			) {
 			uint64_t totalSize = 0;
@@ -5823,7 +6434,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						|| ((axis_id == 0) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)))
 						) ||
 						((app->configuration.numberKernels > 1) && (
-						(inverse)
+							(inverse)
 							|| (axis_id == app->configuration.FFTdim - 1)))
 						) {
 						uint32_t bufferId = 0;
@@ -5939,12 +6550,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
 
 			vkCreatePipelineLayout(app->configuration.device[0], &pipelineLayoutCreateInfo, NULL, &axis->pipelineLayout);
-			uint32_t maxThreadNum = maxSequenceLengthSharedMemory / 8;
+			uint32_t maxThreadNum = maxSequenceLengthSharedMemory / axis->specializationConstants.min_registers_per_thread;
 			if (!inverse) {
 				if (axis_id == 0) {
 
 					if (axis_upload_id == 0) {
-						axis->axisBlock[0] = (axis->specializationConstants.fftDim / 8 > 1) ? axis->specializationConstants.fftDim / 8 : 1;
+						axis->axisBlock[0] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 						if (axis->axisBlock[0] > maxThreadNum) axis->axisBlock[0] = maxThreadNum;
 						if (app->configuration.reorderFourStep && (FFTPlan->numAxisUploads[axis_id] > 1))
 							axis->axisBlock[1] = axis->groupedBatch;
@@ -5956,7 +6567,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						axis->axisBlock[3] = axis->specializationConstants.fftDim;
 					}
 					else {
-						axis->axisBlock[1] = (axis->specializationConstants.fftDim / 8 > 1) ? axis->specializationConstants.fftDim / 8 : 1;
+						axis->axisBlock[1] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 
 						axis->axisBlock[0] = (axis->specializationConstants.stageStartSize > axis->groupedBatch) ? axis->groupedBatch : axis->specializationConstants.stageStartSize;
 
@@ -5967,13 +6578,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				if (axis_id == 1) {
 
-					axis->axisBlock[1] = (axis->specializationConstants.fftDim / 8 > 1) ? axis->specializationConstants.fftDim / 8 : 1;
+					axis->axisBlock[1] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 
 					if (app->configuration.performR2C) {
 						if (axis_upload_id == 0) {
 							FFTPlan->numSupportAxisUploads[0] = FFTPlan->numAxisUploads[1];
-							for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[0]; i++)
+							for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[0]; i++) {
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.registers_per_thread;
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.min_registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.min_registers_per_thread;
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages = FFTPlan->axes[axis_id][i].specializationConstants.numStages;
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.fftDim = FFTPlan->axisSplit[axis_id][i];
+								for (uint32_t j = 0; j < FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages; j++)
+									FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.stageRadix[j] = FFTPlan->axes[axis_id][i].specializationConstants.stageRadix[j];
 								VkFFTPlanSupportAxis(app, FFTPlan, 1, i, inverse, convolutionInverseStage);
+							}
 						}
 						axis->axisBlock[0] = (app->configuration.size[0] / 2 > axis->groupedBatch) ? axis->groupedBatch : app->configuration.size[0] / 2;
 						/*if (axis->axisBlock[0] * axis->axisBlock[1] < 64)
@@ -5996,13 +6614,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 				}
 				if (axis_id == 2) {
-					axis->axisBlock[1] = (axis->specializationConstants.fftDim / 8 > 1) ? axis->specializationConstants.fftDim / 8 : 1;
+					axis->axisBlock[1] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 
 					if (app->configuration.performR2C) {
 						if (axis_upload_id == 0) {
 							FFTPlan->numSupportAxisUploads[1] = FFTPlan->numAxisUploads[2];
-							for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[1]; i++)
+							for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[1]; i++) {
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.registers_per_thread;
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.min_registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.min_registers_per_thread;
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages = FFTPlan->axes[axis_id][i].specializationConstants.numStages;
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.fftDim = FFTPlan->axisSplit[axis_id][i];
+								for (uint32_t j = 0; j < FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages; j++)
+									FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.stageRadix[j] = FFTPlan->axes[axis_id][i].specializationConstants.stageRadix[j];
 								VkFFTPlanSupportAxis(app, FFTPlan, 2, i, inverse, convolutionInverseStage);
+							}
 						}
 						axis->axisBlock[0] = (app->configuration.size[0] / 2 > axis->groupedBatch) ? axis->groupedBatch : app->configuration.size[0] / 2;
 						/*if (axis->axisBlock[0] * axis->axisBlock[1] < 64)
@@ -6026,7 +6651,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else {
 				if (axis_id == 0) {
 					if (axis_upload_id == 0) {
-						axis->axisBlock[0] = (axis->specializationConstants.fftDim / 8 > 1) ? axis->specializationConstants.fftDim / 8 : 1;
+						axis->axisBlock[0] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 						if (axis->axisBlock[0] > maxThreadNum) axis->axisBlock[0] = maxThreadNum;
 
 						if (app->configuration.reorderFourStep && (FFTPlan->numAxisUploads[axis_id] > 1))
@@ -6039,7 +6664,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						axis->axisBlock[3] = axis->specializationConstants.fftDim;
 					}
 					else {
-						axis->axisBlock[1] = (axis->specializationConstants.fftDim / 8 > 1) ? axis->specializationConstants.fftDim / 8 : 1;
+						axis->axisBlock[1] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 
 						axis->axisBlock[0] = (axis->specializationConstants.stageStartSize > axis->groupedBatch) ? axis->groupedBatch : axis->specializationConstants.stageStartSize;
 
@@ -6049,13 +6674,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				if (axis_id == 1) {
 
-					axis->axisBlock[1] = (axis->specializationConstants.fftDim / 8 > 1) ? axis->specializationConstants.fftDim / 8 : 1;
+					axis->axisBlock[1] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 
 					if (app->configuration.performR2C) {
 						if (axis_upload_id == 0) {
 							FFTPlan->numSupportAxisUploads[0] = FFTPlan->numAxisUploads[1];
-							for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[0]; i++)
+							for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[0]; i++) {
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.registers_per_thread;
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.min_registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.min_registers_per_thread;
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages = FFTPlan->axes[axis_id][i].specializationConstants.numStages;
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.fftDim = FFTPlan->axisSplit[axis_id][i];
+								for (uint32_t j = 0; j < FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages; j++)
+									FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.stageRadix[j] = FFTPlan->axes[axis_id][i].specializationConstants.stageRadix[j];
 								VkFFTPlanSupportAxis(app, FFTPlan, 1, i, inverse, convolutionInverseStage);
+							}
 						}
 						axis->axisBlock[0] = (app->configuration.size[0] / 2 > axis->groupedBatch) ? axis->groupedBatch : app->configuration.size[0] / 2;
 						/*if (axis->axisBlock[0] * axis->axisBlock[1] < 64)
@@ -6078,13 +6710,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				if (axis_id == 2) {
 
-					axis->axisBlock[1] = (axis->specializationConstants.fftDim / 8 > 1) ? axis->specializationConstants.fftDim / 8 : 1;
+					axis->axisBlock[1] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 
 					if (app->configuration.performR2C) {
 						if (axis_upload_id == 0) {
 							FFTPlan->numSupportAxisUploads[1] = FFTPlan->numAxisUploads[2];
-							for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[1]; i++)
+							for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[1]; i++) {
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.registers_per_thread;
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.min_registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.min_registers_per_thread;
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages = FFTPlan->axes[axis_id][i].specializationConstants.numStages;
+								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.fftDim = FFTPlan->axisSplit[axis_id][i];
+								for (uint32_t j = 0; j < FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages; j++)
+									FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.stageRadix[j] = FFTPlan->axes[axis_id][i].specializationConstants.stageRadix[j];
 								VkFFTPlanSupportAxis(app, FFTPlan, 2, i, inverse, convolutionInverseStage);
+							}
 						}
 						axis->axisBlock[0] = (app->configuration.size[0] / 2 > axis->groupedBatch) ? axis->groupedBatch : app->configuration.size[0] / 2;
 						/*if (axis->axisBlock[0] * axis->axisBlock[1] < 64)
@@ -6187,7 +6826,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->specializationConstants.numBatches = app->configuration.numberBatches;
 			axis->specializationConstants.numKernels = app->configuration.numberKernels;
 			axis->specializationConstants.sharedMemSize = app->configuration.sharedMemorySize;
-			axis->specializationConstants.sharedMemSizeNonPow2 = app->configuration.sharedMemorySizeNonPow2;
+			axis->specializationConstants.sharedMemSizePow2 = app->configuration.sharedMemorySizePow2;
 			axis->specializationConstants.normalize = 1;
 			axis->specializationConstants.size[0] = app->configuration.size[0];
 			axis->specializationConstants.size[1] = app->configuration.size[1];
@@ -6243,7 +6882,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char floatType[10];
 			axis->specializationConstants.unroll = 1;
 			axis->specializationConstants.LUT = app->configuration.useLUT;
-			axis->specializationConstants.registers_per_thread = 8;
+			//axis->specializationConstants.registers_per_thread = 8;
 			if (app->configuration.doublePrecision) {
 				sprintf(floatType, "double");
 				sprintf(floatTypeMemory, "double");
@@ -6270,7 +6909,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if ((axis->specializationConstants.fftDim == 4 * maxSequenceLengthSharedMemory) && (app->configuration.registerBoost >= 4)) type = 4;
 			if ((axis_id == 0) && (!axis->specializationConstants.inverse) && (app->configuration.performR2C)) type = 5;
 			if ((axis_id == 0) && (axis->specializationConstants.inverse) && (app->configuration.performR2C)) type = 6;
-			axis->specializationConstants.cacheShuffle = ((!app->configuration.doublePrecision) && ((type == 0) || (type == 5) || (type == 6))) ? 1 : 0;
+			axis->specializationConstants.cacheShuffle = (((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) == 0) && (!app->configuration.doublePrecision) && ((type == 0) || (type == 5) || (type == 6))) ? 1 : 0;
 			char* code0 = (char*)malloc(sizeof(char) * 200000);
 			shaderGenVkFFT(code0, axis->specializationConstants, floatType, floatTypeMemory, uintType, type);
 			const glslang_resource_t default_resource = {
@@ -6369,16 +7008,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				/* .maxDualSourceDrawBuffersEXT = */ 1,
 
 				/* .limits = */ {
-				/* .nonInductiveForLoops = */ 1,
-				/* .whileLoops = */ 1,
-				/* .doWhileLoops = */ 1,
-				/* .generalUniformIndexing = */ 1,
-				/* .generalAttributeMatrixVectorIndexing = */ 1,
-				/* .generalVaryingIndexing = */ 1,
-				/* .generalSamplerIndexing = */ 1,
-				/* .generalVariableIndexing = */ 1,
-				/* .generalConstantMatrixVectorIndexing = */ 1,
-			} };
+					/* .nonInductiveForLoops = */ 1,
+					/* .whileLoops = */ 1,
+					/* .doWhileLoops = */ 1,
+					/* .generalUniformIndexing = */ 1,
+					/* .generalAttributeMatrixVectorIndexing = */ 1,
+					/* .generalVaryingIndexing = */ 1,
+					/* .generalSamplerIndexing = */ 1,
+					/* .generalVariableIndexing = */ 1,
+					/* .generalConstantMatrixVectorIndexing = */ 1,
+				} };
 			glslang_target_client_version_t client_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_VULKAN_1_1 : GLSLANG_TARGET_VULKAN_1_0;
 			glslang_target_language_version_t target_language_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_SPV_1_3 : GLSLANG_TARGET_SPV_1_0;
 			const glslang_input_t input =
@@ -6512,11 +7151,24 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.maxComputeWorkGroupCount[0] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[0];
 		app->configuration.maxComputeWorkGroupCount[1] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[1];
 		app->configuration.maxComputeWorkGroupCount[2] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[2];
-		app->configuration.sharedMemorySize = (physicalDeviceProperties.limits.maxComputeSharedMemorySize / 32768) * 32768;
 		if ((physicalDeviceProperties.vendorID == 0x8086) && (!app->configuration.doublePrecision)) app->configuration.halfThreads = 1;
 		//	if ((physicalDeviceProperties.vendorID == 0x8086) && (!app->configuration.doublePrecision)) app->configuration.sharedMemorySize /= 2;//Temporary measure, until L1 overutilization is enabled
-			//app->configuration.sharedMemorySizeNonPow2 = physicalDeviceProperties.limits.maxComputeSharedMemorySize;
+		app->configuration.sharedMemorySize = physicalDeviceProperties.limits.maxComputeSharedMemorySize;
+		app->configuration.sharedMemorySizePow2 = (physicalDeviceProperties.limits.maxComputeSharedMemorySize / 32768) * 32768;
 		if (app->configuration.matrixConvolution > 1) app->configuration.coordinateFeatures = app->configuration.matrixConvolution;
+		//LUT is not implemented for non-pow 2 yet
+		if ((app->configuration.size[0] & (app->configuration.size[0] - 1)) != 0) {
+			app->configuration.useLUT = 0;
+		}
+		if ((app->configuration.size[1] & (app->configuration.size[1] - 1)) != 0) {
+			app->configuration.useLUT = 0;
+		}
+		if ((app->configuration.size[2] & (app->configuration.size[2] - 1)) != 0) {
+			app->configuration.useLUT = 0;
+		}
+		app->configuration.registerBoost = 1;
+		app->configuration.registerBoost4Step = 1;
+		app->configuration.performHalfBandwidthBoost = 0;
 		VkResult res = VK_SUCCESS;
 		if (!app->configuration.isCompilerInitialized)
 			glslang_initialize_process();
@@ -6524,6 +7176,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			app->configuration.inverse = 0;
 			for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
+				app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : physicalDeviceProperties.limits.maxComputeSharedMemorySize;
 				VkFFTScheduler(app, &app->localFFTPlan_inverse_convolution, i);
 				for (uint32_t j = 0; j < app->localFFTPlan_inverse_convolution.numAxisUploads[i]; j++) {
 					res = VkFFTPlanAxis(app, &app->localFFTPlan_inverse_convolution, i, j, 1, 1);
@@ -6533,12 +7186,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		}
 		for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
+			app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : physicalDeviceProperties.limits.maxComputeSharedMemorySize;
 			VkFFTScheduler(app, &app->localFFTPlan, i);
 			for (uint32_t j = 0; j < app->localFFTPlan.numAxisUploads[i]; j++) {
 				res = VkFFTPlanAxis(app, &app->localFFTPlan, i, j, app->configuration.inverse, 0);
 				if (res != 0) return VK_ERROR_INITIALIZATION_FAILED;
+				if (!app->configuration.inverse) {
+					//printf("%d %d %d %d %d\n", i,j,app->localFFTPlan.axes[i][j].axisBlock[0], app->localFFTPlan.axes[i][j].axisBlock[1], app->localFFTPlan.axes[i][j].axisBlock[2]);
+				}
 			}
 		}
+
 		if (!app->configuration.isCompilerInitialized)
 			glslang_finalize_process();
 		return res;
@@ -6546,6 +7204,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	static inline void dispatchEnhanced(VkFFTApplication* app, VkCommandBuffer commandBuffer, VkFFTAxis* axis, uint32_t* dispatchBlock) {
 		uint32_t maxBlockPow2Size[3] = { (uint32_t)pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[0])),(uint32_t)pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[1])),(uint32_t)pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[2])) };
 		uint32_t blockNumber[3] = { (uint32_t)ceil(dispatchBlock[0] / (float)maxBlockPow2Size[0]),(uint32_t)ceil(dispatchBlock[1] / (float)maxBlockPow2Size[1]),(uint32_t)ceil(dispatchBlock[2] / (float)maxBlockPow2Size[2]) };
+		//printf("%d %d %d\n", dispatchBlock[0], dispatchBlock[1], dispatchBlock[2]);
 		for (uint32_t i = 0; i < 3; i++)
 			if (blockNumber[i] == 1) maxBlockPow2Size[i] = dispatchBlock[i];
 		for (uint32_t i = 0; i < blockNumber[0]; i++) {
@@ -6582,17 +7241,23 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 						uint32_t dispatchBlock[3];
 						if (l == 0) {
-							if (app->localFFTPlan.numAxisUploads[0] > 1) {
-								dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[1];
+							if (app->localFFTPlan.numAxisUploads[0] > 2) {
+								dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan.axisSplit[0][1]) * app->localFFTPlan.axisSplit[0][1];
 								dispatchBlock[1] = app->configuration.size[1];
 							}
 							else {
-								dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
-								dispatchBlock[1] = app->configuration.size[1] / axis->axisBlock[1];
+								if (app->localFFTPlan.numAxisUploads[0] > 1) {
+									dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
+									dispatchBlock[1] = app->configuration.size[1];
+								}
+								else {
+									dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
+									dispatchBlock[1] = ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
+								}
 							}
 						}
 						else {
-							dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[0];
+							dispatchBlock[0] = ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 							dispatchBlock[1] = app->configuration.size[1];
 						}
 						dispatchBlock[2] = app->configuration.size[2];
@@ -6625,7 +7290,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								if (l == 0)
 									dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim;
 								else
-									dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim / axis->axisBlock[0];
+									dispatchBlock[0] = ceil(app->configuration.size[1] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[2];
@@ -6651,7 +7316,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = app->configuration.size[0] / axis->axisBlock[0] * app->configuration.size[1] / axis->specializationConstants.fftDim;
+							dispatchBlock[0] = ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
 							if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
@@ -6677,7 +7342,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									if (l == 0)
 										dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim;
 									else
-										dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim / axis->axisBlock[0];
+										dispatchBlock[0] = ceil(app->configuration.size[1] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 
 									dispatchBlock[1] = 1;
 									dispatchBlock[2] = app->configuration.size[2];
@@ -6702,7 +7367,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 								uint32_t dispatchBlock[3];
 
-								dispatchBlock[0] = app->configuration.size[0] / axis->axisBlock[0] * app->configuration.size[1] / axis->specializationConstants.fftDim;
+								dispatchBlock[0] = ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[2];
 								if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
@@ -6734,7 +7399,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 								uint32_t dispatchBlock[3];
-								dispatchBlock[0] = app->configuration.size[1] / axis->axisBlock[0] * app->configuration.size[2] / axis->specializationConstants.fftDim;
+								dispatchBlock[0] = ceil(app->configuration.size[1] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = 1;
 								dispatchEnhanced(app, commandBuffer, axis, dispatchBlock);
@@ -6758,7 +7423,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = app->configuration.size[0] / axis->axisBlock[0] * app->configuration.size[2] / axis->specializationConstants.fftDim;
+							dispatchBlock[0] = ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[1];
 							if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
@@ -6782,7 +7447,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 									vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 									uint32_t dispatchBlock[3];
-									dispatchBlock[0] = app->configuration.size[1] / axis->axisBlock[0] * app->configuration.size[2] / axis->specializationConstants.fftDim;
+									dispatchBlock[0] = ceil(app->configuration.size[1] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 									dispatchBlock[1] = 1;
 									dispatchBlock[2] = 1;
 									dispatchEnhanced(app, commandBuffer, axis, dispatchBlock);
@@ -6804,7 +7469,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 								uint32_t dispatchBlock[3];
-								dispatchBlock[0] = app->configuration.size[0] / axis->axisBlock[0] * app->configuration.size[2] / axis->specializationConstants.fftDim;
+								dispatchBlock[0] = ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[1];
 								if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
@@ -6836,7 +7501,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 									vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 									uint32_t dispatchBlock[3];
-									dispatchBlock[0] = app->configuration.size[1] / axis->axisBlock[0] * app->configuration.size[2] / axis->specializationConstants.fftDim;
+									dispatchBlock[0] = ceil(app->configuration.size[1] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 									dispatchBlock[1] = 1;
 									dispatchBlock[2] = 1;
 									dispatchEnhanced(app, commandBuffer, axis, dispatchBlock);
@@ -6859,7 +7524,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 								uint32_t dispatchBlock[3];
-								dispatchBlock[0] = app->configuration.size[0] / axis->axisBlock[0] * app->configuration.size[2] / axis->specializationConstants.fftDim;
+								dispatchBlock[0] = ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[1];
 								if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
@@ -6885,7 +7550,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								if (l == 0)
 									dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim;
 								else
-									dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim / axis->axisBlock[0];
+									dispatchBlock[0] = ceil(app->configuration.size[1] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[2];
 								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
@@ -6907,7 +7572,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = app->configuration.size[0] / axis->axisBlock[0] * app->configuration.size[1] / axis->specializationConstants.fftDim;
+							dispatchBlock[0] = ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
 							if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
@@ -6938,7 +7603,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									if (l == 0)
 										dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim;
 									else
-										dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim / axis->axisBlock[0];
+										dispatchBlock[0] = ceil(app->configuration.size[1] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 									dispatchBlock[1] = 1;
 									dispatchBlock[2] = app->configuration.size[2];
 									//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
@@ -6964,7 +7629,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 								uint32_t dispatchBlock[3];
-								dispatchBlock[0] = app->configuration.size[0] / axis->axisBlock[0] * app->configuration.size[1] / axis->specializationConstants.fftDim;
+								dispatchBlock[0] = ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[2];
 								if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
@@ -6988,17 +7653,23 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 							uint32_t dispatchBlock[3];
 							if (l == 0) {
-								if (app->localFFTPlan.numAxisUploads[0] > 1) {
-									dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[1];
+								if (app->localFFTPlan.numAxisUploads[0] > 2) {
+									dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan.axisSplit[0][1]) * app->localFFTPlan.axisSplit[0][1];
 									dispatchBlock[1] = app->configuration.size[1];
 								}
 								else {
-									dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
-									dispatchBlock[1] = app->configuration.size[1] / axis->axisBlock[1];
+									if (app->localFFTPlan.numAxisUploads[0] > 1) {
+										dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
+										dispatchBlock[1] = app->configuration.size[1];
+									}
+									else {
+										dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
+										dispatchBlock[1] = ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
+									}
 								}
 							}
 							else {
-								dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[0];
+								dispatchBlock[0] = ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 								dispatchBlock[1] = app->configuration.size[1];
 							}
 							dispatchBlock[2] = app->configuration.size[2];
@@ -7027,7 +7698,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = app->configuration.size[0] / axis->axisBlock[0] * app->configuration.size[1] / axis->specializationConstants.fftDim;
+							dispatchBlock[0] = ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
 							if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
@@ -7059,7 +7730,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 								vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 								uint32_t dispatchBlock[3];
-								dispatchBlock[0] = app->configuration.size[1] / axis->axisBlock[0] * app->configuration.size[2] / axis->specializationConstants.fftDim;
+								dispatchBlock[0] = ceil(app->configuration.size[1] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = 1;
 								//if (app->configuration.performZeropaddingInverse[1]) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
@@ -7086,7 +7757,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = app->configuration.size[0] / axis->axisBlock[0] * app->configuration.size[2] / axis->specializationConstants.fftDim;
+							dispatchBlock[0] = ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[1];
 							//if (app->configuration.performZeropaddingInverse[0]) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
@@ -7119,7 +7790,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								if (l == 0)
 									dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim;
 								else
-									dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim / axis->axisBlock[0];
+									dispatchBlock[0] = ceil(app->configuration.size[1] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[2];
 								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
@@ -7144,7 +7815,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = app->configuration.size[0] / axis->axisBlock[0] * app->configuration.size[1] / axis->specializationConstants.fftDim;
+							dispatchBlock[0] = ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
 							if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
@@ -7176,17 +7847,23 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 						uint32_t dispatchBlock[3];
 						if (l == 0) {
-							if (app->localFFTPlan.numAxisUploads[0] > 1) {
-								dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[1];
+							if (app->localFFTPlan.numAxisUploads[0] > 2) {
+								dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan.axisSplit[0][1]) * app->localFFTPlan.axisSplit[0][1];
 								dispatchBlock[1] = app->configuration.size[1];
 							}
 							else {
-								dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
-								dispatchBlock[1] = app->configuration.size[1] / axis->axisBlock[1];
+								if (app->localFFTPlan.numAxisUploads[0] > 1) {
+									dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
+									dispatchBlock[1] = app->configuration.size[1];
+								}
+								else {
+									dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
+									dispatchBlock[1] = ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
+								}
 							}
 						}
 						else {
-							dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[0];
+							dispatchBlock[0] = ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 							dispatchBlock[1] = app->configuration.size[1];
 						}
 						dispatchBlock[2] = app->configuration.size[2];

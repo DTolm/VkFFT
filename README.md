@@ -11,8 +11,8 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
 ## Currently supported features:
   - 1D/2D/3D systems
   - Forward and inverse directions of FFT
-  - Support for big FFT dimension sizes. Current limits in single and half precision: C2C - (2^32, 2^32, 2^32). C2R/R2C with register overutilization - (2^14, 2^32, 2^32). (will be increased later). Current limits in double precision: C2C - (2^32, 2^32, 2^32), C2R/R2C - (2^11, 2^32, 2^32) with no register overutilization. Memory should be allocated as a single buffer in one heap.
-  - Radix-2/4/8 FFT, only power of two systems. 
+  - Support for big FFT dimension sizes. Current limits in single and half precision: C2C - (2^32, 2^32, 2^32). C2R/R2C - (2^12, 2^32, 2^32). (will be increased later). Current limits in double precision: C2C - (2^32, 2^32, 2^32), C2R/R2C - (2^11, 2^32, 2^32) with no register overutilization.
+  - Radix-2/3/4/5/8 FFT. Sequences using radix 3 and 5 have comparable performance to that of powers of 2
   - Single, double and half precision support. Double precision uses CPU generated LUT tables. Half precision still does all computations in single and only uses half precision to store data.
   - All transformations are performed in-place with no performance loss. Out-of-place transforms are supported by selecting different input/output buffers.
   - No additional transposition uploads. Note: data can be reshuffled after the four step FFT algorithm with additional buffer (for big sequences). Doesn't matter for convolutions - they return to the input ordering (saves memory).
@@ -28,7 +28,6 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
  - ##### Planned
     - Publication based on implemented optimizations
     - Mobile GPU support
-	- Radix 3,5... support
  - ##### Ambitious
     - Multiple GPU job splitting
 
@@ -41,7 +40,7 @@ VkFFT has a command-line interface with the following set of commands:\
 -devices: print the list of available GPU devices\
 -d X: select GPU device (default 0)\
 -o NAME: specify output file path\
--vkfft X: launch VkFFT sample X (0-13) (if FFTW is enabled in CMakeLists.txt)\
+-vkfft X: launch VkFFT sample X (0-14) (if FFTW is enabled in CMakeLists.txt)\
 -cufft X: launch cuFFT sample X (0-3) (if enabled in CMakeLists.txt)\
 -test: (or no other keys) launch all VkFFT and cuFFT benchmarks\
 So, the command to launch single precision benchmark of VkFFT and cuFFT and save log to output.txt file on device 0 will look like this on Windows:\
