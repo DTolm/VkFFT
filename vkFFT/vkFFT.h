@@ -33,12 +33,13 @@ extern "C" {
 		uint32_t numberKernels;// N - only used in convolution step - specify how many kernels were initialized before. Expands one input to multiple (batched) output
 		uint32_t FFTdim; //FFT dimensionality (1, 2 or 3)
 		uint32_t radix; //FFT radix (8)
-		VkBool32 performZeropaddingInput[3]; // don't read if input is zeropadded (0 - off, 1 - on)
-		VkBool32 performZeropaddingOutput[3]; // don't write if output is zeropadded (0 - off, 1 - on)
-		uint32_t fft_zeropad_left_read[3];
-		uint32_t fft_zeropad_left_write[3];
-		uint32_t fft_zeropad_right_read[3];
-		uint32_t fft_zeropad_right_write[3];
+		VkBool32 frequencyZeroPadding; //set to 1 if zeropadding of frequency domain, default 0 - spatial zeropadding
+		VkBool32 performZeropadding[3]; // don't read if input is zeropadded (0 - off, 1 - on)
+		//VkBool32 performZeropaddingOutput[3]; // don't write if output is zeropadded (0 - off, 1 - on)
+		uint32_t fft_zeropad_left[3];
+		//uint32_t fft_zeropad_left_write[3];
+		uint32_t fft_zeropad_right[3];
+		//uint32_t fft_zeropad_right_write[3];
 		VkBool32 performTranspose[2]; //will be selected automatically
 		VkBool32 performConvolution; //perform convolution in this application (0 - off, 1 - on)
 		VkBool32 performR2C; //perform R2C/C2R decomposition (0 - off, 1 - on)
@@ -50,6 +51,7 @@ extern "C" {
 		VkBool32 useLUT; //1 to enable - switches from calculating sincos to using precomputed LUT tables
 		VkBool32 doublePrecision; //1 to enable
 		VkBool32 halfPrecision; //1 to enable
+		VkBool32 halfPrecisionMemoryOnly; //1 to enable. Input/Output have to be allocated as half, buffer/tempBuffer have to be allocated as float (out of place mode only).
 		uint32_t devicePageSize;//in KB, the size of a page on the GPU. Setting to 0 disables local buffer split in pages
 		uint32_t localPageSize;//in KB, the size to split page into if sequence spans multiple devicePageSize pages
 		uint32_t sharedMemorySize;//in bytes. Vulkan aims at power of 2 shared memory sizes
@@ -90,7 +92,7 @@ extern "C" {
 		uint32_t halfThreads;
 	} VkFFTConfiguration;
 
-	static VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {1,1,1}, {1,1,1}, {1,1,1}, {65535,65535,65535},1,1,1,1,1,8,{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 0, 0, 32768, 32768, 32, 1, 1, 0, 1,"shaders/", 32, 0,0,0,0,0, 1,1,1,1,1, 0,0,0,0,0, 0,0,0,0,0,0, 0 };
+	static VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {1,1,1}, {1,1,1}, {1,1,1}, {65535,65535,65535},1,1,1,1,1,8,0,{0,0,0},{0,0,0},{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 0, 0, 0, 32768, 32768, 32, 1, 1, 0, 1,"shaders/", 32, 0,0,0,0,0, 1,1,1,1,1, 0,0,0,0,0, 0,0,0,0,0,0, 0 };
 
 	typedef struct {
 		uint32_t size[3];
@@ -106,10 +108,14 @@ extern "C" {
 		uint32_t writeFromRegisters;
 		uint32_t LUT;
 		uint32_t performR2C;
+		VkBool32 frequencyZeropadding;
+		VkBool32 performZeropaddingFull[3]; // don't do read/write if full sequence is omitted
 		VkBool32 performZeropaddingInput[3]; // don't read if input is zeropadded (0 - off, 1 - on)
 		VkBool32 performZeropaddingOutput[3]; // don't write if output is zeropadded (0 - off, 1 - on)
+		uint32_t fft_zeropad_left_full[3];
 		uint32_t fft_zeropad_left_read[3];
 		uint32_t fft_zeropad_left_write[3];
+		uint32_t fft_zeropad_right_full[3];
 		uint32_t fft_zeropad_right_read[3];
 		uint32_t fft_zeropad_right_write[3];
 		uint32_t inputStride[5];
@@ -144,6 +150,8 @@ extern "C" {
 		uint32_t symmetricKernel;
 		uint32_t supportAxis;
 		uint32_t cacheShuffle;
+		char* disableThreadsStart;
+		char* disableThreadsEnd;
 	} VkFFTSpecializationConstantsLayout;
 
 	typedef struct {
@@ -186,6 +194,7 @@ extern "C" {
 		uint32_t numAxisUploads[3];
 		uint32_t axisSplit[3][5];
 		uint32_t numSupportAxisUploads[2];
+		uint32_t supportAxisSplit[2][5];
 		VkFFTAxis axes[3][5];
 		VkFFTAxis supportAxes[2][5];//Nx/2+1 for r2c/c2r
 		VkFFTTranspose transpose[2];
@@ -211,12 +220,12 @@ extern "C" {
 	static inline void appendVersion(char* output) {
 		sprintf(output, "#version 450\n\n");
 	}
-	static inline void appendExtensions(char* output, const char* floatType, const char* floatTypeMemory) {
+	static inline void appendExtensions(char* output, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory) {
 		if (!strcmp(floatType, "double"))
 			sprintf(output + strlen(output), "\
 #extension GL_ARB_gpu_shader_fp64 : enable\n\
 #extension GL_ARB_gpu_shader_int64 : enable\n\n");
-		if (!strcmp(floatTypeMemory, "half"))
+		if ((!strcmp(floatTypeInputMemory, "half")) || (!strcmp(floatTypeOutputMemory, "half")) || (!strcmp(floatTypeKernelMemory, "half")))
 			sprintf(output + strlen(output), "#extension GL_EXT_shader_16bit_storage : require\n\n");
 	}
 	static inline void appendLayoutVkFFT(char* output, VkFFTSpecializationConstantsLayout sc) {
@@ -1142,7 +1151,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		else
 			sprintf(output + strlen(output), "	%s angle=0;\n", floatType);
 		if (((sc.stageStartSize > 1) && (!((sc.stageStartSize > 1) && (!sc.reorderFourStep) && (sc.inverse)))) || ((!sc.reorderFourStep) && (sc.inverse))) {
-			sprintf(output + strlen(output), "	%s mult=vec2(0,0);\n", vecType);
+			sprintf(output + strlen(output), "	%s mult=%s(0,0);\n", vecType, vecType);
 		}
 		if (sc.cacheShuffle) {
 			sprintf(output + strlen(output), "\
@@ -1157,7 +1166,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	}
 	static inline void appendZeropadStart(char* output, VkFFTSpecializationConstantsLayout sc) {
 		//return if sequence is full of zeros from the start
-		if (sc.inverse) {
+		if ((sc.frequencyZeropadding)) {
 			switch (sc.axis_id) {
 			case 0: {
 				break;
@@ -1169,8 +1178,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						sprintf(idX, "(gl_GlobalInvocationID.x + consts.workGroupShiftX * gl_WorkGroupSize.x)");
 					else
 						sprintf(idX, "gl_GlobalInvocationID.x");
-					if (sc.performZeropaddingInput[0])
-						sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idX, sc.fft_zeropad_left_read[0], idX, sc.fft_zeropad_right_read[0]);
+					if (sc.performZeropaddingFull[0])
+						if (sc.fft_zeropad_left_full[0] < sc.fft_zeropad_right_full[0])
+							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idX, sc.fft_zeropad_left_full[0], idX, sc.fft_zeropad_right_full[0]);
+
 				}
 				break;
 			}
@@ -1187,27 +1198,24 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						sprintf(idX, "(gl_GlobalInvocationID.x + consts.workGroupShiftX * gl_WorkGroupSize.x)");
 					else
 						sprintf(idX, "gl_GlobalInvocationID.x");
-					if (sc.fft_zeropad_left_read[0] < sc.fft_zeropad_right_read[0]) {
-						if (sc.performZeropaddingInput[0])
-							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idX, sc.fft_zeropad_left_read[0], idX, sc.fft_zeropad_right_read[0]);
-					}
+					if (sc.performZeropaddingFull[0])
+						if (sc.fft_zeropad_left_full[0] < sc.fft_zeropad_right_full[0])
+							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idX, sc.fft_zeropad_left_full[0], idX, sc.fft_zeropad_right_full[0]);
 
-					if (sc.fft_zeropad_left_read[1] < sc.fft_zeropad_right_read[1]) {
-						if (sc.performZeropaddingInput[1])
-							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc.fft_zeropad_left_read[1], idY, sc.fft_zeropad_right_read[1]);
+					if (sc.performZeropaddingFull[1])
+						if (sc.fft_zeropad_left_full[1] < sc.fft_zeropad_right_full[1])
+							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc.fft_zeropad_left_full[1], idY, sc.fft_zeropad_right_full[1]);
 					}
-				}
 				else {
 					char idY[100] = "";
 					if (sc.performWorkGroupShift[1])//for support axes y is along x workgroup
 						sprintf(idY, "(gl_GlobalInvocationID.x + consts.workGroupShiftX * gl_WorkGroupSize.x)");
 					else
 						sprintf(idY, "gl_GlobalInvocationID.x");
-					if (sc.fft_zeropad_left_read[1] < sc.fft_zeropad_right_read[1]) {
-						if (sc.performZeropaddingInput[1])
-							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc.fft_zeropad_left_read[1], idY, sc.fft_zeropad_right_read[1]);
+					if (sc.performZeropaddingFull[1])
+						if (sc.fft_zeropad_left_full[1] < sc.fft_zeropad_right_full[1])
+							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc.fft_zeropad_left_full[1], idY, sc.fft_zeropad_right_full[1]);
 					}
-				}
 				break;
 			}
 			}
@@ -1226,14 +1234,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sprintf(idZ, "(gl_GlobalInvocationID.z + consts.workGroupShiftZ * gl_WorkGroupSize.z)");
 				else
 					sprintf(idZ, "gl_GlobalInvocationID.z");
-				if (sc.fft_zeropad_left_read[1] < sc.fft_zeropad_right_read[1]) {
-					if (sc.performZeropaddingInput[1])
-						sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc.fft_zeropad_left_read[1], idY, sc.fft_zeropad_right_read[1]);
-				}
-				if (sc.fft_zeropad_left_read[2] < sc.fft_zeropad_right_read[2]) {
-					if (sc.performZeropaddingInput[2])
-						sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idZ, sc.fft_zeropad_left_read[2], idZ, sc.fft_zeropad_right_read[2]);
-				}
+				if (sc.performZeropaddingFull[1])
+					if (sc.fft_zeropad_left_full[1] < sc.fft_zeropad_right_full[1])
+						sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc.fft_zeropad_left_full[1], idY, sc.fft_zeropad_right_full[1]);
+				if (sc.performZeropaddingFull[2])
+					if (sc.fft_zeropad_left_full[2] < sc.fft_zeropad_right_full[2])
+						sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idZ, sc.fft_zeropad_left_full[2], idZ, sc.fft_zeropad_right_full[2]);
+
 				break;
 			}
 			case 1: {
@@ -1242,10 +1249,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sprintf(idZ, "(gl_GlobalInvocationID.z + consts.workGroupShiftZ * gl_WorkGroupSize.z)");
 				else
 					sprintf(idZ, "gl_GlobalInvocationID.z");
-				if (sc.fft_zeropad_left_read[2] < sc.fft_zeropad_right_read[2]) {
-					if (sc.performZeropaddingInput[2])
-						sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idZ, sc.fft_zeropad_left_read[2], idZ, sc.fft_zeropad_right_read[2]);
-				}
+				if (sc.performZeropaddingFull[2])
+					if (sc.fft_zeropad_left_full[2] < sc.fft_zeropad_right_full[2])
+						sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idZ, sc.fft_zeropad_left_full[2], idZ, sc.fft_zeropad_right_full[2]);
+
 				break;
 			}
 			case 2: {
@@ -1257,7 +1264,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	}
 	static inline void appendZeropadEnd(char* output, VkFFTSpecializationConstantsLayout sc) {
 		//return if sequence is full of zeros from the start
-		if (sc.inverse) {
+		if ((sc.frequencyZeropadding)) {
 			switch (sc.axis_id) {
 			case 0: {
 				break;
@@ -1269,8 +1276,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						sprintf(idX, "(gl_GlobalInvocationID.x + consts.workGroupShiftX * gl_WorkGroupSize.x)");
 					else
 						sprintf(idX, "gl_GlobalInvocationID.x");
-					if (sc.performZeropaddingInput[0])
+					if (sc.performZeropaddingFull[0])
+						if (sc.fft_zeropad_left_full[0] < sc.fft_zeropad_right_full[0])
 						sprintf(output + strlen(output), "		}\n");
+
 				}
 				break;
 			}
@@ -1287,27 +1296,23 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						sprintf(idX, "(gl_GlobalInvocationID.x + consts.workGroupShiftX * gl_WorkGroupSize.x)");
 					else
 						sprintf(idX, "gl_GlobalInvocationID.x");
-					if (sc.fft_zeropad_left_read[0] < sc.fft_zeropad_right_read[0]) {
-						if (sc.performZeropaddingInput[0])
+					if (sc.performZeropaddingFull[0])
+						if (sc.fft_zeropad_left_full[0] < sc.fft_zeropad_right_full[0])
+							sprintf(output + strlen(output), "		}\n");
+					if (sc.performZeropaddingFull[1])
+						if (sc.fft_zeropad_left_full[1] < sc.fft_zeropad_right_full[1])
 							sprintf(output + strlen(output), "		}\n");
 					}
-
-					if (sc.fft_zeropad_left_read[1] < sc.fft_zeropad_right_read[1]) {
-						if (sc.performZeropaddingInput[1])
-							sprintf(output + strlen(output), "		}\n");
-					}
-				}
 				else {
 					char idY[100] = "";
 					if (sc.performWorkGroupShift[1])//for support axes y is along x workgroup
 						sprintf(idY, "(gl_GlobalInvocationID.x + consts.workGroupShiftX * gl_WorkGroupSize.x)");
 					else
 						sprintf(idY, "gl_GlobalInvocationID.x");
-					if (sc.fft_zeropad_left_read[1] < sc.fft_zeropad_right_read[1]) {
-						if (sc.performZeropaddingInput[1])
+					if (sc.performZeropaddingFull[1])
+						if (sc.fft_zeropad_left_full[1] < sc.fft_zeropad_right_full[1])
 							sprintf(output + strlen(output), "		}\n");
 					}
-				}
 				break;
 			}
 			}
@@ -1326,14 +1331,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sprintf(idZ, "(gl_GlobalInvocationID.z + consts.workGroupShiftZ * gl_WorkGroupSize.z)");
 				else
 					sprintf(idZ, "gl_GlobalInvocationID.z");
-				if (sc.fft_zeropad_left_read[1] < sc.fft_zeropad_right_read[1]) {
-					if (sc.performZeropaddingInput[1])
+				if (sc.performZeropaddingFull[1])
+					if (sc.fft_zeropad_left_full[1] < sc.fft_zeropad_right_full[1])
 						sprintf(output + strlen(output), "		}\n");
-				}
-				if (sc.fft_zeropad_left_read[2] < sc.fft_zeropad_right_read[2]) {
-					if (sc.performZeropaddingInput[2])
+				if (sc.performZeropaddingFull[2])
+					if (sc.fft_zeropad_left_full[2] < sc.fft_zeropad_right_full[2])
 						sprintf(output + strlen(output), "		}\n");
-				}
 				break;
 			}
 			case 1: {
@@ -1342,10 +1345,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sprintf(idZ, "(gl_GlobalInvocationID.z + consts.workGroupShiftZ * gl_WorkGroupSize.z)");
 				else
 					sprintf(idZ, "gl_GlobalInvocationID.z");
-				if (sc.fft_zeropad_left_read[2] < sc.fft_zeropad_right_read[2]) {
-					if (sc.performZeropaddingInput[2])
+				if (sc.performZeropaddingFull[2])
+					if (sc.fft_zeropad_left_full[2] < sc.fft_zeropad_right_full[2])
 						sprintf(output + strlen(output), "		}\n");
-				}
 				break;
 			}
 			case 2: {
@@ -1355,12 +1357,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 		}
 	}
+
 	static inline void appendReadDataVkFFT(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint32_t readType) {
 		char vecType[10];
 		if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
-		char convTypeLeft[10] = "";
-		char convTypeRight[10] = "";
+		char convTypeLeft[20] = "";
+		char convTypeRight[20] = "";
 		if ((!strcmp(floatType, "float")) && (strcmp(floatTypeMemory, "float"))) {
 			if (readType == 5) {
 				sprintf(convTypeLeft, "float(");
@@ -1408,7 +1411,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc.performWorkGroupShift[1])
 				sprintf(shiftY, " + consts.workGroupShiftY ");
 			if (sc.fftDim < sc.fft_dim_full) {
-				sprintf(output + strlen(output), "		if(gl_LocalInvocationID.y * %d + (((gl_WorkGroupID.x%s) %% %d) * %d + ((gl_WorkGroupID.x%s) / %d) * %d) < %d) {\n", sc.firstStageStartSize, shiftX, sc.firstStageStartSize / sc.fftDim, sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1] * sc.firstStageStartSize, sc.fft_dim_full);
+				sprintf(sc.disableThreadsStart, "		if(gl_LocalInvocationID.y * %d + (((gl_WorkGroupID.x%s) %%%% %d) * %d + ((gl_WorkGroupID.x%s) / %d) * %d) < %d) {\n", sc.firstStageStartSize, shiftX, sc.firstStageStartSize / sc.fftDim, sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1] * sc.firstStageStartSize, sc.fft_dim_full);
+				sprintf(output + strlen(output), sc.disableThreadsStart);
+				sprintf(sc.disableThreadsEnd, "}");
 			}
 			else {
 				sprintf(output + strlen(output), "		{ \n");
@@ -1450,7 +1455,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 						}
 						sprintf(output + strlen(output), "		}else{\n");
-						if (sc.localSize[1] == 1)
+						if (sc.readToRegisters)
 							sprintf(output + strlen(output), "			temp_%d = %s(0,0);\n", i, vecType);
 						else
 							sprintf(output + strlen(output), "			sdata[(combinedId %% %d) + (combinedId / %d) * sharedStride] = %s(0,0);\n", sc.fftDim, sc.fftDim, vecType);
@@ -1479,7 +1484,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 						sprintf(output + strlen(output), "		}\n");
 						sprintf(output + strlen(output), "		else\n");
-						if (sc.localSize[1] == 1)
+						if (sc.readToRegisters)
 							sprintf(output + strlen(output), "			temp_%d = %s(0,0);\n", i, vecType);
 						else
 							sprintf(output + strlen(output), "			sdata[sharedStride*gl_LocalInvocationID.y + (gl_LocalInvocationID.x + %d)] = %s(0,0);\n", i * sc.localSize[0], vecType);
@@ -1547,8 +1552,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
-			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x * sc.stageStartSize, sc.fftDim * sc.stageStartSize, sc.size[sc.axis_id]);
 
+			sprintf(sc.disableThreadsStart, "		if (((gl_GlobalInvocationID.x%s) / %d) %%%% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {\n", shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x * sc.stageStartSize, sc.fftDim * sc.stageStartSize, sc.size[sc.axis_id]);
+			sprintf(output + strlen(output), sc.disableThreadsStart);
+			sprintf(sc.disableThreadsEnd, "}");
 
 			if (sc.zeropad[0]) {
 				for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
@@ -1606,8 +1613,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
 
 			//sprintf(output + strlen(output), "		if(gl_GlobalInvolcationID.x%s >= %d) return; \n", shiftX, sc.size[0] / axis->specializationConstants.fftDim);
-			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.stageStartSize, sc.stageStartSize * sc.fftDim, sc.fft_dim_full);
-
+			sprintf(sc.disableThreadsStart, "		if (((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {\n", shiftX, sc.stageStartSize, sc.stageStartSize * sc.fftDim, sc.fft_dim_full);
+			sprintf(output + strlen(output), sc.disableThreadsStart);
+			sprintf(sc.disableThreadsEnd, "}");
 			if (sc.zeropad[0]) {
 				for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 					sprintf(output + strlen(output), "		inoutID = (gl_GlobalInvocationID.x%s) %% (%d) + %d * (gl_LocalInvocationID.y + %d) + ((gl_GlobalInvocationID.x%s) / %d) * (%d);\n", shiftX, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1], shiftX, sc.stageStartSize, sc.stageStartSize * sc.fftDim);
@@ -1868,7 +1876,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 						}
 						sprintf(output + strlen(output), "	}else{\n");
-						if (sc.localSize[1] == 1)
+						if (sc.readToRegisters)
 							sprintf(output + strlen(output), "		temp_%d = %s(0,0);\n", i, vecType);
 						else
 							sprintf(output + strlen(output), "		sdata[(combinedId %% %d) + (combinedId / %d) * sharedStride] = %s(0,0);\n", sc.fftDim, sc.fftDim, vecType);
@@ -2090,6 +2098,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else
 					sc.readToRegisters = 1;
+				sprintf(output + strlen(output), sc.disableThreadsStart);
 				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
 						sprintf(output + strlen(output), "		mult = twiddleLUT[%d+(((gl_GlobalInvocationID.x%s)/%d) %% (%d))+%d*(gl_LocalInvocationID.y+%d)];\n", 3 * sc.maxStageSumLUT, shiftX, sc.fft_dim_x, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1]);
@@ -2109,7 +2118,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x] = %s(sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.x - sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.y, sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.x + sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.y);\n", i * sc.localSize[1], vecType, i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1]);
 					}
 				}
-				//appendBarrierVkFFT(output, 1);
+				sprintf(output + strlen(output), sc.disableThreadsEnd);
 			}
 
 			break;
@@ -2125,6 +2134,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else
 					sc.readToRegisters = 1;
+				sprintf(output + strlen(output), sc.disableThreadsStart);
 				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
 						sprintf(output + strlen(output), "		mult = twiddleLUT[%d + ((gl_GlobalInvocationID.x%s) %% (%d)) + (gl_LocalInvocationID.y + %d) * %d];\n", 3 * sc.maxStageSumLUT, shiftX, sc.stageStartSize, i * sc.localSize[1], sc.stageStartSize);
@@ -2145,6 +2155,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x] = %s(sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.x - sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.y, sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.x + sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.y);\n", i * sc.localSize[1], vecType, i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1]);
 					}
 				}
+				sprintf(output + strlen(output), sc.disableThreadsEnd);
 			}
 			//appendBarrierVkFFT(output, 1);
 			break;
@@ -2172,6 +2183,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else
 					sc.writeFromRegisters = 1;
+				sprintf(output + strlen(output), sc.disableThreadsStart);
 				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
 						sprintf(output + strlen(output), "		mult = twiddleLUT[%d+(((gl_GlobalInvocationID.x%s)/%d) %% (%d))+%d*(gl_LocalInvocationID.y+%d)];\n", 3 * sc.maxStageSumLUT, shiftX, sc.fft_dim_x, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1]);
@@ -2199,7 +2211,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x] = %s(sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.x - sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.y, sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.x + sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.y);\n", i * sc.localSize[1], vecType, i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1]);
 					}
 				}
-				//appendBarrierVkFFT(output, 1);
+				sprintf(output + strlen(output), sc.disableThreadsEnd);
 			}
 			break;
 		}
@@ -2214,6 +2226,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else
 					sc.writeFromRegisters = 1;
+				sprintf(output + strlen(output), sc.disableThreadsStart);
 				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
 						sprintf(output + strlen(output), "		mult = twiddleLUT[%d + ((gl_GlobalInvocationID.x%s) %% (%d)) + (gl_LocalInvocationID.y + %d) * %d];\n", 3 * sc.maxStageSumLUT, shiftX, sc.stageStartSize, i * sc.localSize[1], sc.stageStartSize);
@@ -2241,6 +2254,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x] = %s(sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.x - sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.y, sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].y * mult.x + sdata[gl_WorkGroupSize.x*(%d+gl_LocalInvocationID.y) + gl_LocalInvocationID.x].x * mult.y);\n", i * sc.localSize[1], vecType, i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1], i * sc.localSize[1]);
 					}
 				}
+				sprintf(output + strlen(output), sc.disableThreadsEnd);
 			}
 			//appendBarrierVkFFT(output, 1);
 			break;
@@ -2268,6 +2282,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t logicalGroupSize = sc.fftDim / logicalRegistersPerThread;
 		if ((sc.localSize[0] * logicalRegistersPerThread > sc.fftDim) || (stageSize > 1) || (sc.localSize[1] > 1) || ((sc.performR2C) && (sc.inverse)) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle < 0)))
 			appendBarrierVkFFT(output, 1);
+
+		sprintf(output + strlen(output), sc.disableThreadsStart);
 
 		if (sc.localSize[0] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "\
@@ -2312,6 +2328,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		if (sc.localSize[0] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "		}\n");
+		sprintf(output + strlen(output), sc.disableThreadsEnd);
 
 	}
 	static inline void appendRadixStageNonStridedBoost2x(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix) {
@@ -2503,6 +2520,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t logicalGroupSize = sc.fftDim / logicalRegistersPerThread;
 		if ((sc.localSize[1] * logicalRegistersPerThread > sc.fftDim) || (stageSize > 1) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle < 0)))
 			appendBarrierVkFFT(output, 1);
+
+		sprintf(output + strlen(output), sc.disableThreadsStart);
 		if (sc.localSize[1] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "\
 		if (gl_LocalInvocationID.y * %d < %d) {\n", logicalRegistersPerThread, sc.fftDim);
@@ -2535,6 +2554,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		if (sc.localSize[1] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "		}\n");
+		sprintf(output + strlen(output), sc.disableThreadsEnd);
 	}
 	static inline void appendRadixStage(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix, uint32_t shuffleType) {
 		switch (shuffleType) {
@@ -2781,6 +2801,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t logicalGroupSize = sc.fftDim / logicalRegistersPerThread;
 		if ((sc.localSize[0] * logicalRegistersPerThread > sc.fftDim) || (stageSize < sc.fftDim / stageRadix) || ((sc.reorderFourStep) && (sc.fftDim < sc.fft_dim_full) && (sc.localSize[1] > 1)) || (sc.localSize[1] > 1) || ((sc.performR2C) && (!sc.inverse) && (sc.axis_id == 0)) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle > 0)))
 			appendBarrierVkFFT(output, 1);
+		sprintf(output + strlen(output), sc.disableThreadsStart);
 		if (sc.localSize[0] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "\
 	if (gl_GlobalInvocationID.x * %d < %d) {\n", logicalRegistersPerThread, sc.fftDim);
@@ -2815,6 +2836,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		if (sc.localSize[0] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "	}\n");
+		sprintf(output + strlen(output), sc.disableThreadsEnd);
 
 	}
 	static inline void appendRadixShuffleNonStridedBoost2x(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix) {
@@ -2952,11 +2974,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t logicalGroupSize = sc.fftDim / logicalRegistersPerThread;
 		if ((sc.localSize[1] * logicalRegistersPerThread > sc.fftDim) || (stageSize < sc.fftDim / stageRadix) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle > 0)))
 			appendBarrierVkFFT(output, 2);
+		sprintf(output + strlen(output), sc.disableThreadsStart);
 		if (((sc.inverse) && (sc.normalize)) || ((sc.convolutionStep) && (stageAngle < 0)))
 			sprintf(stageNormalization, " / %d", stageRadix);
 		if (sc.localSize[1] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "\
-	if (gl_GlobalInvocationID.y * %d < %d) {\n", logicalRegistersPerThread, sc.fftDim);
+	if (gl_LocalInvocationID.y * %d < %d) {\n", logicalRegistersPerThread, sc.fftDim);
 		if ((sc.localSize[1] * logicalRegistersPerThread > sc.fftDim) || (stageSize < sc.fftDim / stageRadix) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle > 0))) {
 			//appendBarrierVkFFT(output, 2);
 			for (uint32_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
@@ -2980,6 +3003,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		if (sc.localSize[1] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "	}\n");
+		sprintf(output + strlen(output), sc.disableThreadsEnd);
 	}
 	static inline void appendRadixShuffle(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix, uint32_t shuffleType) {
 		switch (shuffleType) {
@@ -3011,6 +3035,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		case 0://single_c2c
 		{
 			appendBarrierVkFFT(output, 1);
+			sprintf(output + strlen(output), sc.disableThreadsStart);
 			if (sc.matrixConvolution == 1) {
 				sprintf(output + strlen(output), "\
 		temp_0 = sdata[sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x];\n\
@@ -3053,11 +3078,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				sprintf(output + strlen(output), "		}\n");
 			}
+			sprintf(output + strlen(output), sc.disableThreadsEnd);
 			break;
 		}
 		case 1://grouped_c2c
 		{
 			appendBarrierVkFFT(output, 1);
+			sprintf(output + strlen(output), sc.disableThreadsStart);
 			if (sc.matrixConvolution == 1) {
 				sprintf(output + strlen(output), "\
 		temp_0 = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y)+gl_LocalInvocationID.x];\n\
@@ -3100,7 +3127,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				sprintf(output + strlen(output), "		}\n");
 			}
-
+			sprintf(output + strlen(output), sc.disableThreadsEnd);
 			break;
 		}
 		}
@@ -3110,6 +3137,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		case 0://single_c2c
 		{
 			appendBarrierVkFFT(output, 1);
+			sprintf(output + strlen(output), sc.disableThreadsStart);
 			if (sc.matrixConvolution == 1) {
 				sprintf(output + strlen(output), "\
 			sdata[sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x] = temp_0;\n\
@@ -3152,12 +3180,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				sprintf(output + strlen(output), "		}\n");
 			}
-
+			sprintf(output + strlen(output), sc.disableThreadsEnd);
 			break;
 		}
 		case 1://grouped_c2c
 		{
 			appendBarrierVkFFT(output, 1);
+			sprintf(output + strlen(output), sc.disableThreadsStart);
 			if (sc.matrixConvolution == 1) {
 				sprintf(output + strlen(output), "\
 		sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y)+gl_LocalInvocationID.x] = temp_0;\n\
@@ -3200,6 +3229,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				sprintf(output + strlen(output), "		}\n");
 			}
+			sprintf(output + strlen(output), sc.disableThreadsEnd);
 			break;
 		}
 		}
@@ -3209,6 +3239,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
 		char separateRegisterStore[100] = "_store";
+
 		for (uint32_t i = 0; i < sc.registers_per_thread; i++) {
 			sprintf(output + strlen(output), "		%s temp_%d%s;\n", vecType, i, separateRegisterStore);
 			for (uint32_t j = 1; j < sc.matrixConvolution; j++) {
@@ -3242,6 +3273,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(separateRegisterStore, "_store");
 			}
 		}
+		sprintf(output + strlen(output), sc.disableThreadsStart);
 		for (uint32_t j = 0; j < sc.matrixConvolution; j++) {
 			sprintf(output + strlen(output), "		%s temp_real%d = 0;\n", floatType, j);
 			sprintf(output + strlen(output), "		%s temp_imag%d = 0;\n", floatType, j);
@@ -3357,13 +3389,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 			}
 		}
+		sprintf(output + strlen(output), sc.disableThreadsEnd);
 	}
 	static inline void appendWriteDataVkFFT(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint32_t writeType) {
 		char vecType[10];
 		if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
-		char convTypeLeft[10] = "";
-		char convTypeRight[10] = "";
+		char convTypeLeft[20] = "";
+		char convTypeRight[20] = "";
 		if ((!strcmp(floatTypeMemory, "half")) && (strcmp(floatType, "half"))) {
 			if (writeType == 6) {
 				sprintf(convTypeLeft, "float16_t(");
@@ -3425,7 +3458,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc.performWorkGroupShift[1])
 				sprintf(shiftY, " + consts.workGroupShiftY ");
 			if (sc.fftDim < sc.fft_dim_full) {
-				//sprintf(output + strlen(output), "		if(gl_LocalInvocationID.y * %d + (((gl_WorkGroupID.x%s) %% %d) * %d + ((gl_WorkGroupID.x%s) / %d) * %d) < %d) {;;\n", sc.firstStageStartSize, shiftX, sc.firstStageStartSize / sc.fftDim, sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1] * sc.firstStageStartSize, sc.size[0]);
+				//sprintf(output + strlen(output), "		if(gl_LocalInvocationID.y * %d + (((gl_WorkGroupID.x%s) %% %d) * %d + ((gl_WorkGroupID.x%s) / %d) * %d) < %d) {;\n", sc.firstStageStartSize, shiftX, sc.firstStageStartSize / sc.fftDim, sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1] * sc.firstStageStartSize, sc.size[0]);
 				//sprintf(output + strlen(output), "		if ((gl_LocalInvocationID.x + %d * gl_LocalInvocationID.y) %% %d + ((gl_WorkGroupID.x%s) / %d)*%d < %d){\n", sc.localSize[0], sc.localSize[1], shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1], sc.fft_dim_full / sc.fftDim);
 				//sprintf(output + strlen(output), "		if ((gl_LocalInvocationID.x + %d * gl_LocalInvocationID.y+432) %% %d + (((gl_LocalInvocationID.x + %d * gl_LocalInvocationID.y+432)/%d) * %d)+ ((gl_WorkGroupID.x%s) / %d)*%d + ((gl_WorkGroupID.x%s) %% %d) * %d< %d){\n", sc.localSize[0], sc.localSize[1], sc.localSize[0], sc.localSize[1], sc.fft_dim_full / sc.fftDim, shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1], shiftX, sc.firstStageStartSize / sc.fftDim, sc.fft_dim_full / sc.firstStageStartSize, sc.fft_dim_full / sc.fftDim);
 				sprintf(output + strlen(output), "		if (((gl_LocalInvocationID.x + %d * gl_LocalInvocationID.y) %% %d + ((gl_WorkGroupID.x%s) / %d)*%d < %d)){\n", sc.localSize[0], sc.localSize[1], shiftX, sc.firstStageStartSize / sc.fftDim, sc.localSize[1], sc.fft_dim_full / sc.firstStageStartSize);
@@ -3710,7 +3743,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
-			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x * sc.stageStartSize, sc.fftDim * sc.stageStartSize, sc.size[sc.axis_id]);
+			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) %% (%d)+((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {\n", shiftX, sc.fft_dim_x, sc.stageStartSize, shiftX, sc.fft_dim_x * sc.stageStartSize, sc.fftDim * sc.stageStartSize, sc.size[sc.axis_id]);
 			if ((sc.reorderFourStep) && (sc.stageStartSize == 1)) {
 				if (sc.zeropad[1]) {
 					for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
@@ -3805,7 +3838,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
-			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {;\n", shiftX, sc.stageStartSize, sc.stageStartSize * sc.fftDim, sc.fft_dim_full);
+			sprintf(output + strlen(output), "		if (((gl_GlobalInvocationID.x%s) / %d) * (%d) < %d) {\n", shiftX, sc.stageStartSize, sc.stageStartSize * sc.fftDim, sc.fft_dim_full);
 			if (sc.zeropad[1]) {
 				for (uint32_t i = 0; i < sc.min_registers_per_thread; i++) {
 					sprintf(output + strlen(output), "		inoutID = (gl_GlobalInvocationID.x%s) %% (%d) + %d * (gl_LocalInvocationID.y + %d) + ((gl_GlobalInvocationID.x%s) / %d) * (%d);\n", shiftX, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1], shiftX, sc.stageStartSize, sc.stageStartSize * sc.fftDim);
@@ -4329,22 +4362,26 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 	}
 
-	static inline void shaderGenVkFFT(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint32_t type) {
+	static inline void shaderGenVkFFT(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint32_t type) {
 		//appendLicense(output);
+		sc.disableThreadsStart = (char*)malloc(sizeof(char) * 200);
+		sc.disableThreadsEnd = (char*)malloc(sizeof(char) * 2);
+		sprintf(sc.disableThreadsStart,"");
+		sprintf(sc.disableThreadsEnd, "");
 		appendVersion(output);
-		appendExtensions(output, floatType, floatTypeMemory);
+		appendExtensions(output, floatType, floatTypeInputMemory, floatTypeOutputMemory, floatTypeKernelMemory);
 		appendLayoutVkFFT(output, sc);
 		appendConstantsVkFFT(output, floatType, uintType);
 		if ((!sc.LUT) && (!strcmp(floatType, "double")))
 			appendSinCos20(output, floatType, uintType);
 		appendPushConstantsVkFFT(output, sc, floatType, uintType);
 		uint32_t id = 0;
-		appendInputLayoutVkFFT(output, sc, id, floatTypeMemory, type);
+		appendInputLayoutVkFFT(output, sc, id, floatTypeInputMemory, type);
 		id++;
-		appendOutputLayoutVkFFT(output, sc, id, floatTypeMemory, type);
+		appendOutputLayoutVkFFT(output, sc, id, floatTypeOutputMemory, type);
 		id++;
 		if (sc.convolutionStep) {
-			appendKernelLayoutVkFFT(output, sc, id, floatTypeMemory);
+			appendKernelLayoutVkFFT(output, sc, id, floatTypeKernelMemory);
 			id++;
 		}
 		if (sc.LUT) {
@@ -4368,7 +4405,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			sprintf(output + strlen(output), "	for (uint coordinate=%d; coordinate > 0; coordinate--){\n\
 	coordinate--;\n", sc.matrixConvolution);
 		appendZeropadStart(output, sc);
-		appendReadDataVkFFT(output, sc, floatType, floatTypeMemory, uintType, type);
+		appendReadDataVkFFT(output, sc, floatType, floatTypeInputMemory, uintType, type);
 		appendZeropadEnd(output, sc);
 		//appendBarrierVkFFT(output, 1);
 		appendReorder4StepRead(output, sc, floatType, uintType, type);
@@ -4400,9 +4437,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(output + strlen(output), "	coordinate++;}\n");
 
 			if (sc.numKernels > 1)
-				appendPreparationBatchedKernelConvolution(output, sc, floatType, floatTypeMemory, uintType, type);
+				appendPreparationBatchedKernelConvolution(output, sc, floatType, floatTypeKernelMemory, uintType, type);
 
-			appendKernelConvolution(output, sc, floatType, floatTypeMemory, uintType, type);
+			appendKernelConvolution(output, sc, floatType, floatTypeKernelMemory, uintType, type);
 
 			if (sc.matrixConvolution > 1)
 				sprintf(output + strlen(output), "	for (uint coordinate=0; coordinate < %d; coordinate++){\n", sc.matrixConvolution);
@@ -4424,14 +4461,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		appendReorder4StepWrite(output, sc, floatType, uintType, type);
 		appendZeropadStart(output, sc);
-		appendWriteDataVkFFT(output, sc, floatType, floatTypeMemory, uintType, type);
+		appendWriteDataVkFFT(output, sc, floatType, floatTypeOutputMemory, uintType, type);
 		appendZeropadEnd(output, sc);
 		if ((sc.convolutionStep) && (sc.matrixConvolution > 1))
 			sprintf(output + strlen(output), "	}\n");
 		if ((sc.convolutionStep) && (sc.numKernels > 1))
 			sprintf(output + strlen(output), "	}\n");
 		sprintf(output + strlen(output), "}\n");
-		//printf("%s\n", output);
+		free(sc.disableThreadsStart);
+		free(sc.disableThreadsEnd);
+		//printf("%s", output);
 	}
 
 	static inline uint32_t findMemoryType(VkFFTApplication* app, uint32_t memoryTypeBits, uint32_t memorySize, VkMemoryPropertyFlags properties) {
@@ -4497,7 +4536,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		vkDestroyBuffer(app->configuration.device[0], stagingBuffer, NULL);
 		vkFreeMemory(app->configuration.device[0], stagingBufferMemory, NULL);
 	}
-	static inline VkResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id) {
+	static inline VkResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t supportAxis) {
 		uint32_t complexSize;
 		if (app->configuration.doublePrecision)
 			complexSize = (2 * sizeof(double));
@@ -4517,33 +4556,37 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 		}
 		if (tempSequence != 1) return VK_ERROR_FORMAT_NOT_SUPPORTED;
-
+		uint32_t nonStridedAxisId = (supportAxis) ? 1 : 0;
 		uint32_t registerBoost = app->configuration.registerBoost;
 		uint32_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
 		uint32_t maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
-		if ((axis_id == 0) && (!app->configuration.performConvolution)) maxSingleSizeNonStrided *= registerBoost;
+		if ((axis_id == nonStridedAxisId) && (!app->configuration.performConvolution)) maxSingleSizeNonStrided *= registerBoost;
 		uint32_t maxSingleSizeStrided = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
 		uint32_t numPasses = 1;
 		uint32_t numPassesHalfBandwidth = 1;
 		uint32_t temp;
-		temp = (axis_id == 0) ? ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStrided);
+		temp = (axis_id == nonStridedAxisId) ? ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStrided);
 		if (temp > 1) {//more passes than one
 			registerBoost = app->configuration.registerBoost4Step;
-			if ((axis_id == 0) && (!app->configuration.performConvolution)) maxSingleSizeNonStrided = maxSequenceLengthSharedMemory * registerBoost;
-			temp = ((axis_id == 0) && (!app->configuration.reorderFourStep)) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStrided;
+			if ((axis_id == nonStridedAxisId) && (!app->configuration.performConvolution)) maxSingleSizeNonStrided = maxSequenceLengthSharedMemory * registerBoost;
+			temp = ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStrided;
 			if (app->configuration.reorderFourStep)
 				numPasses = (uint32_t)ceil(log2(app->configuration.size[axis_id]) / log2(maxSingleSizeStrided));
 			else
 				numPasses += (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStrided));
 		}
 		uint32_t maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
-		if ((app->configuration.performHalfBandwidthBoost) && (!((axis_id == 0) && (numPasses == 2)))) {
-			maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / 2 > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory / 2) : app->configuration.sharedMemorySize / complexSize;
-			temp = (axis_id == 0) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStridedHalfBandwidth;
+		if ((app->configuration.performHalfBandwidthBoost)) {
+			maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / 2 > complexSize) ? app->configuration.sharedMemorySizePow2 / (app->configuration.coalescedMemory / 2) : app->configuration.sharedMemorySizePow2 / complexSize;
+			temp = (axis_id == nonStridedAxisId) ? ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
 			//temp = app->configuration.size[axis_id] / maxSingleSizeNonStrided;
 			if (temp > 1) {//more passes than two
-				temp = (!app->configuration.reorderFourStep) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStridedHalfBandwidth;
-				numPassesHalfBandwidth = 1 + (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStrided));
+				temp = (!app->configuration.reorderFourStep) ? ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
+				for (uint32_t i = 0; i < 5; i++) {
+					temp = ceil(temp / (double)maxSingleSizeStrided);
+					numPassesHalfBandwidth++;
+					if (temp == 1) i = 5;
+				}
 				/*
 				temp = ((axis_id == 0) && (!app->configuration.reorderFourStep)) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStridedHalfBandwidth;
 
@@ -4555,34 +4598,36 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				*/
 			}
 			if (numPassesHalfBandwidth < numPasses) numPasses = numPassesHalfBandwidth;
+			else maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
 		}
 		if (((uint32_t)log2(app->configuration.size[axis_id]) >= app->configuration.swapTo3Stage4Step) && (app->configuration.swapTo3Stage4Step >= 17)) numPasses = 3;//Force set to 3 stage 4 step algorithm
+		uint32_t* locAxisSplit = (supportAxis) ? FFTPlan->supportAxisSplit[axis_id - 1] : FFTPlan->axisSplit[axis_id];
 		if (numPasses == 1) {
-			FFTPlan->axisSplit[axis_id][0] = app->configuration.size[axis_id];
+			locAxisSplit[0] = app->configuration.size[axis_id];
 		}
 		if (numPasses == 2) {
 			if (isPowOf2) {
-				if ((axis_id == 0) && (!app->configuration.reorderFourStep)) {
+				if ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) {
 					uint32_t maxPow8SharedMemory = (uint32_t)pow(8, ((uint32_t)log2(maxSequenceLengthSharedMemory)) / 3);
 					//unit stride
 					if (app->configuration.size[axis_id] / maxPow8SharedMemory <= maxSingleSizeStrided) {
-						FFTPlan->axisSplit[axis_id][0] = maxPow8SharedMemory;
+						locAxisSplit[0] = maxPow8SharedMemory;
 					}
 					else {
 						if (app->configuration.size[axis_id] / maxSequenceLengthSharedMemory <= maxSingleSizeStrided) {
-							FFTPlan->axisSplit[axis_id][0] = maxSequenceLengthSharedMemory;
+							locAxisSplit[0] = maxSequenceLengthSharedMemory;
 						}
 						else {
 							if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * registerBoost) < maxSingleSizeStridedHalfBandwidth) {
 								for (uint32_t i = 1; i <= (uint32_t)log2(registerBoost); i++) {
 									if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i)) <= maxSingleSizeStrided) {
-										FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i));
+										locAxisSplit[0] = (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i));
 										i = (uint32_t)log2(registerBoost) + 1;
 									}
 								}
 							}
 							else {
-								FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * registerBoost);
+								locAxisSplit[0] = (maxSequenceLengthSharedMemory * registerBoost);
 							}
 						}
 					}
@@ -4591,36 +4636,36 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					uint32_t maxPow8Strided = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided)) / 3);
 					//all FFTs are considered as non-unit stride
 					if (app->configuration.size[axis_id] / maxPow8Strided <= maxSingleSizeStrided) {
-						FFTPlan->axisSplit[axis_id][0] = maxPow8Strided;
+						locAxisSplit[0] = maxPow8Strided;
 					}
 					else {
 						if (app->configuration.size[axis_id] / maxSingleSizeStrided < maxSingleSizeStridedHalfBandwidth) {
-							FFTPlan->axisSplit[axis_id][0] = maxSingleSizeStrided;
+							locAxisSplit[0] = maxSingleSizeStrided;
 						}
 						else {
-							FFTPlan->axisSplit[axis_id][0] = maxSingleSizeStridedHalfBandwidth;
+							locAxisSplit[0] = maxSingleSizeStridedHalfBandwidth;
 						}
 					}
 				}
-				FFTPlan->axisSplit[axis_id][1] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0];
-				if (FFTPlan->axisSplit[axis_id][1] < 64) {
-					FFTPlan->axisSplit[axis_id][0] = (FFTPlan->axisSplit[axis_id][1] == 0) ? FFTPlan->axisSplit[axis_id][0] / (64) : FFTPlan->axisSplit[axis_id][0] / (64 / FFTPlan->axisSplit[axis_id][1]);
-					FFTPlan->axisSplit[axis_id][1] = 64;
+				locAxisSplit[1] = app->configuration.size[axis_id] / locAxisSplit[0];
+				if (locAxisSplit[1] < 64) {
+					locAxisSplit[0] = (locAxisSplit[1] == 0) ? locAxisSplit[0] / (64) : locAxisSplit[0] / (64 / locAxisSplit[1]);
+					locAxisSplit[1] = 64;
 				}
-				if (FFTPlan->axisSplit[axis_id][1] > FFTPlan->axisSplit[axis_id][0]) {
-					uint32_t swap = FFTPlan->axisSplit[axis_id][0];
-					FFTPlan->axisSplit[axis_id][0] = FFTPlan->axisSplit[axis_id][1];
-					FFTPlan->axisSplit[axis_id][1] = swap;
+				if (locAxisSplit[1] > locAxisSplit[0]) {
+					uint32_t swap = locAxisSplit[0];
+					locAxisSplit[0] = locAxisSplit[1];
+					locAxisSplit[1] = swap;
 				}
 			}
 			else {
 				uint32_t successSplit = 0;
-				if ((axis_id == 0) && (!app->configuration.reorderFourStep)) {
+				if ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) {
 					for (uint32_t i = 0; i < maxSequenceLengthSharedMemory; i++) {
 						if (app->configuration.size[axis_id] % (maxSequenceLengthSharedMemory - i) == 0) {
 							if (((maxSequenceLengthSharedMemory - i) <= maxSequenceLengthSharedMemory) && (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i) <= maxSingleSizeStrided)) {
-								FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory - i);
-								FFTPlan->axisSplit[axis_id][1] = app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i);
+								locAxisSplit[0] = (maxSequenceLengthSharedMemory - i);
+								locAxisSplit[1] = app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i);
 								i = maxSequenceLengthSharedMemory;
 								successSplit = 1;
 							}
@@ -4632,8 +4677,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					for (uint32_t i = 0; i < sqrtSequence; i++) {
 						if (app->configuration.size[axis_id] % (sqrtSequence - i) == 0) {
 							if ((sqrtSequence - i <= maxSingleSizeStrided) && (app->configuration.size[axis_id] / (sqrtSequence - i) <= maxSingleSizeStridedHalfBandwidth)) {
-								FFTPlan->axisSplit[axis_id][0] = app->configuration.size[axis_id] / (sqrtSequence - i);
-								FFTPlan->axisSplit[axis_id][1] = sqrtSequence - i;
+								locAxisSplit[0] = app->configuration.size[axis_id] / (sqrtSequence - i);
+								locAxisSplit[1] = sqrtSequence - i;
 								i = sqrtSequence;
 								successSplit = 1;
 							}
@@ -4647,25 +4692,25 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (numPasses == 3) {
 			if (isPowOf2) {
 				uint32_t maxPow8Strided = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided)) / 3);
-				if ((axis_id == 0) && (!app->configuration.reorderFourStep)) {
+				if ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) {
 					//unit stride
 					uint32_t maxPow8SharedMemory = (uint32_t)pow(8, ((uint32_t)log2(maxSequenceLengthSharedMemory)) / 3);
 					if (app->configuration.size[axis_id] / maxPow8SharedMemory <= maxPow8Strided * maxPow8Strided)
-						FFTPlan->axisSplit[axis_id][0] = maxPow8SharedMemory;
+						locAxisSplit[0] = maxPow8SharedMemory;
 					else {
 						if (app->configuration.size[axis_id] / maxSequenceLengthSharedMemory <= maxSingleSizeStrided * maxSingleSizeStrided)
-							FFTPlan->axisSplit[axis_id][0] = maxSequenceLengthSharedMemory;
+							locAxisSplit[0] = maxSequenceLengthSharedMemory;
 						else {
 							if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * registerBoost) <= maxSingleSizeStrided * maxSingleSizeStrided) {
 								for (uint32_t i = 0; i <= (uint32_t)log2(registerBoost); i++) {
 									if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i)) <= maxSingleSizeStrided * maxSingleSizeStrided) {
-										FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i));
+										locAxisSplit[0] = (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i));
 										i = (uint32_t)log2(registerBoost) + 1;
 									}
 								}
 							}
 							else {
-								FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory * registerBoost);
+								locAxisSplit[0] = (maxSequenceLengthSharedMemory * registerBoost);
 							}
 						}
 					}
@@ -4673,77 +4718,77 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				else {
 					//to account for TLB misses, it is best to coalesce the unit-strided stage to 128 bytes
 					/*uint32_t log2axis = (uint32_t)log2(app->configuration.size[axis_id]);
-					FFTPlan->axisSplit[axis_id][0] = (uint32_t)pow(2, (uint32_t)log2axis / 3);
-					if (log2axis % 3 > 0) FFTPlan->axisSplit[axis_id][0] *= 2;
-					FFTPlan->axisSplit[axis_id][1] = (uint32_t)pow(2, (uint32_t)log2axis / 3);
-					if (log2axis % 3 > 1) FFTPlan->axisSplit[axis_id][1] *= 2;
-					FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0] / FFTPlan->axisSplit[axis_id][1];*/
+					locAxisSplit[0] = (uint32_t)pow(2, (uint32_t)log2axis / 3);
+					if (log2axis % 3 > 0) locAxisSplit[0] *= 2;
+					locAxisSplit[1] = (uint32_t)pow(2, (uint32_t)log2axis / 3);
+					if (log2axis % 3 > 1) locAxisSplit[1] *= 2;
+					locAxisSplit[2] = app->configuration.size[axis_id] / locAxisSplit[0] / locAxisSplit[1];*/
 					uint32_t maxSingleSizeStrided128 = app->configuration.sharedMemorySize / (128);
 					uint32_t maxPow8_128 = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided128)) / 3);
 					//unit stride
 					if (app->configuration.size[axis_id] / maxPow8_128 <= maxPow8Strided * maxSingleSizeStrided)
-						FFTPlan->axisSplit[axis_id][0] = maxPow8_128;
+						locAxisSplit[0] = maxPow8_128;
 					//non-unit stride
 					else {
 
 						if ((app->configuration.size[axis_id] / (maxPow8_128 * 2) <= maxPow8Strided * maxSingleSizeStrided) && (maxPow8_128 * 2 <= maxSingleSizeStrided128)) {
-							FFTPlan->axisSplit[axis_id][0] = maxPow8_128 * 2;
+							locAxisSplit[0] = maxPow8_128 * 2;
 						}
 						else {
 							if ((app->configuration.size[axis_id] / (maxPow8_128 * 4) <= maxPow8Strided * maxSingleSizeStrided) && (maxPow8_128 * 4 <= maxSingleSizeStrided128)) {
-								FFTPlan->axisSplit[axis_id][0] = maxPow8_128 * 4;
+								locAxisSplit[0] = maxPow8_128 * 4;
 							}
 							else {
 								if (app->configuration.size[axis_id] / maxSingleSizeStrided <= maxSingleSizeStrided * maxSingleSizeStrided) {
 									for (uint32_t i = 0; i <= (uint32_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128); i++) {
 										if (app->configuration.size[axis_id] / (maxSingleSizeStrided128 * (uint32_t)pow(2, i)) <= maxSingleSizeStrided * maxSingleSizeStrided) {
-											FFTPlan->axisSplit[axis_id][0] = (maxSingleSizeStrided128 * (uint32_t)pow(2, i));
+											locAxisSplit[0] = (maxSingleSizeStrided128 * (uint32_t)pow(2, i));
 											i = (uint32_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128) + 1;
 										}
 									}
 								}
 								else
-									FFTPlan->axisSplit[axis_id][0] = maxSingleSizeStridedHalfBandwidth;
+									locAxisSplit[0] = maxSingleSizeStridedHalfBandwidth;
 							}
 						}
 					}
 				}
-				if (app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0] / maxPow8Strided <= maxSingleSizeStrided) {
-					FFTPlan->axisSplit[axis_id][1] = maxPow8Strided;
-					FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][1] / FFTPlan->axisSplit[axis_id][0];
+				if (app->configuration.size[axis_id] / locAxisSplit[0] / maxPow8Strided <= maxSingleSizeStrided) {
+					locAxisSplit[1] = maxPow8Strided;
+					locAxisSplit[2] = app->configuration.size[axis_id] / locAxisSplit[1] / locAxisSplit[0];
 				}
 				else {
-					if (app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][0] / maxSingleSizeStrided <= maxSingleSizeStrided) {
-						FFTPlan->axisSplit[axis_id][1] = maxSingleSizeStrided;
-						FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][1] / FFTPlan->axisSplit[axis_id][0];
+					if (app->configuration.size[axis_id] / locAxisSplit[0] / maxSingleSizeStrided <= maxSingleSizeStrided) {
+						locAxisSplit[1] = maxSingleSizeStrided;
+						locAxisSplit[2] = app->configuration.size[axis_id] / locAxisSplit[1] / locAxisSplit[0];
 					}
 					else {
-						FFTPlan->axisSplit[axis_id][1] = maxSingleSizeStridedHalfBandwidth;
-						FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][1] / FFTPlan->axisSplit[axis_id][0];
+						locAxisSplit[1] = maxSingleSizeStridedHalfBandwidth;
+						locAxisSplit[2] = app->configuration.size[axis_id] / locAxisSplit[1] / locAxisSplit[0];
 					}
 				}
-				if (FFTPlan->axisSplit[axis_id][2] < 64) {
-					FFTPlan->axisSplit[axis_id][1] = (FFTPlan->axisSplit[axis_id][2] == 0) ? FFTPlan->axisSplit[axis_id][1] / (64) : FFTPlan->axisSplit[axis_id][1] / (64 / FFTPlan->axisSplit[axis_id][2]);
-					FFTPlan->axisSplit[axis_id][2] = 64;
+				if (locAxisSplit[2] < 64) {
+					locAxisSplit[1] = (locAxisSplit[2] == 0) ? locAxisSplit[1] / (64) : locAxisSplit[1] / (64 / locAxisSplit[2]);
+					locAxisSplit[2] = 64;
 				}
-				if (FFTPlan->axisSplit[axis_id][2] > FFTPlan->axisSplit[axis_id][1]) {
-					uint32_t swap = FFTPlan->axisSplit[axis_id][1];
-					FFTPlan->axisSplit[axis_id][1] = FFTPlan->axisSplit[axis_id][2];
-					FFTPlan->axisSplit[axis_id][2] = swap;
+				if (locAxisSplit[2] > locAxisSplit[1]) {
+					uint32_t swap = locAxisSplit[1];
+					locAxisSplit[1] = locAxisSplit[2];
+					locAxisSplit[2] = swap;
 				}
 			}
 			else {
 				uint32_t successSplit = 0;
-				if ((axis_id == 0) && (!app->configuration.reorderFourStep)) {
+				if ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) {
 					for (uint32_t i = 0; i < maxSequenceLengthSharedMemory; i++) {
 						if (app->configuration.size[axis_id] % (maxSequenceLengthSharedMemory - i) == 0) {
 							uint32_t sqrt3Sequence = ceil(sqrt(app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i)));
 							for (uint32_t j = 0; j < sqrt3Sequence; j++) {
 								if ((app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i)) % (sqrt3Sequence - j) == 0) {
 									if (((maxSequenceLengthSharedMemory - i) <= maxSequenceLengthSharedMemory) && (sqrt3Sequence - j <= maxSingleSizeStrided) && (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i) / (sqrt3Sequence - j) <= maxSingleSizeStrided)) {
-										FFTPlan->axisSplit[axis_id][0] = (maxSequenceLengthSharedMemory - i);
-										FFTPlan->axisSplit[axis_id][1] = sqrt3Sequence - j;
-										FFTPlan->axisSplit[axis_id][2] = app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i) / (sqrt3Sequence - j);
+										locAxisSplit[0] = (maxSequenceLengthSharedMemory - i);
+										locAxisSplit[1] = sqrt3Sequence - j;
+										locAxisSplit[2] = app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i) / (sqrt3Sequence - j);
 										i = maxSequenceLengthSharedMemory;
 										j = sqrt3Sequence;
 										successSplit = 1;
@@ -4761,9 +4806,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							for (uint32_t j = 0; j < sqrt2Sequence; j++) {
 								if ((app->configuration.size[axis_id] / (sqrt3Sequence - i)) % (sqrt2Sequence - j) == 0) {
 									if ((sqrt3Sequence - i <= maxSingleSizeStrided) && (sqrt2Sequence - j <= maxSingleSizeStrided) && (app->configuration.size[axis_id] / (sqrt3Sequence - i) / (sqrt2Sequence - j) <= maxSingleSizeStridedHalfBandwidth)) {
-										FFTPlan->axisSplit[axis_id][0] = app->configuration.size[axis_id] / (sqrt3Sequence - i) / (sqrt2Sequence - j);
-										FFTPlan->axisSplit[axis_id][1] = sqrt3Sequence - i;
-										FFTPlan->axisSplit[axis_id][2] = sqrt2Sequence - j;
+										locAxisSplit[0] = app->configuration.size[axis_id] / (sqrt3Sequence - i) / (sqrt2Sequence - j);
+										locAxisSplit[1] = sqrt3Sequence - i;
+										locAxisSplit[2] = sqrt2Sequence - j;
 										i = sqrt3Sequence;
 										j = sqrt2Sequence;
 										successSplit = 1;
@@ -4782,29 +4827,32 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			return VK_ERROR_FORMAT_NOT_SUPPORTED;
 		}
 		for (uint32_t i = 0; i < numPasses; i++) {
-			if ((FFTPlan->axisSplit[axis_id][0] % 2 != 0) && (FFTPlan->axisSplit[axis_id][i] % 2 == 0)) {
-				uint32_t swap = FFTPlan->axisSplit[axis_id][0];
-				FFTPlan->axisSplit[axis_id][0] = FFTPlan->axisSplit[axis_id][i];
-				FFTPlan->axisSplit[axis_id][i] = swap;
+			if ((locAxisSplit[0] % 2 != 0) && (locAxisSplit[i] % 2 == 0)) {
+				uint32_t swap = locAxisSplit[0];
+				locAxisSplit[0] = locAxisSplit[i];
+				locAxisSplit[i] = swap;
 			}
 		}
 		for (uint32_t i = 0; i < numPasses; i++) {
-			if ((FFTPlan->axisSplit[axis_id][0] % 4 != 0) && (FFTPlan->axisSplit[axis_id][i] % 4 == 0)) {
-				uint32_t swap = FFTPlan->axisSplit[axis_id][0];
-				FFTPlan->axisSplit[axis_id][0] = FFTPlan->axisSplit[axis_id][i];
-				FFTPlan->axisSplit[axis_id][i] = swap;
+			if ((locAxisSplit[0] % 4 != 0) && (locAxisSplit[i] % 4 == 0)) {
+				uint32_t swap = locAxisSplit[0];
+				locAxisSplit[0] = locAxisSplit[i];
+				locAxisSplit[i] = swap;
 			}
 		}
 		for (uint32_t i = 0; i < numPasses; i++) {
-			if ((FFTPlan->axisSplit[axis_id][0] % 8 != 0) && (FFTPlan->axisSplit[axis_id][i] % 8 == 0)) {
-				uint32_t swap = FFTPlan->axisSplit[axis_id][0];
-				FFTPlan->axisSplit[axis_id][0] = FFTPlan->axisSplit[axis_id][i];
-				FFTPlan->axisSplit[axis_id][i] = swap;
+			if ((locAxisSplit[0] % 8 != 0) && (locAxisSplit[i] % 8 == 0)) {
+				uint32_t swap = locAxisSplit[0];
+				locAxisSplit[0] = locAxisSplit[i];
+				locAxisSplit[i] = swap;
 			}
 		}
+		if (supportAxis)
+			FFTPlan->numSupportAxisUploads[axis_id - 1] = numPasses;
+		else
 		FFTPlan->numAxisUploads[axis_id] = numPasses;
 		for (uint32_t k = 0; k < numPasses; k++) {
-			tempSequence = FFTPlan->axisSplit[axis_id][k];
+			tempSequence = locAxisSplit[k];
 			uint32_t loc_multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };//split the smaller sequence
 			for (uint32_t i = 2; i < 8; i++) {
 				if (tempSequence % i == 0) {
@@ -4818,7 +4866,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (loc_multipliers[2] > 0) {
 				if (loc_multipliers[3] > 0) {
 					if (loc_multipliers[5] > 0) {
-						if ((loc_multipliers[2] == 1) || (app->configuration.doublePrecision)) {
+						if ((loc_multipliers[2] == 1)) {
 							registers_per_thread = 6;
 							min_registers_per_thread = 5;
 						}
@@ -4829,7 +4877,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else
 					{
-						if ((loc_multipliers[2] == 1) || (app->configuration.doublePrecision)) {
+						if ((loc_multipliers[2] == 1)) {
 							registers_per_thread = 6;
 							min_registers_per_thread = 6;
 						}
@@ -4855,18 +4903,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else {
 				if (loc_multipliers[3] > 0) {
 					if (loc_multipliers[5] > 0) {
-						if (app->configuration.doublePrecision) {
-							registers_per_thread = 5;
-							min_registers_per_thread = 3;
-						}
-						else {
 							registers_per_thread = 15;
 							min_registers_per_thread = 15;
 						}
-					}
 					else
 					{
-						if ((loc_multipliers[3] == 1) || (app->configuration.doublePrecision)) {
+						if ((loc_multipliers[3] == 1)) {
 							registers_per_thread = 3;
 							min_registers_per_thread = 3;
 						}
@@ -4897,28 +4939,29 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[4] * 2;
 			}
 			uint32_t j = 0;
-			FFTPlan->axes[axis_id][k].specializationConstants.registers_per_thread = registers_per_thread;
-			FFTPlan->axes[axis_id][k].specializationConstants.min_registers_per_thread = min_registers_per_thread;
-			FFTPlan->axes[axis_id][k].specializationConstants.numStages = 0;
-			FFTPlan->axes[axis_id][k].specializationConstants.fftDim = FFTPlan->axisSplit[axis_id][k];
+			VkFFTAxis* axes = (supportAxis) ? FFTPlan->supportAxes[axis_id - 1] : FFTPlan->axes[axis_id];
+			axes[k].specializationConstants.registers_per_thread = registers_per_thread;
+			axes[k].specializationConstants.min_registers_per_thread = min_registers_per_thread;
+			axes[k].specializationConstants.numStages = 0;
+			axes[k].specializationConstants.fftDim = locAxisSplit[k];
 			for (uint32_t i = 8; i > 1; i--) {
 				if (loc_multipliers[i] > 0) {
-					FFTPlan->axes[axis_id][k].specializationConstants.stageRadix[j] = i;
+					axes[k].specializationConstants.stageRadix[j] = i;
 					loc_multipliers[i]--;
 					i++;
 					j++;
-					FFTPlan->axes[axis_id][k].specializationConstants.numStages++;
+					axes[k].specializationConstants.numStages++;
 				}
 			}
 			if (min_registers_per_thread != registers_per_thread) {
-				j = FFTPlan->axes[axis_id][k].specializationConstants.stageRadix[FFTPlan->axes[axis_id][k].specializationConstants.numStages - 1];
-				FFTPlan->axes[axis_id][k].specializationConstants.stageRadix[FFTPlan->axes[axis_id][k].specializationConstants.numStages - 1] = FFTPlan->axes[axis_id][k].specializationConstants.stageRadix[0];
-				FFTPlan->axes[axis_id][k].specializationConstants.stageRadix[0] = j;
+				j = axes[k].specializationConstants.stageRadix[axes[k].specializationConstants.numStages - 1];
+				axes[k].specializationConstants.stageRadix[axes[k].specializationConstants.numStages - 1] = axes[k].specializationConstants.stageRadix[0];
+				axes[k].specializationConstants.stageRadix[0] = j;
 			}
 		}
 		return VK_SUCCESS;
 	}
-	static inline VkResult VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, VkBool32 inverse, uint32_t convolutionInverseStage) {
+	static inline VkResult VkFFTPlanSupportAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, VkBool32 inverse) {
 		//get radix stages
 		VkFFTAxis* axis = &FFTPlan->supportAxes[axis_id - 1][axis_upload_id];
 		axis->specializationConstants.inverse = inverse;
@@ -4940,9 +4983,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		axis->specializationConstants.stageStartSize = 1;
 		for (uint32_t i = 0; i < axis_upload_id; i++)
-			axis->specializationConstants.stageStartSize *= FFTPlan->axisSplit[axis_id][i];
+			axis->specializationConstants.stageStartSize *= FFTPlan->supportAxisSplit[axis_id - 1][i];
 
-		axis->specializationConstants.firstStageStartSize = app->configuration.size[axis_id] / FFTPlan->axisSplit[axis_id][FFTPlan->numAxisUploads[axis_id] - 1];
+		axis->specializationConstants.firstStageStartSize = app->configuration.size[axis_id] / FFTPlan->supportAxisSplit[axis_id - 1][FFTPlan->numSupportAxisUploads[axis_id - 1] - 1];
 
 		axis->specializationConstants.fft_dim_x = app->configuration.size[1];
 		axis->specializationConstants.performR2C = 0;
@@ -4973,7 +5016,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
 		}*/
 		//axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
-		if (((FFTPlan->numAxisUploads[axis_id] == 1) && (axis_id == 0)) || ((axis_id == 0) && (!app->configuration.reorderFourStep) && (axis_upload_id == 0))) {
+		if (((FFTPlan->numSupportAxisUploads[axis_id - 1] == 1) && (axis_id - 1 == 0)) || ((axis_id - 1 == 0) && (!app->configuration.reorderFourStep) && (axis_upload_id == 0))) {
 			axis->groupedBatch = (maxSequenceLengthSharedMemoryPow2 / axis->specializationConstants.fftDim > axis->groupedBatch) ? maxSequenceLengthSharedMemoryPow2 / axis->specializationConstants.fftDim : axis->groupedBatch;
 		}
 		else {
@@ -4981,8 +5024,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		if (axis->groupedBatch < maxBatchCoalesced) axis->groupedBatch = maxBatchCoalesced;
 		axis->groupedBatch = (axis->groupedBatch / maxBatchCoalesced) * maxBatchCoalesced;
-		if (app->configuration.halfThreads)
+		if ((app->configuration.halfThreads) && (axis->groupedBatch * axis->specializationConstants.fftDim * complexSize > app->configuration.sharedMemorySize))
 			axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
+
+		if (axis->groupedBatch > app->configuration.warpSize) axis->groupedBatch = (axis->groupedBatch / app->configuration.warpSize) * app->configuration.warpSize;
 		//allocate LUT 
 		if (app->configuration.useLUT) {
 			double double_PI = 3.1415926535897932384626433832795;
@@ -5458,7 +5503,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 
 			pipelineShaderStageCreateInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-			uint32_t registerBoost = (FFTPlan->numAxisUploads[axis_id] > 1) ? app->configuration.registerBoost4Step : app->configuration.registerBoost;
+			uint32_t registerBoost = (FFTPlan->numSupportAxisUploads[axis_id - 1] > 1) ? app->configuration.registerBoost4Step : app->configuration.registerBoost;
 
 			axis->specializationConstants.numCoordinates = (app->configuration.matrixConvolution > 1) ? 1 : app->configuration.coordinateFeatures;
 			axis->specializationConstants.matrixConvolution = app->configuration.matrixConvolution;
@@ -5476,69 +5521,81 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->specializationConstants.size[2] = app->configuration.size[2];
 			axis->specializationConstants.axis_id = axis_id;
 			axis->specializationConstants.axis_upload_id = axis_upload_id;
-			if (convolutionInverseStage) {
 				for (uint32_t i = 0; i < 3; i++) {
-					axis->specializationConstants.performZeropaddingInput[i] = app->configuration.performZeropaddingOutput[i]; // don't read if input is zeropadded (0 - off, 1 - on)
-					axis->specializationConstants.performZeropaddingOutput[i] = app->configuration.performZeropaddingInput[i]; // don't write if output is zeropadded (0 - off, 1 - on)
-					axis->specializationConstants.fft_zeropad_left_read[i] = app->configuration.fft_zeropad_left_write[i];
-					axis->specializationConstants.fft_zeropad_left_write[i] = app->configuration.fft_zeropad_left_read[i];
-					axis->specializationConstants.fft_zeropad_right_read[i] = app->configuration.fft_zeropad_right_write[i];
-					axis->specializationConstants.fft_zeropad_right_write[i] = app->configuration.fft_zeropad_right_read[i];
+				axis->specializationConstants.frequencyZeropadding = app->configuration.frequencyZeroPadding;
+				axis->specializationConstants.performZeropaddingFull[i] = app->configuration.performZeropadding[i]; // don't read if input is zeropadded (0 - off, 1 - on)
+				axis->specializationConstants.fft_zeropad_left_full[i] = app->configuration.fft_zeropad_left[i];
+				axis->specializationConstants.fft_zeropad_right_full[i] = app->configuration.fft_zeropad_right[i];
 				}
+			if ((inverse)) {
+				if ((app->configuration.frequencyZeroPadding) && (((!app->configuration.reorderFourStep) && (axis_upload_id == 0)) || ((app->configuration.reorderFourStep) && (axis_upload_id == FFTPlan->numSupportAxisUploads[axis_id - 1] - 1)))) {
+					axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
+					axis->specializationConstants.fft_zeropad_left_read[axis_id] = app->configuration.fft_zeropad_left[axis_id];
+					axis->specializationConstants.fft_zeropad_right_read[axis_id] = app->configuration.fft_zeropad_right[axis_id];
 			}
-			else {
-				if ((app->configuration.FFTdim - 1 == axis_id) && (axis_upload_id == 0) && (app->configuration.performConvolution)) {
-					for (uint32_t i = 0; i < 3; i++) {
-						axis->specializationConstants.performZeropaddingInput[i] = app->configuration.performZeropaddingInput[i];
-						axis->specializationConstants.performZeropaddingOutput[i] = app->configuration.performZeropaddingInput[i]; // don't write if output is zeropadded (0 - off, 1 - on)
-						axis->specializationConstants.fft_zeropad_left_read[i] = app->configuration.fft_zeropad_left_read[i];
-						axis->specializationConstants.fft_zeropad_right_read[i] = app->configuration.fft_zeropad_right_read[i];
-						axis->specializationConstants.fft_zeropad_left_write[i] = app->configuration.fft_zeropad_left_read[i];
-						axis->specializationConstants.fft_zeropad_right_write[i] = app->configuration.fft_zeropad_right_read[i];
+				else
+					axis->specializationConstants.zeropad[0] = 0;
+				if ((!app->configuration.frequencyZeroPadding) && (((!app->configuration.reorderFourStep) && (axis_upload_id == FFTPlan->numSupportAxisUploads[axis_id - 1] - 1)) || ((app->configuration.reorderFourStep) && (axis_upload_id == 0)))) {
+					axis->specializationConstants.zeropad[1] = app->configuration.performZeropadding[axis_id];
+					axis->specializationConstants.fft_zeropad_left_write[axis_id] = app->configuration.fft_zeropad_left[axis_id];
+					axis->specializationConstants.fft_zeropad_right_write[axis_id] = app->configuration.fft_zeropad_right[axis_id];
 					}
+				else
+					axis->specializationConstants.zeropad[1] = 0;
 				}
 				else {
-					for (uint32_t i = 0; i < 3; i++) {
-						axis->specializationConstants.performZeropaddingInput[i] = app->configuration.performZeropaddingInput[i]; // don't read if input is zeropadded (0 - off, 1 - on)
-						axis->specializationConstants.performZeropaddingOutput[i] = app->configuration.performZeropaddingOutput[i]; // don't write if output is zeropadded (0 - off, 1 - on)
-						axis->specializationConstants.fft_zeropad_left_read[i] = app->configuration.fft_zeropad_left_read[i];
-						axis->specializationConstants.fft_zeropad_left_write[i] = app->configuration.fft_zeropad_left_write[i];
-						axis->specializationConstants.fft_zeropad_right_read[i] = app->configuration.fft_zeropad_right_read[i];
-						axis->specializationConstants.fft_zeropad_right_write[i] = app->configuration.fft_zeropad_right_write[i];
+				if ((!app->configuration.frequencyZeroPadding) && (axis_upload_id == FFTPlan->numSupportAxisUploads[axis_id - 1] - 1)) {
+					axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
+					axis->specializationConstants.fft_zeropad_left_read[axis_id] = app->configuration.fft_zeropad_left[axis_id];
+					axis->specializationConstants.fft_zeropad_right_read[axis_id] = app->configuration.fft_zeropad_right[axis_id];
 					}
+				else
+					axis->specializationConstants.zeropad[0] = 0;
+				if (((app->configuration.frequencyZeroPadding) && (axis_upload_id == 0)) || ((app->configuration.FFTdim - 1 == axis_id) && (axis_upload_id == 0) && (app->configuration.performConvolution))) {
+					axis->specializationConstants.zeropad[1] = app->configuration.performZeropadding[axis_id];
+					axis->specializationConstants.fft_zeropad_left_write[axis_id] = app->configuration.fft_zeropad_left[axis_id];
+					axis->specializationConstants.fft_zeropad_right_write[axis_id] = app->configuration.fft_zeropad_right[axis_id];
 				}
-			}
-			if (inverse) {
-				axis->specializationConstants.zeropad[0] = (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) ? axis->specializationConstants.performZeropaddingInput[axis_id] : 0;
-				axis->specializationConstants.zeropad[1] = (axis_upload_id == 0) ? axis->specializationConstants.performZeropaddingOutput[axis_id] : 0;
-			}
-			else {
-				axis->specializationConstants.zeropad[0] = (axis_upload_id == 0) ? axis->specializationConstants.performZeropaddingInput[axis_id] : 0;
-				axis->specializationConstants.zeropad[1] = (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) ? axis->specializationConstants.performZeropaddingOutput[axis_id] : 0;
+				else
+					axis->specializationConstants.zeropad[1] = 0;
 			}
 			if ((app->configuration.FFTdim - 1 == axis_id) && (axis_upload_id == 0) && (app->configuration.performConvolution)) {
 				axis->specializationConstants.convolutionStep = 1;
 			}
 			else
 				axis->specializationConstants.convolutionStep = 0;
-			char floatTypeMemory[10];
+			char floatTypeInputMemory[10];
+			char floatTypeOutputMemory[10];
+			char floatTypeKernelMemory[10];
 			char floatType[10];
 			axis->specializationConstants.unroll = 1;
 			axis->specializationConstants.LUT = app->configuration.useLUT;
 			if (app->configuration.doublePrecision) {
 				sprintf(floatType, "double");
-				sprintf(floatTypeMemory, "double");
+				sprintf(floatTypeInputMemory, "double");
+				sprintf(floatTypeOutputMemory, "double");
+				sprintf(floatTypeKernelMemory, "double");
 				//axis->specializationConstants.unroll = 1;
 			}
 			else {
 				//axis->specializationConstants.unroll = 0;
 				if (app->configuration.halfPrecision) {
 					sprintf(floatType, "float");
-					sprintf(floatTypeMemory, "half");
+					sprintf(floatTypeInputMemory, "half");
+					sprintf(floatTypeOutputMemory, "half");
+					sprintf(floatTypeKernelMemory, "half");
+					if (app->configuration.halfPrecisionMemoryOnly) {
+						//only out of place mode, input/output buffer must be different
+						sprintf(floatTypeInputMemory, "float");
+						sprintf(floatTypeOutputMemory, "float");
+						sprintf(floatTypeKernelMemory, "float");
+					}
 				}
 				else {
 					sprintf(floatType, "float");
-					sprintf(floatTypeMemory, "float");
+					sprintf(floatTypeInputMemory, "float");
+					sprintf(floatTypeOutputMemory, "float");
+					sprintf(floatTypeKernelMemory, "float");
 				}
 			}
 			char uintType[10] = "uint";
@@ -5551,7 +5608,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//if ((axis->specializationConstants.fftDim == 2 * maxSequenceLengthSharedMemory) && (app->configuration.registerBoost >= 2)) type = 3;
 			//if ((axis->specializationConstants.fftDim == 4 * maxSequenceLengthSharedMemory) && (app->configuration.registerBoost >= 4)) type = 4;
 			char* code0 = (char*)malloc(sizeof(char) * 200000);
-			shaderGenVkFFT(code0, axis->specializationConstants, floatType, floatTypeMemory, uintType, type);
+			shaderGenVkFFT(code0, axis->specializationConstants, floatType, floatTypeInputMemory, floatTypeOutputMemory, floatTypeKernelMemory, uintType, type);
 
 			const glslang_resource_t default_resource = {
 				/* .MaxLights = */ 32,
@@ -5760,7 +5817,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		return VK_SUCCESS;
 
 	}
-	static inline VkResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, VkBool32 inverse, uint32_t convolutionInverseStage) {
+	static inline VkResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, VkBool32 inverse) {
 		//get radix stages
 		VkFFTAxis* axis = &FFTPlan->axes[axis_id][axis_upload_id];
 		uint32_t complexSize;
@@ -5871,9 +5928,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 		}
 
-		if (app->configuration.halfThreads)
+		if ((app->configuration.halfThreads) && (axis->groupedBatch * axis->specializationConstants.fftDim * complexSize > app->configuration.sharedMemorySize))
 			axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 
+		if (axis->groupedBatch > app->configuration.warpSize) axis->groupedBatch = (axis->groupedBatch / app->configuration.warpSize) * app->configuration.warpSize;
 		//allocate LUT 
 		if (app->configuration.useLUT) {
 			double double_PI = 3.1415926535897932384626433832795;
@@ -6685,15 +6743,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 					if (app->configuration.performR2C) {
 						if (axis_upload_id == 0) {
-							FFTPlan->numSupportAxisUploads[0] = FFTPlan->numAxisUploads[1];
+							VkFFTScheduler(app, FFTPlan, axis_id, 1);
 							for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[0]; i++) {
-								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.registers_per_thread;
+								/*FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.registers_per_thread;
 								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.min_registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.min_registers_per_thread;
 								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages = FFTPlan->axes[axis_id][i].specializationConstants.numStages;
 								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.fftDim = FFTPlan->axisSplit[axis_id][i];
 								for (uint32_t j = 0; j < FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages; j++)
-									FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.stageRadix[j] = FFTPlan->axes[axis_id][i].specializationConstants.stageRadix[j];
-								VkFFTPlanSupportAxis(app, FFTPlan, 1, i, inverse, convolutionInverseStage);
+									FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.stageRadix[j] = FFTPlan->axes[axis_id][i].specializationConstants.stageRadix[j];*/
+								VkFFTPlanSupportAxis(app, FFTPlan, 1, i, inverse);
 							}
 						}
 						axis->axisBlock[0] = (app->configuration.size[0] / 2 > axis->groupedBatch) ? axis->groupedBatch : app->configuration.size[0] / 2;
@@ -6721,15 +6779,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 					if (app->configuration.performR2C) {
 						if (axis_upload_id == 0) {
-							FFTPlan->numSupportAxisUploads[1] = FFTPlan->numAxisUploads[2];
+							VkFFTScheduler(app, FFTPlan, axis_id, 1);
+							//->numSupportAxisUploads[1] = FFTPlan->numAxisUploads[2];
 							for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[1]; i++) {
-								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.registers_per_thread;
+								/*FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.registers_per_thread;
 								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.min_registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.min_registers_per_thread;
 								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages = FFTPlan->axes[axis_id][i].specializationConstants.numStages;
 								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.fftDim = FFTPlan->axisSplit[axis_id][i];
 								for (uint32_t j = 0; j < FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages; j++)
-									FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.stageRadix[j] = FFTPlan->axes[axis_id][i].specializationConstants.stageRadix[j];
-								VkFFTPlanSupportAxis(app, FFTPlan, 2, i, inverse, convolutionInverseStage);
+									FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.stageRadix[j] = FFTPlan->axes[axis_id][i].specializationConstants.stageRadix[j];*/
+								VkFFTPlanSupportAxis(app, FFTPlan, 2, i, inverse);
 							}
 						}
 						axis->axisBlock[0] = (app->configuration.size[0] / 2 > axis->groupedBatch) ? axis->groupedBatch : app->configuration.size[0] / 2;
@@ -6781,15 +6840,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 					if (app->configuration.performR2C) {
 						if (axis_upload_id == 0) {
-							FFTPlan->numSupportAxisUploads[0] = FFTPlan->numAxisUploads[1];
+							VkFFTScheduler(app, FFTPlan, axis_id, 1);
+							//FFTPlan->numSupportAxisUploads[0] = FFTPlan->numAxisUploads[1];
 							for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[0]; i++) {
-								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.registers_per_thread;
+								/*FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.registers_per_thread;
 								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.min_registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.min_registers_per_thread;
 								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages = FFTPlan->axes[axis_id][i].specializationConstants.numStages;
 								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.fftDim = FFTPlan->axisSplit[axis_id][i];
 								for (uint32_t j = 0; j < FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages; j++)
-									FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.stageRadix[j] = FFTPlan->axes[axis_id][i].specializationConstants.stageRadix[j];
-								VkFFTPlanSupportAxis(app, FFTPlan, 1, i, inverse, convolutionInverseStage);
+									FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.stageRadix[j] = FFTPlan->axes[axis_id][i].specializationConstants.stageRadix[j];*/
+								VkFFTPlanSupportAxis(app, FFTPlan, 1, i, inverse);
 							}
 						}
 						axis->axisBlock[0] = (app->configuration.size[0] / 2 > axis->groupedBatch) ? axis->groupedBatch : app->configuration.size[0] / 2;
@@ -6817,15 +6877,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 					if (app->configuration.performR2C) {
 						if (axis_upload_id == 0) {
-							FFTPlan->numSupportAxisUploads[1] = FFTPlan->numAxisUploads[2];
+							VkFFTScheduler(app, FFTPlan, axis_id, 1);
+							//FFTPlan->numSupportAxisUploads[1] = FFTPlan->numAxisUploads[2];
 							for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[1]; i++) {
-								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.registers_per_thread;
+								/*FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.registers_per_thread;
 								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.min_registers_per_thread = FFTPlan->axes[axis_id][i].specializationConstants.min_registers_per_thread;
 								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages = FFTPlan->axes[axis_id][i].specializationConstants.numStages;
 								FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.fftDim = FFTPlan->axisSplit[axis_id][i];
 								for (uint32_t j = 0; j < FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.numStages; j++)
-									FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.stageRadix[j] = FFTPlan->axes[axis_id][i].specializationConstants.stageRadix[j];
-								VkFFTPlanSupportAxis(app, FFTPlan, 2, i, inverse, convolutionInverseStage);
+									FFTPlan->supportAxes[axis_id - 1][i].specializationConstants.stageRadix[j] = FFTPlan->axes[axis_id][i].specializationConstants.stageRadix[j];*/
+								VkFFTPlanSupportAxis(app, FFTPlan, 2, i, inverse);
 							}
 						}
 						axis->axisBlock[0] = (app->configuration.size[0] / 2 > axis->groupedBatch) ? axis->groupedBatch : app->configuration.size[0] / 2;
@@ -6936,70 +6997,91 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->specializationConstants.size[2] = app->configuration.size[2];
 			axis->specializationConstants.axis_id = axis_id;
 			axis->specializationConstants.axis_upload_id = axis_upload_id;
-			if (convolutionInverseStage) {
+
 				for (uint32_t i = 0; i < 3; i++) {
-					axis->specializationConstants.performZeropaddingInput[i] = app->configuration.performZeropaddingOutput[i]; // don't read if input is zeropadded (0 - off, 1 - on)
-					axis->specializationConstants.performZeropaddingOutput[i] = app->configuration.performZeropaddingInput[i]; // don't write if output is zeropadded (0 - off, 1 - on)
-					axis->specializationConstants.fft_zeropad_left_read[i] = app->configuration.fft_zeropad_left_write[i];
-					axis->specializationConstants.fft_zeropad_left_write[i] = app->configuration.fft_zeropad_left_read[i];
-					axis->specializationConstants.fft_zeropad_right_read[i] = app->configuration.fft_zeropad_right_write[i];
-					axis->specializationConstants.fft_zeropad_right_write[i] = app->configuration.fft_zeropad_right_read[i];
+				axis->specializationConstants.frequencyZeropadding = app->configuration.frequencyZeroPadding;
+				axis->specializationConstants.performZeropaddingFull[i] = app->configuration.performZeropadding[i]; // don't read if input is zeropadded (0 - off, 1 - on)
+				axis->specializationConstants.fft_zeropad_left_full[i] = app->configuration.fft_zeropad_left[i];
+				axis->specializationConstants.fft_zeropad_right_full[i] = app->configuration.fft_zeropad_right[i];
 				}
+			if ((inverse)) {
+				if ((app->configuration.frequencyZeroPadding) && ((!app->configuration.reorderFourStep) && (axis_upload_id == 0)) || ((app->configuration.reorderFourStep) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1))) {
+					axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
+					axis->specializationConstants.fft_zeropad_left_read[axis_id] = app->configuration.fft_zeropad_left[axis_id];
+					axis->specializationConstants.fft_zeropad_right_read[axis_id] = app->configuration.fft_zeropad_right[axis_id];
 			}
-			else {
-				if ((app->configuration.FFTdim - 1 == axis_id) && (axis_upload_id == 0) && (app->configuration.performConvolution)) {
-					for (uint32_t i = 0; i < 3; i++) {
-						axis->specializationConstants.performZeropaddingInput[i] = app->configuration.performZeropaddingInput[i];
-						axis->specializationConstants.performZeropaddingOutput[i] = app->configuration.performZeropaddingInput[i]; // don't write if output is zeropadded (0 - off, 1 - on)
-						axis->specializationConstants.fft_zeropad_left_read[i] = app->configuration.fft_zeropad_left_read[i];
-						axis->specializationConstants.fft_zeropad_right_read[i] = app->configuration.fft_zeropad_right_read[i];
-						axis->specializationConstants.fft_zeropad_left_write[i] = app->configuration.fft_zeropad_left_read[i];
-						axis->specializationConstants.fft_zeropad_right_write[i] = app->configuration.fft_zeropad_right_read[i];
+				else
+					axis->specializationConstants.zeropad[0] = 0;
+				if ((!app->configuration.frequencyZeroPadding) && (((!app->configuration.reorderFourStep) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) || ((app->configuration.reorderFourStep) && (axis_upload_id == 0)))) {
+					axis->specializationConstants.zeropad[1] = app->configuration.performZeropadding[axis_id];
+					axis->specializationConstants.fft_zeropad_left_write[axis_id] = app->configuration.fft_zeropad_left[axis_id];
+					axis->specializationConstants.fft_zeropad_right_write[axis_id] = app->configuration.fft_zeropad_right[axis_id];
 					}
+				else
+					axis->specializationConstants.zeropad[1] = 0;
 				}
 				else {
-					for (uint32_t i = 0; i < 3; i++) {
-						axis->specializationConstants.performZeropaddingInput[i] = app->configuration.performZeropaddingInput[i]; // don't read if input is zeropadded (0 - off, 1 - on)
-						axis->specializationConstants.performZeropaddingOutput[i] = app->configuration.performZeropaddingOutput[i]; // don't write if output is zeropadded (0 - off, 1 - on)
-						axis->specializationConstants.fft_zeropad_left_read[i] = app->configuration.fft_zeropad_left_read[i];
-						axis->specializationConstants.fft_zeropad_left_write[i] = app->configuration.fft_zeropad_left_write[i];
-						axis->specializationConstants.fft_zeropad_right_read[i] = app->configuration.fft_zeropad_right_read[i];
-						axis->specializationConstants.fft_zeropad_right_write[i] = app->configuration.fft_zeropad_right_write[i];
+				if ((!app->configuration.frequencyZeroPadding) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) {
+					axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
+					axis->specializationConstants.fft_zeropad_left_read[axis_id] = app->configuration.fft_zeropad_left[axis_id];
+					axis->specializationConstants.fft_zeropad_right_read[axis_id] = app->configuration.fft_zeropad_right[axis_id];
 					}
+				else
+					axis->specializationConstants.zeropad[0] = 0;
+				if (((app->configuration.frequencyZeroPadding) && (axis_upload_id == 0)) || (((app->configuration.FFTdim - 1 == axis_id) && (axis_upload_id == 0) && (app->configuration.performConvolution)))) {
+					axis->specializationConstants.zeropad[1] = app->configuration.performZeropadding[axis_id];
+					axis->specializationConstants.fft_zeropad_left_write[axis_id] = app->configuration.fft_zeropad_left[axis_id];
+					axis->specializationConstants.fft_zeropad_right_write[axis_id] = app->configuration.fft_zeropad_right[axis_id];
 				}
-			}
-			if (inverse) {
-				axis->specializationConstants.zeropad[0] = (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) ? axis->specializationConstants.performZeropaddingInput[axis_id] : 0;
-				axis->specializationConstants.zeropad[1] = (axis_upload_id == 0) ? axis->specializationConstants.performZeropaddingOutput[axis_id] : 0;
-			}
-			else {
-				axis->specializationConstants.zeropad[0] = (axis_upload_id == 0) ? axis->specializationConstants.performZeropaddingInput[axis_id] : 0;
-				axis->specializationConstants.zeropad[1] = (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) ? axis->specializationConstants.performZeropaddingOutput[axis_id] : 0;
+				else
+					axis->specializationConstants.zeropad[1] = 0;
 			}
 			if ((app->configuration.FFTdim - 1 == axis_id) && (axis_upload_id == 0) && (app->configuration.performConvolution)) {
 				axis->specializationConstants.convolutionStep = 1;
 			}
 			else
 				axis->specializationConstants.convolutionStep = 0;
-			char floatTypeMemory[10];
+			char floatTypeInputMemory[10];
+			char floatTypeOutputMemory[10];
+			char floatTypeKernelMemory[10];
 			char floatType[10];
 			axis->specializationConstants.unroll = 1;
 			axis->specializationConstants.LUT = app->configuration.useLUT;
-			//axis->specializationConstants.registers_per_thread = 8;
 			if (app->configuration.doublePrecision) {
 				sprintf(floatType, "double");
-				sprintf(floatTypeMemory, "double");
+				sprintf(floatTypeInputMemory, "double");
+				sprintf(floatTypeOutputMemory, "double");
+				sprintf(floatTypeKernelMemory, "double");
 				//axis->specializationConstants.unroll = 1;
 			}
 			else {
 				//axis->specializationConstants.unroll = 0;
 				if (app->configuration.halfPrecision) {
 					sprintf(floatType, "float");
-					sprintf(floatTypeMemory, "half");
+					if (app->configuration.halfPrecisionMemoryOnly) {
+						//only out of place mode, input/output buffer must be different
+						sprintf(floatTypeKernelMemory, "float");
+						if ((axis_id == 0) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (!axis->specializationConstants.inverse))
+							sprintf(floatTypeInputMemory, "half");
+						else
+							sprintf(floatTypeInputMemory, "float");
+						if ((axis_id == 0) && (((!app->configuration.reorderFourStep) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) || ((app->configuration.reorderFourStep) && (axis_upload_id == 0))) && (axis->specializationConstants.inverse))
+							sprintf(floatTypeOutputMemory, "half");
+						else
+							sprintf(floatTypeOutputMemory, "float");
+					}
+					else {
+						sprintf(floatTypeInputMemory, "half");
+						sprintf(floatTypeOutputMemory, "half");
+						sprintf(floatTypeKernelMemory, "half");
+					}
+
 				}
 				else {
 					sprintf(floatType, "float");
-					sprintf(floatTypeMemory, "float");
+					sprintf(floatTypeInputMemory, "float");
+					sprintf(floatTypeOutputMemory, "float");
+					sprintf(floatTypeKernelMemory, "float");
 				}
 			}
 			char uintType[10] = "uint";
@@ -7014,7 +7096,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if ((axis_id == 0) && (axis->specializationConstants.inverse) && (app->configuration.performR2C)) type = 6;
 			axis->specializationConstants.cacheShuffle = (((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) == 0) && (!app->configuration.doublePrecision) && ((type == 0) || (type == 5) || (type == 6))) ? 1 : 0;
 			char* code0 = (char*)malloc(sizeof(char) * 200000);
-			shaderGenVkFFT(code0, axis->specializationConstants, floatType, floatTypeMemory, uintType, type);
+			shaderGenVkFFT(code0, axis->specializationConstants, floatType, floatTypeInputMemory, floatTypeOutputMemory, floatTypeKernelMemory, uintType, type);
 			const glslang_resource_t default_resource = {
 				/* .MaxLights = */ 32,
 				/* .MaxClipPlanes = */ 6,
@@ -7271,7 +7353,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		app->configuration.registerBoost = 1;
 		app->configuration.registerBoost4Step = 1;
-		app->configuration.performHalfBandwidthBoost = 0;
+		//app->configuration.performHalfBandwidthBoost = 0;
 		VkResult res = VK_SUCCESS;
 		if (!app->configuration.isCompilerInitialized)
 			glslang_initialize_process();
@@ -7280,9 +7362,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			app->configuration.inverse = 0;
 			for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
 				app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : physicalDeviceProperties.limits.maxComputeSharedMemorySize;
-				VkFFTScheduler(app, &app->localFFTPlan_inverse_convolution, i);
+				VkFFTScheduler(app, &app->localFFTPlan_inverse_convolution, i, 0);
 				for (uint32_t j = 0; j < app->localFFTPlan_inverse_convolution.numAxisUploads[i]; j++) {
-					res = VkFFTPlanAxis(app, &app->localFFTPlan_inverse_convolution, i, j, 1, 1);
+					res = VkFFTPlanAxis(app, &app->localFFTPlan_inverse_convolution, i, j, 1);
 					if (res != 0) return VK_ERROR_INITIALIZATION_FAILED;
 				}
 			}
@@ -7290,9 +7372,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
 			app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : physicalDeviceProperties.limits.maxComputeSharedMemorySize;
-			VkFFTScheduler(app, &app->localFFTPlan, i);
+			VkFFTScheduler(app, &app->localFFTPlan, i, 0);
 			for (uint32_t j = 0; j < app->localFFTPlan.numAxisUploads[i]; j++) {
-				res = VkFFTPlanAxis(app, &app->localFFTPlan, i, j, app->configuration.inverse, 0);
+				res = VkFFTPlanAxis(app, &app->localFFTPlan, i, j, app->configuration.inverse);
 				if (res != 0) return VK_ERROR_INITIALIZATION_FAILED;
 				if (!app->configuration.inverse) {
 					//printf("%d %d %d %d %d\n", i,j,app->localFFTPlan.axes[i][j].axisBlock[0], app->localFFTPlan.axes[i][j].axisBlock[1], app->localFFTPlan.axes[i][j].axisBlock[2]);

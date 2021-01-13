@@ -645,9 +645,9 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 					break;
 				}
 				forward_configuration.reorderFourStep = true;
-				forward_configuration.performZeropaddingInput[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropaddingInput[1] = false;
-				forward_configuration.performZeropaddingInput[2] = false;
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -858,9 +858,9 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 				}
 				forward_configuration.reorderFourStep = true;
 
-				forward_configuration.performZeropaddingInput[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropaddingInput[1] = false;
-				forward_configuration.performZeropaddingInput[2] = false;
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -1077,9 +1077,9 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 				}
 				forward_configuration.reorderFourStep = true;
 
-				forward_configuration.performZeropaddingInput[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropaddingInput[1] = false;
-				forward_configuration.performZeropaddingInput[2] = false;
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -1300,9 +1300,9 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 					break;
 				}
 
-				forward_configuration.performZeropaddingInput[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropaddingInput[1] = false;
-				forward_configuration.performZeropaddingInput[2] = false;
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -1524,15 +1524,15 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 					break;
 				}
 
-				forward_configuration.performZeropaddingInput[0] = true; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropaddingInput[1] = true;
-				forward_configuration.performZeropaddingInput[2] = true;
-				forward_configuration.fft_zeropad_left_read[0] = ceil(forward_configuration.size[0] / 2.0);
-				forward_configuration.fft_zeropad_right_read[0] = forward_configuration.size[0];
-				forward_configuration.fft_zeropad_left_read[1] = ceil(forward_configuration.size[1] / 2.0);
-				forward_configuration.fft_zeropad_right_read[1] = forward_configuration.size[1];
-				forward_configuration.fft_zeropad_left_read[2] = ceil(forward_configuration.size[2] / 2.0);
-				forward_configuration.fft_zeropad_right_read[2] = forward_configuration.size[2];
+				forward_configuration.performZeropadding[0] = true; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = true;
+				forward_configuration.performZeropadding[2] = true;
+				forward_configuration.fft_zeropad_left[0] = ceil(forward_configuration.size[0] / 2.0);
+				forward_configuration.fft_zeropad_right[0] = forward_configuration.size[0];
+				forward_configuration.fft_zeropad_left[1] = ceil(forward_configuration.size[1] / 2.0);
+				forward_configuration.fft_zeropad_right[1] = forward_configuration.size[1];
+				forward_configuration.fft_zeropad_left[2] = ceil(forward_configuration.size[2] / 2.0);
+				forward_configuration.fft_zeropad_right[2] = forward_configuration.size[2];
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -1746,9 +1746,9 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 					break;
 				}
 				forward_configuration.reorderFourStep = false;
-				forward_configuration.performZeropaddingInput[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropaddingInput[1] = false;
-				forward_configuration.performZeropaddingInput[2] = false;
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -1944,9 +1944,9 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 				for (uint32_t i = 0; i < 3; i++) {
 					forward_configuration.bufferStride[i] = forward_configuration.size[i];//can specify arbitrary buffer strides, if buffer is bigger than data - can be used for upscaling - you put data in the bigger buffer (2x in each dimension) in the corner, transform forward, zeropad to full buffer size and inverse
 				}
-				forward_configuration.performZeropaddingInput[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropaddingInput[1] = false;
-				forward_configuration.performZeropaddingInput[2] = false;
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -2380,15 +2380,15 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 		for (uint32_t i = 0; i < 3; i++) {
 			forward_configuration.bufferStride[i] = forward_configuration.size[i];//can specify arbitrary buffer strides, if buffer is bigger than data - can be used for upscaling - you put data in the bigger buffer (2x in each dimension) in the corner, transform forward, zeropad to full buffer size and inverse
 		}
-		forward_configuration.performZeropaddingInput[0] = true; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-		forward_configuration.performZeropaddingInput[1] = true;
-		forward_configuration.performZeropaddingInput[2] = true;
-		forward_configuration.fft_zeropad_left_read[0] = ceil(forward_configuration.size[0] / 2.0);
-		forward_configuration.fft_zeropad_right_read[0] = forward_configuration.size[0];
-		forward_configuration.fft_zeropad_left_read[1] = ceil(forward_configuration.size[1] / 2.0);
-		forward_configuration.fft_zeropad_right_read[1] = forward_configuration.size[1];
-		forward_configuration.fft_zeropad_left_read[2] = ceil(forward_configuration.size[2] / 2.0);
-		forward_configuration.fft_zeropad_right_read[2] = forward_configuration.size[2];
+		forward_configuration.performZeropadding[0] = true; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+		forward_configuration.performZeropadding[1] = true;
+		forward_configuration.performZeropadding[2] = true;
+		forward_configuration.fft_zeropad_left[0] = ceil(forward_configuration.size[0] / 2.0);
+		forward_configuration.fft_zeropad_right[0] = forward_configuration.size[0];
+		forward_configuration.fft_zeropad_left[1] = ceil(forward_configuration.size[1] / 2.0);
+		forward_configuration.fft_zeropad_right[1] = forward_configuration.size[1];
+		forward_configuration.fft_zeropad_left[2] = ceil(forward_configuration.size[2] / 2.0);
+		forward_configuration.fft_zeropad_right[2] = forward_configuration.size[2];
 		forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. As we perform forward FFT to get the kernel, it is set to false.
 		forward_configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
 		forward_configuration.coordinateFeatures = 9; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc).
@@ -2858,9 +2858,9 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 					break;
 				}
 				forward_configuration.reorderFourStep = true;
-				forward_configuration.performZeropaddingInput[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropaddingInput[1] = false;
-				forward_configuration.performZeropaddingInput[2] = false;
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -3142,9 +3142,9 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				}
-				forward_configuration.performZeropaddingInput[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropaddingInput[1] = false;
-				forward_configuration.performZeropaddingInput[2] = false;
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -3424,9 +3424,9 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				}
-				forward_configuration.performZeropaddingInput[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropaddingInput[1] = false;
-				forward_configuration.performZeropaddingInput[2] = false;
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -3708,9 +3708,9 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				}
-				forward_configuration.performZeropaddingInput[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropaddingInput[1] = false;
-				forward_configuration.performZeropaddingInput[2] = false;
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -3877,7 +3877,7 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			fprintf(output, "14 - VkFFT/FFTW C2C power 3/5 precision test in single precision\n");
 		printf("14 - VkFFT/FFTW C2C power 3/5 precision test in single precision\n");
 
-		const int num_benchmark_samples = 96;
+		const int num_benchmark_samples = 102;
 		const int num_runs = 1;
 
 		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {3, 1, 1, 1},{5, 1, 1, 1},{6, 1, 1, 1},{9, 1, 1, 1},{10, 1, 1, 1},{12, 1, 1, 1},
@@ -3889,7 +3889,7 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			{8, 3, 1, 2},{8, 5, 1, 2},{8, 6, 1, 2},{8, 9, 1, 2},{8, 10, 1, 2},{8, 12, 1, 2},{8, 15, 1, 2},{8, 24, 1, 2},
 			{8, 25, 1, 2},{8, 27, 1, 2},{8, 30, 1, 2},{8, 45, 1, 2},{8, 60, 1, 2},{8, 81, 1, 2},{8, 125, 1, 2},{8, 243, 1, 2},
 			{8, 625, 1, 2},{8, 720, 1, 2},{8, 1080, 1, 2},{8, 1440, 1, 2},{8, 1920, 1, 2},{8, 2160, 1, 2},
-			{8, 3840, 1, 2},{8, 4000, 1, 2},{8, 4050, 1, 2},{8, 4320, 1, 2},{8, 7680, 1, 2},{8, 4050 * 3, 1, 2},{8, 7680 * 5, 1, 2},
+			{8, 3840, 1, 2},{8, 4000, 1, 2},{8, 4050, 1, 2},{8, 4320, 1, 2},{8, 7680, 1, 2},{8, 4050 * 3, 1, 2},{8, 7680 * 5, 1, 2}, {720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},{7680, 4320, 1, 2},
 			{8, (uint32_t)pow(3,10), 1, 2},	{8, (uint32_t)pow(3,11), 1, 2}, {8, (uint32_t)pow(3,12), 1, 2}, {8, (uint32_t)pow(3,13), 1, 2}, {8, (uint32_t)pow(3,14), 1, 2}, {8, (uint32_t)pow(3,15), 1, 2},
 			{8, (uint32_t)pow(5,5), 1, 2},	{8, (uint32_t)pow(5,6), 1, 2}, {8, (uint32_t)pow(5,7), 1, 2}, {8, (uint32_t)pow(5,8), 1, 2}, {8, (uint32_t)pow(5,9), 1, 2},
 			{3, 3, 3, 3},{5, 5, 5, 3},{6, 6, 6, 3},{9, 9, 9, 3},{10, 10, 10, 3},{12, 12, 12, 3},
@@ -3991,9 +3991,9 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 					forward_configuration.performHalfBandwidthBoost = false;
 					break;
 				}
-				forward_configuration.performZeropaddingInput[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
-				forward_configuration.performZeropaddingInput[1] = false;
-				forward_configuration.performZeropaddingInput[2] = false;
+				forward_configuration.performZeropadding[0] = false; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
+				forward_configuration.performZeropadding[1] = false;
+				forward_configuration.performZeropadding[2] = false;
 				forward_configuration.performConvolution = false; //Perform convolution with precomputed kernel. 
 				forward_configuration.performR2C = false; //Perform C2C transform. Can be combined with all other options. 
 				forward_configuration.coordinateFeatures = 1; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc). 
@@ -4161,7 +4161,7 @@ int main(int argc, char* argv[])
 	if (findFlag(argv, argv + argc, "-h"))
 	{
 		//print help
-		printf("VkFFT v1.1.2 (22-12-2020). Author: Tolmachev Dmitrii\n");
+		printf("VkFFT v1.1.3 (14-01-2021). Author: Tolmachev Dmitrii\n");
 		printf("	-h: print help\n");
 		printf("	-devices: print the list of available GPU devices\n");
 		printf("	-d X: select GPU device (default 0)\n");
