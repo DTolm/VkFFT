@@ -727,7 +727,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 	}
 
-	static inline void inlineRadixKernelVkFFT(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t radix, double stageAngle, uint32_t* regID) {
+	static inline void inlineRadixKernelVkFFT(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t radix, uint32_t stageSize, double stageAngle, uint32_t* regID) {
 		char vecType[10];
 		if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
@@ -780,7 +780,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	loc_2.x = temp_%d.x * w.x - temp_%d.y * w.y;\n\
 	loc_2.y = temp_%d.y * w.x + temp_%d.x * w.y;\n", regID[2], regID[2], regID[2], regID[2]);
 			if (sc.LUT)
-				sprintf(output + strlen(output), "	w = twiddleLUT[LUTId];\n\n");
+				sprintf(output + strlen(output), "	w = twiddleLUT[LUTId+%d];\n\n", stageSize);
 			else {
 				if (!strcmp(floatType, "float"))
 					sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 / 3.0, 2.0 / 3.0);
@@ -848,7 +848,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	temp_%d = temp_%d + temp;\n\n\
 	//DIF 2nd stage with angle\n", regID[2], regID[2], regID[2], regID[2], regID[2], regID[0], regID[0], regID[0], regID[3], regID[3], regID[3], regID[3], regID[3], regID[1], regID[1], regID[1]);
 			if (sc.LUT)
-				sprintf(output + strlen(output), "	w=twiddleLUT[LUTId+%d];\n\n", sc.maxStageSumLUT);
+				sprintf(output + strlen(output), "	w=twiddleLUT[LUTId+%d];\n\n", stageSize);
 			else {
 				if (!strcmp(floatType, "float"))
 					sprintf(output + strlen(output), "	w = %s(cos(0.5*angle), sin(0.5*angle));\n\n", vecType);
@@ -897,7 +897,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc.LUT)
-						sprintf(output + strlen(output), "	w = twiddleLUT[LUTId];\n\n");
+						sprintf(output + strlen(output), "	w = twiddleLUT[LUTId+%d];\n\n", (radix-1-i)*stageSize);
 					else {
 						if (!strcmp(floatType, "float"))
 							sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
@@ -960,6 +960,115 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 }\n\n");
 			break;
 		}
+		case 7: {
+			/*if (sc.LUT) {
+				sprintf(output + strlen(output), "void radix5(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, inout %s temp_4, %s LUTId) {\n", vecType, vecType, vecType, vecType, vecType, uintType);
+			}
+			else {
+				sprintf(output + strlen(output), "void radix5(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, inout %s temp_4, %s angle) {\n", vecType, vecType, vecType, vecType, vecType, floatType);
+			}*/
+			sprintf(output + strlen(output), "	{\n\
+	%s loc_0;\n	%s loc_1;\n	%s loc_2;\n	%s loc_3;\n	%s loc_4;\n	%s loc_5;\n	%s loc_6;\n", vecType, vecType, vecType, vecType, vecType, vecType, vecType);
+			for (uint32_t i = radix - 1; i > 0; i--) {
+				if (i == radix - 1) {
+					if (sc.LUT)
+						sprintf(output + strlen(output), "	%s w = twiddleLUT[LUTId];\n\n", vecType);
+					else {
+						if (!strcmp(floatType, "float"))
+							sprintf(output + strlen(output), "	%s w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, vecType, 2.0 * i / radix, 2.0 * i / radix);
+						if (!strcmp(floatType, "double"))
+							sprintf(output + strlen(output), "	%s w = sincos_20(angle*%.17f);\n", vecType, 2.0 * i / radix);
+					}
+				}
+				else {
+					if (sc.LUT)
+						sprintf(output + strlen(output), "	w = twiddleLUT[LUTId+%d];\n\n", (radix - 1 - i)*stageSize);
+					else {
+						if (!strcmp(floatType, "float"))
+							sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						if (!strcmp(floatType, "double"))
+							sprintf(output + strlen(output), "	w = sincos_20(angle*%.17f);\n", 2.0 * i / radix);
+					}
+				}
+				sprintf(output + strlen(output), "\
+	loc_%d.x = temp_%d.x * w.x - temp_%d.y * w.y;\n\
+	loc_%d.y = temp_%d.y * w.x + temp_%d.x * w.y;\n", i, regID[i], regID[i], i, regID[i], regID[i]);
+			}
+			sprintf(output + strlen(output), "\
+	loc_0 = temp_%d;\n\
+	temp_%d = loc_1 + loc_6;\n\
+	temp_%d = loc_1 - loc_6;\n\
+	temp_%d = loc_2 + loc_5;\n\
+	temp_%d = loc_2 - loc_5;\n\
+	temp_%d = loc_4 + loc_3;\n\
+	temp_%d = loc_4 - loc_3;\n", regID[0], regID[0], regID[1], regID[2], regID[3], regID[4], regID[5]);
+			sprintf(output + strlen(output), "\
+	loc_5 = temp_%d + temp_%d + temp_%d;\n\
+	loc_1 = temp_%d + temp_%d + temp_%d;\n\
+	loc_0 += loc_1;\n", regID[1], regID[3], regID[5], regID[0], regID[2], regID[4]);
+			sprintf(output + strlen(output), "\
+	loc_2 = temp_%d - temp_%d;\n\
+	loc_3 = temp_%d - temp_%d;\n\
+	loc_4 = temp_%d - temp_%d;\n", regID[0], regID[4], regID[4], regID[2], regID[2], regID[0]);
+			sprintf(output + strlen(output), "\
+	temp_%d = temp_%d - temp_%d;\n\
+	temp_%d = temp_%d - temp_%d;\n\
+	temp_%d = temp_%d - temp_%d;\n", regID[0], regID[1], regID[5], regID[2], regID[5], regID[3], regID[4], regID[3], regID[1]);
+			if(stageAngle<0)
+				sprintf(output + strlen(output), "\
+	loc_1 *= -1.16666666666666651863693004997913;\n\
+	loc_2 *= 0.79015646852540022404554065360571;\n\
+	loc_3 *= 0.05585426728964774240049351305970;\n\
+	loc_4 *= 0.73430220123575240531721419756650;\n\
+	loc_5 *= 0.44095855184409837868031445395900;\n\
+	temp_%d *= 0.34087293062393136944265847887436;\n\
+	temp_%d *= -0.53396936033772524066165487965918;\n\
+	temp_%d *= 0.87484229096165666561546458979137;\n", regID[0], regID[2], regID[4]);
+			else
+				sprintf(output + strlen(output), "\
+	loc_1 *= -1.16666666666666651863693004997913;\n\
+	loc_2 *= 0.79015646852540022404554065360571;\n\
+	loc_3 *= 0.05585426728964774240049351305970;\n\
+	loc_4 *= 0.73430220123575240531721419756650;\n\
+	loc_5 *= -0.44095855184409837868031445395900;\n\
+	temp_%d *= -0.34087293062393136944265847887436;\n\
+	temp_%d *= 0.53396936033772524066165487965918;\n\
+	temp_%d *= -0.87484229096165666561546458979137;\n", regID[0], regID[2], regID[4]);
+			sprintf(output + strlen(output), "\
+	temp_%d = temp_%d - temp_%d;\n\
+	temp_%d = - temp_%d - temp_%d;\n\
+	temp_%d = temp_%d + temp_%d;\n", regID[5], regID[4], regID[2], regID[6], regID[4], regID[0], regID[4], regID[0], regID[2]);
+			sprintf(output + strlen(output), "\
+	temp_%d = loc_0 + loc_1;\n\
+	temp_%d = loc_2 + loc_3;\n\
+	temp_%d = loc_4 - loc_3;\n\
+	temp_%d = - loc_2 - loc_4;\n", regID[0], regID[1], regID[2], regID[3]);
+			sprintf(output + strlen(output), "\
+	loc_1 = temp_%d + temp_%d;\n\
+	loc_2 = temp_%d + temp_%d;\n\
+	loc_3 = temp_%d + temp_%d;\n\
+	loc_4 = temp_%d + loc_5;\n\
+	loc_6 = temp_%d + loc_5;\n\
+	loc_5 += temp_%d;\n\
+	temp_%d = loc_0;\n", regID[0], regID[1], regID[0], regID[2], regID[0], regID[3], regID[4], regID[6], regID[5], regID[0]);
+
+			sprintf(output + strlen(output), "\
+	temp_%d.x = loc_1.x + loc_4.y; \n\
+	temp_%d.y = loc_1.y - loc_4.x; \n\
+	temp_%d.x = loc_3.x + loc_6.y; \n\
+	temp_%d.y = loc_3.y - loc_6.x; \n\
+	temp_%d.x = loc_2.x - loc_5.y; \n\
+	temp_%d.y = loc_2.y + loc_5.x; \n\
+	temp_%d.x = loc_2.x + loc_5.y; \n\
+	temp_%d.y = loc_2.y - loc_5.x; \n\
+	temp_%d.x = loc_3.x - loc_6.y; \n\
+	temp_%d.y = loc_3.y + loc_6.x; \n\
+	temp_%d.x = loc_1.x - loc_4.y; \n\
+	temp_%d.y = loc_1.y + loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID[3], regID[3], regID[4], regID[4], regID[5], regID[5], regID[6], regID[6]);
+			sprintf(output + strlen(output), "\
+}\n\n");
+			break;
+		}
 		case 8: {
 			/*if (sc.LUT)
 				sprintf(output + strlen(output), "void radix8(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, inout %s temp_4, inout %s temp_5, inout %s temp_6, inout %s temp_7, %s LUTId%s) {\n", vecType, vecType, vecType, vecType, vecType, vecType, vecType, vecType, uintType, convolutionInverse);
@@ -986,7 +1095,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	temp_%d = temp_%d + temp;\n\n", regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 0], regID[i + 0], regID[i + 0]);
 			}
 			if (sc.LUT)
-				sprintf(output + strlen(output), "	w=twiddleLUT[LUTId+%d];\n\n", sc.maxStageSumLUT);
+				sprintf(output + strlen(output), "	w=twiddleLUT[LUTId+%d];\n\n", stageSize);
 			else {
 				if (!strcmp(floatType, "float"))
 					sprintf(output + strlen(output), "	w = %s(cos(0.5*angle), sin(0.5*angle));\n\n", vecType);
@@ -1014,7 +1123,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 
 			if (sc.LUT)
-				sprintf(output + strlen(output), "	w=twiddleLUT[LUTId+%d];\n\n", 2 * sc.maxStageSumLUT);
+				sprintf(output + strlen(output), "	w=twiddleLUT[LUTId+%d];\n\n", 2 * stageSize);
 			else {
 				if (!strcmp(floatType, "float"))
 					sprintf(output + strlen(output), "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
@@ -2101,7 +2210,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(output + strlen(output), sc.disableThreadsStart);
 				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
-						sprintf(output + strlen(output), "		mult = twiddleLUT[%d+(((gl_GlobalInvocationID.x%s)/%d) %% (%d))+%d*(gl_LocalInvocationID.y+%d)];\n", 3 * sc.maxStageSumLUT, shiftX, sc.fft_dim_x, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1]);
+						sprintf(output + strlen(output), "		mult = twiddleLUT[%d+(((gl_GlobalInvocationID.x%s)/%d) %% (%d))+%d*(gl_LocalInvocationID.y+%d)];\n", sc.maxStageSumLUT, shiftX, sc.fft_dim_x, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1]);
 					else {
 						sprintf(output + strlen(output), "		angle = 2 * M_PI * (((((gl_GlobalInvocationID.x%s) / %d) %% (%d)) * (gl_LocalInvocationID.y + %d)) / %f%s;\n", shiftX, sc.fft_dim_x, sc.stageStartSize, i * sc.localSize[1], (double)(sc.stageStartSize * sc.fftDim), LFending);
 						if (!strcmp(floatType, "float"))
@@ -2137,7 +2246,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(output + strlen(output), sc.disableThreadsStart);
 				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
-						sprintf(output + strlen(output), "		mult = twiddleLUT[%d + ((gl_GlobalInvocationID.x%s) %% (%d)) + (gl_LocalInvocationID.y + %d) * %d];\n", 3 * sc.maxStageSumLUT, shiftX, sc.stageStartSize, i * sc.localSize[1], sc.stageStartSize);
+						sprintf(output + strlen(output), "		mult = twiddleLUT[%d + ((gl_GlobalInvocationID.x%s) %% (%d)) + (gl_LocalInvocationID.y + %d) * %d];\n", sc.maxStageSumLUT, shiftX, sc.stageStartSize, i * sc.localSize[1], sc.stageStartSize);
 					else {
 						sprintf(output + strlen(output), "		angle = 2 * M_PI * ((((gl_GlobalInvocationID.x%s) %% (%d)) * (gl_LocalInvocationID.y + %d)) / %f%s);\n", shiftX, sc.stageStartSize, i * sc.localSize[1], (double)(sc.stageStartSize * sc.fftDim), LFending);
 
@@ -2186,7 +2295,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(output + strlen(output), sc.disableThreadsStart);
 				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
-						sprintf(output + strlen(output), "		mult = twiddleLUT[%d+(((gl_GlobalInvocationID.x%s)/%d) %% (%d))+%d*(gl_LocalInvocationID.y+%d)];\n", 3 * sc.maxStageSumLUT, shiftX, sc.fft_dim_x, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1]);
+						sprintf(output + strlen(output), "		mult = twiddleLUT[%d+(((gl_GlobalInvocationID.x%s)/%d) %% (%d))+%d*(gl_LocalInvocationID.y+%d)];\n", sc.maxStageSumLUT, shiftX, sc.fft_dim_x, sc.stageStartSize, sc.stageStartSize, i * sc.localSize[1]);
 					else {
 						sprintf(output + strlen(output), "		angle = 2 * M_PI * ((((gl_GlobalInvocationID.x%s) / %d) %% (%d)) * (gl_LocalInvocationID.y + %d)) / %f%s;\n", shiftX, sc.fft_dim_x, sc.stageStartSize, i * sc.localSize[1], (double)(sc.stageStartSize * sc.fftDim), LFending);
 						if (sc.inverse) {
@@ -2229,7 +2338,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(output + strlen(output), sc.disableThreadsStart);
 				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
-						sprintf(output + strlen(output), "		mult = twiddleLUT[%d + ((gl_GlobalInvocationID.x%s) %% (%d)) + (gl_LocalInvocationID.y + %d) * %d];\n", 3 * sc.maxStageSumLUT, shiftX, sc.stageStartSize, i * sc.localSize[1], sc.stageStartSize);
+						sprintf(output + strlen(output), "		mult = twiddleLUT[%d + ((gl_GlobalInvocationID.x%s) %% (%d)) + (gl_LocalInvocationID.y + %d) * %d];\n", sc.maxStageSumLUT, shiftX, sc.stageStartSize, i * sc.localSize[1], sc.stageStartSize);
 					else {
 						sprintf(output + strlen(output), "		angle = 2 * M_PI * ((((gl_GlobalInvocationID.x%s) %% (%d)) * (gl_LocalInvocationID.y + %d)) / %f%s);\n", shiftX, sc.stageStartSize, i * sc.localSize[1], (double)(sc.stageStartSize * sc.fftDim), LFending);
 						if (sc.inverse) {
@@ -2305,7 +2414,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			for (uint32_t i = 0; i < stageRadix; i++) {
 				regID[i] = j + i * logicalRegistersPerThread / stageRadix;
 			}
-			inlineRadixKernelVkFFT(output, sc, floatType, uintType, stageRadix, stageAngle, regID);
+			inlineRadixKernelVkFFT(output, sc, floatType, uintType, stageRadix, stageSize, stageAngle, regID);
 			/*sprintf(output + strlen(output), "		radix%d(", stageRadix);
 			for (uint32_t i = 0; i < stageRadix; i++) {
 				sprintf(output + strlen(output), "temp_%d, ", j + i * logicalRegistersPerThread / stageRadix);
@@ -2542,7 +2651,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			for (uint32_t i = 0; i < stageRadix; i++) {
 				regID[i] = j + i * logicalRegistersPerThread / stageRadix;
 			}
-			inlineRadixKernelVkFFT(output, sc, floatType, uintType, stageRadix, stageAngle, regID);
+			inlineRadixKernelVkFFT(output, sc, floatType, uintType, stageRadix, stageSize, stageAngle, regID);
 			/*sprintf(output + strlen(output), "		radix%d(", stageRadix);
 			for (uint32_t i = 0; i < stageRadix; i++) {
 				sprintf(output + strlen(output), "temp_%d, ", j + i * logicalRegistersPerThread / stageRadix);
@@ -4423,7 +4532,26 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else {
 				appendRegisterBoostShuffle(output, sc, floatType, sc.stageRadix[i], type, 0);
 				appendRadixStage(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc.stageRadix[i], type);
-				stageSizeSum += stageSize;
+				switch (sc.stageRadix[i]) {
+				case 2:
+					stageSizeSum += stageSize;
+					break;
+				case 3:
+					stageSizeSum += stageSize*2;
+					break;
+				case 4:
+					stageSizeSum += stageSize*2;
+					break;
+				case 5:
+					stageSizeSum += stageSize*4;
+					break;
+				case 7:
+					stageSizeSum += stageSize*6;
+					break;
+				case 8:
+					stageSizeSum += stageSize*3;
+					break;
+				}
 				appendRadixShuffle(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc.stageRadix[i], type);
 				stageSize *= sc.stageRadix[i];
 				stageAngle /= sc.stageRadix[i];
@@ -4452,7 +4580,26 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			for (uint32_t i = 0; i < sc.numStages; i++) {
 				appendRegisterBoostShuffle(output, sc, floatType, sc.stageRadix[i], type, 0);
 				appendRadixStage(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc.stageRadix[i], type);
-				stageSizeSum += stageSize;
+				switch (sc.stageRadix[i]) {
+				case 2:
+					stageSizeSum += stageSize;
+					break;
+				case 3:
+					stageSizeSum += stageSize * 2;
+					break;
+				case 4:
+					stageSizeSum += stageSize * 2;
+					break;
+				case 5:
+					stageSizeSum += stageSize * 4;
+					break;
+				case 7:
+					stageSizeSum += stageSize * 6;
+					break;
+				case 8:
+					stageSizeSum += stageSize * 3;
+					break;
+				}
 				appendRadixShuffle(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc.stageRadix[i], type);
 				stageSize *= sc.stageRadix[i];
 				stageAngle /= sc.stageRadix[i];
@@ -4866,66 +5013,124 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (loc_multipliers[2] > 0) {
 				if (loc_multipliers[3] > 0) {
 					if (loc_multipliers[5] > 0) {
-						if ((loc_multipliers[2] == 1)) {
-							registers_per_thread = 6;
-							min_registers_per_thread = 5;
+						if (loc_multipliers[7] > 0) {
+							registers_per_thread = 15;
+							min_registers_per_thread = 14;
 						}
 						else {
-							registers_per_thread = 12;
-							min_registers_per_thread = 10;
+							if ((loc_multipliers[2] == 1)) {
+								registers_per_thread = 6;
+								min_registers_per_thread = 5;
+							}
+							else {
+								registers_per_thread = 12;
+								min_registers_per_thread = 10;
+							}
 						}
 					}
 					else
 					{
-						if ((loc_multipliers[2] == 1)) {
-							registers_per_thread = 6;
-							min_registers_per_thread = 6;
+						if (loc_multipliers[7] > 0) {
+							if ((loc_multipliers[2] == 1)) {
+								registers_per_thread = 7;
+								min_registers_per_thread = 6;
+							}
+							else {
+								registers_per_thread = 14;
+								min_registers_per_thread = 12;
+							}
 						}
 						else {
-							registers_per_thread = 12;
-							min_registers_per_thread = 12;
+							if ((loc_multipliers[2] == 1)) {
+								registers_per_thread = 6;
+								min_registers_per_thread = 6;
+							}
+							else {
+								registers_per_thread = 12;
+								min_registers_per_thread = 12;
+							}
 						}
 					}
 				}
 				else {
 					if (loc_multipliers[5] > 0) {
-						registers_per_thread = 10;
-						min_registers_per_thread = 10;
+						if (loc_multipliers[7] > 0) {
+							registers_per_thread = 10;
+							min_registers_per_thread = 7;
+						}
+						else {
+							registers_per_thread = 10;
+							min_registers_per_thread = 10;
+						}
 					}
 					else
 					{
-
-						registers_per_thread = (loc_multipliers[2] > 2) ? 8 : pow(2, loc_multipliers[2]);
-						min_registers_per_thread = (loc_multipliers[2] > 2) ? 8 : pow(2, loc_multipliers[2]);
+						if (loc_multipliers[7] > 0) {
+							registers_per_thread = 14;
+							min_registers_per_thread = 14;
+						}
+						else {
+							registers_per_thread = (loc_multipliers[2] > 2) ? 8 : pow(2, loc_multipliers[2]);
+							min_registers_per_thread = (loc_multipliers[2] > 2) ? 8 : pow(2, loc_multipliers[2]);
+						}
 					}
 				}
 			}
 			else {
 				if (loc_multipliers[3] > 0) {
 					if (loc_multipliers[5] > 0) {
+						if (loc_multipliers[7] > 0) {
+							registers_per_thread = 21;
+							min_registers_per_thread = 15;
+						}
+						else {
 							registers_per_thread = 15;
 							min_registers_per_thread = 15;
 						}
+					}
 					else
 					{
-						if ((loc_multipliers[3] == 1)) {
-							registers_per_thread = 3;
-							min_registers_per_thread = 3;
+						if (loc_multipliers[7] > 0) {
+							if ((loc_multipliers[3] == 1)) {
+								registers_per_thread = 21;
+								min_registers_per_thread = 21;
+							}
+							else {
+								registers_per_thread = 9;
+								min_registers_per_thread = 7;
+							}
 						}
 						else {
-							registers_per_thread = 9;
-							min_registers_per_thread = 9;
+							if ((loc_multipliers[3] == 1)) {
+								registers_per_thread = 3;
+								min_registers_per_thread = 3;
+							}
+							else {
+								registers_per_thread = 9;
+								min_registers_per_thread = 9;
+							}
 						}
 					}
 				}
 				else {
 					if (loc_multipliers[5] > 0) {
-						registers_per_thread = 5;
-						min_registers_per_thread = 5;
+						if (loc_multipliers[7] > 0) {
+							registers_per_thread = 7;
+							min_registers_per_thread = 5;
+						}
+						else {
+							registers_per_thread = 5;
+							min_registers_per_thread = 5;
+						}
 					}
 					else
 					{
-						return VK_ERROR_FORMAT_NOT_SUPPORTED;
+						if (loc_multipliers[7] > 0) {
+							registers_per_thread = 7;
+							min_registers_per_thread = 7;
+						}
+						else
+							return VK_ERROR_FORMAT_NOT_SUPPORTED;
 					}
 				}
 
@@ -5034,75 +5239,84 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			uint32_t dimMult = 1;
 			uint32_t maxStageSum = 0;
 			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-				maxStageSum += dimMult;
+				switch (axis->specializationConstants.stageRadix[i]) {
+				case 2:
+					maxStageSum += dimMult;
+					break;
+				case 3:
+					maxStageSum += dimMult * 2;
+					break;
+				case 4:
+					maxStageSum += dimMult * 2;
+					break;
+				case 5:
+					maxStageSum += dimMult * 4;
+					break;
+				case 7:
+					maxStageSum += dimMult * 6;
+					break;
+				case 8:
+					maxStageSum += dimMult * 3;
+					break;
+				}
 				dimMult *= axis->specializationConstants.stageRadix[i];
 			}
 			axis->specializationConstants.maxStageSumLUT = maxStageSum;
+			dimMult = 1;
 			if (app->configuration.doublePrecision) {
 				if (axis_upload_id > 0)
-					axis->bufferLUTSize = (3 * maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim) * 2 * sizeof(double);
+					axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim) * 2 * sizeof(double);
 				else
-					axis->bufferLUTSize = (3 * maxStageSum) * 2 * sizeof(double);
+					axis->bufferLUTSize = (maxStageSum) * 2 * sizeof(double);
 				double* tempLUT = (double*)malloc(axis->bufferLUTSize);
 				uint32_t localStageSize = 1;
 				uint32_t localStageSum = 0;
 				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					for (uint32_t j = 0; j < localStageSize; j++) {
-						if (inverse) {
-							tempLUT[2 * (j + localStageSum)] = cos(-j * double_PI / localStageSize);
-							tempLUT[2 * (j + localStageSum) + 1] = sin(-j * double_PI / localStageSize);
+					if ((axis->specializationConstants.stageRadix[i] & (axis->specializationConstants.stageRadix[i] - 1)) == 0) {
+						for (uint32_t k = 0; k < log2(axis->specializationConstants.stageRadix[i]); k++) {
+							for (uint32_t j = 0; j < localStageSize; j++) {
+								if (inverse) {
+									tempLUT[2 * (j + localStageSum)] = cos(-j * double_PI / localStageSize / pow(2, k));
+									tempLUT[2 * (j + localStageSum) + 1] = sin(-j * double_PI / localStageSize / pow(2, k));
+								}
+								else {
+									tempLUT[2 * (j + localStageSum)] = cos(j * double_PI / localStageSize / pow(2, k));
+									tempLUT[2 * (j + localStageSum) + 1] = sin(j * double_PI / localStageSize / pow(2, k));
+								}
+							}
+							localStageSum += localStageSize;
 						}
-						else {
-							tempLUT[2 * (j + localStageSum)] = cos(j * double_PI / localStageSize);
-							tempLUT[2 * (j + localStageSum) + 1] = sin(j * double_PI / localStageSize);
-						}
+						localStageSize *= axis->specializationConstants.stageRadix[i];
 					}
-					localStageSum += localStageSize;
-					localStageSize *= axis->specializationConstants.stageRadix[i];
-				}
-				localStageSize = 1;
-				localStageSum = 0;
-				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					for (uint32_t j = 0; j < localStageSize; j++) {
-						if (inverse) {
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum)] = cos(-j * double_PI / localStageSize / 2);
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum) + 1] = sin(-j * double_PI / localStageSize / 2);
+					else {
+						for (uint32_t k = (axis->specializationConstants.stageRadix[i] - 1); k > 0; k--) {
+							for (uint32_t j = 0; j < localStageSize; j++) {
+								if (inverse) {
+									tempLUT[2 * (j + localStageSum)] = cos(-j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+									tempLUT[2 * (j + localStageSum) + 1] = sin(-j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+								}
+								else {
+									tempLUT[2 * (j + localStageSum)] = cos(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+									tempLUT[2 * (j + localStageSum) + 1] = sin(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+								}
+							}
+							localStageSum += localStageSize;
 						}
-						else {
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum)] = cos(j * double_PI / localStageSize / 2);
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum) + 1] = sin(j * double_PI / localStageSize / 2);
-						}
+						localStageSize *= axis->specializationConstants.stageRadix[i];
 					}
-					localStageSum += localStageSize;
-					localStageSize *= axis->specializationConstants.stageRadix[i];
 				}
-				localStageSize = 1;
-				localStageSum = 0;
-				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					for (uint32_t j = 0; j < localStageSize; j++) {
-						if (inverse) {
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum)] = cos(-j * double_PI / localStageSize / 4);
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum) + 1] = sin(-j * double_PI / localStageSize / 4);
-						}
-						else {
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum)] = cos(j * double_PI / localStageSize / 4);
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum) + 1] = sin(j * double_PI / localStageSize / 4);
-						}
-					}
-					localStageSum += localStageSize;
-					localStageSize *= axis->specializationConstants.stageRadix[i];
-				}
+
 				if (axis_upload_id > 0)
 					for (uint32_t i = 0; i < axis->specializationConstants.stageStartSize; i++) {
 						for (uint32_t j = 0; j < axis->specializationConstants.fftDim; j++) {
 							double angle = 2 * double_PI * ((i * j) / (double)(axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim));
 							if (inverse) {
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = cos(-angle);
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = sin(-angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = cos(-angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = sin(-angle);
 							}
 							else {
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = cos(angle);
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = sin(angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = cos(angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = sin(angle);
 							}
 						}
 					}
@@ -5111,77 +5325,59 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				free(tempLUT);
 			}
 			else {
-				uint32_t dimMult = 1;
-				uint32_t maxStageSum = 0;
-				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					maxStageSum += dimMult;
-					dimMult *= axis->specializationConstants.stageRadix[i];
-				}
-				axis->specializationConstants.maxStageSumLUT = maxStageSum;
 				if (axis_upload_id > 0)
-					axis->bufferLUTSize = (3 * maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim) * 2 * sizeof(float);
+					axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim) * 2 * sizeof(float);
 				else
-					axis->bufferLUTSize = (3 * maxStageSum) * 2 * sizeof(float);
+					axis->bufferLUTSize = (maxStageSum) * 2 * sizeof(float);
 				float* tempLUT = (float*)malloc(axis->bufferLUTSize);
 				uint32_t localStageSize = 1;
 				uint32_t localStageSum = 0;
 				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					for (uint32_t j = 0; j < localStageSize; j++) {
-						if (inverse) {
-							tempLUT[2 * (j + localStageSum)] = (float)cos(-j * double_PI / localStageSize);
-							tempLUT[2 * (j + localStageSum) + 1] = (float)sin(-j * double_PI / localStageSize);
+					if ((axis->specializationConstants.stageRadix[i] & (axis->specializationConstants.stageRadix[i] - 1)) == 0) {
+						for (uint32_t k = 0; k < log2(axis->specializationConstants.stageRadix[i]); k++) {
+							for (uint32_t j = 0; j < localStageSize; j++) {
+								if (inverse) {
+									tempLUT[2 * (j + localStageSum)] = (float)cos(-j * double_PI / localStageSize / pow(2, k));
+									tempLUT[2 * (j + localStageSum) + 1] = (float)sin(-j * double_PI / localStageSize / pow(2, k));
+								}
+								else {
+									tempLUT[2 * (j + localStageSum)] = (float)cos(j * double_PI / localStageSize / pow(2, k));
+									tempLUT[2 * (j + localStageSum) + 1] = (float)sin(j * double_PI / localStageSize / pow(2, k));
+								}
+							}
+							localStageSum += localStageSize;
 						}
-						else {
-							tempLUT[2 * (j + localStageSum)] = (float)cos(j * double_PI / localStageSize);
-							tempLUT[2 * (j + localStageSum) + 1] = (float)sin(j * double_PI / localStageSize);
-						}
+						localStageSize *= axis->specializationConstants.stageRadix[i];
 					}
-					localStageSum += localStageSize;
-					localStageSize *= axis->specializationConstants.stageRadix[i];
-				}
-				localStageSize = 1;
-				localStageSum = 0;
-				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					for (uint32_t j = 0; j < localStageSize; j++) {
-						if (inverse) {
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum)] = (float)cos(-j * double_PI / localStageSize / 2);
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum) + 1] = (float)sin(-j * double_PI / localStageSize / 2);
+					else {
+						for (uint32_t k = (axis->specializationConstants.stageRadix[i] - 1); k > 0; k--) {
+							for (uint32_t j = 0; j < localStageSize; j++) {
+								if (inverse) {
+									tempLUT[2 * (j + localStageSum)] = (float)cos(-j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+									tempLUT[2 * (j + localStageSum) + 1] = (float)sin(-j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+								}
+								else {
+									tempLUT[2 * (j + localStageSum)] = (float)cos(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+									tempLUT[2 * (j + localStageSum) + 1] = (float)sin(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+								}
+							}
+							localStageSum += localStageSize;
 						}
-						else {
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum)] = (float)cos(j * double_PI / localStageSize / 2);
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum) + 1] = (float)sin(j * double_PI / localStageSize / 2);
-						}
+						localStageSize *= axis->specializationConstants.stageRadix[i];
 					}
-					localStageSum += localStageSize;
-					localStageSize *= axis->specializationConstants.stageRadix[i];
 				}
-				localStageSize = 1;
-				localStageSum = 0;
-				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					for (uint32_t j = 0; j < localStageSize; j++) {
-						if (inverse) {
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum)] = (float)cos(-j * double_PI / localStageSize / 4);
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum) + 1] = (float)sin(-j * double_PI / localStageSize / 4);
-						}
-						else {
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum)] = (float)cos(j * double_PI / localStageSize / 4);
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum) + 1] = (float)sin(j * double_PI / localStageSize / 4);
-						}
-					}
-					localStageSum += localStageSize;
-					localStageSize *= axis->specializationConstants.stageRadix[i];
-				}
+
 				if (axis_upload_id > 0)
 					for (uint32_t i = 0; i < axis->specializationConstants.stageStartSize; i++) {
 						for (uint32_t j = 0; j < axis->specializationConstants.fftDim; j++) {
 							double angle = 2 * double_PI * ((i * j) / (double)(axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim));
 							if (inverse) {
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = (float)cos(-angle);
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = (float)sin(-angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = (float)cos(-angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = (float)sin(-angle);
 							}
 							else {
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = (float)cos(angle);
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = (float)sin(angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = (float)cos(angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = (float)sin(angle);
 							}
 						}
 					}
@@ -5938,75 +6134,84 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			uint32_t dimMult = 1;
 			uint32_t maxStageSum = 0;
 			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-				maxStageSum += dimMult;
+				switch (axis->specializationConstants.stageRadix[i]) {
+				case 2:
+					maxStageSum += dimMult;
+					break;
+				case 3:
+					maxStageSum += dimMult * 2;
+					break;
+				case 4:
+					maxStageSum += dimMult * 2;
+					break;
+				case 5:
+					maxStageSum += dimMult * 4;
+					break;
+				case 7:
+					maxStageSum += dimMult * 6;
+					break;
+				case 8:
+					maxStageSum += dimMult * 3;
+					break;
+				}
 				dimMult *= axis->specializationConstants.stageRadix[i];
 			}
 			axis->specializationConstants.maxStageSumLUT = maxStageSum;
+			dimMult = 1;
 			if (app->configuration.doublePrecision) {
 				if (axis_upload_id > 0)
-					axis->bufferLUTSize = (3 * maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim) * 2 * sizeof(double);
+					axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim) * 2 * sizeof(double);
 				else
-					axis->bufferLUTSize = (3 * maxStageSum) * 2 * sizeof(double);
+					axis->bufferLUTSize = (maxStageSum) * 2 * sizeof(double);
 				double* tempLUT = (double*)malloc(axis->bufferLUTSize);
 				uint32_t localStageSize = 1;
 				uint32_t localStageSum = 0;
 				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					for (uint32_t j = 0; j < localStageSize; j++) {
-						if (inverse) {
-							tempLUT[2 * (j + localStageSum)] = cos(-j * double_PI / localStageSize);
-							tempLUT[2 * (j + localStageSum) + 1] = sin(-j * double_PI / localStageSize);
+					if ((axis->specializationConstants.stageRadix[i] & (axis->specializationConstants.stageRadix[i] - 1)) == 0) {
+						for (uint32_t k = 0; k < log2(axis->specializationConstants.stageRadix[i]); k++) {
+							for (uint32_t j = 0; j < localStageSize; j++) {
+								if (inverse) {
+									tempLUT[2 * (j + localStageSum)] = cos(-j * double_PI / localStageSize / pow(2, k));
+									tempLUT[2 * (j + localStageSum) + 1] = sin(-j * double_PI / localStageSize/ pow(2, k));
+								}
+								else {
+									tempLUT[2 * (j + localStageSum)] = cos(j * double_PI / localStageSize/ pow(2, k));
+									tempLUT[2 * (j + localStageSum) + 1] = sin(j * double_PI / localStageSize/ pow(2, k));
+								}
+							}
+							localStageSum += localStageSize;
 						}
-						else {
-							tempLUT[2 * (j + localStageSum)] = cos(j * double_PI / localStageSize);
-							tempLUT[2 * (j + localStageSum) + 1] = sin(j * double_PI / localStageSize);
-						}
+						localStageSize *= axis->specializationConstants.stageRadix[i];
 					}
-					localStageSum += localStageSize;
-					localStageSize *= axis->specializationConstants.stageRadix[i];
-				}
-				localStageSize = 1;
-				localStageSum = 0;
-				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					for (uint32_t j = 0; j < localStageSize; j++) {
-						if (inverse) {
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum)] = cos(-j * double_PI / localStageSize / 2);
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum) + 1] = sin(-j * double_PI / localStageSize / 2);
+					else {
+						for (uint32_t k = (axis->specializationConstants.stageRadix[i] - 1); k > 0; k--) {
+							for (uint32_t j = 0; j < localStageSize; j++) {
+								if (inverse) {
+									tempLUT[2 * (j + localStageSum)] = cos(-j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+									tempLUT[2 * (j + localStageSum) + 1] = sin(-j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+								}
+								else {
+									tempLUT[2 * (j + localStageSum)] = cos(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+									tempLUT[2 * (j + localStageSum) + 1] = sin(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+								}
+							}
+							localStageSum += localStageSize;
 						}
-						else {
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum)] = cos(j * double_PI / localStageSize / 2);
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum) + 1] = sin(j * double_PI / localStageSize / 2);
-						}
+						localStageSize *= axis->specializationConstants.stageRadix[i];
 					}
-					localStageSum += localStageSize;
-					localStageSize *= axis->specializationConstants.stageRadix[i];
 				}
-				localStageSize = 1;
-				localStageSum = 0;
-				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					for (uint32_t j = 0; j < localStageSize; j++) {
-						if (inverse) {
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum)] = cos(-j * double_PI / localStageSize / 4);
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum) + 1] = sin(-j * double_PI / localStageSize / 4);
-						}
-						else {
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum)] = cos(j * double_PI / localStageSize / 4);
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum) + 1] = sin(j * double_PI / localStageSize / 4);
-						}
-					}
-					localStageSum += localStageSize;
-					localStageSize *= axis->specializationConstants.stageRadix[i];
-				}
+				
 				if (axis_upload_id > 0)
 					for (uint32_t i = 0; i < axis->specializationConstants.stageStartSize; i++) {
 						for (uint32_t j = 0; j < axis->specializationConstants.fftDim; j++) {
 							double angle = 2 * double_PI * ((i * j) / (double)(axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim));
 							if (inverse) {
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = cos(-angle);
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = sin(-angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = cos(-angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = sin(-angle);
 							}
 							else {
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = cos(angle);
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = sin(angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = cos(angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = sin(angle);
 							}
 						}
 					}
@@ -6015,77 +6220,59 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				free(tempLUT);
 			}
 			else {
-				uint32_t dimMult = 1;
-				uint32_t maxStageSum = 0;
-				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					maxStageSum += dimMult;
-					dimMult *= axis->specializationConstants.stageRadix[i];
-				}
-				axis->specializationConstants.maxStageSumLUT = maxStageSum;
 				if (axis_upload_id > 0)
-					axis->bufferLUTSize = (3 * maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim) * 2 * sizeof(float);
+					axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim) * 2 * sizeof(float);
 				else
-					axis->bufferLUTSize = (3 * maxStageSum) * 2 * sizeof(float);
+					axis->bufferLUTSize = (maxStageSum) * 2 * sizeof(float);
 				float* tempLUT = (float*)malloc(axis->bufferLUTSize);
 				uint32_t localStageSize = 1;
 				uint32_t localStageSum = 0;
 				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					for (uint32_t j = 0; j < localStageSize; j++) {
-						if (inverse) {
-							tempLUT[2 * (j + localStageSum)] = (float)cos(-j * double_PI / localStageSize);
-							tempLUT[2 * (j + localStageSum) + 1] = (float)sin(-j * double_PI / localStageSize);
+					if ((axis->specializationConstants.stageRadix[i] & (axis->specializationConstants.stageRadix[i] - 1)) == 0) {
+						for (uint32_t k = 0; k < log2(axis->specializationConstants.stageRadix[i]); k++) {
+							for (uint32_t j = 0; j < localStageSize; j++) {
+								if (inverse) {
+									tempLUT[2 * (j + localStageSum)] = (float)cos(-j * double_PI / localStageSize / pow(2, k));
+									tempLUT[2 * (j + localStageSum) + 1] = (float)sin(-j * double_PI / localStageSize / pow(2, k));
+								}
+								else {
+									tempLUT[2 * (j + localStageSum)] = (float)cos(j * double_PI / localStageSize / pow(2, k));
+									tempLUT[2 * (j + localStageSum) + 1] = (float)sin(j * double_PI / localStageSize / pow(2, k));
+								}
+							}
+							localStageSum += localStageSize;
 						}
-						else {
-							tempLUT[2 * (j + localStageSum)] = (float)cos(j * double_PI / localStageSize);
-							tempLUT[2 * (j + localStageSum) + 1] = (float)sin(j * double_PI / localStageSize);
-						}
+						localStageSize *= axis->specializationConstants.stageRadix[i];
 					}
-					localStageSum += localStageSize;
-					localStageSize *= axis->specializationConstants.stageRadix[i];
-				}
-				localStageSize = 1;
-				localStageSum = 0;
-				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					for (uint32_t j = 0; j < localStageSize; j++) {
-						if (inverse) {
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum)] = (float)cos(-j * double_PI / localStageSize / 2);
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum) + 1] = (float)sin(-j * double_PI / localStageSize / 2);
+					else {
+						for (uint32_t k = (axis->specializationConstants.stageRadix[i] - 1); k > 0; k--) {
+							for (uint32_t j = 0; j < localStageSize; j++) {
+								if (inverse) {
+									tempLUT[2 * (j + localStageSum)] = (float)cos(-j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+									tempLUT[2 * (j + localStageSum) + 1] = (float)sin(-j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+								}
+								else {
+									tempLUT[2 * (j + localStageSum)] = (float)cos(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+									tempLUT[2 * (j + localStageSum) + 1] = (float)sin(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+								}
+							}
+							localStageSum += localStageSize;
 						}
-						else {
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum)] = (float)cos(j * double_PI / localStageSize / 2);
-							tempLUT[maxStageSum * 2 + 2 * (j + localStageSum) + 1] = (float)sin(j * double_PI / localStageSize / 2);
-						}
+						localStageSize *= axis->specializationConstants.stageRadix[i];
 					}
-					localStageSum += localStageSize;
-					localStageSize *= axis->specializationConstants.stageRadix[i];
 				}
-				localStageSize = 1;
-				localStageSum = 0;
-				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					for (uint32_t j = 0; j < localStageSize; j++) {
-						if (inverse) {
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum)] = (float)cos(-j * double_PI / localStageSize / 4);
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum) + 1] = (float)sin(-j * double_PI / localStageSize / 4);
-						}
-						else {
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum)] = (float)cos(j * double_PI / localStageSize / 4);
-							tempLUT[2 * maxStageSum * 2 + 2 * (j + localStageSum) + 1] = (float)sin(j * double_PI / localStageSize / 4);
-						}
-					}
-					localStageSum += localStageSize;
-					localStageSize *= axis->specializationConstants.stageRadix[i];
-				}
+
 				if (axis_upload_id > 0)
 					for (uint32_t i = 0; i < axis->specializationConstants.stageStartSize; i++) {
 						for (uint32_t j = 0; j < axis->specializationConstants.fftDim; j++) {
 							double angle = 2 * double_PI * ((i * j) / (double)(axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim));
 							if (inverse) {
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = (float)cos(-angle);
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = (float)sin(-angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = (float)cos(-angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = (float)sin(-angle);
 							}
 							else {
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = (float)cos(angle);
-								tempLUT[3 * maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = (float)sin(angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = (float)cos(angle);
+								tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = (float)sin(angle);
 							}
 						}
 					}
@@ -7342,7 +7529,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.sharedMemorySizePow2 = (physicalDeviceProperties.limits.maxComputeSharedMemorySize / 32768) * 32768;
 		if (app->configuration.matrixConvolution > 1) app->configuration.coordinateFeatures = app->configuration.matrixConvolution;
 		//LUT is not implemented for non-pow 2 yet
-		if ((app->configuration.size[0] & (app->configuration.size[0] - 1)) != 0) {
+		/*if ((app->configuration.size[0] & (app->configuration.size[0] - 1)) != 0) {
 			app->configuration.useLUT = 0;
 		}
 		if ((app->configuration.size[1] & (app->configuration.size[1] - 1)) != 0) {
@@ -7350,7 +7537,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		if ((app->configuration.size[2] & (app->configuration.size[2] - 1)) != 0) {
 			app->configuration.useLUT = 0;
-		}
+		}*/
 		app->configuration.registerBoost = 1;
 		app->configuration.registerBoost4Step = 1;
 		//app->configuration.performHalfBandwidthBoost = 0;

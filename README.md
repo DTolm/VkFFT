@@ -12,7 +12,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - 1D/2D/3D systems
   - Forward and inverse directions of FFT
   - Support for big FFT dimension sizes. Current limits in single and half precision: C2C - (2^32, 2^32, 2^32). C2R/R2C - (2^12, 2^32, 2^32). (will be increased later). Current limits in double precision: C2C - (2^32, 2^32, 2^32), C2R/R2C - (2^11, 2^32, 2^32) with no register overutilization.
-  - Radix-2/3/4/5/8 FFT. Sequences using radix 3 and 5 have comparable performance to that of powers of 2
+  - Radix-2/3/4/5/7/8 FFT. Sequences using radix 3, 5 and 7 have comparable performance to that of powers of 2
   - Single, double and half precision support. Double precision uses CPU generated LUT tables. Half precision still does all computations in single and only uses half precision to store data.
   - All transformations are performed in-place with no performance loss. Out-of-place transforms are supported by selecting different input/output buffers.
   - No additional transposition uploads. Note: data can be reshuffled after the four step FFT algorithm with additional buffer (for big sequences). Doesn't matter for convolutions - they return to the input ordering (saves memory).

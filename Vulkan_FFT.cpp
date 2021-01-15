@@ -3874,26 +3874,28 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	case 14:
 	{
 		if (file_output)
-			fprintf(output, "14 - VkFFT/FFTW C2C power 3/5 precision test in single precision\n");
-		printf("14 - VkFFT/FFTW C2C power 3/5 precision test in single precision\n");
+			fprintf(output, "14 - VkFFT/FFTW C2C power 3/5/7 precision test in single precision\n");
+		printf("14 - VkFFT/FFTW C2C power 3/5/7 precision test in single precision\n");
 
-		const int num_benchmark_samples = 102;
+		const int num_benchmark_samples = 145;
 		const int num_runs = 1;
 
-		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {3, 1, 1, 1},{5, 1, 1, 1},{6, 1, 1, 1},{9, 1, 1, 1},{10, 1, 1, 1},{12, 1, 1, 1},
-			{15, 1, 1, 1},{24, 1, 1, 1},{25, 1, 1, 1},{27, 1, 1, 1},{30, 1, 1, 1},{45, 1, 1, 1},{60, 1, 1, 1},{81, 1, 1, 1},
-			{125, 1, 1, 1},{243, 1, 1, 1},{625, 1, 1, 1},{720, 1, 1, 1},{1080, 1, 1, 1},{1440, 1, 1, 1},{1920, 1, 1, 1},{2160, 1, 1, 1},
-			{3840, 1, 1, 1},{4000 , 1, 1, 1},{4050, 1, 1, 1},{4320 , 1, 1, 1},{7680, 1, 1, 1},{9000, 1, 1, 1},{7680 * 5, 1, 1, 1},
+		uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {3, 1, 1, 1},{5, 1, 1, 1},{6, 1, 1, 1},{7, 1, 1, 1},{9, 1, 1, 1},{10, 1, 1, 1},{12, 1, 1, 1},{14, 1, 1, 1},
+			{15, 1, 1, 1},{21, 1, 1, 1},{24, 1, 1, 1},{25, 1, 1, 1},{27, 1, 1, 1},{28, 1, 1, 1},{30, 1, 1, 1},{35, 1, 1, 1},{45, 1, 1, 1},{42, 1, 1, 1},{49, 1, 1, 1},{56, 1, 1, 1},{60, 1, 1, 1},{81, 1, 1, 1},
+			{125, 1, 1, 1},{243, 1, 1, 1},{343, 1, 1, 1},{625, 1, 1, 1},{720, 1, 1, 1},{1080, 1, 1, 1},{1400, 1, 1, 1},{1440, 1, 1, 1},{1920, 1, 1, 1},{2160, 1, 1, 1},{3024,1,1,1},{3500,1,1,1},
+			{3840, 1, 1, 1},{4000 , 1, 1, 1},{4050, 1, 1, 1},{4320 , 1, 1, 1},{7000,1,1,1},{7680, 1, 1, 1},{9000, 1, 1, 1},{7680 * 5, 1, 1, 1},
 			{(uint32_t)pow(3,10), 1, 1, 1},{(uint32_t)pow(3,11), 1, 1, 1},{(uint32_t)pow(3,12), 1, 1, 1},{(uint32_t)pow(3,13), 1, 1, 1},{(uint32_t)pow(3,14), 1, 1, 1},{(uint32_t)pow(3,15), 1, 1, 1},
 			{(uint32_t)pow(5,5), 1, 1, 1},{(uint32_t)pow(5,6), 1, 1, 1},{(uint32_t)pow(5,7), 1, 1, 1},{(uint32_t)pow(5,8), 1, 1, 1},{(uint32_t)pow(5,9), 1, 1, 1},
-			{8, 3, 1, 2},{8, 5, 1, 2},{8, 6, 1, 2},{8, 9, 1, 2},{8, 10, 1, 2},{8, 12, 1, 2},{8, 15, 1, 2},{8, 24, 1, 2},
-			{8, 25, 1, 2},{8, 27, 1, 2},{8, 30, 1, 2},{8, 45, 1, 2},{8, 60, 1, 2},{8, 81, 1, 2},{8, 125, 1, 2},{8, 243, 1, 2},
-			{8, 625, 1, 2},{8, 720, 1, 2},{8, 1080, 1, 2},{8, 1440, 1, 2},{8, 1920, 1, 2},{8, 2160, 1, 2},
-			{8, 3840, 1, 2},{8, 4000, 1, 2},{8, 4050, 1, 2},{8, 4320, 1, 2},{8, 7680, 1, 2},{8, 4050 * 3, 1, 2},{8, 7680 * 5, 1, 2}, {720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},{7680, 4320, 1, 2},
+			{(uint32_t)pow(7,4), 1, 1, 1},{(uint32_t)pow(7,5), 1, 1, 1},{(uint32_t)pow(7,6), 1, 1, 1},{(uint32_t)pow(7,7), 1, 1, 1},{(uint32_t)pow(7,8), 1, 1, 1},
+			{8, 3, 1, 2},{8, 5, 1, 2},{8, 6, 1, 2},{8, 7, 1, 2},{8, 9, 1, 2},{8, 10, 1, 2},{8, 12, 1, 2},{8, 14, 1, 2},{8, 15, 1, 2},{8, 21, 1, 2},{8, 24, 1, 2},
+			{8, 25, 1, 2},{8, 27, 1, 2},{8, 28, 1, 2},{8, 30, 1, 2},{8, 35, 1, 2},{8, 45, 1, 2},{8, 49, 1, 2},{8, 56, 1, 2},{8, 60, 1, 2},{8, 81, 1, 2},{8, 125, 1, 2},{8, 243, 1, 2},{8, 343, 1, 2},
+			{8, 625, 1, 2},{8, 720, 1, 2},{8, 1080, 1, 2},{8, 1400, 1, 2},{8, 1440, 1, 2},{8, 1920, 1, 2},{8, 2160, 1, 2},{8, 3024, 1, 2},{8, 3500, 1, 2},
+			{8, 3840, 1, 2},{8, 4000, 1, 2},{8, 4050, 1, 2},{8, 4320, 1, 2},{8, 7000, 1, 2},{8, 7680, 1, 2},{8, 4050 * 3, 1, 2},{8, 7680 * 5, 1, 2}, {720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},{7680, 4320, 1, 2},
 			{8, (uint32_t)pow(3,10), 1, 2},	{8, (uint32_t)pow(3,11), 1, 2}, {8, (uint32_t)pow(3,12), 1, 2}, {8, (uint32_t)pow(3,13), 1, 2}, {8, (uint32_t)pow(3,14), 1, 2}, {8, (uint32_t)pow(3,15), 1, 2},
 			{8, (uint32_t)pow(5,5), 1, 2},	{8, (uint32_t)pow(5,6), 1, 2}, {8, (uint32_t)pow(5,7), 1, 2}, {8, (uint32_t)pow(5,8), 1, 2}, {8, (uint32_t)pow(5,9), 1, 2},
-			{3, 3, 3, 3},{5, 5, 5, 3},{6, 6, 6, 3},{9, 9, 9, 3},{10, 10, 10, 3},{12, 12, 12, 3},
-			{15, 15, 15, 3},{24, 24, 24, 3},{25, 25, 25, 3},{27, 27, 27, 3},{30, 30, 30, 3},{45, 45, 45, 3},{60, 60, 60, 3},{81, 81, 81, 3},
+			{8, (uint32_t)pow(7,4), 1, 2},{8, (uint32_t)pow(7,5), 1, 2},{8, (uint32_t)pow(7,6), 1, 2},{8, (uint32_t)pow(7,7), 1, 2},{8, (uint32_t)pow(7,8), 1, 2},
+			{3, 3, 3, 3},{5, 5, 5, 3},{6, 6, 6, 3},{7, 7, 7, 3},{9, 9, 9, 3},{10, 10, 10, 3},{12, 12, 12, 3},{14, 14, 14, 3},
+			{15, 15, 15, 3},{21, 21, 21, 3},{24, 24, 24, 3},{25, 25, 25, 3},{27, 27, 27, 3},{28, 28, 28, 3},{30, 30, 30, 3},{35, 35, 35, 3},{42, 42, 42, 3},{45, 45, 45, 3},{49, 49, 49, 3},{56, 56, 56, 3},{60, 60, 60, 3},{81, 81, 81, 3},
 			{125, 125, 125, 3},{243, 243, 243, 3}
 		};
 
@@ -4161,16 +4163,16 @@ int main(int argc, char* argv[])
 	if (findFlag(argv, argv + argc, "-h"))
 	{
 		//print help
-		printf("VkFFT v1.1.3 (14-01-2021). Author: Tolmachev Dmitrii\n");
+		printf("VkFFT v1.1.4 (15-01-2021). Author: Tolmachev Dmitrii\n");
 		printf("	-h: print help\n");
 		printf("	-devices: print the list of available GPU devices\n");
 		printf("	-d X: select GPU device (default 0)\n");
 		printf("	-o NAME: specify output file path\n");
 #ifdef USE_FFTW
 #ifdef USE_cuFFT
-		printf("	-vkfft X: launch VkFFT sample X (0-14):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n		10 - multiple buffer (4 by default) split version of benchmark 0\n		11 - VkFFT / cuFFT / FFTW C2C precision test in single precision\n		12 - VkFFT / cuFFT / FFTW C2C precision test in double precision\n		13 - VkFFT / cuFFT / FFTW C2C precision test in half precision\n		14 - VkFFT/FFTW C2C power 3/5 precision test in single precision\n");
+		printf("	-vkfft X: launch VkFFT sample X (0-14):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n		10 - multiple buffer (4 by default) split version of benchmark 0\n		11 - VkFFT / cuFFT / FFTW C2C precision test in single precision\n		12 - VkFFT / cuFFT / FFTW C2C precision test in double precision\n		13 - VkFFT / cuFFT / FFTW C2C precision test in half precision\n		14 - VkFFT/FFTW C2C power 3/5/7 precision test in single precision\n");
 #else
-		printf("	-vkfft X: launch VkFFT sample X (0-14):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n		10 - multiple buffer (4 by default) split version of benchmark 0\n		11 - VkFFT / FFTW C2C precision test in single precision\n		12 - VkFFT / FFTW C2C precision test in double precision\n		13 - VkFFT / FFTW C2C precision test in half precision\n		14 - VkFFT/FFTW C2C power 3/5 precision test in single precision\n");
+		printf("	-vkfft X: launch VkFFT sample X (0-14):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n		10 - multiple buffer (4 by default) split version of benchmark 0\n		11 - VkFFT / FFTW C2C precision test in single precision\n		12 - VkFFT / FFTW C2C precision test in double precision\n		13 - VkFFT / FFTW C2C precision test in half precision\n		14 - VkFFT/FFTW C2C power 3/5/7 precision test in single precision\n");
 #endif
 #else
 		printf("	-vkfft X: launch VkFFT sample X (0-10):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n		10 - multiple buffer (4 by default) split version of benchmark 0\n");
