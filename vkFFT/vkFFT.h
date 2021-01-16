@@ -5229,7 +5229,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		if (axis->groupedBatch < maxBatchCoalesced) axis->groupedBatch = maxBatchCoalesced;
 		axis->groupedBatch = (axis->groupedBatch / maxBatchCoalesced) * maxBatchCoalesced;
-		if ((app->configuration.halfThreads) && (axis->groupedBatch * axis->specializationConstants.fftDim * complexSize > app->configuration.sharedMemorySize))
+		if ((app->configuration.halfThreads) && (axis->groupedBatch * axis->specializationConstants.fftDim * complexSize >= app->configuration.sharedMemorySize))
 			axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 
 		if (axis->groupedBatch > app->configuration.warpSize) axis->groupedBatch = (axis->groupedBatch / app->configuration.warpSize) * app->configuration.warpSize;
@@ -6124,7 +6124,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 		}
 
-		if ((app->configuration.halfThreads) && (axis->groupedBatch * axis->specializationConstants.fftDim * complexSize > app->configuration.sharedMemorySize))
+		if ((app->configuration.halfThreads) && (axis->groupedBatch * axis->specializationConstants.fftDim * complexSize >= app->configuration.sharedMemorySize))
 			axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 
 		if (axis->groupedBatch > app->configuration.warpSize) axis->groupedBatch = (axis->groupedBatch / app->configuration.warpSize) * app->configuration.warpSize;
