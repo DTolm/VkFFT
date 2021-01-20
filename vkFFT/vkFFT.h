@@ -897,7 +897,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc.LUT)
-						sprintf(output + strlen(output), "	w = twiddleLUT[LUTId+%d];\n\n", (radix-1-i)*stageSize);
+						sprintf(output + strlen(output), "	w = twiddleLUT[LUTId+%d];\n\n", (radix - 1 - i) * stageSize);
 					else {
 						if (!strcmp(floatType, "float"))
 							sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
@@ -982,7 +982,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc.LUT)
-						sprintf(output + strlen(output), "	w = twiddleLUT[LUTId+%d];\n\n", (radix - 1 - i)*stageSize);
+						sprintf(output + strlen(output), "	w = twiddleLUT[LUTId+%d];\n\n", (radix - 1 - i) * stageSize);
 					else {
 						if (!strcmp(floatType, "float"))
 							sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
@@ -1014,7 +1014,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	temp_%d = temp_%d - temp_%d;\n\
 	temp_%d = temp_%d - temp_%d;\n\
 	temp_%d = temp_%d - temp_%d;\n", regID[0], regID[1], regID[5], regID[2], regID[5], regID[3], regID[4], regID[3], regID[1]);
-			if(stageAngle<0)
+			if (stageAngle < 0)
 				sprintf(output + strlen(output), "\
 	loc_1 *= -1.16666666666666651863693004997913;\n\
 	loc_2 *= 0.79015646852540022404554065360571;\n\
@@ -1314,7 +1314,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (sc.performZeropaddingFull[1])
 						if (sc.fft_zeropad_left_full[1] < sc.fft_zeropad_right_full[1])
 							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc.fft_zeropad_left_full[1], idY, sc.fft_zeropad_right_full[1]);
-					}
+				}
 				else {
 					char idY[100] = "";
 					if (sc.performWorkGroupShift[1])//for support axes y is along x workgroup
@@ -1324,7 +1324,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (sc.performZeropaddingFull[1])
 						if (sc.fft_zeropad_left_full[1] < sc.fft_zeropad_right_full[1])
 							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc.fft_zeropad_left_full[1], idY, sc.fft_zeropad_right_full[1]);
-					}
+				}
 				break;
 			}
 			}
@@ -1387,7 +1387,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						sprintf(idX, "gl_GlobalInvocationID.x");
 					if (sc.performZeropaddingFull[0])
 						if (sc.fft_zeropad_left_full[0] < sc.fft_zeropad_right_full[0])
-						sprintf(output + strlen(output), "		}\n");
+							sprintf(output + strlen(output), "		}\n");
 
 				}
 				break;
@@ -1411,7 +1411,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (sc.performZeropaddingFull[1])
 						if (sc.fft_zeropad_left_full[1] < sc.fft_zeropad_right_full[1])
 							sprintf(output + strlen(output), "		}\n");
-					}
+				}
 				else {
 					char idY[100] = "";
 					if (sc.performWorkGroupShift[1])//for support axes y is along x workgroup
@@ -1421,7 +1421,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (sc.performZeropaddingFull[1])
 						if (sc.fft_zeropad_left_full[1] < sc.fft_zeropad_right_full[1])
 							sprintf(output + strlen(output), "		}\n");
-					}
+				}
 				break;
 			}
 			}
@@ -1685,7 +1685,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					sprintf(output + strlen(output), "		}\n");
 					sprintf(output + strlen(output), "		else\n");
-					sprintf(output + strlen(output), "			temp_%d = %s(0,0);\n", i, vecType);
+					if (sc.readToRegisters) 
+						sprintf(output + strlen(output), "			temp_%d = %s(0,0);\n", i, vecType);
+					else
+						sprintf(output + strlen(output), "			sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x]=%s(0,0);\n", i* sc.localSize[1], vecType);
 				}
 
 			}
@@ -1742,7 +1745,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							sprintf(output + strlen(output), "			sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x]=%sinputBlocks[indexInput(inoutID) / %d].inputs[indexInput(inoutID) %% %d]%s;\n", i * sc.localSize[1], convTypeLeft, sc.inputBufferBlockSize, sc.inputBufferBlockSize, convTypeRight);
 					}
 					sprintf(output + strlen(output), "		else\n");
-					sprintf(output + strlen(output), "			temp_%d = %s(0,0);\n", i, vecType);
+					if (sc.readToRegisters)
+						sprintf(output + strlen(output), "			temp_%d = %s(0,0);\n", i, vecType);
+					else
+						sprintf(output + strlen(output), "			sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x]=%s(0,0);\n", i * sc.localSize[1], vecType);
+
 				}
 			}
 			else {
@@ -4475,7 +4482,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		//appendLicense(output);
 		sc.disableThreadsStart = (char*)malloc(sizeof(char) * 200);
 		sc.disableThreadsEnd = (char*)malloc(sizeof(char) * 2);
-		sprintf(sc.disableThreadsStart,"");
+		sprintf(sc.disableThreadsStart, "");
 		sprintf(sc.disableThreadsEnd, "");
 		appendVersion(output);
 		appendExtensions(output, floatType, floatTypeInputMemory, floatTypeOutputMemory, floatTypeKernelMemory);
@@ -4537,19 +4544,19 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					stageSizeSum += stageSize;
 					break;
 				case 3:
-					stageSizeSum += stageSize*2;
+					stageSizeSum += stageSize * 2;
 					break;
 				case 4:
-					stageSizeSum += stageSize*2;
+					stageSizeSum += stageSize * 2;
 					break;
 				case 5:
-					stageSizeSum += stageSize*4;
+					stageSizeSum += stageSize * 4;
 					break;
 				case 7:
-					stageSizeSum += stageSize*6;
+					stageSizeSum += stageSize * 6;
 					break;
 				case 8:
-					stageSizeSum += stageSize*3;
+					stageSizeSum += stageSize * 3;
 					break;
 				}
 				appendRadixShuffle(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc.stageRadix[i], type);
@@ -4997,7 +5004,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (supportAxis)
 			FFTPlan->numSupportAxisUploads[axis_id - 1] = numPasses;
 		else
-		FFTPlan->numAxisUploads[axis_id] = numPasses;
+			FFTPlan->numAxisUploads[axis_id] = numPasses;
 		for (uint32_t k = 0; k < numPasses; k++) {
 			tempSequence = locAxisSplit[k];
 			uint32_t loc_multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };//split the smaller sequence
@@ -5717,34 +5724,34 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->specializationConstants.size[2] = app->configuration.size[2];
 			axis->specializationConstants.axis_id = axis_id;
 			axis->specializationConstants.axis_upload_id = axis_upload_id;
-				for (uint32_t i = 0; i < 3; i++) {
+			for (uint32_t i = 0; i < 3; i++) {
 				axis->specializationConstants.frequencyZeropadding = app->configuration.frequencyZeroPadding;
 				axis->specializationConstants.performZeropaddingFull[i] = app->configuration.performZeropadding[i]; // don't read if input is zeropadded (0 - off, 1 - on)
 				axis->specializationConstants.fft_zeropad_left_full[i] = app->configuration.fft_zeropad_left[i];
 				axis->specializationConstants.fft_zeropad_right_full[i] = app->configuration.fft_zeropad_right[i];
-				}
+			}
 			if ((inverse)) {
 				if ((app->configuration.frequencyZeroPadding) && (((!app->configuration.reorderFourStep) && (axis_upload_id == 0)) || ((app->configuration.reorderFourStep) && (axis_upload_id == FFTPlan->numSupportAxisUploads[axis_id - 1] - 1)))) {
 					axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
 					axis->specializationConstants.fft_zeropad_left_read[axis_id] = app->configuration.fft_zeropad_left[axis_id];
 					axis->specializationConstants.fft_zeropad_right_read[axis_id] = app->configuration.fft_zeropad_right[axis_id];
-			}
+				}
 				else
 					axis->specializationConstants.zeropad[0] = 0;
 				if ((!app->configuration.frequencyZeroPadding) && (((!app->configuration.reorderFourStep) && (axis_upload_id == FFTPlan->numSupportAxisUploads[axis_id - 1] - 1)) || ((app->configuration.reorderFourStep) && (axis_upload_id == 0)))) {
 					axis->specializationConstants.zeropad[1] = app->configuration.performZeropadding[axis_id];
 					axis->specializationConstants.fft_zeropad_left_write[axis_id] = app->configuration.fft_zeropad_left[axis_id];
 					axis->specializationConstants.fft_zeropad_right_write[axis_id] = app->configuration.fft_zeropad_right[axis_id];
-					}
+				}
 				else
 					axis->specializationConstants.zeropad[1] = 0;
-				}
-				else {
+			}
+			else {
 				if ((!app->configuration.frequencyZeroPadding) && (axis_upload_id == FFTPlan->numSupportAxisUploads[axis_id - 1] - 1)) {
 					axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
 					axis->specializationConstants.fft_zeropad_left_read[axis_id] = app->configuration.fft_zeropad_left[axis_id];
 					axis->specializationConstants.fft_zeropad_right_read[axis_id] = app->configuration.fft_zeropad_right[axis_id];
-					}
+				}
 				else
 					axis->specializationConstants.zeropad[0] = 0;
 				if (((app->configuration.frequencyZeroPadding) && (axis_upload_id == 0)) || ((app->configuration.FFTdim - 1 == axis_id) && (axis_upload_id == 0) && (app->configuration.performConvolution))) {
@@ -5902,16 +5909,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				/* .maxDualSourceDrawBuffersEXT = */ 1,
 
 				/* .limits = */ {
-				/* .nonInductiveForLoops = */ 1,
-				/* .whileLoops = */ 1,
-				/* .doWhileLoops = */ 1,
-				/* .generalUniformIndexing = */ 1,
-				/* .generalAttributeMatrixVectorIndexing = */ 1,
-				/* .generalVaryingIndexing = */ 1,
-				/* .generalSamplerIndexing = */ 1,
-				/* .generalVariableIndexing = */ 1,
-				/* .generalConstantMatrixVectorIndexing = */ 1,
-			} };
+					/* .nonInductiveForLoops = */ 1,
+					/* .whileLoops = */ 1,
+					/* .doWhileLoops = */ 1,
+					/* .generalUniformIndexing = */ 1,
+					/* .generalAttributeMatrixVectorIndexing = */ 1,
+					/* .generalVaryingIndexing = */ 1,
+					/* .generalSamplerIndexing = */ 1,
+					/* .generalVariableIndexing = */ 1,
+					/* .generalConstantMatrixVectorIndexing = */ 1,
+				} };
 			glslang_target_client_version_t client_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_VULKAN_1_1 : GLSLANG_TARGET_VULKAN_1_0;
 			glslang_target_language_version_t target_language_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_SPV_1_3 : GLSLANG_TARGET_SPV_1_0;
 			const glslang_input_t input =
@@ -6172,11 +6179,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							for (uint32_t j = 0; j < localStageSize; j++) {
 								if (inverse) {
 									tempLUT[2 * (j + localStageSum)] = cos(-j * double_PI / localStageSize / pow(2, k));
-									tempLUT[2 * (j + localStageSum) + 1] = sin(-j * double_PI / localStageSize/ pow(2, k));
+									tempLUT[2 * (j + localStageSum) + 1] = sin(-j * double_PI / localStageSize / pow(2, k));
 								}
 								else {
-									tempLUT[2 * (j + localStageSum)] = cos(j * double_PI / localStageSize/ pow(2, k));
-									tempLUT[2 * (j + localStageSum) + 1] = sin(j * double_PI / localStageSize/ pow(2, k));
+									tempLUT[2 * (j + localStageSum)] = cos(j * double_PI / localStageSize / pow(2, k));
+									tempLUT[2 * (j + localStageSum) + 1] = sin(j * double_PI / localStageSize / pow(2, k));
 								}
 							}
 							localStageSum += localStageSize;
@@ -6200,7 +6207,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						localStageSize *= axis->specializationConstants.stageRadix[i];
 					}
 				}
-				
+
 				if (axis_upload_id > 0)
 					for (uint32_t i = 0; i < axis->specializationConstants.stageStartSize; i++) {
 						for (uint32_t j = 0; j < axis->specializationConstants.fftDim; j++) {
@@ -6569,7 +6576,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			|| ((axis_id == 0) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)))
 			) ||
 			((app->configuration.numberKernels > 1) && (
-			(inverse)
+				(inverse)
 				|| (axis_id == app->configuration.FFTdim - 1)))
 			) {
 			uint64_t totalSize = 0;
@@ -6782,7 +6789,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						|| ((axis_id == 0) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)))
 						) ||
 						((app->configuration.numberKernels > 1) && (
-						(inverse)
+							(inverse)
 							|| (axis_id == app->configuration.FFTdim - 1)))
 						) {
 						uint32_t bufferId = 0;
@@ -7185,34 +7192,34 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->specializationConstants.axis_id = axis_id;
 			axis->specializationConstants.axis_upload_id = axis_upload_id;
 
-				for (uint32_t i = 0; i < 3; i++) {
+			for (uint32_t i = 0; i < 3; i++) {
 				axis->specializationConstants.frequencyZeropadding = app->configuration.frequencyZeroPadding;
 				axis->specializationConstants.performZeropaddingFull[i] = app->configuration.performZeropadding[i]; // don't read if input is zeropadded (0 - off, 1 - on)
 				axis->specializationConstants.fft_zeropad_left_full[i] = app->configuration.fft_zeropad_left[i];
 				axis->specializationConstants.fft_zeropad_right_full[i] = app->configuration.fft_zeropad_right[i];
-				}
+			}
 			if ((inverse)) {
 				if ((app->configuration.frequencyZeroPadding) && ((!app->configuration.reorderFourStep) && (axis_upload_id == 0)) || ((app->configuration.reorderFourStep) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1))) {
 					axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
 					axis->specializationConstants.fft_zeropad_left_read[axis_id] = app->configuration.fft_zeropad_left[axis_id];
 					axis->specializationConstants.fft_zeropad_right_read[axis_id] = app->configuration.fft_zeropad_right[axis_id];
-			}
+				}
 				else
 					axis->specializationConstants.zeropad[0] = 0;
 				if ((!app->configuration.frequencyZeroPadding) && (((!app->configuration.reorderFourStep) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) || ((app->configuration.reorderFourStep) && (axis_upload_id == 0)))) {
 					axis->specializationConstants.zeropad[1] = app->configuration.performZeropadding[axis_id];
 					axis->specializationConstants.fft_zeropad_left_write[axis_id] = app->configuration.fft_zeropad_left[axis_id];
 					axis->specializationConstants.fft_zeropad_right_write[axis_id] = app->configuration.fft_zeropad_right[axis_id];
-					}
+				}
 				else
 					axis->specializationConstants.zeropad[1] = 0;
-				}
-				else {
+			}
+			else {
 				if ((!app->configuration.frequencyZeroPadding) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) {
 					axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
 					axis->specializationConstants.fft_zeropad_left_read[axis_id] = app->configuration.fft_zeropad_left[axis_id];
 					axis->specializationConstants.fft_zeropad_right_read[axis_id] = app->configuration.fft_zeropad_right[axis_id];
-					}
+				}
 				else
 					axis->specializationConstants.zeropad[0] = 0;
 				if (((app->configuration.frequencyZeroPadding) && (axis_upload_id == 0)) || (((app->configuration.FFTdim - 1 == axis_id) && (axis_upload_id == 0) && (app->configuration.performConvolution)))) {
@@ -7380,16 +7387,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				/* .maxDualSourceDrawBuffersEXT = */ 1,
 
 				/* .limits = */ {
-				/* .nonInductiveForLoops = */ 1,
-				/* .whileLoops = */ 1,
-				/* .doWhileLoops = */ 1,
-				/* .generalUniformIndexing = */ 1,
-				/* .generalAttributeMatrixVectorIndexing = */ 1,
-				/* .generalVaryingIndexing = */ 1,
-				/* .generalSamplerIndexing = */ 1,
-				/* .generalVariableIndexing = */ 1,
-				/* .generalConstantMatrixVectorIndexing = */ 1,
-			} };
+					/* .nonInductiveForLoops = */ 1,
+					/* .whileLoops = */ 1,
+					/* .doWhileLoops = */ 1,
+					/* .generalUniformIndexing = */ 1,
+					/* .generalAttributeMatrixVectorIndexing = */ 1,
+					/* .generalVaryingIndexing = */ 1,
+					/* .generalSamplerIndexing = */ 1,
+					/* .generalVariableIndexing = */ 1,
+					/* .generalConstantMatrixVectorIndexing = */ 1,
+				} };
 			glslang_target_client_version_t client_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_VULKAN_1_1 : GLSLANG_TARGET_VULKAN_1_0;
 			glslang_target_language_version_t target_language_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_SPV_1_3 : GLSLANG_TARGET_SPV_1_0;
 			const glslang_input_t input =
