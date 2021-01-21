@@ -26,6 +26,7 @@ extern "C" {
 		uint32_t inputBufferStride[3];
 		uint32_t outputBufferStride[3];
 		uint32_t maxComputeWorkGroupCount[3]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
+		uint32_t maxComputeWorkGroupSize[3]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
 		uint32_t coordinateFeatures; // C - coordinate, or dimension of features vector. In matrix convolution - size of vector
 		uint32_t matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
 
@@ -92,7 +93,7 @@ extern "C" {
 		uint32_t halfThreads;
 	} VkFFTConfiguration;
 
-	static VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {1,1,1}, {1,1,1}, {1,1,1}, {65535,65535,65535},1,1,1,1,1,8,0,{0,0,0},{0,0,0},{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 0, 0, 0, 32768, 32768, 32, 1, 1, 0, 1,"shaders/", 32, 0,0,0,0,0, 1,1,1,1,1, 0,0,0,0,0, 0,0,0,0,0,0, 0 };
+	static VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {1,1,1}, {1,1,1}, {1,1,1}, {65535,65535,65535},{1024,1024,64}, 1,1,1,1,1,8,0,{0,0,0},{0,0,0},{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 0, 0, 0, 32768, 32768, 32, 1, 1, 0, 1,"shaders/", 32, 0,0,0,0,0, 1,1,1,1,1, 0,0,0,0,0, 0,0,0,0,0,0, 0 };
 
 	typedef struct {
 		uint32_t size[3];
@@ -3654,7 +3655,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								else
 									sprintf(output + strlen(output), "			outputBlocks[indexOutput(inoutID%s%s) / %d].outputs[indexOutput(inoutID%s%s) %% %d] = %stemp_%d%s;\n", requestCoordinate, requestBatch, sc.outputBufferBlockSize, requestCoordinate, requestBatch, sc.outputBufferBlockSize, convTypeLeft, i, convTypeRight);
 							*/
-							sprintf(output + strlen(output), "	}n");
+							sprintf(output + strlen(output), "	}");
 						}
 					}
 				}
@@ -5639,6 +5640,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (axis_upload_id == 0) {
 					axis->axisBlock[0] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 					if (axis->axisBlock[0] > maxThreadNum) axis->axisBlock[0] = maxThreadNum;
+					if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
+
 					axis->axisBlock[1] = 1;
 					axis->axisBlock[2] = 1;
 					axis->axisBlock[3] = axis->specializationConstants.fftDim;
@@ -5647,7 +5650,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					axis->axisBlock[1] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 
 					axis->axisBlock[0] = (axis->specializationConstants.stageStartSize > axis->groupedBatch) ? axis->groupedBatch : axis->specializationConstants.stageStartSize;
-
+					if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 					axis->axisBlock[2] = 1;
 					axis->axisBlock[3] = axis->specializationConstants.fftDim;
 				}
@@ -5656,6 +5659,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				axis->axisBlock[1] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 
 				axis->axisBlock[0] = (app->configuration.size[1] > axis->groupedBatch) ? axis->groupedBatch : app->configuration.size[1];
+				if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
+
 				/*if (axis->axisBlock[0] * axis->axisBlock[1] < 64)
 					if (app->configuration.size[1] > 64 / axis->axisBlock[1])
 						axis->axisBlock[0] = 64 / axis->axisBlock[1];
@@ -6912,12 +6917,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (axis_upload_id == 0) {
 						axis->axisBlock[0] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 						if (axis->axisBlock[0] > maxThreadNum) axis->axisBlock[0] = maxThreadNum;
+						if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 						if (app->configuration.reorderFourStep && (FFTPlan->numAxisUploads[axis_id] > 1))
 							axis->axisBlock[1] = axis->groupedBatch;
 						else {
 							axis->axisBlock[1] = (axis->axisBlock[0] < app->configuration.warpSize) ? app->configuration.warpSize / axis->axisBlock[0] : 1;
 							if (app->configuration.size[1] < axis->axisBlock[1]) axis->axisBlock[1] = app->configuration.size[1];
 						}
+						if (axis->axisBlock[1] > app->configuration.maxComputeWorkGroupSize[1]) axis->axisBlock[1] = app->configuration.maxComputeWorkGroupSize[1];
 						axis->axisBlock[2] = 1;
 						axis->axisBlock[3] = axis->specializationConstants.fftDim;
 					}
@@ -6925,7 +6932,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						axis->axisBlock[1] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 
 						axis->axisBlock[0] = (axis->specializationConstants.stageStartSize > axis->groupedBatch) ? axis->groupedBatch : axis->specializationConstants.stageStartSize;
-
+						if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 						axis->axisBlock[2] = 1;
 						axis->axisBlock[3] = axis->specializationConstants.fftDim;
 					}
@@ -6963,6 +6970,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							else
 								axis->axisBlock[0] = app->configuration.size[0];*/
 					}
+					if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 
 					axis->axisBlock[2] = 1;
 					axis->axisBlock[3] = axis->specializationConstants.fftDim;
@@ -7000,6 +7008,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							else
 								axis->axisBlock[0] = app->configuration.size[0];*/
 					}
+					if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
+
 					axis->axisBlock[2] = 1;
 					axis->axisBlock[3] = axis->specializationConstants.fftDim;
 				}
@@ -7009,13 +7019,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (axis_upload_id == 0) {
 						axis->axisBlock[0] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 						if (axis->axisBlock[0] > maxThreadNum) axis->axisBlock[0] = maxThreadNum;
-
+						if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 						if (app->configuration.reorderFourStep && (FFTPlan->numAxisUploads[axis_id] > 1))
 							axis->axisBlock[1] = axis->groupedBatch;
 						else {
 							axis->axisBlock[1] = (axis->axisBlock[0] < app->configuration.warpSize) ? app->configuration.warpSize / axis->axisBlock[0] : 1;
 							if (app->configuration.size[1] < axis->axisBlock[1]) axis->axisBlock[1] = app->configuration.size[1];
 						}
+						if (axis->axisBlock[1] > app->configuration.maxComputeWorkGroupSize[1]) axis->axisBlock[1] = app->configuration.maxComputeWorkGroupSize[1];
+
 						axis->axisBlock[2] = 1;
 						axis->axisBlock[3] = axis->specializationConstants.fftDim;
 					}
@@ -7023,7 +7035,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						axis->axisBlock[1] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread : 1;
 
 						axis->axisBlock[0] = (axis->specializationConstants.stageStartSize > axis->groupedBatch) ? axis->groupedBatch : axis->specializationConstants.stageStartSize;
-
+						if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 						axis->axisBlock[2] = 1;
 						axis->axisBlock[3] = axis->specializationConstants.fftDim;
 					}
@@ -7061,6 +7073,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							else
 								axis->axisBlock[0] = app->configuration.size[0];*/
 					}
+					if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 					axis->axisBlock[2] = 1;
 					axis->axisBlock[3] = axis->specializationConstants.fftDim;
 
@@ -7098,6 +7111,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							else
 								axis->axisBlock[0] = app->configuration.size[0];*/
 					}
+					if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 					axis->axisBlock[2] = 1;
 					axis->axisBlock[3] = axis->specializationConstants.fftDim;
 
@@ -7530,6 +7544,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.maxComputeWorkGroupCount[0] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[0];
 		app->configuration.maxComputeWorkGroupCount[1] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[1];
 		app->configuration.maxComputeWorkGroupCount[2] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[2];
+		app->configuration.maxComputeWorkGroupSize[0] = physicalDeviceProperties.limits.maxComputeWorkGroupSize[0];
+		app->configuration.maxComputeWorkGroupSize[1] = physicalDeviceProperties.limits.maxComputeWorkGroupSize[1];
+		app->configuration.maxComputeWorkGroupSize[2] = physicalDeviceProperties.limits.maxComputeWorkGroupSize[2];
 		if ((physicalDeviceProperties.vendorID == 0x8086) && (!app->configuration.doublePrecision)) app->configuration.halfThreads = 1;
 		//	if ((physicalDeviceProperties.vendorID == 0x8086) && (!app->configuration.doublePrecision)) app->configuration.sharedMemorySize /= 2;//Temporary measure, until L1 overutilization is enabled
 		app->configuration.sharedMemorySize = physicalDeviceProperties.limits.maxComputeSharedMemorySize;
