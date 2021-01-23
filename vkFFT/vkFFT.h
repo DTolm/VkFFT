@@ -62,7 +62,6 @@ extern "C" {
 		uint32_t registerBoost4Step; //specify if register file overutilization should be used in big sequences (>2^14), same value or lower as above. Default 1, max 4
 		uint32_t swapTo3Stage4Step; //specify at which power of 2 to switch from 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled. Must be at least 17
 		uint32_t performHalfBandwidthBoost;//try to reduce coalsesced number by a factor of 2 to get bigger sequence in one upload
-		char shaderPath[256]; //path to shaders, can be selected automatically in CMake
 		uint32_t coalescedMemory;//in bits, for Nvidia compute capability >=6.0 is equal to 32, <6.0 and Intel is equal 128. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 		VkDevice* device;
 		VkQueue* queue;
@@ -93,7 +92,7 @@ extern "C" {
 		uint32_t halfThreads;
 	} VkFFTConfiguration;
 
-	static VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {1,1,1}, {1,1,1}, {1,1,1}, {65535,65535,65535},{1024,1024,64}, 1,1,1,1,1,8,0,{0,0,0},{0,0,0},{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 0, 0, 0, 32768, 32768, 32, 1, 1, 0, 1,"shaders/", 32, 0,0,0,0,0, 1,1,1,1,1, 0,0,0,0,0, 0,0,0,0,0,0, 0 };
+	static VkFFTConfiguration defaultVkFFTConfiguration = { {1,1,1}, {1,1,1}, {1,1,1}, {1,1,1}, {65535,65535,65535},{1024,1024,64}, 1,1,1,1,1,8,0,{0,0,0},{0,0,0},{0,0,0}, {0,0},0,0,0,0,0,0,0,0,0, 0, 0, 0, 0, 32768, 32768, 32, 1, 1, 0, 1, 32, 0,0,0,0,0, 1,1,1,1,1, 0,0,0,0,0, 0,0,0,0,0,0, 0 };
 
 	typedef struct {
 		uint32_t size[3];
@@ -181,30 +180,19 @@ extern "C" {
 		VkBuffer bufferLUT;
 		VkDeviceMemory bufferLUTDeviceMemory;
 	} VkFFTAxis;
-	typedef struct {
-		uint32_t transposeBlock[3];
-		VkFFTTransposeSpecializationConstantsLayout specializationConstants;
-		VkFFTPushConstantsLayout pushConstants;
-		VkDescriptorPool descriptorPool;
-		VkDescriptorSetLayout descriptorSetLayout;
-		VkDescriptorSet descriptorSet;
-		VkPipelineLayout pipelineLayout;
-		VkPipeline pipeline;
-	} VkFFTTranspose;
+
 	typedef struct {
 		uint32_t numAxisUploads[3];
-		uint32_t axisSplit[3][5];
+		uint32_t axisSplit[3][4];
 		uint32_t numSupportAxisUploads[2];
-		uint32_t supportAxisSplit[2][5];
-		VkFFTAxis axes[3][5];
-		VkFFTAxis supportAxes[2][5];//Nx/2+1 for r2c/c2r
-		VkFFTTranspose transpose[2];
-
+		uint32_t supportAxisSplit[2][4];
+		VkFFTAxis axes[3][4];
+		VkFFTAxis supportAxes[2][4];//Nx/2+1 for r2c/c2r
 	} VkFFTPlan;
 	typedef struct {
 		VkFFTConfiguration configuration;
-		VkFFTPlan localFFTPlan;
-		VkFFTPlan localFFTPlan_inverse_convolution; //additional inverse plan for convolution.
+		VkFFTPlan* localFFTPlan;
+		VkFFTPlan* localFFTPlan_inverse_convolution; //additional inverse plan for convolution.
 	} VkFFTApplication;
 	static VkFFTApplication defaultVkFFTApplication = { {}, {}, {} };
 
@@ -1506,7 +1494,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(requestBatch, ", 0");//if one buffer - multiple kernel convolution
 			}
 		}
-
+		appendZeropadStart(output, sc);
 		switch (readType) {
 		case 0://single_c2c
 		{
@@ -2071,7 +2059,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							sprintf(output + strlen(output), "		if(gl_GlobalInvocationID.y%s < %d){", shiftY, (uint32_t)ceil(sc.size[1] / 2.0));
 						if ((ceil(sc.min_registers_per_thread / 2.0) != sc.min_registers_per_thread / 2) && (i == (ceil(sc.min_registers_per_thread / 2.0) - 1)))
 							sprintf(output + strlen(output), "if (gl_LocalInvocationID.x < %d){\n", sc.fftDim / 2 - i * sc.localSize[0]);
-						
+
 						sprintf(output + strlen(output), "		inoutID = gl_LocalInvocationID.x+%d;\n", i * sc.localSize[0]);
 
 						sprintf(output + strlen(output), "		if((inoutID < %d)||(inoutID >= %d)){\n", sc.fft_zeropad_left_read[sc.axis_id], sc.fft_zeropad_right_read[sc.axis_id]);
@@ -2200,6 +2188,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			break;
 		}
 		}
+		appendZeropadEnd(output, sc);
 	}
 
 	static inline void appendReorder4StepRead(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t reorderType) {
@@ -2222,6 +2211,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else
 					sc.readToRegisters = 1;
+				appendZeropadStart(output, sc);
 				sprintf(output + strlen(output), sc.disableThreadsStart);
 				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
@@ -2243,6 +2233,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				sprintf(output + strlen(output), sc.disableThreadsEnd);
+				appendZeropadEnd(output, sc);
 			}
 
 			break;
@@ -2258,6 +2249,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else
 					sc.readToRegisters = 1;
+				appendZeropadStart(output, sc);
 				sprintf(output + strlen(output), sc.disableThreadsStart);
 				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
@@ -2280,6 +2272,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				sprintf(output + strlen(output), sc.disableThreadsEnd);
+				appendZeropadEnd(output, sc);
 			}
 			//appendBarrierVkFFT(output, 1);
 			break;
@@ -2307,6 +2300,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else
 					sc.writeFromRegisters = 1;
+				appendZeropadStart(output, sc);
 				sprintf(output + strlen(output), sc.disableThreadsStart);
 				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
@@ -2336,6 +2330,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				sprintf(output + strlen(output), sc.disableThreadsEnd);
+				appendZeropadEnd(output, sc);
 			}
 			break;
 		}
@@ -2350,6 +2345,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else
 					sc.writeFromRegisters = 1;
+				appendZeropadStart(output, sc);
 				sprintf(output + strlen(output), sc.disableThreadsStart);
 				for (uint32_t i = 0; i < sc.fftDim / sc.localSize[1]; i++) {
 					if (sc.LUT)
@@ -2379,6 +2375,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				sprintf(output + strlen(output), sc.disableThreadsEnd);
+				appendZeropadEnd(output, sc);
 			}
 			//appendBarrierVkFFT(output, 1);
 			break;
@@ -2406,7 +2403,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t logicalGroupSize = sc.fftDim / logicalRegistersPerThread;
 		if ((sc.localSize[0] * logicalRegistersPerThread > sc.fftDim) || (stageSize > 1) || (sc.localSize[1] > 1) || ((sc.performR2C) && (sc.inverse)) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle < 0)))
 			appendBarrierVkFFT(output, 1);
-
+		appendZeropadStart(output, sc);
 		sprintf(output + strlen(output), sc.disableThreadsStart);
 
 		if (sc.localSize[0] * logicalRegistersPerThread > sc.fftDim)
@@ -2453,6 +2450,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (sc.localSize[0] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "		}\n");
 		sprintf(output + strlen(output), sc.disableThreadsEnd);
+		appendZeropadEnd(output, sc);
 
 	}
 	static inline void appendRadixStageNonStridedBoost2x(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix) {
@@ -2644,7 +2642,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t logicalGroupSize = sc.fftDim / logicalRegistersPerThread;
 		if ((sc.localSize[1] * logicalRegistersPerThread > sc.fftDim) || (stageSize > 1) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle < 0)))
 			appendBarrierVkFFT(output, 1);
-
+		appendZeropadStart(output, sc);
 		sprintf(output + strlen(output), sc.disableThreadsStart);
 		if (sc.localSize[1] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "\
@@ -2679,6 +2677,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (sc.localSize[1] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "		}\n");
 		sprintf(output + strlen(output), sc.disableThreadsEnd);
+		appendZeropadEnd(output, sc);
 	}
 	static inline void appendRadixStage(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix, uint32_t shuffleType) {
 		switch (shuffleType) {
@@ -2925,6 +2924,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t logicalGroupSize = sc.fftDim / logicalRegistersPerThread;
 		if ((sc.localSize[0] * logicalRegistersPerThread > sc.fftDim) || (stageSize < sc.fftDim / stageRadix) || ((sc.reorderFourStep) && (sc.fftDim < sc.fft_dim_full) && (sc.localSize[1] > 1)) || (sc.localSize[1] > 1) || ((sc.performR2C) && (!sc.inverse) && (sc.axis_id == 0)) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle > 0)))
 			appendBarrierVkFFT(output, 1);
+		appendZeropadStart(output, sc);
 		sprintf(output + strlen(output), sc.disableThreadsStart);
 		if (sc.localSize[0] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "\
@@ -2961,6 +2961,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (sc.localSize[0] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "	}\n");
 		sprintf(output + strlen(output), sc.disableThreadsEnd);
+		appendZeropadEnd(output, sc);
 
 	}
 	static inline void appendRadixShuffleNonStridedBoost2x(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix) {
@@ -3098,6 +3099,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t logicalGroupSize = sc.fftDim / logicalRegistersPerThread;
 		if ((sc.localSize[1] * logicalRegistersPerThread > sc.fftDim) || (stageSize < sc.fftDim / stageRadix) || ((sc.convolutionStep) && ((sc.matrixConvolution > 1) || (sc.numKernels > 1)) && (stageAngle > 0)))
 			appendBarrierVkFFT(output, 2);
+		appendZeropadStart(output, sc);
 		sprintf(output + strlen(output), sc.disableThreadsStart);
 		if (((sc.inverse) && (sc.normalize)) || ((sc.convolutionStep) && (stageAngle < 0)))
 			sprintf(stageNormalization, " / %d", stageRadix);
@@ -3128,6 +3130,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (sc.localSize[1] * logicalRegistersPerThread > sc.fftDim)
 			sprintf(output + strlen(output), "	}\n");
 		sprintf(output + strlen(output), sc.disableThreadsEnd);
+		appendZeropadEnd(output, sc);
 	}
 	static inline void appendRadixShuffle(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix, uint32_t shuffleType) {
 		switch (shuffleType) {
@@ -3159,6 +3162,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		case 0://single_c2c
 		{
 			appendBarrierVkFFT(output, 1);
+			appendZeropadStart(output, sc);
 			sprintf(output + strlen(output), sc.disableThreadsStart);
 			if (sc.matrixConvolution == 1) {
 				sprintf(output + strlen(output), "\
@@ -3203,11 +3207,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(output + strlen(output), "		}\n");
 			}
 			sprintf(output + strlen(output), sc.disableThreadsEnd);
+			appendZeropadEnd(output, sc);
 			break;
 		}
 		case 1://grouped_c2c
 		{
 			appendBarrierVkFFT(output, 1);
+			appendZeropadStart(output, sc);
 			sprintf(output + strlen(output), sc.disableThreadsStart);
 			if (sc.matrixConvolution == 1) {
 				sprintf(output + strlen(output), "\
@@ -3252,6 +3258,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(output + strlen(output), "		}\n");
 			}
 			sprintf(output + strlen(output), sc.disableThreadsEnd);
+			appendZeropadEnd(output, sc);
 			break;
 		}
 		}
@@ -3261,6 +3268,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		case 0://single_c2c
 		{
 			appendBarrierVkFFT(output, 1);
+			appendZeropadStart(output, sc);
 			sprintf(output + strlen(output), sc.disableThreadsStart);
 			if (sc.matrixConvolution == 1) {
 				sprintf(output + strlen(output), "\
@@ -3305,11 +3313,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(output + strlen(output), "		}\n");
 			}
 			sprintf(output + strlen(output), sc.disableThreadsEnd);
+			appendZeropadEnd(output, sc);
 			break;
 		}
 		case 1://grouped_c2c
 		{
 			appendBarrierVkFFT(output, 1);
+			appendZeropadStart(output, sc);
 			sprintf(output + strlen(output), sc.disableThreadsStart);
 			if (sc.matrixConvolution == 1) {
 				sprintf(output + strlen(output), "\
@@ -3354,6 +3364,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(output + strlen(output), "		}\n");
 			}
 			sprintf(output + strlen(output), sc.disableThreadsEnd);
+			appendZeropadEnd(output, sc);
 			break;
 		}
 		}
@@ -3397,6 +3408,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(separateRegisterStore, "_store");
 			}
 		}
+		appendZeropadStart(output, sc);
 		sprintf(output + strlen(output), sc.disableThreadsStart);
 		for (uint32_t j = 0; j < sc.matrixConvolution; j++) {
 			sprintf(output + strlen(output), "		%s temp_real%d = 0;\n", floatType, j);
@@ -3514,6 +3526,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 		}
 		sprintf(output + strlen(output), sc.disableThreadsEnd);
+		appendZeropadEnd(output, sc);
 	}
 	static inline void appendWriteDataVkFFT(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint32_t writeType) {
 		char vecType[10];
@@ -3572,6 +3585,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else
 				sc.writeFromRegisters = 1;
+			appendZeropadStart(output, sc);
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX ");
@@ -3864,6 +3878,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else
 				sc.writeFromRegisters = 1;
+			appendZeropadStart(output, sc);
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
@@ -3959,6 +3974,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else
 				sc.writeFromRegisters = 1;
+			appendZeropadStart(output, sc);
 			char shiftX[100] = "";
 			if (sc.performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * gl_WorkGroupSize.x ");
@@ -4285,6 +4301,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				appendBarrierVkFFT(output, 1);
+				appendZeropadStart(output, sc);
 				if (sc.fftDim == sc.fft_dim_full) {
 					if ((uint32_t)ceil(sc.size[1] / 2.0) % sc.localSize[1] != 0)
 						sprintf(output + strlen(output), "		if(gl_GlobalInvocationID.y%s < %d){", shiftY, (uint32_t)ceil(sc.size[1] / 2.0));
@@ -4385,6 +4402,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else
 				sc.writeFromRegisters = 1;
+			appendZeropadStart(output, sc);
 			if (sc.reorderFourStep) {
 				//Not implemented
 			}
@@ -4490,6 +4508,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			break;
 		}
 		}
+		appendZeropadEnd(output, sc);
 	}
 
 	static inline void shaderGenVkFFT(char* output, VkFFTSpecializationConstantsLayout sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint32_t type) {
@@ -4534,9 +4553,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if ((sc.convolutionStep) && (sc.matrixConvolution > 1))
 			sprintf(output + strlen(output), "	for (uint coordinate=%d; coordinate > 0; coordinate--){\n\
 	coordinate--;\n", sc.matrixConvolution);
-		appendZeropadStart(output, sc);
 		appendReadDataVkFFT(output, sc, floatType, floatTypeInputMemory, uintType, type);
-		appendZeropadEnd(output, sc);
 		//appendBarrierVkFFT(output, 1);
 		appendReorder4StepRead(output, sc, floatType, uintType, type);
 		uint32_t stageSize = 1;
@@ -4628,9 +4645,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		}
 		appendReorder4StepWrite(output, sc, floatType, uintType, type);
-		appendZeropadStart(output, sc);
 		appendWriteDataVkFFT(output, sc, floatType, floatTypeOutputMemory, uintType, type);
-		appendZeropadEnd(output, sc);
 		if ((sc.convolutionStep) && (sc.matrixConvolution > 1))
 			sprintf(output + strlen(output), "	}\n");
 		if ((sc.convolutionStep) && (sc.numKernels > 1))
@@ -6326,7 +6341,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t* axisStride = axis->specializationConstants.inputStride;
 		uint32_t* usedStride = app->configuration.bufferStride;
 		if ((!inverse) && (axis_id == 0) && (axis_upload_id == 0) && (app->configuration.isInputFormatted)) usedStride = app->configuration.inputBufferStride;
-		if ((inverse) && (axis_id == app->configuration.FFTdim - 1) && (axis_upload_id == app->localFFTPlan.numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted)) usedStride = app->configuration.inputBufferStride;
+		if ((inverse) && (axis_id == app->configuration.FFTdim - 1) && (axis_upload_id == app->localFFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted)) usedStride = app->configuration.inputBufferStride;
 		if (app->configuration.performR2C)
 		{
 			//perform r2c
@@ -6402,7 +6417,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		axisStride[4] = axisStride[3] * app->configuration.coordinateFeatures;
 		axisStride = axis->specializationConstants.outputStride;
 		usedStride = app->configuration.bufferStride;
-		if ((!inverse) && (axis_id == app->configuration.FFTdim - 1) && (axis_upload_id == app->localFFTPlan.numAxisUploads[axis_id] - 1) && (app->configuration.isOutputFormatted)) usedStride = app->configuration.outputBufferStride;
+		if ((!inverse) && (axis_id == app->configuration.FFTdim - 1) && (axis_upload_id == app->localFFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isOutputFormatted)) usedStride = app->configuration.outputBufferStride;
 		if ((inverse) && (axis_id == 0) && (axis_upload_id == 0) && (app->configuration.isOutputFormatted)) usedStride = app->configuration.outputBufferStride;
 		if (app->configuration.performR2C)
 		{
@@ -7565,16 +7580,6 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.sharedMemorySize = physicalDeviceProperties.limits.maxComputeSharedMemorySize;
 		app->configuration.sharedMemorySizePow2 = (physicalDeviceProperties.limits.maxComputeSharedMemorySize / 32768) * 32768;
 		if (app->configuration.matrixConvolution > 1) app->configuration.coordinateFeatures = app->configuration.matrixConvolution;
-		//LUT is not implemented for non-pow 2 yet
-		/*if ((app->configuration.size[0] & (app->configuration.size[0] - 1)) != 0) {
-			app->configuration.useLUT = 0;
-		}
-		if ((app->configuration.size[1] & (app->configuration.size[1] - 1)) != 0) {
-			app->configuration.useLUT = 0;
-		}
-		if ((app->configuration.size[2] & (app->configuration.size[2] - 1)) != 0) {
-			app->configuration.useLUT = 0;
-		}*/
 		app->configuration.registerBoost = 1;
 		app->configuration.registerBoost4Step = 1;
 		//app->configuration.performHalfBandwidthBoost = 0;
@@ -7582,27 +7587,25 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (!app->configuration.isCompilerInitialized)
 			glslang_initialize_process();
 		if (app->configuration.performConvolution) {
-
+			app->localFFTPlan_inverse_convolution = (VkFFTPlan*)malloc(sizeof(VkFFTPlan));
 			app->configuration.inverse = 0;
 			for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
 				app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : physicalDeviceProperties.limits.maxComputeSharedMemorySize;
-				VkFFTScheduler(app, &app->localFFTPlan_inverse_convolution, i, 0);
-				for (uint32_t j = 0; j < app->localFFTPlan_inverse_convolution.numAxisUploads[i]; j++) {
-					res = VkFFTPlanAxis(app, &app->localFFTPlan_inverse_convolution, i, j, 1);
+				VkFFTScheduler(app, app->localFFTPlan_inverse_convolution, i, 0);
+				for (uint32_t j = 0; j < app->localFFTPlan_inverse_convolution->numAxisUploads[i]; j++) {
+					res = VkFFTPlanAxis(app, app->localFFTPlan_inverse_convolution, i, j, 1);
 					if (res != 0) return VK_ERROR_INITIALIZATION_FAILED;
 				}
 			}
 
 		}
+		app->localFFTPlan = (VkFFTPlan*)malloc(sizeof(VkFFTPlan));
 		for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
 			app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : physicalDeviceProperties.limits.maxComputeSharedMemorySize;
-			VkFFTScheduler(app, &app->localFFTPlan, i, 0);
-			for (uint32_t j = 0; j < app->localFFTPlan.numAxisUploads[i]; j++) {
-				res = VkFFTPlanAxis(app, &app->localFFTPlan, i, j, app->configuration.inverse);
+			VkFFTScheduler(app, app->localFFTPlan, i, 0);
+			for (uint32_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++) {
+				res = VkFFTPlanAxis(app, app->localFFTPlan, i, j, app->configuration.inverse);
 				if (res != 0) return VK_ERROR_INITIALIZATION_FAILED;
-				if (!app->configuration.inverse) {
-					//printf("%d %d %d %d %d\n", i,j,app->localFFTPlan.axes[i][j].axisBlock[0], app->localFFTPlan.axes[i][j].axisBlock[1], app->localFFTPlan.axes[i][j].axisBlock[2]);
-				}
 			}
 		}
 
@@ -7638,8 +7641,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (!app->configuration.inverse) {
 			//FFT axis 0
 			for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-				for (int l = app->localFFTPlan.numAxisUploads[0] - 1; l >= 0; l--) {
-					VkFFTAxis* axis = &app->localFFTPlan.axes[0][l];
+				for (int l = app->localFFTPlan->numAxisUploads[0] - 1; l >= 0; l--) {
+					VkFFTAxis* axis = &app->localFFTPlan->axes[0][l];
 					axis->pushConstants.batch = j;
 					uint32_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
 					for (uint32_t i = 0; i < maxCoordinate; i++) {
@@ -7650,12 +7653,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 						uint32_t dispatchBlock[3];
 						if (l == 0) {
-							if (app->localFFTPlan.numAxisUploads[0] > 2) {
-								dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan.axisSplit[0][1]) * app->localFFTPlan.axisSplit[0][1];
+							if (app->localFFTPlan->numAxisUploads[0] > 2) {
+								dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan->axisSplit[0][1]) * app->localFFTPlan->axisSplit[0][1];
 								dispatchBlock[1] = app->configuration.size[1];
 							}
 							else {
-								if (app->localFFTPlan.numAxisUploads[0] > 1) {
+								if (app->localFFTPlan->numAxisUploads[0] > 1) {
 									dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
 									dispatchBlock[1] = app->configuration.size[1];
 								}
@@ -7684,8 +7687,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				//FFT axis 1
 				if ((app->configuration.FFTdim == 2) && (app->configuration.performConvolution)) {
 					if (app->configuration.performR2C == 1) {
-						for (int l = app->localFFTPlan.numSupportAxisUploads[0] - 1; l >= 0; l--) {
-							VkFFTAxis* axis = &app->localFFTPlan.supportAxes[0][l];
+						for (int l = app->localFFTPlan->numSupportAxisUploads[0] - 1; l >= 0; l--) {
+							VkFFTAxis* axis = &app->localFFTPlan->supportAxes[0][l];
 							uint32_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (l == 0)) ? 1 : app->configuration.coordinateFeatures;
 							for (uint32_t i = 0; i < maxCoordinate; i++) {
 								axis->pushConstants.coordinate = i;
@@ -7714,8 +7717,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 					}
 
-					for (int l = app->localFFTPlan.numAxisUploads[1] - 1; l >= 0; l--) {
-						VkFFTAxis* axis = &app->localFFTPlan.axes[1][l];
+					for (int l = app->localFFTPlan->numAxisUploads[1] - 1; l >= 0; l--) {
+						VkFFTAxis* axis = &app->localFFTPlan->axes[1][l];
 						uint32_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (l == 0)) ? 1 : app->configuration.coordinateFeatures;
 						for (uint32_t i = 0; i < maxCoordinate; i++) {
 
@@ -7739,8 +7742,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				else {
 					if (app->configuration.performR2C == 1) {
 						for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-							for (int l = app->localFFTPlan.numSupportAxisUploads[0] - 1; l >= 0; l--) {
-								VkFFTAxis* axis = &app->localFFTPlan.supportAxes[0][l];
+							for (int l = app->localFFTPlan->numSupportAxisUploads[0] - 1; l >= 0; l--) {
+								VkFFTAxis* axis = &app->localFFTPlan->supportAxes[0][l];
 								axis->pushConstants.batch = j;
 								for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 									axis->pushConstants.coordinate = i;
@@ -7766,8 +7769,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 					}
 					for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-						for (int l = app->localFFTPlan.numAxisUploads[1] - 1; l >= 0; l--) {
-							VkFFTAxis* axis = &app->localFFTPlan.axes[1][l];
+						for (int l = app->localFFTPlan->numAxisUploads[1] - 1; l >= 0; l--) {
+							VkFFTAxis* axis = &app->localFFTPlan->axes[1][l];
 							axis->pushConstants.batch = j;
 							for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 								axis->pushConstants.coordinate = i;
@@ -7796,8 +7799,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 					if (app->configuration.performR2C == 1) {
 
-						for (int l = app->localFFTPlan.numSupportAxisUploads[1] - 1; l >= 0; l--) {
-							VkFFTAxis* axis = &app->localFFTPlan.supportAxes[1][l];
+						for (int l = app->localFFTPlan->numSupportAxisUploads[1] - 1; l >= 0; l--) {
+							VkFFTAxis* axis = &app->localFFTPlan->supportAxes[1][l];
 							uint32_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (l == 0)) ? 1 : app->configuration.coordinateFeatures;
 							for (uint32_t i = 0; i < maxCoordinate; i++) {
 								axis->pushConstants.coordinate = i;
@@ -7820,9 +7823,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 					}
 
-					for (int l = app->localFFTPlan.numAxisUploads[2] - 1; l >= 0; l--) {
+					for (int l = app->localFFTPlan->numAxisUploads[2] - 1; l >= 0; l--) {
 
-						VkFFTAxis* axis = &app->localFFTPlan.axes[2][l];
+						VkFFTAxis* axis = &app->localFFTPlan->axes[2][l];
 						uint32_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (l == 0)) ? 1 : app->configuration.coordinateFeatures;
 						for (uint32_t i = 0; i < maxCoordinate; i++) {
 							axis->pushConstants.coordinate = i;
@@ -7846,8 +7849,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				else {
 					if (app->configuration.performR2C == 1) {
 						for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-							for (int l = app->localFFTPlan.numSupportAxisUploads[1] - 1; l >= 0; l--) {
-								VkFFTAxis* axis = &app->localFFTPlan.supportAxes[1][l];
+							for (int l = app->localFFTPlan->numSupportAxisUploads[1] - 1; l >= 0; l--) {
+								VkFFTAxis* axis = &app->localFFTPlan->supportAxes[1][l];
 								axis->pushConstants.batch = j;
 								for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 									axis->pushConstants.coordinate = i;
@@ -7869,8 +7872,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 					}
 					for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-						for (int l = app->localFFTPlan.numAxisUploads[2] - 1; l >= 0; l--) {
-							VkFFTAxis* axis = &app->localFFTPlan.axes[2][l];
+						for (int l = app->localFFTPlan->numAxisUploads[2] - 1; l >= 0; l--) {
+							VkFFTAxis* axis = &app->localFFTPlan->axes[2][l];
 							axis->pushConstants.batch = j;
 							for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 								axis->pushConstants.coordinate = i;
@@ -7900,8 +7903,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (app->configuration.FFTdim == 3) {
 					if (app->configuration.performR2C == 1) {
 						for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
-							for (int l = 1; l < app->localFFTPlan_inverse_convolution.numSupportAxisUploads[1]; l++) {
-								VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution.supportAxes[1][l];
+							for (int l = 1; l < app->localFFTPlan_inverse_convolution->numSupportAxisUploads[1]; l++) {
+								VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution->supportAxes[1][l];
 								uint32_t maxCoordinate = app->configuration.coordinateFeatures;
 								for (uint32_t i = 0; i < maxCoordinate; i++) {
 									axis->pushConstants.coordinate = i;
@@ -7923,8 +7926,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 					}
 					for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
-						for (int l = 1; l < app->localFFTPlan_inverse_convolution.numAxisUploads[2]; l++) {
-							VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution.axes[2][l];
+						for (int l = 1; l < app->localFFTPlan_inverse_convolution->numAxisUploads[2]; l++) {
+							VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution->axes[2][l];
 							uint32_t maxCoordinate = app->configuration.coordinateFeatures;
 							for (uint32_t i = 0; i < maxCoordinate; i++) {
 								axis->pushConstants.coordinate = i;
@@ -7946,8 +7949,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				if (app->configuration.performR2C == 1) {
 					for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
-						for (int l = 0; l < app->localFFTPlan_inverse_convolution.numSupportAxisUploads[0]; l++) {
-							VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution.supportAxes[0][l];
+						for (int l = 0; l < app->localFFTPlan_inverse_convolution->numSupportAxisUploads[0]; l++) {
+							VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution->supportAxes[0][l];
 							axis->pushConstants.batch = j;
 							for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 
@@ -7965,15 +7968,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
 								dispatchEnhanced(app, commandBuffer, axis, dispatchBlock);
 							}
-							if (l < app->localFFTPlan_inverse_convolution.numSupportAxisUploads[0] - 1)
+							if (l < app->localFFTPlan_inverse_convolution->numSupportAxisUploads[0] - 1)
 								vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 						}
 					}
 				}
 				for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
-					for (int l = 0; l < app->localFFTPlan_inverse_convolution.numAxisUploads[1]; l++) {
-						VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution.axes[1][l];
+					for (int l = 0; l < app->localFFTPlan_inverse_convolution->numAxisUploads[1]; l++) {
+						VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution->axes[1][l];
 						axis->pushConstants.batch = j;
 						for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 							axis->pushConstants.coordinate = i;
@@ -7999,8 +8002,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (app->configuration.FFTdim == 2) {
 					if (app->configuration.performR2C == 1) {
 						for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
-							for (int l = 1; l < app->localFFTPlan_inverse_convolution.numSupportAxisUploads[0]; l++) {
-								VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution.supportAxes[0][l];
+							for (int l = 1; l < app->localFFTPlan_inverse_convolution->numSupportAxisUploads[0]; l++) {
+								VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution->supportAxes[0][l];
 								uint32_t maxCoordinate = app->configuration.coordinateFeatures;
 								for (uint32_t i = 0; i < maxCoordinate; i++) {
 									axis->pushConstants.coordinate = i;
@@ -8027,8 +8030,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 					}
 					for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
-						for (int l = 1; l < app->localFFTPlan_inverse_convolution.numAxisUploads[1]; l++) {
-							VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution.axes[1][l];
+						for (int l = 1; l < app->localFFTPlan_inverse_convolution->numAxisUploads[1]; l++) {
+							VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution->axes[1][l];
 							uint32_t maxCoordinate = app->configuration.coordinateFeatures;
 							for (uint32_t i = 0; i < maxCoordinate; i++) {
 
@@ -8052,8 +8055,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
-					for (int l = 0; l < app->localFFTPlan_inverse_convolution.numAxisUploads[0]; l++) {
-						VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution.axes[0][l];
+					for (int l = 0; l < app->localFFTPlan_inverse_convolution->numAxisUploads[0]; l++) {
+						VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution->axes[0][l];
 						axis->pushConstants.batch = j;
 						for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 							axis->pushConstants.coordinate = i;
@@ -8062,12 +8065,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 							uint32_t dispatchBlock[3];
 							if (l == 0) {
-								if (app->localFFTPlan.numAxisUploads[0] > 2) {
-									dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan.axisSplit[0][1]) * app->localFFTPlan.axisSplit[0][1];
+								if (app->localFFTPlan->numAxisUploads[0] > 2) {
+									dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan->axisSplit[0][1]) * app->localFFTPlan->axisSplit[0][1];
 									dispatchBlock[1] = app->configuration.size[1];
 								}
 								else {
-									if (app->localFFTPlan.numAxisUploads[0] > 1) {
+									if (app->localFFTPlan->numAxisUploads[0] > 1) {
 										dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
 										dispatchBlock[1] = app->configuration.size[1];
 									}
@@ -8096,8 +8099,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			if (app->configuration.FFTdim == 1) {
 				for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
-					for (int l = 1; l < app->localFFTPlan_inverse_convolution.numAxisUploads[0]; l++) {
-						VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution.axes[0][l];
+					for (int l = 1; l < app->localFFTPlan_inverse_convolution->numAxisUploads[0]; l++) {
+						VkFFTAxis* axis = &app->localFFTPlan_inverse_convolution->axes[0][l];
 						uint32_t maxCoordinate = app->configuration.coordinateFeatures;
 						for (uint32_t i = 0; i < maxCoordinate; i++) {
 
@@ -8128,9 +8131,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (app->configuration.FFTdim > 2) {
 				if (app->configuration.performR2C == 1) {
 					for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-						for (int l = app->localFFTPlan.numSupportAxisUploads[1] - 1; l >= 0; l--) {
-							if (!app->configuration.reorderFourStep) l = app->localFFTPlan.numSupportAxisUploads[1] - 1 - l;
-							VkFFTAxis* axis = &app->localFFTPlan.supportAxes[1][l];
+						for (int l = app->localFFTPlan->numSupportAxisUploads[1] - 1; l >= 0; l--) {
+							if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numSupportAxisUploads[1] - 1 - l;
+							VkFFTAxis* axis = &app->localFFTPlan->supportAxes[1][l];
 							axis->pushConstants.batch = j;
 							for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 								axis->pushConstants.coordinate = i;
@@ -8147,7 +8150,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								dispatchEnhanced(app, commandBuffer, axis, dispatchBlock);
 
 							}
-							if (!app->configuration.reorderFourStep) l = app->localFFTPlan.numSupportAxisUploads[1] - 1 - l;
+							if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numSupportAxisUploads[1] - 1 - l;
 							if (l > 0)
 								vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
@@ -8156,9 +8159,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 
 				for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-					for (int l = app->localFFTPlan.numAxisUploads[2] - 1; l >= 0; l--) {
-						if (!app->configuration.reorderFourStep) l = app->localFFTPlan.numAxisUploads[2] - 1 - l;
-						VkFFTAxis* axis = &app->localFFTPlan.axes[2][l];
+					for (int l = app->localFFTPlan->numAxisUploads[2] - 1; l >= 0; l--) {
+						if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numAxisUploads[2] - 1 - l;
+						VkFFTAxis* axis = &app->localFFTPlan->axes[2][l];
 						axis->pushConstants.batch = j;
 						for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 							axis->pushConstants.coordinate = i;
@@ -8176,7 +8179,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							dispatchEnhanced(app, commandBuffer, axis, dispatchBlock);
 						}
 						vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
-						if (!app->configuration.reorderFourStep) l = app->localFFTPlan.numAxisUploads[2] - 1 - l;
+						if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numAxisUploads[2] - 1 - l;
 					}
 				}
 
@@ -8186,9 +8189,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				//FFT axis 1
 				if (app->configuration.performR2C == 1) {
 					for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-						for (int l = app->localFFTPlan.numSupportAxisUploads[0] - 1; l >= 0; l--) {
-							if (!app->configuration.reorderFourStep) l = app->localFFTPlan.numSupportAxisUploads[0] - 1 - l;
-							VkFFTAxis* axis = &app->localFFTPlan.supportAxes[0][l];
+						for (int l = app->localFFTPlan->numSupportAxisUploads[0] - 1; l >= 0; l--) {
+							if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numSupportAxisUploads[0] - 1 - l;
+							VkFFTAxis* axis = &app->localFFTPlan->supportAxes[0][l];
 							axis->pushConstants.batch = j;
 							for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 								axis->pushConstants.coordinate = i;
@@ -8206,7 +8209,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								dispatchEnhanced(app, commandBuffer, axis, dispatchBlock);
 
 							}
-							if (!app->configuration.reorderFourStep) l = app->localFFTPlan.numSupportAxisUploads[0] - 1 - l;
+							if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numSupportAxisUploads[0] - 1 - l;
 							if (l > 0)
 								vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
@@ -8214,9 +8217,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-					for (int l = app->localFFTPlan.numAxisUploads[1] - 1; l >= 0; l--) {
-						if (!app->configuration.reorderFourStep) l = app->localFFTPlan.numAxisUploads[1] - 1 - l;
-						VkFFTAxis* axis = &app->localFFTPlan.axes[1][l];
+					for (int l = app->localFFTPlan->numAxisUploads[1] - 1; l >= 0; l--) {
+						if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numAxisUploads[1] - 1 - l;
+						VkFFTAxis* axis = &app->localFFTPlan->axes[1][l];
 						axis->pushConstants.batch = j;
 						for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 							axis->pushConstants.coordinate = i;
@@ -8234,7 +8237,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							dispatchEnhanced(app, commandBuffer, axis, dispatchBlock);
 
 						}
-						if (!app->configuration.reorderFourStep) l = app->localFFTPlan.numAxisUploads[1] - 1 - l;
+						if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numAxisUploads[1] - 1 - l;
 
 						vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
@@ -8244,9 +8247,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			//FFT axis 0
 			for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-				for (int l = app->localFFTPlan.numAxisUploads[0] - 1; l >= 0; l--) {
-					if (!app->configuration.reorderFourStep) l = app->localFFTPlan.numAxisUploads[0] - 1 - l;
-					VkFFTAxis* axis = &app->localFFTPlan.axes[0][l];
+				for (int l = app->localFFTPlan->numAxisUploads[0] - 1; l >= 0; l--) {
+					if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numAxisUploads[0] - 1 - l;
+					VkFFTAxis* axis = &app->localFFTPlan->axes[0][l];
 					axis->pushConstants.batch = j;
 					uint32_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
 					for (uint32_t i = 0; i < maxCoordinate; i++) {
@@ -8256,12 +8259,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
 						uint32_t dispatchBlock[3];
 						if (l == 0) {
-							if (app->localFFTPlan.numAxisUploads[0] > 2) {
-								dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan.axisSplit[0][1]) * app->localFFTPlan.axisSplit[0][1];
+							if (app->localFFTPlan->numAxisUploads[0] > 2) {
+								dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan->axisSplit[0][1]) * app->localFFTPlan->axisSplit[0][1];
 								dispatchBlock[1] = app->configuration.size[1];
 							}
 							else {
-								if (app->localFFTPlan.numAxisUploads[0] > 1) {
+								if (app->localFFTPlan->numAxisUploads[0] > 1) {
 									dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
 									dispatchBlock[1] = app->configuration.size[1];
 								}
@@ -8281,7 +8284,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
 						dispatchEnhanced(app, commandBuffer, axis, dispatchBlock);
 					}
-					if (!app->configuration.reorderFourStep) l = app->localFFTPlan.numAxisUploads[0] - 1 - l;
+					if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numAxisUploads[0] - 1 - l;
 					vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memory_barrier, 0, NULL, 0, NULL);
 
 				}
@@ -8292,28 +8295,30 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	}
 	static inline void deleteVulkanFFT(VkFFTApplication* app) {
 		for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
-			for (uint32_t j = 0; j < app->localFFTPlan.numAxisUploads[i]; j++)
-				deleteAxis(app, &app->localFFTPlan.axes[i][j]);
+			for (uint32_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
+				deleteAxis(app, &app->localFFTPlan->axes[i][j]);
 		}
 
 		for (uint32_t i = 0; i < app->configuration.FFTdim - 1; i++) {
 
 			if (app->configuration.performR2C) {
-				for (uint32_t j = 0; j < app->localFFTPlan.numSupportAxisUploads[i]; j++)
-					deleteAxis(app, &app->localFFTPlan.supportAxes[i][j]);
+				for (uint32_t j = 0; j < app->localFFTPlan->numSupportAxisUploads[i]; j++)
+					deleteAxis(app, &app->localFFTPlan->supportAxes[i][j]);
 			}
 		}
+		free(app->localFFTPlan);
 		if (app->configuration.performConvolution) {
 			for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
-				for (uint32_t j = 0; j < app->localFFTPlan_inverse_convolution.numAxisUploads[i]; j++)
-					deleteAxis(app, &app->localFFTPlan_inverse_convolution.axes[i][j]);
+				for (uint32_t j = 0; j < app->localFFTPlan_inverse_convolution->numAxisUploads[i]; j++)
+					deleteAxis(app, &app->localFFTPlan_inverse_convolution->axes[i][j]);
 			}
 			for (uint32_t i = 0; i < app->configuration.FFTdim - 1; i++) {
 				if (app->configuration.performR2C) {
-					for (uint32_t j = 0; j < app->localFFTPlan_inverse_convolution.numSupportAxisUploads[i]; j++)
-						deleteAxis(app, &app->localFFTPlan_inverse_convolution.supportAxes[i][j]);
+					for (uint32_t j = 0; j < app->localFFTPlan_inverse_convolution->numSupportAxisUploads[i]; j++)
+						deleteAxis(app, &app->localFFTPlan_inverse_convolution->supportAxes[i][j]);
 				}
 			}
+			free(app->localFFTPlan_inverse_convolution);
 		}
 	}
 #ifdef __cplusplus

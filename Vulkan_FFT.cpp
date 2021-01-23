@@ -120,9 +120,11 @@ std::vector<const char*> getRequiredExtensions(uint32_t sample_id) {
 		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 	}
 	switch (sample_id) {
+#if (VK_API_VERSION>10)
 	case 2:
 		extensions.push_back("VK_KHR_get_physical_device_properties2");
 		break;
+#endif
 	default:
 		break;
 	}
@@ -145,8 +147,11 @@ VkResult createInstance(VkGPU* vkGPU, uint32_t sample_id) {
 	applicationInfo.applicationVersion = 1.0;
 	applicationInfo.pEngineName = "VkFFT";
 	applicationInfo.engineVersion = 1.0;
-	switch (sample_id) {
-	case 2:
+	switch (VK_API_VERSION) {
+	case 12:
+		applicationInfo.apiVersion = VK_API_VERSION_1_2;
+		break;
+	case 11:
 		applicationInfo.apiVersion = VK_API_VERSION_1_1;
 		break;
 	default:
@@ -280,12 +285,16 @@ VkResult createDevice(VkGPU* vkGPU, uint32_t sample_id) {
 		vkGetDeviceQueue(vkGPU->device, vkGPU->queueFamilyIndex, 0, &vkGPU->queue);
 		break;
 	}
+#if (VK_API_VERSION>10)
 	case 2: {
 		VkPhysicalDeviceFeatures2 deviceFeatures2 = {};
-		VkPhysicalDeviceShaderFloat16Int8Features shaderFloat16 = {};
+		VkPhysicalDevice16BitStorageFeatures shaderFloat16 = {};
+		shaderFloat16.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES;
+		shaderFloat16.storageBuffer16BitAccess = true;
+		/*VkPhysicalDeviceShaderFloat16Int8Features shaderFloat16 = {};
 		shaderFloat16.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
 		shaderFloat16.shaderFloat16 = true;
-		shaderFloat16.shaderInt8 = true;
+		shaderFloat16.shaderInt8 = true;*/
 		deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
 		deviceFeatures2.pNext = &shaderFloat16;
 		deviceFeatures2.features = deviceFeatures;
@@ -302,6 +311,7 @@ VkResult createDevice(VkGPU* vkGPU, uint32_t sample_id) {
 		vkGetDeviceQueue(vkGPU->device, vkGPU->queueFamilyIndex, 0, &vkGPU->queue);
 		break;
 	}
+#endif
 	default: {
 		deviceCreateInfo.enabledExtensionCount = vkGPU->enabledDeviceExtensions.size();
 		deviceCreateInfo.ppEnabledExtensionNames = vkGPU->enabledDeviceExtensions.data();
@@ -555,7 +565,7 @@ VkResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
 			switch (vkGPU->physicalDeviceProperties.vendorID) {
 			case 0x10DE://NVIDIA
-				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
+				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 32;
 				forward_configuration.registerBoost = 4;
@@ -606,15 +616,6 @@ VkResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			forward_configuration.commandPool = &vkGPU->commandPool;
 			forward_configuration.physicalDevice = &vkGPU->physicalDevice;
 			forward_configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-			//forward_configuration.compiler = &compiler;
-			//forward_configuration.options = &options;
-			//forward_configuration.code0 = code0;
-			//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
-			/*if (sizeof(SHADER_DIR) > 255) {
-				printf("SHADER_DIR length must be <256\n");
-				return 1;
-			}*/
-
 
 			//Allocate buffer for the input data.
 			VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(float) * 2 * forward_configuration.bufferStride[0] * forward_configuration.bufferStride[1] * forward_configuration.bufferStride[2];;
@@ -693,7 +694,7 @@ VkResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 					std_error = sqrt(std_error / num_runs);
 					uint32_t num_tot_transfers = 0;
 					for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
-						num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers += app_forward.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
 						fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
@@ -758,7 +759,7 @@ VkResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
 			switch (vkGPU->physicalDeviceProperties.vendorID) {
 			case 0x10DE://NVIDIA 
-				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
+				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 				forward_configuration.useLUT = true;
 				forward_configuration.warpSize = 32;
 				forward_configuration.registerBoost = 1;
@@ -810,17 +811,7 @@ VkResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			forward_configuration.commandPool = &vkGPU->commandPool;
 			forward_configuration.physicalDevice = &vkGPU->physicalDevice;
 			forward_configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-			//forward_configuration.compiler = &compiler;
-			//forward_configuration.options = &options;
-			//forward_configuration.code0 = code0;
-			//forward_configuration.useLUT = true;
 			forward_configuration.doublePrecision = true;
-			//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
-			/*if (sizeof(SHADER_DIR) > 255) {
-				printf("SHADER_DIR length must be <256\n");
-				return 1;
-			}*/
-
 
 			//Allocate buffer for the input data.
 			VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(double) * 2 * forward_configuration.bufferStride[0] * forward_configuration.bufferStride[1] * forward_configuration.bufferStride[2];;
@@ -901,7 +892,7 @@ VkResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 					std_error = sqrt(std_error / num_runs);
 					uint32_t num_tot_transfers = 0;
 					for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
-						num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers += app_forward.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
 						fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
@@ -931,6 +922,7 @@ VkResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 	return res;
 }
+#if (VK_API_VERSION>10)
 VkResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
 	VkResult res = VK_SUCCESS;
 	if (file_output)
@@ -1020,17 +1012,7 @@ VkResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			forward_configuration.commandPool = &vkGPU->commandPool;
 			forward_configuration.physicalDevice = &vkGPU->physicalDevice;
 			forward_configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-			//forward_configuration.compiler = &compiler;
-			//forward_configuration.options = &options;
-			//forward_configuration.code0 = code0;
-			//forward_configuration.useLUT = false;
 			forward_configuration.halfPrecision = true;
-			//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
-			/*if (sizeof(SHADER_DIR) > 255) {
-				printf("SHADER_DIR length must be <256\n");
-				return 1;
-			}*/
-
 
 			//Allocate buffer for the input data.
 			VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * 2 * sizeof(half) * forward_configuration.bufferStride[0] * forward_configuration.bufferStride[1] * forward_configuration.bufferStride[2];;
@@ -1110,7 +1092,7 @@ VkResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 					std_error = sqrt(std_error / num_runs);
 					uint32_t num_tot_transfers = 0;
 					for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
-						num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers += app_forward.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
 						fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize * sizeof(float) / sizeof(half) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
@@ -1140,6 +1122,7 @@ VkResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 	return res;
 }
+#endif
 VkResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
 	VkResult res = VK_SUCCESS;
 	if (file_output)
@@ -1235,15 +1218,6 @@ VkResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			forward_configuration.commandPool = &vkGPU->commandPool;
 			forward_configuration.physicalDevice = &vkGPU->physicalDevice;
 			forward_configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-			//forward_configuration.compiler = &compiler;
-			//forward_configuration.options = &options;
-			//forward_configuration.code0 = code0;
-			//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
-			/*if (sizeof(SHADER_DIR) > 255) {
-				printf("SHADER_DIR length must be <256\n");
-				return 1;
-			}*/
-
 
 			//Allocate buffer for the input data.
 			VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(float) * 2 * forward_configuration.bufferStride[0] * forward_configuration.bufferStride[1] * forward_configuration.bufferStride[2];;
@@ -1325,7 +1299,7 @@ VkResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 
 					uint32_t num_tot_transfers = 0;
 					for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
-						num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers += app_forward.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
 						fprintf(output, "VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
@@ -1456,15 +1430,6 @@ VkResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			forward_configuration.commandPool = &vkGPU->commandPool;
 			forward_configuration.physicalDevice = &vkGPU->physicalDevice;
 			forward_configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-			//forward_configuration.compiler = &compiler;
-			//forward_configuration.options = &options;
-			//forward_configuration.code0 = code0;
-			//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
-			/*if (sizeof(SHADER_DIR) > 255) {
-				printf("SHADER_DIR length must be <256\n");
-				return 1;
-			}*/
-
 
 			//Allocate buffer for the input data.
 			VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(float) * 2 * forward_configuration.bufferStride[0] * forward_configuration.bufferStride[1] * forward_configuration.bufferStride[2];;
@@ -1545,7 +1510,7 @@ VkResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 					std_error = sqrt(std_error / num_runs);
 					uint32_t num_tot_transfers = 0;
 					for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
-						num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers += app_forward.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
 						fprintf(output, "VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
@@ -1611,7 +1576,7 @@ VkResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
 			switch (vkGPU->physicalDeviceProperties.vendorID) {
 			case 0x10DE://NVIDIA
-				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
+				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 32;
 				forward_configuration.registerBoost = 4;
@@ -1662,16 +1627,6 @@ VkResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			forward_configuration.commandPool = &vkGPU->commandPool;
 			forward_configuration.physicalDevice = &vkGPU->physicalDevice;
 			forward_configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-			//forward_configuration.compiler = &compiler;
-			//forward_configuration.options = &options;
-			//forward_configuration.code0 = code0;
-
-			//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
-			/*if (sizeof(SHADER_DIR) > 255) {
-				printf("SHADER_DIR length must be <256\n");
-				return 1;
-			}*/
-
 
 			//Allocate buffer for the input data.
 			VkDeviceSize bufferSize = ((uint64_t)forward_configuration.coordinateFeatures) * sizeof(float) * 2 * forward_configuration.bufferStride[0] * forward_configuration.bufferStride[1] * forward_configuration.bufferStride[2];;
@@ -1738,7 +1693,7 @@ VkResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 					std_error = sqrt(std_error / num_runs);
 					uint32_t num_tot_transfers = 0;
 					for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
-						num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers += app_forward.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
 						fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
@@ -1852,14 +1807,7 @@ VkResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			forward_configuration.commandPool = &vkGPU->commandPool;
 			forward_configuration.physicalDevice = &vkGPU->physicalDevice;
 			forward_configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-			//forward_configuration.compiler = &compiler;
-			//forward_configuration.options = &options;
-			//forward_configuration.code0 = code0;
-			//Custom path to the floder with shaders, default is "shaders/");
-			/*if (sizeof(SHADER_DIR) > 255) {
-				printf("SHADER_DIR length must be <256\n");
-				return 1;
-			}*/
+			
 
 
 			//Allocate buffer for the input data.
@@ -1938,7 +1886,7 @@ VkResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 					std_error = sqrt(std_error / num_runs);
 					uint32_t num_tot_transfers = 0;
 					for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
-						num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers += app_forward.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
 						fprintf(output, "VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
@@ -2053,15 +2001,6 @@ VkResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 	forward_configuration.commandPool = &vkGPU->commandPool;
 	forward_configuration.physicalDevice = &vkGPU->physicalDevice;
 	forward_configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-	//forward_configuration.compiler = &compiler;
-	//forward_configuration.options = &options;
-	//forward_configuration.code0 = code0;
-
-	/*if (sizeof(SHADER_DIR) > 255) {
-		printf("SHADER_DIR length must be <256\n");
-		return 1;
-
-	}*/
 
 	//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use forward_configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from forward_configuration is passed to convolution_configuration as kernel object.
 	//1. Kernel forward FFT.
@@ -2221,7 +2160,7 @@ VkResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 		forward_configuration.swapTo3Stage4Step = 0;
 		forward_configuration.performHalfBandwidthBoost = true;
 		break;
-	case 0x8086://INTEL
+	case 0x8086://INTEL - this sample most likely won't work due to the low register count
 		forward_configuration.coalescedMemory = 64;
 		forward_configuration.useLUT = true;
 		forward_configuration.warpSize = 32;
@@ -2278,13 +2217,6 @@ VkResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 	forward_configuration.commandPool = &vkGPU->commandPool;
 	forward_configuration.physicalDevice = &vkGPU->physicalDevice;
 	forward_configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-	//forward_configuration.compiler = &compiler;
-	//forward_configuration.options = &options;
-	//forward_configuration.code0 = code0;
-	/*if (sizeof(SHADER_DIR) > 255) {
-		printf("SHADER_DIR length must be <256\n");
-		return 1;
-	}*/
 
 	//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use forward_configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from forward_configuration is passed to convolution_configuration as kernel object.
 	//1. Kernel forward FFT.
@@ -2491,13 +2423,6 @@ VkResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 	forward_configuration.commandPool = &vkGPU->commandPool;
 	forward_configuration.physicalDevice = &vkGPU->physicalDevice;
 	forward_configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-	//forward_configuration.compiler = &compiler;
-	//forward_configuration.options = &options;
-	//forward_configuration.code0 = code0;
-	/*if (sizeof(SHADER_DIR) > 255) {
-		printf("SHADER_DIR length must be <256\n");
-		return 1;
-	}*/
 
 	//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use forward_configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from forward_configuration is passed to convolution_configuration as kernel object.
 	//1. Kernel forward FFT.
@@ -2678,7 +2603,7 @@ VkResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
 			switch (vkGPU->physicalDeviceProperties.vendorID) {
 			case 0x10DE://NVIDIA
-				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
+				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 32;
 				forward_configuration.registerBoost = 4;
@@ -2729,16 +2654,6 @@ VkResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			forward_configuration.commandPool = &vkGPU->commandPool;
 			forward_configuration.physicalDevice = &vkGPU->physicalDevice;
 			forward_configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-			//forward_configuration.compiler = &compiler;
-			//forward_configuration.options = &options;
-			//forward_configuration.code0 = code0;
-
-			//Custom path to the floder with shaders, default is "shaders/". Max length - 256 chars.
-			/*if (sizeof(SHADER_DIR) > 255) {
-				printf("SHADER_DIR length must be <256\n");
-				return 1;
-			}*/
-
 
 			//Allocate buffers for the input data. - we use 4 in this example
 			VkDeviceSize* bufferSize = (VkDeviceSize*)malloc(sizeof(VkDeviceSize) * numBuf);
@@ -2832,7 +2747,7 @@ VkResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 					std_error = sqrt(std_error / num_runs);
 					uint32_t num_tot_transfers = 0;
 					for (uint32_t i = 0; i < forward_configuration.FFTdim; i++)
-						num_tot_transfers += app_forward.localFFTPlan.numAxisUploads[i];
+						num_tot_transfers += app_forward.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
 						fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(forward_configuration.size[0]), forward_configuration.size[0], forward_configuration.size[1], (numBuf * bufferSize[0]) / 1024 / 1024, avg_time, std_error, batch, (int)(((double)(numBuf * bufferSize[0]) / 1024) / avg_time), (numBuf * bufferSize[0]) / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
@@ -2954,7 +2869,7 @@ VkResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
 			switch (vkGPU->physicalDeviceProperties.vendorID) {
 			case 0x10DE://NVIDIA
-				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
+				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 32;
 				forward_configuration.registerBoost = 4;
@@ -3230,7 +3145,7 @@ VkResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
 			switch (vkGPU->physicalDeviceProperties.vendorID) {
 			case 0x10DE://NVIDIA 
-				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
+				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 				forward_configuration.useLUT = true;
 				forward_configuration.warpSize = 32;
 				forward_configuration.registerBoost = 4;
@@ -3422,6 +3337,7 @@ VkResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 	}
 	return res;
 }
+#if (VK_API_VERSION>10)
 VkResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
 	VkResult res = VK_SUCCESS;
 	if (file_output)
@@ -3701,6 +3617,7 @@ VkResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 	}
 	return res;
 }
+#endif
 VkResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
 	VkResult res = VK_SUCCESS;
 	if (file_output)
@@ -3787,7 +3704,7 @@ VkResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
 			switch (vkGPU->physicalDeviceProperties.vendorID) {
 			case 0x10DE://NVIDIA
-				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. But 16 behaves better (only affects seqence of 2048 elements in y axis - it is done in one upload this way)
+				forward_configuration.coalescedMemory = 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 32;
 				forward_configuration.registerBoost = 4;
@@ -4026,11 +3943,13 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 		sample_1(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
+#if (VK_API_VERSION>10)
 	case 2:
 	{
 		sample_2(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
+#endif
 	case 3:
 	{
 		sample_3(vkGPU, sample_id, file_output, output, isCompilerInitialized);
@@ -4082,11 +4001,13 @@ VkResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 		sample_12(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
+#if (VK_API_VERSION>10)
 	case 13:
 	{
 		sample_13(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
+#endif
 	case 14:
 	{
 		sample_14(vkGPU, sample_id, file_output, output, isCompilerInitialized);
@@ -4125,22 +4046,48 @@ int main(int argc, char* argv[])
 	if (findFlag(argv, argv + argc, "-h"))
 	{
 		//print help
-		printf("VkFFT v1.1.5 (16-01-2021). Author: Tolmachev Dmitrii\n");
+		printf("VkFFT v1.1.6 (23-01-2021). Author: Tolmachev Dmitrii\n");
 		printf("	-h: print help\n");
 		printf("	-devices: print the list of available GPU devices\n");
 		printf("	-d X: select GPU device (default 0)\n");
 		printf("	-o NAME: specify output file path\n");
+		printf("	-vkfft X: launch VkFFT sample X (0-14):\n");
+		printf("		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n");
+		printf("		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n");
+#if (VK_API_VERSION>10)
+		printf("		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n");
+#endif
+		printf("		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n");
+		printf("		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
+		printf("		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n");
+		printf("		6 - FFT + iFFT R2C / C2R benchmark\n");
+		printf("		7 - convolution example with identitiy kernel\n");
+		printf("		8 - zeropadding convolution example with identitiy kernel\n");
+		printf("		9 - batched convolution example with identitiy kernel\n");
+		printf("		10 - multiple buffer(4 by default) split version of benchmark 0\n");
 #ifdef USE_FFTW
 #ifdef USE_cuFFT
-		printf("	-vkfft X: launch VkFFT sample X (0-14):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n		10 - multiple buffer (4 by default) split version of benchmark 0\n		11 - VkFFT / cuFFT / FFTW C2C precision test in single precision\n		12 - VkFFT / cuFFT / FFTW C2C precision test in double precision\n		13 - VkFFT / cuFFT / FFTW C2C precision test in half precision\n		14 - VkFFT/FFTW C2C power 3/5/7 precision test in single precision\n");
-#else
-		printf("	-vkfft X: launch VkFFT sample X (0-14):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n		10 - multiple buffer (4 by default) split version of benchmark 0\n		11 - VkFFT / FFTW C2C precision test in single precision\n		12 - VkFFT / FFTW C2C precision test in double precision\n		13 - VkFFT / FFTW C2C precision test in half precision\n		14 - VkFFT/FFTW C2C power 3/5/7 precision test in single precision\n");
+		printf("		11 - VkFFT / cuFFT / FFTW C2C precision test in single precision\n");
+		printf("		12 - VkFFT / cuFFT / FFTW C2C precision test in double precision\n");
+#if (VK_API_VERSION>10)
+		printf("		13 - VkFFT / cuFFT / FFTW C2C precision test in half precision\n");
 #endif
+		printf("		14 - VkFFT / FFTW C2C power 3 / 5 / 7 precision test in single precision\n");
 #else
-		printf("	-vkfft X: launch VkFFT sample X (0-10):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n		6 - FFT + iFFT R2C/C2R benchmark\n		7 - convolution example with identitiy kernel\n		8 - zeropadding convolution example with identitiy kernel\n		9 - batched convolution example with identitiy kernel\n		10 - multiple buffer (4 by default) split version of benchmark 0\n");
+		printf("		11 - VkFFT / FFTW C2C precision test in single precision\n");
+		printf("		12 - VkFFT / FFTW C2C precision test in double precision\n");
+#if (VK_API_VERSION>10)
+		printf("		13 - VkFFT / FFTW C2C precision test in half precision\n");
+#endif
+		printf("		14 - VkFFT / FFTW C2C power 3 / 5 / 7 precision test in single precision\n");
+#endif
 #endif
 #ifdef USE_cuFFT
-		printf("	-cufft X: launch cuFFT sample X (0-3):\n		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n");
+		printf("	-cufft X: launch cuFFT sample X (0-3):\n");
+		printf("		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n");
+		printf("		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n");
+		printf("		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n");
+		printf("		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n");
 		printf("	-test: (or no -vkfft and -cufft keys) run vkfft benchmarks 0-6 and cufft benchmarks 0-3\n");
 #else
 		printf("	-test: (or no -vkfft and -cufft keys) run vkfft benchmarks 0-6\n");
@@ -4193,7 +4140,6 @@ int main(int argc, char* argv[])
 			printf("No sample is selected with -vkfft flag\n");
 			return 1;
 		}
-		return VK_SUCCESS;
 	}
 #ifdef USE_cuFFT
 	if (findFlag(argv, argv + argc, "-cufft"))
@@ -4231,6 +4177,7 @@ int main(int argc, char* argv[])
 			output = fopen("result.txt", "a");
 		}
 		for (uint32_t i = 0; i < 7; i++) {
+			if ((i == 2) && (VK_API_VERSION == 10)) i++;
 			VkResult res = launchVkFFT(&vkGPU, i, file_output, output);
 			if (res != VK_SUCCESS) return res;
 		}
@@ -4240,6 +4187,6 @@ int main(int argc, char* argv[])
 		launch_benchmark_cuFFT_half(file_output, output);
 		launch_benchmark_cuFFT_single_3d(file_output, output);
 #endif
+	}
 		return VK_SUCCESS;
 	}
-}

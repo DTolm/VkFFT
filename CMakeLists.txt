@@ -14,6 +14,8 @@ add_executable(${PROJECT_NAME} Vulkan_FFT.cpp)
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_11)
 
 find_package(Vulkan REQUIRED)
+target_compile_definitions(${PROJECT_NAME} PUBLIC -DVK_API_VERSION=11)#10 - Vulkan 1.0, 11 - Vulkan 1.1, 12 - Vulkan 1.2 
+
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glslang-master/glslang/Include/)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-master)
 
