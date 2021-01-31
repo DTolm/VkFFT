@@ -71,8 +71,8 @@ void launch_benchmark_cuFFT_single_3d(bool file_output, FILE* output)
 			auto timeSubmit = std::chrono::steady_clock::now();
 			for (int i = 0; i < batch; i++) {
 
-				cufftExecC2C(planC2C, dataC, dataC, 1);
 				cufftExecC2C(planC2C, dataC, dataC, -1);
+				cufftExecC2C(planC2C, dataC, dataC, 1);
 			}
 			cudaDeviceSynchronize();
 			auto timeEnd = std::chrono::steady_clock::now();

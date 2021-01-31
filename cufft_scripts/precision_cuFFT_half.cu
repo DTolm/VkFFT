@@ -50,7 +50,7 @@ void launch_precision_cuFFT_half(void* inputC, void* output_cuFFT, uint32_t* dim
 		NULL, 1, 1, CUDA_C_16F, 1, &ws, CUDA_C_16F);
 
 	for (int i = 0; i < 1; i++) {
-		res = cufftXtExec(planHalf, dataC, dataC, 1);
+		res = cufftXtExec(planHalf, dataC, dataC, -1);
 	}
 	cudaDeviceSynchronize();
 	cudaMemcpy(output_cuFFT, dataC, sizeof(half2) * dims[0] * dims[1] * dims[2], cudaMemcpyDeviceToHost);

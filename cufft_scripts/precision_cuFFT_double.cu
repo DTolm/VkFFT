@@ -34,7 +34,7 @@ void launch_precision_cuFFT_double(void* inputC, void* output_cuFFT, uint32_t* d
 		break;
 	}
 	for (int i = 0; i < 1; i++) {
-		cufftExecZ2Z(planZ2Z, dataC, dataC, 1);
+		cufftExecZ2Z(planZ2Z, dataC, dataC, -1);
 	}
 	cudaDeviceSynchronize();
 	cudaMemcpy(output_cuFFT, dataC, sizeof(cufftDoubleComplex) * dims[0] * dims[1] * dims[2], cudaMemcpyDeviceToHost);
