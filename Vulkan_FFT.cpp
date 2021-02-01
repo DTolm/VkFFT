@@ -147,17 +147,13 @@ VkResult createInstance(VkGPU* vkGPU, uint32_t sample_id) {
 	applicationInfo.applicationVersion = 1.0;
 	applicationInfo.pEngineName = "VkFFT";
 	applicationInfo.engineVersion = 1.0;
-	switch (VK_API_VERSION) {
-	case 12:
-		applicationInfo.apiVersion = VK_API_VERSION_1_2;
-		break;
-	case 11:
-		applicationInfo.apiVersion = VK_API_VERSION_1_1;
-		break;
-	default:
-		applicationInfo.apiVersion = VK_API_VERSION_1_0;
-		break;
-	}
+#if (VK_API_VERSION>=12)
+	applicationInfo.apiVersion = VK_API_VERSION_1_2;
+#elif (VK_API_VERSION==11)
+	applicationInfo.apiVersion = VK_API_VERSION_1_1;
+#else
+	applicationInfo.apiVersion = VK_API_VERSION_1_0;
+#endif
 
 	VkInstanceCreateInfo createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	createInfo.flags = 0;
@@ -589,7 +585,7 @@ VkResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 64;
 				forward_configuration.registerBoostNonPow2 = 0;
-				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize>=65536) ? 2 : 4;
+				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 				forward_configuration.registerBoost4Step = 1;
 				forward_configuration.swapTo3Stage4Step = 19;
 				forward_configuration.performHalfBandwidthBoost = false;
@@ -788,7 +784,7 @@ VkResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 				forward_configuration.useLUT = true;
 				forward_configuration.warpSize = 64;
 				forward_configuration.registerBoostNonPow2 = 0;
-				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize>=65536) ? 2 : 4;
+				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 				forward_configuration.registerBoost4Step = 1;
 				forward_configuration.swapTo3Stage4Step = 20;
 				forward_configuration.performHalfBandwidthBoost = false;
@@ -993,7 +989,7 @@ VkResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 64;
 				forward_configuration.registerBoostNonPow2 = 0;
-				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize>=65536) ? 2 : 4;
+				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 				forward_configuration.registerBoost4Step = 1;
 				forward_configuration.swapTo3Stage4Step = 0;
 				forward_configuration.performHalfBandwidthBoost = false;
@@ -1203,7 +1199,7 @@ VkResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 64;
 				forward_configuration.registerBoostNonPow2 = 0;
-				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize>=65536) ? 2 : 4;
+				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 				forward_configuration.registerBoost4Step = 1;
 				forward_configuration.swapTo3Stage4Step = 19;
 				forward_configuration.performHalfBandwidthBoost = false;
@@ -1413,7 +1409,7 @@ VkResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 64;
 				forward_configuration.registerBoostNonPow2 = 0;
-				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize>=65536) ? 2 : 4;
+				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 				forward_configuration.registerBoost4Step = 1;
 				forward_configuration.swapTo3Stage4Step = 19;
 				forward_configuration.performHalfBandwidthBoost = false;
@@ -1621,7 +1617,7 @@ VkResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 64;
 				forward_configuration.registerBoostNonPow2 = 0;
-				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize>=65536) ? 2 : 4;
+				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 				forward_configuration.registerBoost4Step = 1;
 				forward_configuration.swapTo3Stage4Step = 21;
 				forward_configuration.performHalfBandwidthBoost = false;
@@ -1836,7 +1832,7 @@ VkResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			forward_configuration.commandPool = &vkGPU->commandPool;
 			forward_configuration.physicalDevice = &vkGPU->physicalDevice;
 			forward_configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-			
+
 
 
 			//Allocate buffer for the input data.
@@ -2668,7 +2664,7 @@ VkResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 64;
 				forward_configuration.registerBoostNonPow2 = 0;
-				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize>=65536) ? 2 : 4;
+				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 				forward_configuration.registerBoost4Step = 1;
 				forward_configuration.swapTo3Stage4Step = 19;
 				forward_configuration.performHalfBandwidthBoost = false;
@@ -2938,7 +2934,7 @@ VkResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 64;
 				forward_configuration.registerBoostNonPow2 = 0;
-				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize>=65536) ? 2 : 4;
+				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 				forward_configuration.registerBoost4Step = 1;
 				forward_configuration.swapTo3Stage4Step = 19;
 				forward_configuration.performHalfBandwidthBoost = false;
@@ -3050,7 +3046,7 @@ VkResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 						int N = (forward_configuration.inverse) ? dims[0] * dims[1] * dims[2] : 1;
 
 						//if (file_output) fprintf(output, "%f %f - %f %f \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
-						
+
 						//printf("%f %f - %f %f \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
 						float current_data_norm = sqrt(output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] + output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
 #ifdef USE_cuFFT
@@ -3219,7 +3215,7 @@ VkResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 				forward_configuration.useLUT = true;
 				forward_configuration.warpSize = 64;
 				forward_configuration.registerBoostNonPow2 = 0;
-				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize>=65536) ? 2 : 4;
+				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 				forward_configuration.registerBoost4Step = 1;
 				forward_configuration.swapTo3Stage4Step = 20;
 				forward_configuration.performHalfBandwidthBoost = false;
@@ -3502,7 +3498,7 @@ VkResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 64;
 				forward_configuration.registerBoostNonPow2 = 0;
-				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize>=65536) ? 2 : 4;
+				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 				forward_configuration.registerBoost4Step = 1;
 				forward_configuration.swapTo3Stage4Step = 0;
 				forward_configuration.performHalfBandwidthBoost = false;
@@ -3786,7 +3782,7 @@ VkResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 				forward_configuration.useLUT = false;
 				forward_configuration.warpSize = 64;
 				forward_configuration.registerBoostNonPow2 = 0;
-				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize>=65536) ? 2 : 4;
+				forward_configuration.registerBoost = (vkGPU->physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 				forward_configuration.registerBoost4Step = 1;
 				forward_configuration.swapTo3Stage4Step = 19;
 				forward_configuration.performHalfBandwidthBoost = false;
@@ -4250,5 +4246,5 @@ int main(int argc, char* argv[])
 		launch_benchmark_cuFFT_single_3d(file_output, output);
 #endif
 	}
-		return VK_SUCCESS;
-	}
+	return VK_SUCCESS;
+}

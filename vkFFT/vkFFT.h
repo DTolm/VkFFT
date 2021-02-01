@@ -7236,7 +7236,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if ((physicalDeviceProperties.vendorID == 0x8086) && (!app->configuration.doublePrecision)) app->configuration.halfThreads = 1;
 		//	if ((physicalDeviceProperties.vendorID == 0x8086) && (!app->configuration.doublePrecision)) app->configuration.sharedMemorySize /= 2;//Temporary measure, until L1 overutilization is enabled
 		app->configuration.sharedMemorySize = physicalDeviceProperties.limits.maxComputeSharedMemorySize;
-		app->configuration.sharedMemorySizePow2 = (physicalDeviceProperties.limits.maxComputeSharedMemorySize / 32768) * 32768;
+		app->configuration.sharedMemorySizePow2 = (uint32_t)pow(2, (uint32_t)log2(physicalDeviceProperties.limits.maxComputeSharedMemorySize));
 		if (app->configuration.matrixConvolution > 1) app->configuration.coordinateFeatures = app->configuration.matrixConvolution;
 		//app->configuration.registerBoost = 1;
 		app->configuration.registerBoost4Step = 1;
