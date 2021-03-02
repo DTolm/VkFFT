@@ -1,6 +1,6 @@
 [![Build Status](https://travis-ci.com/DTolm/VkFFT.svg?token=nMgUQeqx7PXMeCFaXqsb&branch=master)](https://travis-ci.com/github/DTolm/VkFFT)
 # VkFFT - Vulkan Fast Fourier Transform library
-VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan projects. VkFFT aims to provide community with an open-source alternative to Nvidia's cuFFT library, while achieving better performance. VkFFT is written in C language.
+VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan/CUDA/HIP projects. VkFFT aims to provide community with an open-source alternative to Nvidia's cuFFT library, while achieving better performance. VkFFT is written in C language and supports Vulkan, CUDA and HIP as backends.
 
 ## I am looking for a PhD position/job that may be interested in my set of skills. Contact me by email: <d.tolmachev@fz-juelich.de> | <dtolm96@gmail.com>
 
@@ -12,7 +12,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - 1D/2D/3D systems
   - Forward and inverse directions of FFT
   - Support for big FFT dimension sizes. Current limits in single and half precision: C2C - (2^32, 2^32, 2^32). C2R/R2C - (2^12, 2^32, 2^32). (will be increased later). Current limits in double precision: C2C - (2^32, 2^32, 2^32), C2R/R2C - (2^11, 2^32, 2^32) with no register overutilization.
-  - Radix-2/3/4/5/7/8 FFT. Sequences using radix 3, 5 and 7 have comparable performance to that of powers of 2
+  - Radix-2/3/4/5/7/8/11/13 FFT. Sequences using radix 3, 5, 7, 11 and 13 have comparable performance to that of powers of 2
   - Single, double and half precision support. Double precision uses CPU generated LUT tables. Half precision still does all computations in single and only uses half precision to store data.
   - All transformations are performed in-place with no performance loss. Out-of-place transforms are supported by selecting different input/output buffers.
   - No additional transposition uploads. Note: data can be reshuffled after the four step FFT algorithm with additional buffer (for big sequences). Doesn't matter for convolutions - they return to the input ordering (saves memory).
@@ -23,6 +23,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - Multiple feature/batch convolutions - one input, multiple kernels
   - Multiple input/output/temporary buffer split. Allows to use data split between different memory allocations and mitigate 4GB single allocation limit.
   - Works on Nvidia, AMD and Intel GPUs (tested on Nvidia RTX 3080, GTX 1660 Ti, AMD Radeon VII and Intel UHD 620)
+  - VkFFT supports Vulkan, CUDA and HIP as backend to cover wide range of APIs
   - Header-only library with Vulkan interface, which allows to append VkFFT directly to user's command buffer. Shaders are compiled once during the plan creation stage
 ## Future release plan
  - ##### Planned
@@ -32,8 +33,12 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
     - Multiple GPU job splitting
 
 ## Installation
+Vulkan version:
 Include the vkFFT.h file and glslang compiler. Sample CMakeLists.txt file configures project based on Vulkan_FFT.cpp file, which contains examples on how to use VkFFT to perform FFT, iFFT and convolution calculations, use zero padding, multiple feature/batch convolutions, C2C FFTs of big systems, R2C/C2R transforms, double precision FFTs, half precision FFTs.\
 For single and double precision, Vulkan 1.0 is required. For half precision, Vulkan 1.1 is required.
+
+CUDA/HIP:
+Include the vkFFT.h file and make sure your system has NVRTC/HIPRTC built. Only single/double precision for now.
 ## Command-line interface
 VkFFT has a command-line interface with the following set of commands:\
 -h: print help\
@@ -47,7 +52,7 @@ So, the command to launch single precision benchmark of VkFFT and cuFFT and save
 .\Vulkan_FFT.exe -d 0 -o output.txt -vkfft 0 -cufft 0\
 For double precision benchmark, replace -vkfft 0 -cufft 0 with -vkfft 1 -cufft 1. For half precision benchmark, replace -vkfft 0 -cufft 0 with -vkfft 2 -cufft 2.
 ## How to use VkFFT
-VkFFT.h is a library which can append FFT, iFFT or convolution calculation to the user defined command buffer. It operates on storage buffers allocated by user and doesn't require any additional memory by itself. All computations are fully based on Vulkan compute shaders with no CPU usage except for FFT planning. VkFFT creates and optimizes memory layout by itself and performs FFT with the best chosen parameters. For an example application, see Vulkan_FFT.cpp file, which has comments explaining the VkFFT configuration process.\
+VkFFT.h is a library which can append FFT, iFFT or convolution calculation to the user defined command buffer. It operates on storage buffers allocated by user and doesn't require any additional memory by itself (except for LUT tables, if they are enabled). All computations are fully based on Vulkan compute shaders with no CPU usage except for FFT planning. VkFFT creates and optimizes memory layout by itself and performs FFT with the best chosen parameters. For an example application, see Vulkan_FFT.cpp file, which has comments explaining the VkFFT configuration process.\
 VkFFT achieves striding by grouping nearby FFTs instead of transpositions.
 ![alt text](https://github.com/dtolm/VkFFT/blob/master/FFT_memory_layout.png?raw=true)
 ## Benchmark results in comparison to cuFFT
