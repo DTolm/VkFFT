@@ -4107,7 +4107,7 @@ uint32_t sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			VkFFTApplication app = {};
 			//FFT + iFFT sample code.
 			//Setting up FFT configuration for forward and inverse FFT.
-			configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
+			configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D (default 1).
 			configuration.size[0] = n;// 4 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 			if (n == 1) configuration.size[0] = 512;
 			uint32_t temp = configuration.size[0];

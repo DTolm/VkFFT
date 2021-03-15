@@ -34,11 +34,13 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
 
 ## Installation
 Vulkan version:
-Include the vkFFT.h file and glslang compiler. Sample CMakeLists.txt file configures project based on Vulkan_FFT.cpp file, which contains examples on how to use VkFFT to perform FFT, iFFT and convolution calculations, use zero padding, multiple feature/batch convolutions, C2C FFTs of big systems, R2C/C2R transforms, double precision FFTs, half precision FFTs.\
+Include the vkFFT.h file and glslang compiler. Provide the library with correctly chosen VKFFT_BACKEND definition (VKFFT_BACKEND=0 for Vulkan). Sample CMakeLists.txt file configures project based on Vulkan_FFT.cpp file, which contains examples on how to use VkFFT to perform FFT, iFFT and convolution calculations, use zero padding, multiple feature/batch convolutions, C2C FFTs of big systems, R2C/C2R transforms, double precision FFTs, half precision FFTs.\
 For single and double precision, Vulkan 1.0 is required. For half precision, Vulkan 1.1 is required.
 
 CUDA/HIP:
-Include the vkFFT.h file and make sure your system has NVRTC/HIPRTC built. Only single/double precision for now.
+Include the vkFFT.h file and make sure your system has NVRTC/HIPRTC built. Provide the library with correctly chosen VKFFT_BACKEND definition. Only single/double precision for now.\
+To build CUDA/HIP version of benchmark, replace VKFFT_BACKEND in CMakeLists (line 5) with the correct one and optionally enable FFTW. VKFFT_BACKEND=1 for CUDA, VKFFT_BACKEND=2 for HIP.
+
 ## Command-line interface
 VkFFT has a command-line interface with the following set of commands:\
 -h: print help\
