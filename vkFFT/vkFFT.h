@@ -97,12 +97,15 @@ extern "C" {
 		uint32_t coalescedMemory;//in bits, for Nvidia and AMD is equal to 32, Intel is equal 64, scaled for half precision. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
 		uint32_t aimThreads;//aim at this many threads per block. Default 128
 		uint32_t numSharedBanks;//how many banks shared memory has. Default 32
+		uint32_t inverseReturnToInputBuffer;//return data to the input buffer in inverse transform (0 - off, 1 - on). isInputFormatted must be enabled
+		uint32_t numberBatches;// N - used to perform multiple batches of initial data. Default 1
 
 		uint32_t doublePrecision; //perform calculations in double precision (0 - off, 1 - on).
 		uint32_t halfPrecision; //perform calculations in half precision (0 - off, 1 - on)
 		uint32_t halfPrecisionMemoryOnly; //use half precision only as input/output buffer. Input/Output have to be allocated as half, buffer/tempBuffer have to be allocated as float (out of place mode only). Specify isInputFormatted and isOutputFormatted to use (0 - off, 1 - on)
 
 		uint32_t performR2C; //perform R2C/C2R decomposition (0 - off, 1 - on)
+		uint32_t disableMergeSequencesR2C; //disable merging of two real sequences to reduce calculations (0 - off, 1 - on)
 		uint32_t normalize; //normalize inverse transform (0 - off, 1 - on)
 		uint32_t disableReorderFourStep; // disables unshuffling of Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on)
 		uint32_t useLUT; //switches from calculating sincos to using precomputed LUT tables (0 - off, 1 - on). Configured by initialization routine
@@ -124,7 +127,6 @@ extern "C" {
 		uint32_t coordinateFeatures; // C - coordinate, or dimension of features vector. In matrix convolution - size of vector
 		uint32_t matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
 		uint32_t symmetricKernel; //specify if kernel in 2x2 or 3x3 matrix convolution is symmetric
-		uint32_t numberBatches;// N - used to perform multiple batches of initial data
 		uint32_t numberKernels;// N - only used in convolution step - specify how many kernels were initialized before. Expands one input to multiple (batched) output
 		uint32_t kernelConvolution;// specify if this application is used to create kernel for convolution, so it has the same properties. performConvolution has to be set to 0 for kernel creation
 
@@ -238,7 +240,8 @@ extern "C" {
 		uint32_t sharedStrideBankConflictFirstStages;
 		uint32_t sharedStrideReadWriteConflict;
 		uint32_t maxSharedStride;
-
+		uint32_t axisSwapped;
+		uint32_t mergeSequencesR2C;
 		char** regIDs;
 		char* disableThreadsStart;
 		char* disableThreadsEnd;
@@ -340,7 +343,6 @@ extern "C" {
 		VkFFTPlan* localFFTPlan;
 		VkFFTPlan* localFFTPlan_inverse; //additional inverse plan
 	} VkFFTApplication;
-	static VkFFTApplication defaultVkFFTApplication = { {}, {}, {} };
 
 	static inline void appendLicense(char* output) {
 		sprintf(output + strlen(output), "\
@@ -515,7 +517,7 @@ extern "C" {
 	%s = %s / %s;\n", out, in_1, in_num);
 		VkAppendLine(sc, sc->tempStr);
 	};
-	static inline void VkPermute(VkFFTSpecializationConstantsLayout* sc, const uint32_t* permute, const uint32_t num_elem, const uint32_t type, char ** regIDs) {
+	static inline void VkPermute(VkFFTSpecializationConstantsLayout* sc, const uint32_t* permute, const uint32_t num_elem, const uint32_t type, char** regIDs) {
 		char temp_ID[13][20];
 		if (type == 0) {
 			for (uint32_t i = 0; i < num_elem; i++)
@@ -856,7 +858,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		sprintf(functionDefinitions, "__device__ static __inline__ ");
 #endif
 		switch (inputType) {
-		case 0: case 2: case 3: case 4: {//single_c2c + single_c2c_strided
+		case 0: case 2: case 3: case 4:case 5: case 6: {//single_c2c + single_c2c_strided
 			char inputOffset[30] = "";
 			if (sc->inputOffset > 0)
 				sprintf(inputOffset, "%d + ", sc->inputOffset);
@@ -866,12 +868,21 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else
 				sprintf(shiftX, "(%s) * %d", index_x, sc->inputStride[0]);
 			char shiftY[500] = "";
+			uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			if (sc->size[1] > 1) {
 				if (sc->fftDim == sc->fft_dim_full) {
-					if (sc->performWorkGroupShift[1])
-						sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, sc->localSize[1] * sc->inputStride[1]);
-					else
-						sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, sc->localSize[1] * sc->inputStride[1]);
+					if (sc->axisSwapped) {
+						if (sc->performWorkGroupShift[1])
+							sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->inputStride[1]);
+						else
+							sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->inputStride[1]);
+					}
+					else {
+						if (sc->performWorkGroupShift[1])
+							sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->inputStride[1]);
+						else
+							sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->inputStride[1]);
+					}
 				}
 				else {
 					if (sc->performWorkGroupShift[1])
@@ -955,77 +966,86 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			sprintf(output + strlen(output), "%s%s%s%s%s%s", inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
 			break;
 		}
-		case 5: {//single_r2c
-			char inputOffset[30] = "";
-			if (sc->inputOffset > 0)
-				sprintf(inputOffset, "%d + ", sc->inputOffset);
-			char shiftX[500] = "";
-			if (sc->inputStride[0] == 1)
-				sprintf(shiftX, "(%s)", index_x);
-			else
-				sprintf(shiftX, "(%s) * %d", index_x, sc->inputStride[0]);
-			char shiftY[500] = "";
-			if (sc->size[1] > 1) {
-				if (sc->fftDim == sc->fft_dim_full) {
-					if (sc->performWorkGroupShift[1])
-						sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, 2 * sc->localSize[1] * sc->inputStride[1]);
-					else
-						sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, 2 * sc->localSize[1] * sc->inputStride[1]);
-				}
-				else {
-					if (sc->performWorkGroupShift[1])
-						sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, 2 * sc->inputStride[1]);
-					else
-						sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, 2 * sc->inputStride[1]);
-				}
-			}
-			char shiftZ[500] = "";
-			if (sc->size[2] > 1) {
-				if (sc->performWorkGroupShift[2])
-					sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->inputStride[2]);
-				else
-					sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z,  sc->inputStride[2]);
-			}
-			char shiftCoordinate[100] = "";
-			if (sc->numCoordinates * sc->matrixConvolution > 1) {
-				sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->inputStride[3]);
-			}
-			char shiftBatch[100] = "";
-			if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
-				sprintf(shiftBatch, " + consts.batchID * %d", sc->inputStride[4]);
-			}
-			sprintf(output + strlen(output), "%s%s%s%s%s%s", inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
-			break;
-		}
-		case 6: {//single_c2r
-			char inputOffset[30] = "";
-			if (sc->inputOffset > 0)
-				sprintf(inputOffset, "%d + ", sc->inputOffset);
-			char shiftX[500] = "";
-			if (sc->inputStride[0] == 1)
-				sprintf(shiftX, "(%s)", index_x);
-			else
-				sprintf(shiftX, "(%s) * %d", index_x, sc->inputStride[0]);
-			char shiftY[500] = "";
-			sprintf(shiftY, " + (%s) * %d", index_y, sc->inputStride[1]);
-			char shiftZ[500] = "";
-			if (sc->size[2] > 1) {
-				if (sc->performWorkGroupShift[2])
-					sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->inputStride[2]);
-				else
-					sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->inputStride[2]);
-			}
-			char shiftCoordinate[100] = "";
-			if (sc->numCoordinates * sc->matrixConvolution > 1) {
-				sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->inputStride[3]);
-			}
-			char shiftBatch[100] = "";
-			if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
-				sprintf(shiftBatch, " + consts.batchID * %d", sc->inputStride[4]);
-			}
-			sprintf(output + strlen(output), "%s%s%s%s%s%s", inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
-			break;
-		}
+			  /*case 5: {//single_r2c
+				  char inputOffset[30] = "";
+				  if (sc->inputOffset > 0)
+					  sprintf(inputOffset, "%d + ", sc->inputOffset);
+				  char shiftX[500] = "";
+				  if (sc->inputStride[0] == 1)
+					  sprintf(shiftX, "(%s)", index_x);
+				  else
+					  sprintf(shiftX, "(%s) * %d", index_x, sc->inputStride[0]);
+				  char shiftY[500] = "";
+				  uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+				  if (sc->size[1] > 1) {
+					  if (sc->fftDim == sc->fft_dim_full) {
+						  if (sc->axisSwapped) {
+							  if (sc->performWorkGroupShift[1])
+								  sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->inputStride[1]);
+							  else
+								  sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->inputStride[1]);
+						  }
+						  else {
+							  if (sc->performWorkGroupShift[1])
+								  sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->inputStride[1]);
+							  else
+								  sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult* sc->localSize[1] * sc->inputStride[1]);
+						  }
+					  }
+					  else {
+						  if (sc->performWorkGroupShift[1])
+							  sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->inputStride[1]);
+						  else
+							  sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult* sc->inputStride[1]);
+					  }
+				  }
+				  char shiftZ[500] = "";
+				  if (sc->size[2] > 1) {
+					  if (sc->performWorkGroupShift[2])
+						  sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->inputStride[2]);
+					  else
+						  sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->inputStride[2]);
+				  }
+				  char shiftCoordinate[100] = "";
+				  if (sc->numCoordinates * sc->matrixConvolution > 1) {
+					  sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->inputStride[3]);
+				  }
+				  char shiftBatch[100] = "";
+				  if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
+					  sprintf(shiftBatch, " + consts.batchID * %d", sc->inputStride[4]);
+				  }
+				  sprintf(output + strlen(output), "%s%s%s%s%s%s", inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
+				  break;
+			  }
+			  case 6: {//single_c2r
+				  char inputOffset[30] = "";
+				  if (sc->inputOffset > 0)
+					  sprintf(inputOffset, "%d + ", sc->inputOffset);
+				  char shiftX[500] = "";
+				  if (sc->inputStride[0] == 1)
+					  sprintf(shiftX, "(%s)", index_x);
+				  else
+					  sprintf(shiftX, "(%s) * %d", index_x, sc->inputStride[0]);
+				  char shiftY[500] = "";
+				  sprintf(shiftY, " + (%s) * %d", index_y, sc->inputStride[1]);
+				  char shiftZ[500] = "";
+				  if (sc->size[2] > 1) {
+					  if (sc->performWorkGroupShift[2])
+						  sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->inputStride[2]);
+					  else
+						  sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->inputStride[2]);
+				  }
+				  char shiftCoordinate[100] = "";
+				  if (sc->numCoordinates * sc->matrixConvolution > 1) {
+					  sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->inputStride[3]);
+				  }
+				  char shiftBatch[100] = "";
+				  if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
+					  sprintf(shiftBatch, " + consts.batchID * %d", sc->inputStride[4]);
+				  }
+				  sprintf(output + strlen(output), "%s%s%s%s%s%s", inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
+				  break;
+			  }*/
 		}
 	}
 	static inline void indexOutputVkFFT(char* output, VkFFTSpecializationConstantsLayout* sc, const char* uintType, uint32_t outputType, const char* index_x, const char* index_y, const char* coordinate, const char* batchID) {
@@ -1037,7 +1057,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		sprintf(functionDefinitions, "__device__ static __inline__ ");
 #endif
 		switch (outputType) {//single_c2c + single_c2c_strided
-		case 0: case 2: case 3: case 4: {
+		case 0: case 2: case 3: case 4: case 5: case 6: {
 			char outputOffset[30] = "";
 			if (sc->outputOffset > 0)
 				sprintf(outputOffset, "%d + ", sc->outputOffset);
@@ -1047,12 +1067,21 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else
 				sprintf(shiftX, "(%s) * %d", index_x, sc->outputStride[0]);
 			char shiftY[500] = "";
+			uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			if (sc->size[1] > 1) {
 				if (sc->fftDim == sc->fft_dim_full) {
-					if (sc->performWorkGroupShift[1])
-						sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, sc->localSize[1] * sc->outputStride[1]);
-					else
-						sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, sc->localSize[1] * sc->outputStride[1]);
+					if (sc->axisSwapped) {
+						if (sc->performWorkGroupShift[1])
+							sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->outputStride[1]);
+						else
+							sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->outputStride[1]);
+					}
+					else {
+						if (sc->performWorkGroupShift[1])
+							sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->outputStride[1]);
+						else
+							sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->outputStride[1]);
+					}
 				}
 				else {
 					if (sc->performWorkGroupShift[1])
@@ -1131,77 +1160,86 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			break;
 
 		}
-		case 5: {//single_r2c
-			char outputOffset[30] = "";
-			if (sc->outputOffset > 0)
-				sprintf(outputOffset, "%d + ", sc->outputOffset);
-			char shiftX[500] = "";
-			if (sc->outputStride[0] == 1)
-				sprintf(shiftX, "(%s)", index_x);
-			else
-				sprintf(shiftX, "(%s) * %d", index_x, sc->outputStride[0]);
-			char shiftY[500] = "";
-			sprintf(shiftY, " + (%s) * %d", index_y, sc->outputStride[1]);
-			char shiftZ[500] = "";
-			if (sc->size[2] > 1) {
-				if (sc->performWorkGroupShift[2])
-					sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->outputStride[2]);
-				else
-					sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->outputStride[2]);
-			}
-			char shiftCoordinate[100] = "";
-			if (sc->numCoordinates * sc->matrixConvolution > 1) {
-				sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->outputStride[3]);
-			}
-			char shiftBatch[100] = "";
-			if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
-				sprintf(shiftBatch, " + consts.batchID * %d", sc->outputStride[4]);
-			}
-			sprintf(output + strlen(output), "%s%s%s%s%s%s", outputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
-			break;
-		}
-		case 6: {//single_c2r
-			char outputOffset[30] = "";
-			if (sc->outputOffset > 0)
-				sprintf(outputOffset, "%d + ", sc->outputOffset);
-			char shiftX[500] = "";
-			if (sc->outputStride[0] == 1)
-				sprintf(shiftX, "(%s)", index_x);
-			else
-				sprintf(shiftX, "(%s) * %d", index_x, sc->outputStride[0]);
-			char shiftY[500] = "";
-			if (sc->size[1] > 1) {
-				if (sc->fftDim == sc->fft_dim_full) {
-					if (sc->performWorkGroupShift[1])
-						sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, 2 * sc->localSize[1] * sc->outputStride[1]);
-					else
-						sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, 2 * sc->localSize[1] * sc->outputStride[1]);
-				}
-				else {
-					if (sc->performWorkGroupShift[1])
-						sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, 2 * sc->outputStride[1]);
-					else
-						sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, 2 * sc->outputStride[1]);
-				}
-			}
-			char shiftZ[500] = "";
-			if (sc->size[2] > 1) {
-				if (sc->performWorkGroupShift[2])
-					sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->outputStride[2]);
-				else
-					sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->outputStride[2]);
-			}
-			char shiftCoordinate[100] = "";
-			if (sc->numCoordinates * sc->matrixConvolution > 1) {
-				sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->outputStride[3]);
-			}
-			char shiftBatch[100] = "";
-			if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
-				sprintf(shiftBatch, " + consts.batchID * %d", sc->outputStride[4]);
-			}
-			sprintf(output + strlen(output), "%s%s%s%s%s%s", outputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
-			break;
-		}
+			  /*case 5: {//single_r2c
+				  char outputOffset[30] = "";
+				  if (sc->outputOffset > 0)
+					  sprintf(outputOffset, "%d + ", sc->outputOffset);
+				  char shiftX[500] = "";
+				  if (sc->outputStride[0] == 1)
+					  sprintf(shiftX, "(%s)", index_x);
+				  else
+					  sprintf(shiftX, "(%s) * %d", index_x, sc->outputStride[0]);
+				  char shiftY[500] = "";
+				  sprintf(shiftY, " + (%s) * %d", index_y, sc->outputStride[1]);
+				  char shiftZ[500] = "";
+				  if (sc->size[2] > 1) {
+					  if (sc->performWorkGroupShift[2])
+						  sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->outputStride[2]);
+					  else
+						  sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->outputStride[2]);
+				  }
+				  char shiftCoordinate[100] = "";
+				  if (sc->numCoordinates * sc->matrixConvolution > 1) {
+					  sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->outputStride[3]);
+				  }
+				  char shiftBatch[100] = "";
+				  if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
+					  sprintf(shiftBatch, " + consts.batchID * %d", sc->outputStride[4]);
+				  }
+				  sprintf(output + strlen(output), "%s%s%s%s%s%s", outputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
+				  break;
+			  }
+			  case 6: {//single_c2r
+				  char outputOffset[30] = "";
+				  if (sc->outputOffset > 0)
+					  sprintf(outputOffset, "%d + ", sc->outputOffset);
+				  char shiftX[500] = "";
+				  if (sc->outputStride[0] == 1)
+					  sprintf(shiftX, "(%s)", index_x);
+				  else
+					  sprintf(shiftX, "(%s) * %d", index_x, sc->outputStride[0]);
+				  char shiftY[500] = "";
+				  uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+				  if (sc->size[1] > 1) {
+					  if (sc->fftDim == sc->fft_dim_full) {
+						  if (sc->axisSwapped) {
+							  if (sc->performWorkGroupShift[1])
+								  sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->outputStride[1]);
+							  else
+								  sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult* sc->localSize[0] * sc->outputStride[1]);
+						  }
+						  else {
+							  if (sc->performWorkGroupShift[1])
+								  sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->outputStride[1]);
+							  else
+								  sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult* sc->localSize[1] * sc->outputStride[1]);
+						  }
+					  }
+					  else {
+						  if (sc->performWorkGroupShift[1])
+							  sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->outputStride[1]);
+						  else
+							  sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult * sc->outputStride[1]);
+					  }
+				  }
+				  char shiftZ[500] = "";
+				  if (sc->size[2] > 1) {
+					  if (sc->performWorkGroupShift[2])
+						  sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->outputStride[2]);
+					  else
+						  sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->outputStride[2]);
+				  }
+				  char shiftCoordinate[100] = "";
+				  if (sc->numCoordinates * sc->matrixConvolution > 1) {
+					  sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->outputStride[3]);
+				  }
+				  char shiftBatch[100] = "";
+				  if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
+					  sprintf(shiftBatch, " + consts.batchID * %d", sc->outputStride[4]);
+				  }
+				  sprintf(output + strlen(output), "%s%s%s%s%s%s", outputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
+				  break;
+			  }*/
 		}
 	}
 
@@ -1303,12 +1341,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				if (!strcmp(floatType, "float")) {
-					sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f);\n", w, cosDef, 4.0 / 3.0);
-					sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f);\n", w, sinDef, 4.0 / 3.0);
+					sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 4.0 / 3.0, LFending);
+					sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 4.0 / 3.0, LFending);
 					//sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 4.0 / 3.0, 4.0 / 3.0);
 				}
 				if (!strcmp(floatType, "double"))
-					sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f);\n", w, 4.0 / 3.0);
+					sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f%s);\n", w, 4.0 / 3.0, LFending);
 			}
 			VkMulComplex(sc, sc->locID[2], regID[2], w, 0);
 			//sprintf(output + strlen(output), "\
@@ -1321,12 +1359,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				if (!strcmp(floatType, "float")) {
-					sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f);\n", w, cosDef, 2.0 / 3.0);
-					sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f);\n", w, sinDef, 2.0 / 3.0);
+					sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 / 3.0, LFending);
+					sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 / 3.0, LFending);
 					//sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 / 3.0, 2.0 / 3.0);
 				}
 				if (!strcmp(floatType, "double"))
-					sprintf(output + strlen(output), "	%s=sincos_20(angle*%.17f);\n", w, 2.0 / 3.0);
+					sprintf(output + strlen(output), "	%s=sincos_20(angle*%.17f%s);\n", w, 2.0 / 3.0, LFending);
 			}
 			VkMulComplex(sc, sc->locID[1], regID[1], w, 0);
 			//sprintf(output + strlen(output), "\
@@ -1420,8 +1458,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				if (!strcmp(floatType, "float")) {
-					sprintf(output + strlen(output), "	%s.x = %s(0.5*angle);\n", w, cosDef);
-					sprintf(output + strlen(output), "	%s.y = %s(0.5*angle);\n", w, sinDef);
+					sprintf(output + strlen(output), "	%s.x = %s(0.5%s*angle);\n", w, cosDef, LFending);
+					sprintf(output + strlen(output), "	%s.y = %s(0.5%s*angle);\n", w, sinDef, LFending);
 				}
 				if (!strcmp(floatType, "double"))
 					sprintf(output + strlen(output), "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
@@ -1499,12 +1537,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						if (!strcmp(floatType, "float")) {
-							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f);\n", w, cosDef, 2.0 * i / radix);
-							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f);\n", w, sinDef, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 							//sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 						}
 						if (!strcmp(floatType, "double"))
-							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f);\n", w, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
 					}
 				}
 				else {
@@ -1515,12 +1553,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						if (!strcmp(floatType, "float")) {
-							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f);\n", w, cosDef, 2.0 * i / radix);
-							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f);\n", w, sinDef, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 							//sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 						}
 						if (!strcmp(floatType, "double"))
-							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f);\n", w, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
 					}
 				}
 				VkMulComplex(sc, sc->locID[i], regID[i], w, 0);
@@ -1653,12 +1691,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						if (!strcmp(floatType, "float")) {
-							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f);\n", w, cosDef, 2.0 * i / radix);
-							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f);\n", w, sinDef, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 							//sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 						}
 						if (!strcmp(floatType, "double"))
-							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f);\n", w, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
 					}
 				}
 				else {
@@ -1669,12 +1707,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						if (!strcmp(floatType, "float")) {
-							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f);\n", w, cosDef, 2.0 * i / radix);
-							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f);\n", w, sinDef, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 							//sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 						}
 						if (!strcmp(floatType, "double"))
-							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f);\n", w, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
 					}
 				}
 				VkMulComplex(sc, sc->locID[i], regID[i], w, 0);
@@ -1720,16 +1758,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	temp%s = temp%s - temp%s;\n\
 	temp%s = temp%s - temp%s;\n\
 	temp%s = temp%s - temp%s;\n", regID[0], regID[1], regID[5], regID[2], regID[5], regID[3], regID[4], regID[3], regID[1]);
-			
-				VkMulComplexNumber(sc, sc->locID[1], sc->locID[1], tf[0]);
-				VkMulComplexNumber(sc, sc->locID[2], sc->locID[2], tf[1]);
-				VkMulComplexNumber(sc, sc->locID[3], sc->locID[3], tf[2]);
-				VkMulComplexNumber(sc, sc->locID[4], sc->locID[4], tf[3]);
+
+			VkMulComplexNumber(sc, sc->locID[1], sc->locID[1], tf[0]);
+			VkMulComplexNumber(sc, sc->locID[2], sc->locID[2], tf[1]);
+			VkMulComplexNumber(sc, sc->locID[3], sc->locID[3], tf[2]);
+			VkMulComplexNumber(sc, sc->locID[4], sc->locID[4], tf[3]);
 			VkMulComplexNumber(sc, sc->locID[5], sc->locID[5], tf[4]);
 			VkMulComplexNumber(sc, regID[0], regID[0], tf[5]);
 			VkMulComplexNumber(sc, regID[2], regID[2], tf[6]);
 			VkMulComplexNumber(sc, regID[4], regID[4], tf[7]);
-				//sprintf(output + strlen(output), "\
+			//sprintf(output + strlen(output), "\
 	loc_1 *= -1.16666666666666651863693004997913;\n\
 	loc_2 *= 0.79015646852540022404554065360571;\n\
 	loc_3 *= 0.05585426728964774240049351305970;\n\
@@ -1738,7 +1776,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	temp%s *= 0.34087293062393136944265847887436;\n\
 	temp%s *= -0.53396936033772524066165487965918;\n\
 	temp%s *= 0.87484229096165666561546458979137;\n", regID[0], regID[2], regID[4]);
-			
+
 			VkSubComplex(sc, regID[5], regID[4], regID[2]);
 			VkAddComplexInv(sc, regID[6], regID[4], regID[0]);
 			VkAddComplex(sc, regID[4], regID[0], regID[2]);
@@ -1840,8 +1878,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				if (!strcmp(floatType, "float")) {
-					sprintf(output + strlen(output), "	%s.x = %s(0.5*angle);\n", w, cosDef);
-					sprintf(output + strlen(output), "	%s.y = %s(0.5*angle);\n", w, sinDef);
+					sprintf(output + strlen(output), "	%s.x = %s(0.5%s*angle);\n", w, cosDef, LFending);
+					sprintf(output + strlen(output), "	%s.y = %s(0.5%s*angle);\n", w, sinDef, LFending);
 				}
 				if (!strcmp(floatType, "double"))
 					sprintf(output + strlen(output), "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
@@ -1885,8 +1923,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				if (!strcmp(floatType, "float")) {
-					sprintf(output + strlen(output), "	%s.x = %s(0.25*angle);\n", w, cosDef);
-					sprintf(output + strlen(output), "	%s.y = %s(0.25*angle);\n", w, sinDef);
+					sprintf(output + strlen(output), "	%s.x = %s(0.25%s*angle);\n", w, cosDef, LFending);
+					sprintf(output + strlen(output), "	%s.y = %s(0.25%s*angle);\n", w, sinDef, LFending);
 					//sprintf(output + strlen(output), "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
 				}
 				if (!strcmp(floatType, "double"))
@@ -1970,7 +2008,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			break;
 		}
 		case 11: {
-			
+
 			char* tf[20];
 			//char* tf2[4];
 			//char* tf2inv[4];
@@ -1981,7 +2019,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				//tf2inv[i] = (char*)malloc(sizeof(char) * 40);
 			}
 			sprintf(tf[0], "-1.100000000000000%s", LFending);
-			
+
 			sprintf(tf[2], "0.253097611605959%s", LFending);
 			sprintf(tf[3], "-1.288200610773679%s", LFending);
 			sprintf(tf[4], "0.304632239669212%s", LFending);
@@ -2025,12 +2063,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						if (!strcmp(floatType, "float")) {
-							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f);\n", w, cosDef, 2.0 * i / radix);
-							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f);\n", w, sinDef, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 							//sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 						}
 						if (!strcmp(floatType, "double"))
-							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f);\n", w, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
 					}
 				}
 				else {
@@ -2041,22 +2079,22 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						if (!strcmp(floatType, "float")) {
-							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f);\n", w, cosDef, 2.0 * i / radix);
-							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f);\n", w, sinDef, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 							//sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 						}
 						if (!strcmp(floatType, "double"))
-							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f);\n", w, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
 					}
 				}
 				VkMulComplex(sc, sc->locID[i], regID[i], w, 0);
-				
+
 			}
 			VkMovComplex(sc, sc->locID[0], regID[0]);
 			uint32_t permute[11] = { 0,1,9,4,3,5,10,2,7,8,6 };
 			VkPermute(sc, permute, 11, 0, 0);
 			for (uint32_t i = 0; i < 5; i++) {
-				VkAddComplex(sc, regID[i + 1], sc->locID[i+1], sc->locID[i+6]);
+				VkAddComplex(sc, regID[i + 1], sc->locID[i + 1], sc->locID[i + 6]);
 				VkSubComplex(sc, regID[i + 6], sc->locID[i + 1], sc->locID[i + 6]);
 			}
 			VkMovComplex(sc, sc->locID[1], regID[1]);
@@ -2074,11 +2112,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			VkMulComplexNumber(sc, regID[1], sc->locID[1], tf[0]);
 			VkMulComplexNumberImag(sc, regID[2], sc->locID[2], tf[1], sc->locID[0]);
 			for (uint32_t k = 0; k < 2; k++) {
-				VkAddComplex(sc, regID[k*4+3], sc->locID[k*4+3], sc->locID[k*4+5]);
-				VkAddComplex(sc, regID[k*4+4], sc->locID[k*4+4], sc->locID[k*4+6]);
-				VkAddComplex(sc, regID[k*4+5], sc->locID[k*4+3], sc->locID[k*4+4]);
-				VkAddComplex(sc, regID[k*4+6], sc->locID[k*4+5], sc->locID[k*4+6]);
-				VkAddComplex(sc, sc->locID[1], regID[k*4+3], regID[k*4+4]);
+				VkAddComplex(sc, regID[k * 4 + 3], sc->locID[k * 4 + 3], sc->locID[k * 4 + 5]);
+				VkAddComplex(sc, regID[k * 4 + 4], sc->locID[k * 4 + 4], sc->locID[k * 4 + 6]);
+				VkAddComplex(sc, regID[k * 4 + 5], sc->locID[k * 4 + 3], sc->locID[k * 4 + 4]);
+				VkAddComplex(sc, regID[k * 4 + 6], sc->locID[k * 4 + 5], sc->locID[k * 4 + 6]);
+				VkAddComplex(sc, sc->locID[1], regID[k * 4 + 3], regID[k * 4 + 4]);
 
 				if (k == 0) {
 					VkMulComplexNumber(sc, sc->locID[k * 4 + 3], sc->locID[k * 4 + 3], tf[k * 9 + 2]);
@@ -2102,21 +2140,21 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					VkMulComplexNumberImag(sc, regID[k * 4 + 4], regID[k * 4 + 4], tf[k * 9 + 9], sc->locID[0]);
 					VkMulComplexNumberImag(sc, sc->locID[1], sc->locID[1], tf[k * 9 + 10], sc->locID[0]);
 				}
-				
-				VkAddComplex(sc, sc->locID[k*4+3], sc->locID[k*4+3], regID[k*4+3]);
-				VkAddComplex(sc, sc->locID[k*4+5], sc->locID[k*4+5], regID[k*4+3]);
 
-				VkAddComplex(sc, sc->locID[k*4+4], sc->locID[k*4+4], regID[k*4+4]);
-				VkAddComplex(sc, sc->locID[k*4+6], sc->locID[k*4+6], regID[k*4+4]);
+				VkAddComplex(sc, sc->locID[k * 4 + 3], sc->locID[k * 4 + 3], regID[k * 4 + 3]);
+				VkAddComplex(sc, sc->locID[k * 4 + 5], sc->locID[k * 4 + 5], regID[k * 4 + 3]);
 
-				VkAddComplex(sc, regID[k*4+5], regID[k*4+5], sc->locID[1]);
-				VkAddComplex(sc, regID[k*4+6], regID[k*4+6], sc->locID[1]);
+				VkAddComplex(sc, sc->locID[k * 4 + 4], sc->locID[k * 4 + 4], regID[k * 4 + 4]);
+				VkAddComplex(sc, sc->locID[k * 4 + 6], sc->locID[k * 4 + 6], regID[k * 4 + 4]);
 
-				VkAddComplex(sc, regID[k*4+3], sc->locID[k*4+3], regID[k*4+5]);
-				VkAddComplex(sc, regID[k*4+4], sc->locID[k*4+4], regID[k*4+5]);
+				VkAddComplex(sc, regID[k * 4 + 5], regID[k * 4 + 5], sc->locID[1]);
+				VkAddComplex(sc, regID[k * 4 + 6], regID[k * 4 + 6], sc->locID[1]);
 
-				VkAddComplex(sc, regID[k*4+5], sc->locID[k*4+5], regID[k*4+6]);
-				VkAddComplex(sc, regID[k*4+6], sc->locID[k*4+6], regID[k*4+6]);
+				VkAddComplex(sc, regID[k * 4 + 3], sc->locID[k * 4 + 3], regID[k * 4 + 5]);
+				VkAddComplex(sc, regID[k * 4 + 4], sc->locID[k * 4 + 4], regID[k * 4 + 5]);
+
+				VkAddComplex(sc, regID[k * 4 + 5], sc->locID[k * 4 + 5], regID[k * 4 + 6]);
+				VkAddComplex(sc, regID[k * 4 + 6], sc->locID[k * 4 + 6], regID[k * 4 + 6]);
 
 			}
 			VkAddComplex(sc, regID[1], regID[0], regID[1]);
@@ -2200,12 +2238,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						if (!strcmp(floatType, "float")) {
-							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f);\n", w, cosDef, 2.0 * i / radix);
-							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f);\n", w, sinDef, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 							//sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 						}
 						if (!strcmp(floatType, "double"))
-							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f);\n", w, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
 					}
 				}
 				else {
@@ -2216,12 +2254,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						if (!strcmp(floatType, "float")) {
-							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f);\n", w, cosDef, 2.0 * i / radix);
-							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f);\n", w, sinDef, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							sprintf(output + strlen(output), "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 							//sprintf(output + strlen(output), "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 						}
 						if (!strcmp(floatType, "double"))
-							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f);\n", w, 2.0 * i / radix);
+							sprintf(output + strlen(output), "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
 					}
 				}
 				VkMulComplex(sc, sc->locID[i], regID[i], w, 0);
@@ -2239,8 +2277,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				VkSubComplex(sc, regID[i + 4], sc->locID[i + 1], sc->locID[i + 4]);
 			}
 			for (uint32_t i = 0; i < 4; i++) {
-				VkAddComplex(sc, sc->locID[i + 1], regID[i*3 + 1], regID[i * 3 + 2]);
-				VkSubComplex(sc, sc->locID[i*2 + 5], regID[i * 3 + 1], regID[i * 3 + 3]);
+				VkAddComplex(sc, sc->locID[i + 1], regID[i * 3 + 1], regID[i * 3 + 2]);
+				VkSubComplex(sc, sc->locID[i * 2 + 5], regID[i * 3 + 1], regID[i * 3 + 3]);
 				VkAddComplex(sc, sc->locID[i + 1], sc->locID[i + 1], regID[i * 3 + 3]);
 				VkSubComplex(sc, sc->locID[i * 2 + 6], regID[i * 3 + 2], regID[i * 3 + 3]);
 			}
@@ -2250,7 +2288,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			VkMulComplexNumber(sc, regID[2], sc->locID[2], tf[1]);
 			for (uint32_t k = 0; k < 3; k++) {
 				VkAddComplex(sc, regID[k * 2 + 4], sc->locID[k * 2 + 3], sc->locID[k * 2 + 4]);
-			
+
 				if (k == 0) {
 					VkMulComplexNumberImag(sc, sc->locID[k * 2 + 3], sc->locID[k * 2 + 3], tf[k * 3 + 2], sc->locID[0]);
 					VkMulComplexNumberImag(sc, sc->locID[k * 2 + 4], sc->locID[k * 2 + 4], tf[k * 3 + 3], sc->locID[0]);
@@ -2311,7 +2349,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				VkAddComplex(sc, regID[i + 1], sc->locID[i + 1], sc->locID[i + 7]);
 				VkSubComplex(sc, regID[i + 7], sc->locID[i + 1], sc->locID[i + 7]);
 			}
-			uint32_t permute2[13] = { 0,12,1,10,5,3,2,8,9,11,4,7,6};
+			uint32_t permute2[13] = { 0,12,1,10,5,3,2,8,9,11,4,7,6 };
 			VkPermute(sc, permute2, 13, 1, regID);
 
 			for (uint32_t i = 0; i < 20; i++) {
@@ -2360,27 +2398,31 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		maxSequenceSharedMemory = sc->sharedMemSize / vecSize;
 		maxSequenceSharedMemoryPow2 = sc->sharedMemSizePow2 / vecSize;
+		uint32_t mergeR2C = (sc->mergeSequencesR2C && (sc->axis_id == 0)) ? 2 : 0;
 		switch (sharedType) {
 		case 0: case 5: case 6://single_c2c + single_r2c
 		{
 			sc->resolveBankConflictFirstStages = 0;
-			sc->sharedStrideBankConflictFirstStages = (sc->fftDim > sc->numSharedBanks / 2) ? sc->fftDim / sc->registerBoost * (sc->numSharedBanks / 2 + 1) / (sc->numSharedBanks / 2) : sc->fftDim / sc->registerBoost;
-			sc->sharedStrideReadWriteConflict = (sc->numSharedBanks / 2 <= sc->localSize[1]) ? sc->fftDim / sc->registerBoost + 1 : sc->fftDim / sc->registerBoost + (sc->numSharedBanks / 2) / sc->localSize[1];
+			sc->sharedStrideBankConflictFirstStages = ((sc->fftDim > sc->numSharedBanks / 2) && ((sc->fftDim & (sc->fftDim - 1)) == 0)) ? sc->fftDim / sc->registerBoost * (sc->numSharedBanks / 2 + 1) / (sc->numSharedBanks / 2) : sc->fftDim / sc->registerBoost;
+			sc->sharedStrideReadWriteConflict = ((sc->numSharedBanks / 2 <= sc->localSize[1])) ? sc->fftDim / sc->registerBoost + 1 : sc->fftDim / sc->registerBoost + (sc->numSharedBanks / 2) / sc->localSize[1];
+			if (sc->sharedStrideReadWriteConflict < sc->fftDim / sc->registerBoost + mergeR2C) sc->sharedStrideReadWriteConflict = sc->fftDim / sc->registerBoost + mergeR2C;
 			sc->maxSharedStride = (sc->sharedStrideBankConflictFirstStages < sc->sharedStrideReadWriteConflict) ? sc->sharedStrideReadWriteConflict : sc->sharedStrideBankConflictFirstStages;
-			sc->maxSharedStride = (((maxSequenceSharedMemory - sc->localSize[1] * sc->fftDim / sc->registerBoost) == 0) || ((sc->fftDim & (sc->fftDim - 1)) != 0)) ? sc->fftDim / sc->registerBoost : sc->maxSharedStride;
+			sc->maxSharedStride = (((maxSequenceSharedMemory - sc->localSize[1] * sc->fftDim / sc->registerBoost) == 0)) ? sc->fftDim / sc->registerBoost : sc->maxSharedStride;
 
 			sc->sharedStrideBankConflictFirstStages = (sc->maxSharedStride == sc->fftDim / sc->registerBoost) ? sc->fftDim / sc->registerBoost : sc->sharedStrideBankConflictFirstStages;
 			sc->sharedStrideReadWriteConflict = (sc->maxSharedStride == sc->fftDim / sc->registerBoost) ? sc->fftDim / sc->registerBoost : sc->sharedStrideReadWriteConflict;
-
+			//sc->maxSharedStride += mergeR2C;
 			//printf("%d %d %d %d %d\n", sc->maxSharedStride, sc->sharedStrideBankConflictFirstStages, sc->sharedStrideReadWriteConflict, sc->localSize[1], sc->fftDim);
 			sprintf(output + strlen(output), "%s sharedStride = %d; //to avoid bank conflict if we transpose\n", uintType, sc->sharedStrideReadWriteConflict);
 #if(VKFFT_BACKEND==0)
 			sprintf(output + strlen(output), "%s %s sdata[%d];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
 #elif(VKFFT_BACKEND==1)
-			sprintf(output + strlen(output), "%s %s sdata[%d];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
+			//sprintf(output + strlen(output), "%s %s sdata[%d];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
+			sprintf(output + strlen(output), "%s* sdata = (%s*)shared;\n\n", vecType, vecType);
 			//sprintf(output + strlen(output), "%s %s sdata[];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType);
 #elif(VKFFT_BACKEND==2)
-			sprintf(output + strlen(output), "%s %s sdata[%d];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
+			//sprintf(output + strlen(output), "%s %s sdata[%d];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
+			sprintf(output + strlen(output), "%s* sdata = (%s*)shared;\n\n", vecType, vecType);
 			//sprintf(output + strlen(output), "%s %s sdata[];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType);
 #endif
 			sc->usedSharedMemory = vecSize * sc->localSize[1] * sc->maxSharedStride;
@@ -2388,16 +2430,22 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		case 1: case 2://grouped_c2c + single_c2c_strided
 		{
+			uint32_t shift = (sc->fftDim < (sc->numSharedBanks / 2)) ? (sc->numSharedBanks / 2) / sc->fftDim : 1;
+			sc->sharedStrideReadWriteConflict = ((sc->axisSwapped) && ((sc->localSize[0] % 4) == 0)) ? sc->localSize[0] + shift : sc->localSize[0];
+			sc->maxSharedStride = ((maxSequenceSharedMemory < sc->sharedStrideReadWriteConflict* sc->fftDim / sc->registerBoost)) ? sc->localSize[0] : sc->sharedStrideReadWriteConflict;
+			sprintf(output + strlen(output), "%s sharedStride = %d;\n", uintType, sc->maxSharedStride);
 #if(VKFFT_BACKEND==0)
-			sprintf(output + strlen(output), "%s %s sdata[%d];\n\n", sharedDefinitions, vecType, sc->localSize[0] * sc->fftDim / sc->registerBoost);
+			sprintf(output + strlen(output), "%s %s sdata[%d];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
 #elif(VKFFT_BACKEND==1)
-			sprintf(output + strlen(output), "%s %s sdata[%d];\n\n", sharedDefinitions, vecType, sc->localSize[0] * sc->fftDim / sc->registerBoost);
+			//sprintf(output + strlen(output), "%s %s sdata[%d];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
+			sprintf(output + strlen(output), "%s* sdata = (%s*)shared;\n\n", vecType, vecType);
 			//sprintf(output + strlen(output), "%s %s sdata[];\n\n", sharedDefinitions, vecType);
 #elif(VKFFT_BACKEND==2)
-			sprintf(output + strlen(output), "%s %s sdata[%d];\n\n", sharedDefinitions, vecType, sc->localSize[0] * sc->fftDim / sc->registerBoost);
+			//sprintf(output + strlen(output), "%s %s sdata[%d];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
+			sprintf(output + strlen(output), "%s* sdata = (%s*)shared;\n\n", vecType, vecType);
 			//sprintf(output + strlen(output), "%s %s sdata[];\n\n", sharedDefinitions, vecType);
 #endif
-			sc->usedSharedMemory = vecSize * sc->localSize[0] * sc->fftDim / sc->registerBoost;
+			sc->usedSharedMemory = vecSize * sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost;
 			break;
 		}
 		}
@@ -2573,23 +2621,27 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			switch (sc->axis_id) {
 			case 0: {
 				char idY[100] = "";
-				if (sc->performWorkGroupShift[1])
-					sprintf(idY, "(%s + consts.workGroupShiftY * %s)", sc->gl_GlobalInvocationID_y, sc->gl_WorkGroupSize_y);
-				else
-					sprintf(idY, "%s", sc->gl_GlobalInvocationID_y);
+				if (sc->axisSwapped) {
 
-				char idZ[100] = "";
-				if (sc->performWorkGroupShift[2])
-					sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
-				else
-					sprintf(idZ, "%s", sc->gl_GlobalInvocationID_z);
-				if (sc->performZeropaddingFull[1])
-					if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1])
-						sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
-				if (sc->performZeropaddingFull[2])
-					if (sc->fft_zeropad_left_full[2] < sc->fft_zeropad_right_full[2])
-						sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idZ, sc->fft_zeropad_left_full[2], idZ, sc->fft_zeropad_right_full[2]);
+				}
+				else {
+					if (sc->performWorkGroupShift[1])
+						sprintf(idY, "(%s + consts.workGroupShiftY * %s)", sc->gl_GlobalInvocationID_y, sc->gl_WorkGroupSize_y);
+					else
+						sprintf(idY, "%s", sc->gl_GlobalInvocationID_y);
 
+					char idZ[100] = "";
+					if (sc->performWorkGroupShift[2])
+						sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
+					else
+						sprintf(idZ, "%s", sc->gl_GlobalInvocationID_z);
+					if (sc->performZeropaddingFull[1])
+						if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1])
+							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
+					if (sc->performZeropaddingFull[2])
+						if (sc->fft_zeropad_left_full[2] < sc->fft_zeropad_right_full[2])
+							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idZ, sc->fft_zeropad_left_full[2], idZ, sc->fft_zeropad_right_full[2]);
+				}
 				break;
 			}
 			case 1: {
@@ -2670,22 +2722,27 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			switch (sc->axis_id) {
 			case 0: {
 				char idY[100] = "";
-				if (sc->performWorkGroupShift[1])
-					sprintf(idY, "(%s + consts.workGroupShiftY * %s)", sc->gl_GlobalInvocationID_y, sc->gl_WorkGroupSize_y);
-				else
-					sprintf(idY, "%s", sc->gl_GlobalInvocationID_y);
+				if (sc->axisSwapped) {
 
-				char idZ[100] = "";
-				if (sc->performWorkGroupShift[2])
-					sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
-				else
-					sprintf(idZ, "%s", sc->gl_GlobalInvocationID_z);
-				if (sc->performZeropaddingFull[1])
-					if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1])
-						sprintf(output + strlen(output), "		}\n");
-				if (sc->performZeropaddingFull[2])
-					if (sc->fft_zeropad_left_full[2] < sc->fft_zeropad_right_full[2])
-						sprintf(output + strlen(output), "		}\n");
+				}
+				else {
+					if (sc->performWorkGroupShift[1])
+						sprintf(idY, "(%s + consts.workGroupShiftY * %s)", sc->gl_GlobalInvocationID_y, sc->gl_WorkGroupSize_y);
+					else
+						sprintf(idY, "%s", sc->gl_GlobalInvocationID_y);
+
+					char idZ[100] = "";
+					if (sc->performWorkGroupShift[2])
+						sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
+					else
+						sprintf(idZ, "%s", sc->gl_GlobalInvocationID_z);
+					if (sc->performZeropaddingFull[1])
+						if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1])
+							sprintf(output + strlen(output), "		}\n");
+					if (sc->performZeropaddingFull[2])
+						if (sc->fft_zeropad_left_full[2] < sc->fft_zeropad_right_full[2])
+							sprintf(output + strlen(output), "		}\n");
+				}
 				break;
 			}
 			case 1: {
@@ -2701,6 +2758,61 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			case 2: {
 
+				break;
+			}
+			}
+		}
+	}
+
+	static inline void appendZeropadStartAxisSwapped(char* output, VkFFTSpecializationConstantsLayout* sc) {
+		//return if sequence is full of zeros from the start
+		if ((sc->frequencyZeropadding)) {
+		}
+		else {
+			switch (sc->axis_id) {
+			case 0: {
+				char idY[100] = "";
+				uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+				if (sc->axisSwapped) {
+					if (sc->performWorkGroupShift[1])
+						sprintf(idY, "(%s/%d + %s*%s + consts.workGroupShiftY * %s)", sc->combinedID, sc->fftDim / mult, sc->gl_WorkGroupID_y, sc->gl_WorkGroupSize_x, sc->gl_WorkGroupSize_x);
+					else
+						sprintf(idY, "(%s/%d + %s*%s)", sc->combinedID, sc->fftDim / mult, sc->gl_WorkGroupID_y, sc->gl_WorkGroupSize_x);
+
+					char idZ[100] = "";
+					if (sc->performWorkGroupShift[2])
+						sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
+					else
+						sprintf(idZ, "%s", sc->gl_GlobalInvocationID_z);
+					if (sc->performZeropaddingFull[1])
+						if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1])
+							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
+					if (sc->performZeropaddingFull[2])
+						if (sc->fft_zeropad_left_full[2] < sc->fft_zeropad_right_full[2])
+							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idZ, sc->fft_zeropad_left_full[2], idZ, sc->fft_zeropad_right_full[2]);
+				}
+				break;
+			}
+
+			}
+		}
+	}
+	static inline void appendZeropadEndAxisSwapped(char* output, VkFFTSpecializationConstantsLayout* sc) {
+		//return if sequence is full of zeros from the start
+		if ((sc->frequencyZeropadding)) {
+
+		}
+		else {
+			switch (sc->axis_id) {
+			case 0: {
+				if (sc->axisSwapped) {
+					if (sc->performZeropaddingFull[1])
+						if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1])
+							sprintf(output + strlen(output), "		}\n");
+					if (sc->performZeropaddingFull[2])
+						if (sc->fft_zeropad_left_full[2] < sc->fft_zeropad_right_full[2])
+							sprintf(output + strlen(output), "		}\n");
+				}
 				break;
 			}
 			}
@@ -2804,15 +2916,31 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc->performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX ");
 			char shiftY[500] = "";
-			if (sc->performWorkGroupShift[1])
-				sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
+			if (sc->axisSwapped) {
+				if (sc->performWorkGroupShift[1])
+					sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_x);
+			}
+			else {
+				if (sc->performWorkGroupShift[1])
+					sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
+			}
 			char shiftY2[100] = "";
 			if (sc->performWorkGroupShift[1])
 				sprintf(shiftY, " + consts.workGroupShiftY ");
 			if (sc->fftDim < sc->fft_dim_full) {
-				sprintf(sc->disableThreadsStart, "		if(%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d) < %d) {\n", sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
-				VkAppendLine(sc, sc->disableThreadsStart);
-				sprintf(sc->disableThreadsEnd, "}");
+				if (sc->axisSwapped) {
+					sprintf(output + strlen(output), "		%s numActiveThreads = ((%s/%d)==%d) ? %d : %d;\n", uintType, sc->gl_WorkGroupID_x, sc->firstStageStartSize / sc->fftDim, ((uint32_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim), (sc->fft_dim_full - (sc->firstStageStartSize / sc->fftDim) * ((((uint32_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim)) * sc->localSize[0] * sc->fftDim)) / sc->min_registers_per_thread / (sc->firstStageStartSize / sc->fftDim), sc->localSize[0] * sc->localSize[1]);// sc->fft_dim_full, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full / (sc->localSize[0] * sc->fftDim));
+					//sprintf(output + strlen(output), "		if (numActiveThreads>%d) numActiveThreads = %d;\n", sc->localSize[0]* sc->localSize[1], sc->localSize[0]* sc->localSize[1]);
+					//sprintf(sc->disableThreadsStart, "		if((%s+%d*%s)< numActiveThreads) {\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y);
+					sprintf(sc->disableThreadsStart, "		if(%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d) < %d) {\n", sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
+					sprintf(output + strlen(output), "		if((%s+%d*%s)< numActiveThreads) {\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y);
+					sprintf(sc->disableThreadsEnd, "}");
+				}
+				else {
+					sprintf(sc->disableThreadsStart, "		if(%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d) < %d) {\n", sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
+					VkAppendLine(sc, sc->disableThreadsStart);
+					sprintf(sc->disableThreadsEnd, "}");
+				}
 			}
 			else {
 				sprintf(output + strlen(output), "		{ \n");
@@ -2826,43 +2954,29 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (sc->fftDim == sc->fft_dim_full) {
 					for (uint32_t k = 0; k < sc->registerBoost; k++) {
 						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
-							/*if (sc->localSize[1] == 1) {
-								sprintf(tempNum, "%d", (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
-								VkAddReal(sc, sc->combinedID, sc->gl_LocalInvocationID_x, tempNum);
-							}
-							else {
-								sprintf(tempNum, "%d", sc->localSize[0]);
-								VkFMAReal(sc, sc->combinedID, tempNum, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
-								sprintf(tempNum, "%d", (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
-								VkAddReal(sc, sc->combinedID, sc->combinedID, tempNum);
-							}*/
+
 							if (sc->localSize[1] == 1)
 								sprintf(output + strlen(output), "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 							else
 								sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
-							/*
-							sprintf(tempNum, "%d", sc->fftDim);
-							VkModReal(sc, sc->inoutID, sc->combinedID, tempNum);
-							VkDivReal(sc, sc->tempReg, sc->combinedID, tempNum);
-							if (sc->inputStride[0] > 1) {
-								sprintf(tempNum, "%d", sc->inputStride[0]);
-								VkMulReal(sc, sc->inoutID, sc->inoutID, tempNum);
-							}
-							sprintf(tempNum, "%d", sc->inputStride[1]);
-							VkFMAReal(sc, sc->inoutID, sc->tempReg, tempNum, sc->inoutID);
-							*/
+
 							if (sc->inputStride[0] > 1)
 								sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim, sc->inputStride[0], sc->fftDim, sc->inputStride[1]);
 							else
 								sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim, sc->fftDim, sc->inputStride[1]);
-
-							if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-								sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%s< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->gl_WorkGroupSize_y, sc->size[sc->axis_id + 1]);
-
-							sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+							if (sc->axisSwapped) {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1]);
+							}
+							else {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1]);
+							}
+							sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->inputStride[1], sc->fft_zeropad_left_read[sc->axis_id], sc->inputStride[1], sc->fft_zeropad_right_read[sc->axis_id]);
 							sprintf(output + strlen(output), "			%s = ", sc->inoutID);
 							indexInputVkFFT(output, sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
 							sprintf(output + strlen(output), ";\n");
+							appendZeropadStartAxisSwapped(output, sc);
 							if (sc->readToRegisters) {
 								if (sc->inputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		%s = %s%s[%s]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
@@ -2870,22 +2984,42 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), "		%s = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 							}
 							else {
-								if (sc->inputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
-								else
-									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
-
+								if (sc->axisSwapped) {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+								}
+								else {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+								}
 							}
+							appendZeropadEndAxisSwapped(output, sc);
 							sprintf(output + strlen(output), "		}else{\n");
 							if (sc->readToRegisters)
 								sprintf(output + strlen(output), "			%s.x =0;%s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
 							else {
-								sprintf(output + strlen(output), "			sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = 0;\n", sc->fftDim, sc->fftDim);
-								sprintf(output + strlen(output), "			sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+								if (sc->axisSwapped) {
+									sprintf(output + strlen(output), "			sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = 0;\n", sc->fftDim, sc->fftDim);
+									sprintf(output + strlen(output), "			sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+								}
+								else {
+									sprintf(output + strlen(output), "			sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = 0;\n", sc->fftDim, sc->fftDim);
+									sprintf(output + strlen(output), "			sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+								}
 							}
 							sprintf(output + strlen(output), "		}\n");
-							if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-								sprintf(output + strlen(output), "		}");
+							if (sc->axisSwapped) {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+									sprintf(output + strlen(output), "		}");
+							}
+							else {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+									sprintf(output + strlen(output), "		}");
+							}
 
 						}
 					}
@@ -2893,11 +3027,29 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				else {
 					for (uint32_t k = 0; k < sc->registerBoost; k++) {
 						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
-							sprintf(output + strlen(output), "		inoutID = %s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d);\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
+							/*
+							if (sc->localSize[1] == 1)
+								sprintf(output + strlen(output), "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+							else
+								sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+
+							sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d);\n", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
+							*/
+							if (sc->axisSwapped) {
+								if (sc->localSize[1] == 1)
+									sprintf(output + strlen(output), "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+								else
+									sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d*numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
+								sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d);\n", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize);
+							}
+							else {
+								sprintf(output + strlen(output), "		inoutID = %s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d);\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
+							}
 							sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
 							sprintf(output + strlen(output), "			%s = ", sc->inoutID);
 							indexInputVkFFT(output, sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
 							sprintf(output + strlen(output), ";\n");
+							appendZeropadStartAxisSwapped(output, sc);
 							if (sc->readToRegisters) {
 								if (sc->inputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "			%s = %s%s[%s]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
@@ -2905,18 +3057,35 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), "			%s = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 							}
 							else {
-								if (sc->inputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "			sdata[sharedStride*%s + (%s + %d)] = %s%s[%s]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
-								else
-									sprintf(output + strlen(output), "			sdata[sharedStride*%s + (%s + %d)] = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+								if (sc->axisSwapped) {
+
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID / %d) + sharedStride*(combinedID %% %d)] = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID / %d) + sharedStride*(combinedID %% %d)] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+
+								}
+								else {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[sharedStride*%s + (%s + %d)] = %s%s[inoutID]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, inputsStruct, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[sharedStride*%s + (%s + %d)] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								}
 							}
+							appendZeropadEndAxisSwapped(output, sc);
 							sprintf(output + strlen(output), "		}\n");
 							sprintf(output + strlen(output), "		else{\n");
 							if (sc->readToRegisters)
 								sprintf(output + strlen(output), "			%s.x = 0; %s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
 							else {
-								sprintf(output + strlen(output), "			sdata[sharedStride*%s + (%s + %d)].x = 0;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
-								sprintf(output + strlen(output), "			sdata[sharedStride*%s + (%s + %d)].y = 0;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+								if (sc->axisSwapped) {
+									sprintf(output + strlen(output), "			sdata[(combinedID / %d) + sharedStride*(combinedID %% %d)].x = 0;\n", sc->fftDim, sc->fftDim);
+									sprintf(output + strlen(output), "			sdata[(combinedID / %d) + sharedStride*(combinedID %% %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+								}
+								else {
+									sprintf(output + strlen(output), "			sdata[sharedStride*%s + (%s + %d)].x = 0;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+									sprintf(output + strlen(output), "			sdata[sharedStride*%s + (%s + %d)].y = 0;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+								}
 							}
 							sprintf(output + strlen(output), "		}\n");
 						}
@@ -2946,8 +3115,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), ";\n");
 								//sprintf(output + strlen(output), "		inoutID = indexInput((combinedID %% %d) + (combinedID / %d) * %d%s%s);\n", sc->fftDim, sc->fftDim, sc->inputStride[1], requestCoordinate, requestBatch);
 							}
-							if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-								sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%s< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->gl_WorkGroupSize_y, sc->size[sc->axis_id + 1]);
+							if (sc->axisSwapped) {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1]);
+							}
+							else {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1]);
+							}
+							appendZeropadStartAxisSwapped(output, sc);
 							if (sc->readToRegisters) {
 								if (sc->inputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		%s = %s%s[inoutID]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, convTypeRight);
@@ -2955,13 +3131,30 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), "		%s = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 							}
 							else {
-								if (sc->inputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
-								else
-									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								if (sc->axisSwapped) {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d) ] = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+
+								}
+								else {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+
+								}
 							}
-							if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-								sprintf(output + strlen(output), "		}");
+							appendZeropadEndAxisSwapped(output, sc);
+							if (sc->axisSwapped) {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+									sprintf(output + strlen(output), "		}");
+							}
+							else {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+									sprintf(output + strlen(output), "		}");
+							}
 						}
 					}
 
@@ -2969,11 +3162,21 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				else {
 					for (uint32_t k = 0; k < sc->registerBoost; k++) {
 						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
-							sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-							sprintf(index_x, "%s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
-							indexInputVkFFT(output, sc, uintType, readType, index_x, 0, requestCoordinate, requestBatch);
-							sprintf(output + strlen(output), ";\n");
+							if (sc->axisSwapped) {
+								sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d*numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
+								sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d);\n", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize);
+								sprintf(output + strlen(output), "			%s = ", sc->inoutID);
+								indexInputVkFFT(output, sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
+								sprintf(output + strlen(output), ";\n");
+							}
+							else {
+								sprintf(output + strlen(output), "			%s = ", sc->inoutID);
+								sprintf(index_x, "%s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
+								indexInputVkFFT(output, sc, uintType, readType, index_x, 0, requestCoordinate, requestBatch);
+								sprintf(output + strlen(output), ";\n");
+							}
 							//sprintf(output + strlen(output), "		inoutID = indexInput(%s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)%s%s);\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, requestCoordinate, requestBatch);
+							appendZeropadStartAxisSwapped(output, sc);
 							if (sc->readToRegisters) {
 								if (sc->inputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		%s = %s%s[inoutID]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, convTypeRight);
@@ -2981,11 +3184,22 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), "		%s = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 							}
 							else {
-								if (sc->inputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "		sdata[sharedStride*%s + (%s + %d)] = %s%s[inoutID]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, inputsStruct, convTypeRight);
-								else
-									sprintf(output + strlen(output), "		sdata[sharedStride*%s + (%s + %d)] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								if (sc->axisSwapped) {
+
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID / %d) + sharedStride*(combinedID %% %d)] = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID / %d) + sharedStride*(combinedID %% %d)] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+
+								}
+								else {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[sharedStride*%s + (%s + %d)] = %s%s[inoutID]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, inputsStruct, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[sharedStride*%s + (%s + %d)] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								}
 							}
+							appendZeropadEndAxisSwapped(output, sc);
 						}
 					}
 				}
@@ -3025,17 +3239,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 						else {
 							if (sc->inputBufferBlockNum == 1)
-								sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s]=%s%s[%s]%s;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+								sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s]=%s%s[%s]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 							else
-								sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s]=%sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+								sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s]=%sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 						}
 						sprintf(output + strlen(output), "		}\n");
 						sprintf(output + strlen(output), "		else{\n");
 						if (sc->readToRegisters)
 							sprintf(output + strlen(output), "			%s.x = 0; %s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
 						else {
-							sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s].x=0;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
-							sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s].y=0;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
+							sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s].x=0;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
+							sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s].y=0;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
 						}
 						sprintf(output + strlen(output), "		}\n");
 					}
@@ -3058,9 +3272,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 						else {
 							if (sc->inputBufferBlockNum == 1)
-								sprintf(output + strlen(output), "		sdata[%s*(%s+%d)+%s] = %s%s[inoutID]%s;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, convTypeRight);
+								sprintf(output + strlen(output), "		sdata[%s*(%s+%d)+%s] = %s%s[inoutID]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, convTypeRight);
 							else
-								sprintf(output + strlen(output), "		sdata[%s*(%s+%d)+%s] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								sprintf(output + strlen(output), "		sdata[%s*(%s+%d)+%s] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 						}
 					}
 				}
@@ -3098,16 +3312,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 						else {
 							if (sc->inputBufferBlockNum == 1)
-								sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s]=%s%s[%s]%s;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+								sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s]=%s%s[%s]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 							else
-								sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s]=%sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+								sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s]=%sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 						}
 						sprintf(output + strlen(output), "		}else{\n");
 						if (sc->readToRegisters)
 							sprintf(output + strlen(output), "			%s.x = 0; %s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
 						else {
-							sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s].x=0;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
-							sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s].y=0;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
+							sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s].x=0;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
+							sprintf(output + strlen(output), "			sdata[%s*(%s+%d)+%s].y=0;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
 						}
 						sprintf(output + strlen(output), "		}\n");
 					}
@@ -3130,9 +3344,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 						else {
 							if (sc->inputBufferBlockNum == 1)
-								sprintf(output + strlen(output), "		sdata[%s*(%s+%d)+%s] = %s%s[inoutID]%s;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, convTypeRight);
+								sprintf(output + strlen(output), "		sdata[%s*(%s+%d)+%s] = %s%s[inoutID]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, convTypeRight);
 							else
-								sprintf(output + strlen(output), "		sdata[%s*(%s+%d)+%s] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								sprintf(output + strlen(output), "		sdata[%s*(%s+%d)+%s] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 						}
 					}
 				}
@@ -3142,7 +3356,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		case 5://single_r2c
 		{
-			if ((sc->localSize[1] > 1) || ((sc->performR2C) && (sc->inverse)) || (sc->localSize[0] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim))
+			if ((sc->axisSwapped) || (sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim))
 				sc->readToRegisters = 0;
 			else
 				sc->readToRegisters = 1;
@@ -3152,6 +3366,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftY[500] = "";
 			if (sc->performWorkGroupShift[1])
 				sprintf(shiftY, " + consts.workGroupShiftY ");
+			uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			if (sc->zeropad[0]) {
 				if (sc->fftDim == sc->fft_dim_full) {
 					for (uint32_t k = 0; k < sc->registerBoost; k++) {
@@ -3163,49 +3378,109 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
 							if (sc->inputStride[0] > 1)
-								sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim, sc->inputStride[0], sc->fftDim, 2 * sc->inputStride[1]);
+								sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim, sc->inputStride[0], sc->fftDim, mult * sc->inputStride[1]);
 							else
-								sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim, sc->fftDim, 2 * sc->inputStride[1]);
-							if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-								sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%s< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->gl_WorkGroupSize_y, (uint32_t)ceil(sc->size[1] / 2.0));
-
-							sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+								sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim, sc->fftDim, mult * sc->inputStride[1]);
+							if (sc->axisSwapped) {
+								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint32_t)ceil(sc->size[1] / (double)mult));
+							}
+							else {
+								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint32_t)ceil(sc->size[1] / (double)mult));
+							}
+							sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->inputStride[1], sc->fft_zeropad_left_read[sc->axis_id], sc->inputStride[1], sc->fft_zeropad_right_read[sc->axis_id]);
 
 							sprintf(output + strlen(output), "			%s = ", sc->inoutID);
 							indexInputVkFFT(output, sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
 							sprintf(output + strlen(output), ";\n");
-
+							appendZeropadStartAxisSwapped(output, sc);
 							if (sc->readToRegisters) {
 								if (sc->inputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		%s.x = %s%s[%s]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 								else
 									sprintf(output + strlen(output), "		%s.x = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
-								if (sc->inputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "		%s.y = %s%s[(%s + %d)]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, sc->inputStride[1], convTypeRight);
-								else
-									sprintf(output + strlen(output), "		%s.y = %sinputBlocks[(%s + %d)/ %d]%s[(%s + %d) %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputStride[1], sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputStride[1], sc->inputBufferBlockSize, convTypeRight);
+								if (sc->mergeSequencesR2C) {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		%s.y = %s%s[(%s + %d)]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, sc->inputStride[1], convTypeRight);
+									else
+										sprintf(output + strlen(output), "		%s.y = %sinputBlocks[(%s + %d)/ %d]%s[(%s + %d) %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputStride[1], sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputStride[1], sc->inputBufferBlockSize, convTypeRight);
+								}
+								else {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		%s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+									else
+										sprintf(output + strlen(output), "		%s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+								}
 							}
 							else {
-								if (sc->inputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
-								else
-									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
-								if (sc->inputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = %s%s[(%s + %d)]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, sc->inputStride[1], convTypeRight);
-								else
-									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = %sinputBlocks[(%s + %d)/ %d]%s[(%s + %d) %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputStride[1], sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputStride[1], sc->inputBufferBlockSize, convTypeRight);
+								if (sc->axisSwapped) {
+
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+
+									if (sc->mergeSequencesR2C) {
+										sprintf(output + strlen(output), "		inoutID += %d;\n", sc->inputStride[1]);
+										if (sc->inputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+									}
+									else {
+										if (sc->inputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride+ (combinedID / %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+										else
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+									}
+								}
+								else {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+									if (sc->mergeSequencesR2C) {
+										sprintf(output + strlen(output), "		inoutID += %d;\n", sc->inputStride[1]);
+										if (sc->inputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+									}
+									else {
+										if (sc->inputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+										else
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+									}
+								}
 
 							}
+							appendZeropadEndAxisSwapped(output, sc);
 							sprintf(output + strlen(output), "	}else{\n");
 							if (sc->readToRegisters)
 								sprintf(output + strlen(output), "		%s.x = 0; %s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
 							else {
-								sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = 0;\n", sc->fftDim, sc->fftDim);
-								sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+								if (sc->axisSwapped) {
+									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = 0;\n", sc->fftDim, sc->fftDim);
+									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+								}
+								else {
+									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = 0;\n", sc->fftDim, sc->fftDim);
+									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+
+								}
+
 							}
 							VkAppendLine(sc, "	}\n");
-							if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-								sprintf(output + strlen(output), "		}");
+							if (sc->axisSwapped) {
+								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+									sprintf(output + strlen(output), "		}");
+							}
+							else {
+								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+									sprintf(output + strlen(output), "		}");
+							}
 						}
 					}
 				}
@@ -3225,46 +3500,99 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 							if (sc->inputStride[0] > 1) {
 								sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-								sprintf(index_x, "(combinedID %% %d) * %d + (combinedID / %d) * %d", sc->fftDim, sc->inputStride[0], sc->fftDim, 2 * sc->inputStride[1]);
+								sprintf(index_x, "(combinedID %% %d) * %d + (combinedID / %d) * %d", sc->fftDim, sc->inputStride[0], sc->fftDim, mult * sc->inputStride[1]);
 								indexInputVkFFT(output, sc, uintType, readType, index_x, 0, requestCoordinate, requestBatch);
 								sprintf(output + strlen(output), ";\n");
 								//sprintf(output + strlen(output), "		inoutID = indexInput((combinedID %% %d) * %d + (combinedID / %d) * %d);\n", sc->fftDim, sc->inputStride[0], sc->fftDim, 2 * sc->inputStride[1]);
 							}
 							else {
 								sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-								sprintf(index_x, "(combinedID %% %d) + (combinedID / %d) * %d", sc->fftDim, sc->fftDim, 2 * sc->inputStride[1]);
+								sprintf(index_x, "(combinedID %% %d) + (combinedID / %d) * %d", sc->fftDim, sc->fftDim, mult * sc->inputStride[1]);
 								indexInputVkFFT(output, sc, uintType, readType, index_x, 0, requestCoordinate, requestBatch);
 								sprintf(output + strlen(output), ";\n");
 								//sprintf(output + strlen(output), "		inoutID = indexInput((combinedID %% %d) + (combinedID / %d) * %d);\n", sc->fftDim, sc->fftDim, 2 * sc->inputStride[1]);
 							}
-							if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-								sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%s< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->gl_WorkGroupSize_y, (uint32_t)ceil(sc->size[sc->axis_id + 1] / 2.0));
-
+							if (sc->axisSwapped) {
+								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint32_t)ceil(sc->size[1] / (double)mult));
+							}
+							else {
+								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint32_t)ceil(sc->size[1] / (double)mult));
+							}
+							appendZeropadStartAxisSwapped(output, sc);
 							if (sc->readToRegisters) {
 								if (sc->inputBufferBlockNum == 1)
 									sprintf(output + strlen(output), "		%s.x = %s%s[inoutID]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, convTypeRight);
 								else
 									sprintf(output + strlen(output), "		%s.x = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
-								sprintf(output + strlen(output), "		inoutID += %d;\n", sc->inputStride[1]);
-								if (sc->inputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "		%s.y = %s%s[inoutID]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, convTypeRight);
-								else
-									sprintf(output + strlen(output), "		%s.y = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								if (sc->mergeSequencesR2C) {
+									sprintf(output + strlen(output), "		inoutID += %d;\n", sc->inputStride[1]);
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		%s.y = %s%s[inoutID]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		%s.y = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								}
+								else {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		%s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+									else
+										sprintf(output + strlen(output), "		%s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+								}
 							}
 							else {
-								if (sc->inputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
-								else
-									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
-								sprintf(output + strlen(output), "		inoutID += %d;\n", sc->inputStride[1]);
-								if (sc->inputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
-								else
-									sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								if (sc->axisSwapped) {
+
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+
+									if (sc->mergeSequencesR2C) {
+										sprintf(output + strlen(output), "		inoutID += %d;\n", sc->inputStride[1]);
+										if (sc->inputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+									}
+									else {
+										if (sc->inputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride+ (combinedID / %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+										else
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+									}
+								}
+								else {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+									if (sc->mergeSequencesR2C) {
+										sprintf(output + strlen(output), "		inoutID += %d;\n", sc->inputStride[1]);
+										if (sc->inputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+									}
+									else {
+										if (sc->inputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+										else
+											sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+									}
+								}
+
 
 							}
-							if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-								sprintf(output + strlen(output), "		}");
+							appendZeropadEndAxisSwapped(output, sc);
+							if (sc->axisSwapped) {
+								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+									sprintf(output + strlen(output), "		}");
+							}
+							else {
+								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+									sprintf(output + strlen(output), "		}");
+							}
 						}
 					}
 				}
@@ -3275,190 +3603,424 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			break;
 		}
 		case 6: {//single_c2r
-			if ((sc->localSize[1] > 1) || ((sc->performR2C) && (sc->inverse)) || (sc->localSize[0] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim))
-				sc->readToRegisters = 0;
-			else
-				sc->readToRegisters = 1;
+			//sprintf(output + strlen(output), "	return;\n");
+			char shiftX[500] = "";
+			if (sc->performWorkGroupShift[0])
+				sprintf(shiftX, " + consts.workGroupShiftX ");
 			char shiftY[500] = "";
 			if (sc->performWorkGroupShift[1])
-				sprintf(shiftY, " + consts.workGroupShiftY * %d", sc->localSize[1]);
+				sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
+			char shiftY2[100] = "";
+			if (sc->performWorkGroupShift[1])
+				sprintf(shiftY, " + consts.workGroupShiftY ");
+			if (sc->fftDim < sc->fft_dim_full) {
+				if (sc->axisSwapped)
+					sprintf(sc->disableThreadsStart, "		if(%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d) < %d) {\n", sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
+				else
+					sprintf(sc->disableThreadsStart, "		if(%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d) < %d) {\n", sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
+
+				VkAppendLine(sc, sc->disableThreadsStart);
+				sprintf(sc->disableThreadsEnd, "}");
+			}
+			else {
+				sprintf(output + strlen(output), "		{ \n");
+			}
+
+			sc->readToRegisters = 0;
+			uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			if (sc->zeropad[0]) {
 				if (sc->fftDim == sc->fft_dim_full) {
-					for (uint32_t i = 0; i < ceil(sc->min_registers_per_thread / 2.0); i++) {
-						if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-							sprintf(output + strlen(output), "		if(%s%s < %d){", sc->gl_GlobalInvocationID_y, shiftY, (uint32_t)ceil(sc->size[1] / 2.0));
-						if ((ceil(sc->min_registers_per_thread / 2.0) != sc->min_registers_per_thread / 2) && (i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
-							sprintf(output + strlen(output), "if (%s < %d){\n", sc->gl_LocalInvocationID_x, sc->fftDim / 2 - i * sc->localSize[0]);
+					for (uint32_t k = 0; k < sc->registerBoost; k++) {
+						for (uint32_t i = 0; i < ceil(sc->min_registers_per_thread / (double)(2 / mult)) + 1; i++) {
 
-						sprintf(output + strlen(output), "		inoutID = %s+%d;\n", sc->gl_LocalInvocationID_x, i * sc->localSize[0] + 1);
+							if (sc->localSize[1] == 1)
+								sprintf(output + strlen(output), "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+							else
+								sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
-						sprintf(output + strlen(output), "		if((inoutID < %d)||(inoutID >= %d)){\n", sc->fft_zeropad_left_read[sc->axis_id], sc->fft_zeropad_right_read[sc->axis_id]);
+							if (sc->inputStride[0] > 1)
+								sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim / 2 + 1, sc->inputStride[0], sc->fftDim / 2 + 1, sc->inputStride[1]);
+							else
+								sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->inputStride[1]);
+							if (sc->axisSwapped) {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[0], sc->size[sc->axis_id + 1]);
+								if ((i >= mult * (sc->min_registers_per_thread / 2)))
+									sprintf(output + strlen(output), "		if(combinedID < %d){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[0]);
+							}
+							else {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[1], sc->size[sc->axis_id + 1]);
+								if ((i >= mult * (sc->min_registers_per_thread / 2)))
+									sprintf(output + strlen(output), "		if(combinedID < %d){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[1]);
+							}
+							sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->inputStride[1], sc->fft_zeropad_left_read[sc->axis_id], sc->inputStride[1], sc->fft_zeropad_right_read[sc->axis_id]);
+							sprintf(output + strlen(output), "			%s = ", sc->inoutID);
+							indexInputVkFFT(output, sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
+							sprintf(output + strlen(output), ";\n");
+							appendZeropadStartAxisSwapped(output, sc);
+							if (sc->readToRegisters) {
+								if (sc->inputBufferBlockNum == 1)
+									sprintf(output + strlen(output), "		%s = %s%s[%s]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+								else
+									sprintf(output + strlen(output), "		%s = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+							}
+							else {
+								if (!sc->axisSwapped) {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %s%s[%s]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+								}
+								else {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %s%s[%s]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+								}
+							}
+							appendZeropadEndAxisSwapped(output, sc);
+							sprintf(output + strlen(output), "		}else{\n");
+							if (sc->readToRegisters)
+								sprintf(output + strlen(output), "			%s.x =0;%s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
+							else {
+								if (!sc->axisSwapped) {
+									sprintf(output + strlen(output), "			sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = 0;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1));
+									sprintf(output + strlen(output), "			sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1));
+								}
+								else {
+									sprintf(output + strlen(output), "			sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = 0;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1));
+									sprintf(output + strlen(output), "			sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y = 0;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1));
+								}
+							}
+							sprintf(output + strlen(output), "		}\n");
+							if ((i >= (sc->min_registers_per_thread / 2)))
+								sprintf(output + strlen(output), "		}\n");
+							if (sc->axisSwapped) {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+									sprintf(output + strlen(output), "		}\n");
+							}
+							else {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+									sprintf(output + strlen(output), "		}\n");
+							}
 
-						sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-						sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-						indexInputVkFFT(output, sc, uintType, readType, sc->inoutID, index_y, requestCoordinate, requestBatch);
-						sprintf(output + strlen(output), ";\n");
+						}
+						appendBarrierVkFFT(output + strlen(output), 1);
+						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
 
-						if (sc->inputBufferBlockNum == 1)
-							sprintf(output + strlen(output), "		temp_0 = %s%s[%s]%s;\n", convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
-						else
-							sprintf(output + strlen(output), "		temp_0 = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+							/*if (sc->localSize[1] == 1)
+								sprintf(output + strlen(output), "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+							else
+								sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+							if ((i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
+							{
+								if (sc->axisSwapped)
+									sprintf(output + strlen(output), "if (combinedID / %d < %d){\n", (uint32_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[0]);
+								else
+									sprintf(output + strlen(output), "if (combinedID / %d < %d){\n", (uint32_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[1]);
+							}*/
+							if (sc->mergeSequencesR2C) {
+								if (sc->axisSwapped) {
+									if (i < sc->min_registers_per_thread / 2) {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s + (%s+%d) * sharedStride].x - sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + sc->min_registers_per_thread / 2 * sc->localSize[1] + 1);
+										sprintf(output + strlen(output), "		%s.y = sdata[%s + (%s+%d) * sharedStride].y + sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + sc->min_registers_per_thread / 2 * sc->localSize[1] + 1);
+									}
+									else {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s + (%d-%s) * sharedStride].x + sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - sc->min_registers_per_thread / 2) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x,  -(i - sc->min_registers_per_thread / 2) * sc->localSize[1] + sc->min_registers_per_thread * sc->localSize[1] + 1, sc->gl_LocalInvocationID_y);
+										sprintf(output + strlen(output), "		%s.y = -sdata[%s + (%d-%s) * sharedStride].y + sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - sc->min_registers_per_thread / 2) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - sc->min_registers_per_thread / 2) * sc->localSize[1] + sc->min_registers_per_thread * sc->localSize[1] + 1, sc->gl_LocalInvocationID_y);
+									}
+								}
+								else {
+									if (i < sc->min_registers_per_thread / 2) {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s * sharedStride + (%s+%d)].x - sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + sc->min_registers_per_thread / 2 * sc->localSize[0] + 1);
+										sprintf(output + strlen(output), "		%s.y = sdata[%s * sharedStride + (%s+%d)].y + sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + sc->min_registers_per_thread / 2 * sc->localSize[0] + 1);
+									}
+									else {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s * sharedStride + (%d-%s)].x + sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - sc->min_registers_per_thread / 2) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - sc->min_registers_per_thread / 2) * sc->localSize[0] + sc->min_registers_per_thread * sc->localSize[0] + 1, sc->gl_LocalInvocationID_x);
+										sprintf(output + strlen(output), "		%s.y = -sdata[%s * sharedStride + (%d-%s)].y + sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - sc->min_registers_per_thread / 2) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - sc->min_registers_per_thread / 2) * sc->localSize[0] + sc->min_registers_per_thread * sc->localSize[0] + 1, sc->gl_LocalInvocationID_x);
+									}
+								}
+							}
+							else {
+								if (sc->axisSwapped) {
+									if (i < sc->min_registers_per_thread / 2) {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+										sprintf(output + strlen(output), "		%s.y = sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+									}
+									else {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - sc->min_registers_per_thread / 2) * sc->localSize[1], sc->gl_LocalInvocationID_y);
+										sprintf(output + strlen(output), "		%s.y = -sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - sc->min_registers_per_thread / 2) * sc->localSize[1], sc->gl_LocalInvocationID_y);
+									}
+								}
+								else {
+									if (i < sc->min_registers_per_thread / 2) {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+										sprintf(output + strlen(output), "		%s.y = sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+									}
+									else {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - sc->min_registers_per_thread / 2) * sc->localSize[0], sc->gl_LocalInvocationID_x);
+										sprintf(output + strlen(output), "		%s.y = -sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - sc->min_registers_per_thread / 2) * sc->localSize[0], sc->gl_LocalInvocationID_x);
+									}
+								}
 
-						sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-						sprintf(index_x, "%s+%d", sc->gl_LocalInvocationID_x, sc->inputStride[1] + i * sc->localSize[0] + 1);
-						sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-						indexInputVkFFT(output, sc, uintType, readType, index_x, index_y, requestCoordinate, requestBatch);
-						sprintf(output + strlen(output), ";\n");
-						//sprintf(output + strlen(output), "		inoutID = indexInput(%s+%d, (%s%s));\n", sc->gl_LocalInvocationID_x, sc->inputStride[1] / 2 + i * sc->localSize[0], sc->gl_GlobalInvocationID_y, shiftY);
-
-						if (sc->inputBufferBlockNum == 1)
-							sprintf(output + strlen(output), "		temp_1 = %s%s[inoutID]%s;\n", convTypeLeft, inputsStruct, convTypeRight);
-						else
-							sprintf(output + strlen(output), "		temp_1 = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
-
-						sprintf(output + strlen(output), "		}else{\n");
-						sprintf(output + strlen(output), "			temp_0.x = 0; temp_0.y = 0;");
-						sprintf(output + strlen(output), "			temp_1.x = 0; temp_1.y = 0;");
-						sprintf(output + strlen(output), "		}\n");
-						if (sc->localSize[1] == 1)
-							sprintf(output + strlen(output), "\
-		sdata[%s+%d].x=(temp_0.x-temp_1.y);\n\
-		sdata[%s + %d].y = (temp_0.y + temp_1.x);\n\
-		sdata[%d - %s].x = (temp_0.x + temp_1.y);\n\
-		sdata[%d - %s].y = (-temp_0.y + temp_1.x);\n", sc->gl_LocalInvocationID_x, i * sc->localSize[0] + 1, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + 1, sc->fftDim - i * sc->localSize[0] - 1, sc->gl_LocalInvocationID_x, sc->fftDim - i * sc->localSize[0] - 1, sc->gl_LocalInvocationID_x);
-						else
-							sprintf(output + strlen(output), "\
-		sdata[sharedStride * %s + %s + %d].x=(temp_0.x-temp_1.y);\n\
-		sdata[sharedStride * %s + %s + %d].y = (temp_0.y + temp_1.x);\n\
-		sdata[sharedStride * %s + %d - %s].x = (temp_0.x + temp_1.y);\n\
-		sdata[sharedStride * %s + %d - %s].y = (-temp_0.y + temp_1.x);\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + 1, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + 1, sc->gl_LocalInvocationID_y, sc->fftDim - i * sc->localSize[0] - 1, sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim - i * sc->localSize[0] - 1, sc->gl_LocalInvocationID_x);
-						if ((ceil(sc->min_registers_per_thread / 2.0) != sc->min_registers_per_thread / 2) && (i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
-							sprintf(output + strlen(output), "}\n");
-						if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-							sprintf(output + strlen(output), "		}");
-					}
-					sprintf(output + strlen(output), "\
+								/*if (!sc->axisSwapped) {
+									sprintf(output + strlen(output), "		sdata[(%d - (combinedID %% %d) + (combinedID / %d) * sharedStride)].x = sdata[((combinedID %% %d) + (combinedID / %d) * sharedStride)+1].x;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+									sprintf(output + strlen(output), "		sdata[(%d - (combinedID %% %d) + (combinedID / %d) * sharedStride)].y = -sdata[((combinedID %% %d) + (combinedID / %d) * sharedStride)+1].y;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+								}
+								else {
+									sprintf(output + strlen(output), "		sdata[((%d - (combinedID %% %d)) * sharedStride + (combinedID / %d))].x = sdata[(((combinedID %% %d) + 1) * sharedStride + (combinedID / %d))].x;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+									sprintf(output + strlen(output), "		sdata[((%d - (combinedID %% %d)) * sharedStride + (combinedID / %d))].y = -sdata[(((combinedID %% %d) + 1) * sharedStride + (combinedID / %d))].y;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+								}*/
+							}
+							/*if ((i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
+							/	VkAppendLine(sc, "	}");*/
+						}
+						if (sc->mergeSequencesR2C) {
+							if (sc->axisSwapped) {
+								sprintf(output + strlen(output), "\
+	if (%s==0) \n\
+	{\n", sc->gl_LocalInvocationID_y);
+								sprintf(output + strlen(output), "		%s.x = sdata[%s + (%d) * sharedStride].x - sdata[%s + (%d) * sharedStride].y;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread * sc->localSize[1] + 1);
+								sprintf(output + strlen(output), "		%s.y = sdata[%s + (%d) * sharedStride].y + sdata[%s + (%d) * sharedStride].x;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread * sc->localSize[1] + 1);
+								sprintf(output + strlen(output), "	}");
+							}
+							else {
+								sprintf(output + strlen(output), "\
 	if (%s==0) \n\
 	{\n", sc->gl_LocalInvocationID_x);
-					sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-					sprintf(index_x, "0");
-					sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-					indexInputVkFFT(output, sc, uintType, readType, index_x, index_y, requestCoordinate, requestBatch);
-					sprintf(output + strlen(output), ";\n");
-					//sprintf(output + strlen(output), "		inoutID = indexInput(2 * (%s%s), %d);\n", sc->gl_GlobalInvocationID_y, shiftY, sc->inputStride[2] / (sc->inputStride[1] + 2));
-					if (sc->inputBufferBlockNum == 1)
-						sprintf(output + strlen(output), "		temp_0 = %s%s[inoutID]%s;\n", convTypeLeft, inputsStruct, convTypeRight);
-					else
-						sprintf(output + strlen(output), "		temp_0 = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
-
-					sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-					sprintf(index_x, "%s", sc->inputStride[1]);
-					sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-					indexInputVkFFT(output, sc, uintType, readType, index_x, index_y, requestCoordinate, requestBatch);
-					sprintf(output + strlen(output), ";\n");
-					//sprintf(output + strlen(output), "		inoutID = indexInput(2 * (%s%s) + 1, %d);\n", sc->gl_GlobalInvocationID_y, shiftY, sc->inputStride[2] / (sc->inputStride[1] + 2));
-					if (sc->inputBufferBlockNum == 1)
-						sprintf(output + strlen(output), "		temp_1 = %s%s[inoutID]%s;\n", convTypeLeft, inputsStruct, convTypeRight);
-					else
-						sprintf(output + strlen(output), "		temp_1 = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
-					if (sc->localSize[1] == 1)
-						sprintf(output + strlen(output), "\
-		sdata[0].x = (temp_0.x - temp_1.y);\n\
-		sdata[0].y = (temp_0.y + temp_1.x);\n");
-					else
-						sprintf(output + strlen(output), "\
-		sdata[sharedStride * %s].x = (temp_0.x - temp_1.y);\n\
-		sdata[sharedStride * %s].y = (temp_0.y + temp_1.x);\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_y);
-					VkAppendLine(sc, "	}\n");
+								sprintf(output + strlen(output), "		%s.x = sdata[%s * sharedStride + (%d)].x- sdata[%s * sharedStride + (%d)].y;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread * sc->localSize[0] + 1);
+								sprintf(output + strlen(output), "		%s.y = sdata[%s * sharedStride + (%d)].y+ sdata[%s * sharedStride + (%d)].x;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread * sc->localSize[0] + 1);
+								sprintf(output + strlen(output), "	}");
+							}
+						}
+						else {
+							if (sc->axisSwapped) {
+								sprintf(output + strlen(output), "\
+	if (%s==0) \n\
+	{\n", sc->gl_LocalInvocationID_y);
+								sprintf(output + strlen(output), "		%s.x = sdata[%s + (%d) * sharedStride].x;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1]);
+								sprintf(output + strlen(output), "		%s.y = sdata[%s + (%d) * sharedStride].y;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1]);
+								sprintf(output + strlen(output), "	}");
+							}
+							else {
+								sprintf(output + strlen(output), "\
+	if (%s==0) \n\
+	{\n", sc->gl_LocalInvocationID_x);
+								sprintf(output + strlen(output), "		%s.x = sdata[%s * sharedStride + (%d)].x;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0]);
+								sprintf(output + strlen(output), "		%s.y = sdata[%s * sharedStride + (%d)].y;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0]);
+								sprintf(output + strlen(output), "	}");
+							}
+						}
+					}
+				}
+				else {
 				}
 			}
 			else {
 				if (sc->fftDim == sc->fft_dim_full) {
-					for (uint32_t i = 0; i < ceil(sc->min_registers_per_thread / 2.0); i++) {
-						if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-							sprintf(output + strlen(output), "		if(%s%s < %d){", sc->gl_GlobalInvocationID_y, shiftY, (uint32_t)ceil(sc->size[1] / 2.0));
-						if ((ceil(sc->min_registers_per_thread / 2.0) != sc->min_registers_per_thread / 2) && (i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
-							sprintf(output + strlen(output), "if (%s < %d){\n", sc->gl_LocalInvocationID_x, sc->fftDim / 2 - i * sc->localSize[0]);
+					for (uint32_t k = 0; k < sc->registerBoost; k++) {
+						for (uint32_t i = 0; i < ceil(sc->min_registers_per_thread / (2.0 / mult)) + 1; i++) {
 
-						sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-						sprintf(index_x, "%s + %d", sc->gl_LocalInvocationID_x, i * sc->localSize[0] + 1);
-						sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-						indexInputVkFFT(output, sc, uintType, readType, index_x, index_y, requestCoordinate, requestBatch);
-						sprintf(output + strlen(output), ";\n");
-						//sprintf(output + strlen(output), "		inoutID = indexInput(%s + %d, (%s%s));\n", sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_GlobalInvocationID_y, shiftY);
+							if (sc->localSize[1] == 1)
+								sprintf(output + strlen(output), "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+							else
+								sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
-						if (sc->inputBufferBlockNum == 1)
-							sprintf(output + strlen(output), "		temp_0 = %s%s[inoutID]%s;\n", convTypeLeft, inputsStruct, convTypeRight);
-						else
-							sprintf(output + strlen(output), "		temp_0 = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+							if (sc->inputStride[0] > 1)
+								sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim / 2 + 1, sc->inputStride[0], sc->fftDim / 2 + 1, sc->inputStride[1]);
+							else
+								sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->inputStride[1]);
+							if (sc->axisSwapped) {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[0], sc->size[sc->axis_id + 1]);
+								if ((i >= mult * (sc->min_registers_per_thread / 2)))
+									sprintf(output + strlen(output), "		if(combinedID < %d){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[0]);
+							}
+							else {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[1], sc->size[sc->axis_id + 1]);
+								if ((i >= mult * (sc->min_registers_per_thread / 2)))
+									sprintf(output + strlen(output), "		if(combinedID < %d){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[1]);
+							}
+							sprintf(output + strlen(output), "			%s = ", sc->inoutID);
+							indexInputVkFFT(output, sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
+							sprintf(output + strlen(output), ";\n");
+							appendZeropadStartAxisSwapped(output, sc);
+							if (sc->readToRegisters) {
+								if (sc->inputBufferBlockNum == 1)
+									sprintf(output + strlen(output), "		%s = %s%s[inoutID]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, convTypeRight);
+								else
+									sprintf(output + strlen(output), "		%s = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+							}
+							else {
+								if (!sc->axisSwapped) {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %s%s[inoutID]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, inputsStruct, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 
-						sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-						sprintf(index_x, "%s + %d", sc->gl_LocalInvocationID_x, sc->inputStride[1] + i * sc->localSize[0] + 1);
-						sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-						indexInputVkFFT(output, sc, uintType, readType, index_x, index_y, requestCoordinate, requestBatch);
-						sprintf(output + strlen(output), ";\n");
-						//sprintf(output + strlen(output), "		inoutID = indexInput(%s+%d, (%s%s));\n", sc->gl_LocalInvocationID_x, sc->inputStride[1] / 2 + i * sc->localSize[0], sc->gl_GlobalInvocationID_y, shiftY);
+								}
+								else {
+									if (sc->inputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %s%s[inoutID]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, inputsStruct, convTypeRight);
+									else
+										sprintf(output + strlen(output), "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								}
+							}
+							appendZeropadEndAxisSwapped(output, sc);
+							if ((i >= mult * (sc->min_registers_per_thread / 2)))
+								sprintf(output + strlen(output), "		}\n");
+							if (sc->axisSwapped) {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+									sprintf(output + strlen(output), "		}\n");
+							}
+							else {
+								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+									sprintf(output + strlen(output), "		}\n");
+							}
 
-						if (sc->inputBufferBlockNum == 1)
-							sprintf(output + strlen(output), "		temp_1 = %s%s[inoutID]%s;\n", convTypeLeft, inputsStruct, convTypeRight);
-						else
-							sprintf(output + strlen(output), "		temp_1 = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
-						if (sc->localSize[1] == 1)
-							sprintf(output + strlen(output), "\
-		sdata[%s+%d].x=(temp_0.x-temp_1.y);\n\
-		sdata[%s + %d].y = (temp_0.y + temp_1.x);\n\
-		sdata[%d - %s].x = (temp_0.x + temp_1.y);\n\
-		sdata[%d - %s].y = (-temp_0.y + temp_1.x);\n", sc->gl_LocalInvocationID_x, i * sc->localSize[0] + 1, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + 1, sc->fftDim - i * sc->localSize[0] - 1, sc->gl_LocalInvocationID_x, sc->fftDim - i * sc->localSize[0] - 1, sc->gl_LocalInvocationID_x);
-						else
-							sprintf(output + strlen(output), "\
-		sdata[sharedStride*%s + %s+%d].x=(temp_0.x-temp_1.y);\n\
-		sdata[sharedStride * %s + %s + %d].y = (temp_0.y + temp_1.x);\n\
-		sdata[sharedStride * %s + %d - %s].x = (temp_0.x + temp_1.y);\n\
-		sdata[sharedStride * %s + %d - %s].y = (-temp_0.y + temp_1.x);\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + 1, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + 1, sc->gl_LocalInvocationID_y, sc->fftDim - i * sc->localSize[0] - 1, sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim - i * sc->localSize[0] - 1, sc->gl_LocalInvocationID_x);
-						if ((ceil(sc->min_registers_per_thread / 2.0) != sc->min_registers_per_thread / 2) && (i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
-							sprintf(output + strlen(output), "}\n");
-						if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-							sprintf(output + strlen(output), "		}");
-					}
-					sprintf(output + strlen(output), "\
+						}
+
+						appendBarrierVkFFT(output + strlen(output), 1);
+						/*for (uint32_t i = 0; i < ceil(sc->min_registers_per_thread / 2.0); i++) {
+
+							if (sc->localSize[1] == 1)
+								sprintf(output + strlen(output), "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+							else
+								sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+							if (sc->axisSwapped) {
+								if ((i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
+									sprintf(output + strlen(output), "if (combinedID / %d < %d){\n", (uint32_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[0]);
+							}
+							else {
+								if ((i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
+									sprintf(output + strlen(output), "if (combinedID / %d < %d){\n", (uint32_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[1]);
+							}
+							if (!sc->axisSwapped) {
+								sprintf(output + strlen(output), "		sdata[(%d - (combinedID %% %d) + (combinedID / %d) * sharedStride)].x = sdata[((combinedID %% %d) + (combinedID / %d) * sharedStride)+1].x;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+								sprintf(output + strlen(output), "		sdata[(%d - (combinedID %% %d) + (combinedID / %d) * sharedStride)].y = -sdata[((combinedID %% %d) + (combinedID / %d) * sharedStride)+1].y;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+							}
+							else {
+								sprintf(output + strlen(output), "		sdata[((%d - (combinedID %% %d)) * sharedStride + (combinedID / %d))].x = sdata[(((combinedID %% %d) + 1) * sharedStride + (combinedID / %d))].x;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+								sprintf(output + strlen(output), "		sdata[((%d - (combinedID %% %d)) * sharedStride + (combinedID / %d))].y = -sdata[(((combinedID %% %d) + 1) * sharedStride + (combinedID / %d))].y;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+							}
+							if ((i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
+								VkAppendLine(sc, "	}");
+						}*/
+						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+
+							/*if (sc->localSize[1] == 1)
+								sprintf(output + strlen(output), "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+							else
+								sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+							if ((i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
+							{
+								if (sc->axisSwapped)
+									sprintf(output + strlen(output), "if (combinedID / %d < %d){\n", (uint32_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[0]);
+								else
+									sprintf(output + strlen(output), "if (combinedID / %d < %d){\n", (uint32_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[1]);
+							}*/
+							if (sc->mergeSequencesR2C) {
+								if (sc->axisSwapped) {
+									if (i < sc->min_registers_per_thread / 2) {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s + (%s+%d) * sharedStride].x - sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + sc->min_registers_per_thread / 2 * sc->localSize[1] + 1);
+										sprintf(output + strlen(output), "		%s.y = sdata[%s + (%s+%d) * sharedStride].y + sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + sc->min_registers_per_thread / 2 * sc->localSize[1] + 1);
+									}
+									else {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s + (%d-%s) * sharedStride].x + sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - sc->min_registers_per_thread / 2) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - sc->min_registers_per_thread / 2) * sc->localSize[1] + sc->min_registers_per_thread * sc->localSize[1] + 1, sc->gl_LocalInvocationID_y);
+										sprintf(output + strlen(output), "		%s.y = -sdata[%s + (%d-%s) * sharedStride].y + sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - sc->min_registers_per_thread / 2) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - sc->min_registers_per_thread / 2) * sc->localSize[1] + sc->min_registers_per_thread * sc->localSize[1] + 1, sc->gl_LocalInvocationID_y);
+									}
+								}
+								else {
+									if (i < sc->min_registers_per_thread / 2) {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s * sharedStride + (%s+%d)].x - sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + sc->min_registers_per_thread / 2 * sc->localSize[0] + 1);
+										sprintf(output + strlen(output), "		%s.y = sdata[%s * sharedStride + (%s+%d)].y + sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + sc->min_registers_per_thread / 2 * sc->localSize[0] + 1);
+									}
+									else {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s * sharedStride + (%d-%s)].x + sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - sc->min_registers_per_thread / 2) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - sc->min_registers_per_thread / 2) * sc->localSize[0] + sc->min_registers_per_thread * sc->localSize[0] + 1, sc->gl_LocalInvocationID_x);
+										sprintf(output + strlen(output), "		%s.y = -sdata[%s * sharedStride + (%d-%s)].y + sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - sc->min_registers_per_thread / 2) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - sc->min_registers_per_thread / 2) * sc->localSize[0] + sc->min_registers_per_thread * sc->localSize[0] + 1, sc->gl_LocalInvocationID_x);
+									}
+								}
+							}
+							else {
+								if (sc->axisSwapped) {
+									if (i < sc->min_registers_per_thread / 2) {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+										sprintf(output + strlen(output), "		%s.y = sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+									}
+									else {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - sc->min_registers_per_thread / 2) * sc->localSize[1], sc->gl_LocalInvocationID_y);
+										sprintf(output + strlen(output), "		%s.y = -sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - sc->min_registers_per_thread / 2) * sc->localSize[1], sc->gl_LocalInvocationID_y);
+									}
+								}
+								else {
+									if (i < sc->min_registers_per_thread / 2) {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+										sprintf(output + strlen(output), "		%s.y = sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+									}
+									else {
+										sprintf(output + strlen(output), "		%s.x = sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - sc->min_registers_per_thread / 2) * sc->localSize[0], sc->gl_LocalInvocationID_x);
+										sprintf(output + strlen(output), "		%s.y = -sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - sc->min_registers_per_thread / 2) * sc->localSize[0], sc->gl_LocalInvocationID_x);
+									}
+								}
+
+								/*if (!sc->axisSwapped) {
+									sprintf(output + strlen(output), "		sdata[(%d - (combinedID %% %d) + (combinedID / %d) * sharedStride)].x = sdata[((combinedID %% %d) + (combinedID / %d) * sharedStride)+1].x;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+									sprintf(output + strlen(output), "		sdata[(%d - (combinedID %% %d) + (combinedID / %d) * sharedStride)].y = -sdata[((combinedID %% %d) + (combinedID / %d) * sharedStride)+1].y;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+								}
+								else {
+									sprintf(output + strlen(output), "		sdata[((%d - (combinedID %% %d)) * sharedStride + (combinedID / %d))].x = sdata[(((combinedID %% %d) + 1) * sharedStride + (combinedID / %d))].x;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+									sprintf(output + strlen(output), "		sdata[((%d - (combinedID %% %d)) * sharedStride + (combinedID / %d))].y = -sdata[(((combinedID %% %d) + 1) * sharedStride + (combinedID / %d))].y;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+								}*/
+							}
+							/*if ((i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
+							/	VkAppendLine(sc, "	}");*/
+						}
+						if (sc->mergeSequencesR2C) {
+							if (sc->axisSwapped) {
+								sprintf(output + strlen(output), "\
+	if (%s==0) \n\
+	{\n", sc->gl_LocalInvocationID_y);
+								sprintf(output + strlen(output), "		%s.x = sdata[%s + (%d) * sharedStride].x - sdata[%s + (%d) * sharedStride].y;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread * sc->localSize[1] + 1);
+								sprintf(output + strlen(output), "		%s.y = sdata[%s + (%d) * sharedStride].y + sdata[%s + (%d) * sharedStride].x;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread * sc->localSize[1] + 1);
+								sprintf(output + strlen(output), "	}");
+							}
+							else {
+								sprintf(output + strlen(output), "\
 	if (%s==0) \n\
 	{\n", sc->gl_LocalInvocationID_x);
-					sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-					sprintf(index_x, "0");
-					sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-					indexInputVkFFT(output, sc, uintType, readType, index_x, index_y, requestCoordinate, requestBatch);
-					sprintf(output + strlen(output), ";\n");
-					//sprintf(output + strlen(output), "		inoutID = indexInput(2 * (%s%s), %d);\n", sc->gl_GlobalInvocationID_y, shiftY, sc->inputStride[2] / (sc->inputStride[1] + 2));
-					if (sc->inputBufferBlockNum == 1)
-						sprintf(output + strlen(output), "		temp_0 = %s%s[inoutID]%s;\n", convTypeLeft, inputsStruct, convTypeRight);
-					else
-						sprintf(output + strlen(output), "		temp_0 = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
-
-					sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-					sprintf(index_x, "%d", sc->inputStride[1]);
-					sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-					indexInputVkFFT(output, sc, uintType, readType, index_x, index_y, requestCoordinate, requestBatch);
-					sprintf(output + strlen(output), ";\n");
-					//sprintf(output + strlen(output), "		inoutID = indexInput(2 * (%s%s) + 1, %d);\n", sc->gl_GlobalInvocationID_y, shiftY, sc->inputStride[2] / (sc->inputStride[1] + 2));
-					if (sc->inputBufferBlockNum == 1)
-						sprintf(output + strlen(output), "		temp_1 = %s%s[inoutID]%s;\n", convTypeLeft, inputsStruct, convTypeRight);
-					else
-						sprintf(output + strlen(output), "		temp_1 = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
-					if (sc->localSize[1] == 1)
-						sprintf(output + strlen(output), "\
-		sdata[0].x = (temp_0.x - temp_1.y);\n\
-		sdata[0].y = (temp_0.y + temp_1.x);\n");
-					else
-						sprintf(output + strlen(output), "\
-		sdata[sharedStride * %s].x = (temp_0.x - temp_1.y);\n\
-		sdata[sharedStride * %s].y = (temp_0.y + temp_1.x);\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_y);
-					VkAppendLine(sc, "	}\n");
-					
+								sprintf(output + strlen(output), "		%s.x = sdata[%s * sharedStride + (%d)].x- sdata[%s * sharedStride + (%d)].y;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread * sc->localSize[0] + 1);
+								sprintf(output + strlen(output), "		%s.y = sdata[%s * sharedStride + (%d)].y+ sdata[%s * sharedStride + (%d)].x;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread * sc->localSize[0] + 1);
+								sprintf(output + strlen(output), "	}");
+							}
+						}
+						else {
+							if (sc->axisSwapped) {
+								sprintf(output + strlen(output), "\
+	if (%s==0) \n\
+	{\n", sc->gl_LocalInvocationID_y);
+								sprintf(output + strlen(output), "		%s.x = sdata[%s + (%d) * sharedStride].x;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1]);
+								sprintf(output + strlen(output), "		%s.y = sdata[%s + (%d) * sharedStride].y;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1]);
+								sprintf(output + strlen(output), "	}");
+							}
+							else {
+								sprintf(output + strlen(output), "\
+	if (%s==0) \n\
+	{\n", sc->gl_LocalInvocationID_x);
+								sprintf(output + strlen(output), "		%s.x = sdata[%s * sharedStride + (%d)].x;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0]);
+								sprintf(output + strlen(output), "		%s.y = sdata[%s * sharedStride + (%d)].y;\n", sc->regIDs[sc->min_registers_per_thread / 2 + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0]);
+								sprintf(output + strlen(output), "	}");
+							}
+						}
+					}
 				}
 				else {
-					//Not implemented
+
 				}
+
 			}
+			VkAppendLine(sc, "	}\n");
 			break;
 		}
 		}
@@ -3531,7 +4093,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						sprintf(output + strlen(output), "\
-		%s = %s*(%d+%s) + %s;\n", sc->inoutID, sc->gl_WorkGroupSize_x, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
+		%s = %s*(%d+%s) + %s;\n", sc->inoutID, sc->sharedStride, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
 
 						sprintf(output + strlen(output), "\
 		w.x = sdata[%s].x * mult.x - sdata[%s].y * mult.y;\n", sc->inoutID, sc->inoutID);
@@ -3589,7 +4151,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						sprintf(output + strlen(output), "\
-		%s = %s*(%d+%s) + %s;\n", sc->inoutID, sc->gl_WorkGroupSize_x, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
+		%s = %s*(%d+%s) + %s;\n", sc->inoutID, sc->sharedStride, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
 
 						sprintf(output + strlen(output), "\
 		w.x = sdata[%s].x * mult.x - sdata[%s].y * mult.y;\n", sc->inoutID, sc->inoutID);
@@ -3686,7 +4248,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						sprintf(output + strlen(output), "\
-		%s = %s*(%d+%s) + %s;\n", sc->inoutID, sc->gl_WorkGroupSize_x, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
+		%s = %s*(%d+%s) + %s;\n", sc->inoutID, sc->sharedStride, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
 
 						sprintf(output + strlen(output), "\
 		w.x = sdata[%s].x * mult.x - sdata[%s].y * mult.y;\n", sc->inoutID, sc->inoutID);
@@ -3753,7 +4315,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						sprintf(output + strlen(output), "\
-		%s = %s*(%d+%s) + %s;\n", sc->inoutID, sc->gl_WorkGroupSize_x, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
+		%s = %s*(%d+%s) + %s;\n", sc->inoutID, sc->sharedStride, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
 
 						sprintf(output + strlen(output), "\
 		w.x = sdata[%s].x * mult.x - sdata[%s].y * mult.y;\n", sc->inoutID, sc->inoutID);
@@ -3802,7 +4364,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
 		uint32_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 		uint32_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
-		if ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || (sc->localSize[1] > 1) || ((sc->performR2C) && (sc->inverse)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)))
+		if ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->localSize[1] > 1) && (!(sc->performR2C && (stageAngle > 0)))) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)))
 			appendBarrierVkFFT(output, 1);
 		appendZeropadStart(output, sc);
 		VkAppendLine(sc, sc->disableThreadsStart);
@@ -3818,7 +4380,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sprintf(output + strlen(output), "		LUTId = stageInvocationID + %d;\n", stageSizeSum);
 				else
 					sprintf(output + strlen(output), "		angle = stageInvocationID * %.17f%s;\n", stageAngle, LFending);
-				if ((sc->registerBoost == 1) && ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || (sc->localSize[1] > 1) || ((sc->performR2C) && (sc->inverse)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)))) {
+				if ((sc->registerBoost == 1) && ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->localSize[1] > 1) && (!(sc->performR2C && (stageAngle > 0)))) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)))) {
 					for (uint32_t i = 0; i < stageRadix; i++) {
 						uint32_t id = j + i * logicalRegistersPerThread / stageRadix;
 						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
@@ -3835,7 +4397,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							sprintf(output + strlen(output), "\
 		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
 
-							sprintf(output + strlen(output), "\
+						sprintf(output + strlen(output), "\
 		%s = sdata[%s];\n", sc->regIDs[id], sc->sdataID);
 					}
 				}
@@ -3910,7 +4472,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
 		uint32_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 		uint32_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
-		if ((sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)))
+		if (((sc->axis_id == 0) && (sc->axis_upload_id == 0) && (!(sc->performR2C && (stageAngle > 0)))) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)))
 			appendBarrierVkFFT(output, 1);
 		appendZeropadStart(output, sc);
 		VkAppendLine(sc, sc->disableThreadsStart);
@@ -3925,12 +4487,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sprintf(output + strlen(output), "		LUTId = stageInvocationID + %d;\n", stageSizeSum);
 				else
 					sprintf(output + strlen(output), "		angle = stageInvocationID * %.17f%s;\n", stageAngle, LFending);
-				if ((sc->registerBoost == 1) && ((sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)))) {
+				if ((sc->registerBoost == 1) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0) && (!(sc->performR2C && (stageAngle > 0)))) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)))) {
 					for (uint32_t i = 0; i < stageRadix; i++) {
 						uint32_t id = j + i * logicalRegistersPerThread / stageRadix;
 						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 						sprintf(output + strlen(output), "\
-		%s = sdata[%s*(%s+%d)+%s];\n", sc->regIDs[id], sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, j * logicalGroupSize + i * sc->fftDim / stageRadix, sc->gl_LocalInvocationID_x);
+		%s = sdata[%s*(%s+%d)+%s];\n", sc->regIDs[id], sc->sharedStride, sc->gl_LocalInvocationID_y, j * logicalGroupSize + i * sc->fftDim / stageRadix, sc->gl_LocalInvocationID_x);
 					}
 				}
 
@@ -3961,6 +4523,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			sprintf(output + strlen(output), "		}\n");
 		VkAppendLine(sc, sc->disableThreadsEnd);
 		appendZeropadEnd(output, sc);
+		if (stageSize == 1)
+			sprintf(output + strlen(output), "		%s = %d;\n", sc->sharedStride, sc->localSize[0]);
 	}
 	static inline void appendRadixStage(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix, uint32_t shuffleType) {
 		switch (shuffleType) {
@@ -4327,10 +4891,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t logicalGroupSizeNext = sc->fftDim / logicalStoragePerThreadNext;
 		if (((sc->inverse) && (sc->normalize)) || ((sc->convolutionStep) && (stageAngle > 0)))
 			sprintf(stageNormalization, "%d", stageRadix);
-		if ((sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)))
+		if (((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)))
 			appendBarrierVkFFT(output, 2);
-
-		if ((sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0))) {
+		if (stageSize == sc->fftDim / stageRadix)
+			sprintf(output + strlen(output), "		%s = %d;\n", sc->sharedStride, sc->sharedStrideReadWriteConflict);
+		if (((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0))) {
 			//appendBarrierVkFFT(output, 2);
 			if (!((sc->registerBoost > 1) && (stageSize * stageRadix == sc->fftDim / sc->stageRadix[sc->numStages - 1]) && (sc->stageRadix[sc->numStages - 1] == sc->registerBoost))) {
 				char** tempID;
@@ -4374,7 +4939,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							t++;
 							sprintf(tempNum, "%d", i * stageSize);
 							VkAddReal(sc, sc->sdataID, sc->inoutID, tempNum);
-							VkMulReal(sc, sc->sdataID, sc->gl_WorkGroupSize_x, sc->sdataID);
+							VkMulReal(sc, sc->sdataID, sc->sharedStride, sc->sdataID);
 							VkAddReal(sc, sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
 							//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + inoutID + %d", i * stageSize);
 							if (strcmp(stageNormalization, ""))
@@ -4406,7 +4971,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								id = (id / logicalRegistersPerThreadNext) * sc->registers_per_thread + id % logicalRegistersPerThreadNext;
 								sprintf(tempNum, "%d", t * logicalGroupSizeNext);
 								VkAddReal(sc, sc->sdataID, sc->gl_LocalInvocationID_y, tempNum);
-								VkMulReal(sc, sc->sdataID, sc->gl_WorkGroupSize_x, sc->sdataID);
+								VkMulReal(sc, sc->sdataID, sc->sharedStride, sc->sdataID);
 								VkAddReal(sc, sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
 								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %d", t * logicalGroupSizeNext);
 								VkSharedLoad(sc, tempID[t + k * sc->registers_per_thread], sc->sdataID);
@@ -4513,7 +5078,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (start == 0) {
 						sprintf(output + strlen(output), "\
 	if (%s * %d < %d) {\n", sc->gl_GlobalInvocationID_x, logicalStoragePerThread, sc->fftDim);
-						for (uint32_t i = 0; i < logicalStoragePerThread/ sc->registerBoost; i++) {
+						for (uint32_t i = 0; i < logicalStoragePerThread / sc->registerBoost; i++) {
 							sprintf(output + strlen(output), "\
 	sdata[%s + %d] = %s;\n", sc->gl_LocalInvocationID_x, i * logicalGroupSize, sc->regIDs[i + k * sc->registers_per_thread]);
 						}
@@ -4571,9 +5136,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (start == 0) {
 						sprintf(output + strlen(output), "\
 	if (%s * %d < %d) {\n", sc->gl_GlobalInvocationID_y, logicalStoragePerThread, sc->fftDim);
-						for (uint32_t i = 0; i < logicalStoragePerThread/ sc->registerBoost; i++) {
+						for (uint32_t i = 0; i < logicalStoragePerThread / sc->registerBoost; i++) {
 							sprintf(output + strlen(output), "\
-	sdata[%s + %s * (%s + %d)] = %s;\n", sc->gl_LocalInvocationID_x, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, i * logicalGroupSize, sc->regIDs[i + k * sc->registers_per_thread]);
+	sdata[%s + %s * (%s + %d)] = %s;\n", sc->gl_LocalInvocationID_x, sc->sharedStride, sc->gl_LocalInvocationID_y, i * logicalGroupSize, sc->regIDs[i + k * sc->registers_per_thread]);
 						}
 						VkAppendLine(sc, "	}\n");
 					}
@@ -4581,7 +5146,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					{
 						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
 							sprintf(output + strlen(output), "\
-	sdata[%s + %s * (%s + %d)] = %s;\n", sc->gl_LocalInvocationID_x, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->regIDs[i + k * sc->registers_per_thread]);
+	sdata[%s + %s * (%s + %d)] = %s;\n", sc->gl_LocalInvocationID_x, sc->sharedStride, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->regIDs[i + k * sc->registers_per_thread]);
 						}
 					}
 					VkAppendLine(sc, sc->disableThreadsEnd);
@@ -4594,14 +5159,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	if (%s * %d < %d) {\n", sc->gl_GlobalInvocationID_y, logicalStoragePerThread, sc->fftDim);
 						for (uint32_t i = 0; i < logicalStoragePerThread / sc->registerBoost; i++) {
 							sprintf(output + strlen(output), "\
-	%s = sdata[%s + %s * (%s + %d)];\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, i * logicalGroupSize);
+	%s = sdata[%s + %s * (%s + %d)];\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->sharedStride, sc->gl_LocalInvocationID_y, i * logicalGroupSize);
 						}
 						VkAppendLine(sc, "	}\n");
 					}
 					else {
 						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
 							sprintf(output + strlen(output), "\
-	%s = sdata[%s + %s * (%s + %d)];\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+	%s = sdata[%s + %s * (%s + %d)];\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->sharedStride, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
 						}
 					}
 					VkAppendLine(sc, sc->disableThreadsEnd);
@@ -4667,10 +5232,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			VkAppendLine(sc, sc->disableThreadsStart);
 			if (sc->matrixConvolution == 1) {
 				sprintf(output + strlen(output), "\
-		%s = sdata[%s*(%s)+%s];\n", sc->regIDs[0], sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
+		%s = sdata[%s*(%s)+%s];\n", sc->regIDs[0], sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
 				for (uint32_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sprintf(output + strlen(output), "\
-		%s = sdata[%s*(%s+%d*%s)+%s];\n", sc->regIDs[i], sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x);
+		%s = sdata[%s*(%s+%d*%s)+%s];\n", sc->regIDs[i], sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x);
 				}
 				//appendBarrierVkFFT(output, 3);
 			}
@@ -4679,10 +5244,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	switch (coordinate) {\n\
 	case 0:\n");
 				sprintf(output + strlen(output), "\
-		%s = sdata[%s*(%s)+%s];\n", sc->regIDs[0], sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
+		%s = sdata[%s*(%s)+%s];\n", sc->regIDs[0], sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
 				for (uint32_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sprintf(output + strlen(output), "\
-		%s = sdata[%s*(%s+%d*%s)+%s];\n", sc->regIDs[i], sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x);
+		%s = sdata[%s*(%s+%d*%s)+%s];\n", sc->regIDs[i], sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x);
 				}
 				//appendBarrierVkFFT(output, 3);
 				sprintf(output + strlen(output), "			break;\n");
@@ -4690,10 +5255,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sprintf(output + strlen(output), "\
 	case %d:\n", i);
 					sprintf(output + strlen(output), "\
-		%s_%d = sdata[%s*(%s)+%s];\n", sc->regIDs[0], i, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
+		%s_%d = sdata[%s*(%s)+%s];\n", sc->regIDs[0], i, sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
 					for (uint32_t j = 1; j < sc->min_registers_per_thread; j++) {
 						sprintf(output + strlen(output), "\
-		%s_%d = sdata[%s*(%s+%d*%s)+%s];\n", sc->regIDs[j], i, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, j, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x);
+		%s_%d = sdata[%s*(%s+%d*%s)+%s];\n", sc->regIDs[j], i, sc->sharedStride, sc->gl_LocalInvocationID_y, j, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x);
 					}
 					//appendBarrierVkFFT(output, 3);
 					sprintf(output + strlen(output), "			break;\n");
@@ -4759,10 +5324,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			VkAppendLine(sc, sc->disableThreadsStart);
 			if (sc->matrixConvolution == 1) {
 				sprintf(output + strlen(output), "\
-		sdata[%s*(%s)+%s] = %s;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
+		sdata[%s*(%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
 				for (uint32_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sprintf(output + strlen(output), "\
-		sdata[%s*(%s+%d*%s)+%s] = %s;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[i]);
+		sdata[%s*(%s+%d*%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[i]);
 				}
 				//appendBarrierVkFFT(output, 3);
 			}
@@ -4771,10 +5336,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	switch (coordinate) {\n\
 	case 0:\n");
 				sprintf(output + strlen(output), "\
-		sdata[%s*(%s)+%s] = %s;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
+		sdata[%s*(%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
 				for (uint32_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sprintf(output + strlen(output), "\
-		sdata[%s*(%s+%d*%s)+%s] = %s;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[i]);
+		sdata[%s*(%s+%d*%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[i]);
 				}
 				//appendBarrierVkFFT(output, 3);
 				sprintf(output + strlen(output), "			break;\n");
@@ -4782,10 +5347,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sprintf(output + strlen(output), "\
 	case %d:\n", i);
 					sprintf(output + strlen(output), "\
-		sdata[%s*(%s)+%s] = %s_%d;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0], i);
+		sdata[%s*(%s)+%s] = %s_%d;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0], i);
 					for (uint32_t j = 1; j < sc->min_registers_per_thread; j++) {
 						sprintf(output + strlen(output), "\
-		sdata[%s*(%s+%d*%s)+%s] = %s_%d;\n", sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, j, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[j], i);
+		sdata[%s*(%s+%d*%s)+%s] = %s_%d;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, j, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[j], i);
 					}
 					//appendBarrierVkFFT(output, 3);
 					sprintf(output + strlen(output), "			break;\n");
@@ -4990,6 +5555,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	static inline void appendWriteDataVkFFT(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint32_t writeType) {
 		char vecType[30];
 		char outputsStruct[20] = "";
+		char LFending[4] = "";
+		if (!strcmp(floatType, "float")) sprintf(LFending, "f");
 #if(VKFFT_BACKEND==0)
 		if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
@@ -4997,14 +5564,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			sprintf(outputsStruct, "outputs");
 		else
 			sprintf(outputsStruct, ".outputs");
+		if (!strcmp(floatType, "double")) sprintf(LFending, "LF");
 #elif(VKFFT_BACKEND==1)
 		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 		sprintf(outputsStruct, "outputs");
+		if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #elif(VKFFT_BACKEND==2)
 		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 		sprintf(outputsStruct, "outputs");
+		if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #endif
 		char convTypeLeft[20] = "";
 		char convTypeRight[20] = "";
@@ -5099,13 +5669,30 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc->performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX ");
 			char shiftY[500] = "";
-			if (sc->performWorkGroupShift[1])
-				sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
+			if (sc->axisSwapped) {
+				if (sc->performWorkGroupShift[1])
+					sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_x);
+			}
+			else {
+				if (sc->performWorkGroupShift[1])
+					sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
+			}
+
 			char shiftY2[100] = "";
 			if (sc->performWorkGroupShift[1])
 				sprintf(shiftY, " + consts.workGroupShiftY ");
 			if (sc->fftDim < sc->fft_dim_full) {
-				sprintf(output + strlen(output), "		if (((%s + %d * %s) %% %d + ((%s%s) / %d)*%d < %d)){\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->fft_dim_full / sc->firstStageStartSize);
+				if (sc->axisSwapped) {
+					if (!sc->reorderFourStep) {
+						sprintf(output + strlen(output), "		if((%s+%d*%s)< numActiveThreads) {\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y);
+					}
+					else {
+						sprintf(output + strlen(output), "		if (((%s + %d * %s) %% %d + ((%s%s) / %d)*%d < %d)){\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, sc->localSize[0], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0], sc->fft_dim_full / sc->firstStageStartSize);
+					}
+				}
+				else {
+					sprintf(output + strlen(output), "		if (((%s + %d * %s) %% %d + ((%s%s) / %d)*%d < %d)){\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->fft_dim_full / sc->firstStageStartSize);
+				}
 			}
 			else {
 				sprintf(output + strlen(output), "		{ \n");
@@ -5124,14 +5711,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1]);
 								else
 									sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim, sc->fftDim, sc->outputStride[1]);
-								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%s< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->gl_WorkGroupSize_y, sc->size[sc->axis_id + 1]);
-								sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
+								if (sc->axisSwapped) {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1]);
+								}
+								else {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1]);
+								}
+								sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
 
 								sprintf(output + strlen(output), "			%s = ", sc->inoutID);
 								indexOutputVkFFT(output, sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
 								sprintf(output + strlen(output), ";\n");
-
+								appendZeropadStartAxisSwapped(output, sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sprintf(output + strlen(output), "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
@@ -5139,15 +5732,29 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->inoutID, sc->fftDim, sc->fftDim, convTypeRight);
-									else
-										sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									if (sc->axisSwapped) {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", outputsStruct, convTypeLeft, sc->inoutID, sc->fftDim, sc->fftDim, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									}
+									else {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->inoutID, sc->fftDim, sc->fftDim, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									}
 								}
+								appendZeropadEndAxisSwapped(output, sc);
 								VkAppendLine(sc, "	}\n");
-								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-									sprintf(output + strlen(output), "		}");
-
+								if (sc->axisSwapped) {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+										sprintf(output + strlen(output), "		}");
+								}
+								else {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+										sprintf(output + strlen(output), "		}");
+								}
 							}
 						}
 					}
@@ -5158,15 +5765,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								else
 									sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
-								if (sc->localSize[1] == 1)
-									sprintf(output + strlen(output), "		inoutID = (%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d;\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
-								else
-									sprintf(output + strlen(output), "		inoutID = combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d;\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
-
+								if (sc->axisSwapped) {
+									sprintf(output + strlen(output), "		inoutID = combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d;\n", sc->localSize[0], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0], sc->localSize[0], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+								}
+								else {
+									if (sc->localSize[1] == 1)
+										sprintf(output + strlen(output), "		inoutID = (%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d;\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+									else
+										sprintf(output + strlen(output), "		inoutID = combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d;\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+								}
 								sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
 								sprintf(output + strlen(output), "			%s = ", sc->inoutID);
 								indexOutputVkFFT(output, sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
 								sprintf(output + strlen(output), ";\n");
+								appendZeropadStartAxisSwapped(output, sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sprintf(output + strlen(output), "			%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
@@ -5174,11 +5786,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sprintf(output + strlen(output), "			outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "			%s[%s] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
-									else
-										sprintf(output + strlen(output), "			outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
+									if (sc->axisSwapped) {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "			%s[%s] = %ssdata[(combinedID %% %s)+(combinedID/%s)*sharedStride]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_WorkGroupSize_x, convTypeRight);
+										else
+											sprintf(output + strlen(output), "			outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %s)+(combinedID/%s)*sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_WorkGroupSize_x, convTypeRight);
+									}
+									else {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "			%s[%s] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
+										else
+											sprintf(output + strlen(output), "			outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
+									}
 								}
+								appendZeropadEndAxisSwapped(output, sc);
 								/*
 								if (sc->outputBufferBlockNum == 1)
 									if (sc->localSize[1] == 1)
@@ -5219,8 +5840,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), ";\n");
 									//sprintf(output + strlen(output), "		inoutID = indexOutput((combinedID %% %d) + (combinedID / %d) * %d%s%s);\n", sc->fftDim, sc->fftDim, sc->outputStride[1], requestCoordinate, requestBatch);
 								}
-								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-									sprintf(output + strlen(output), "		if(combinedID / %d + %s*%s< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->gl_WorkGroupSize_y, sc->size[sc->axis_id + 1]);
+								if (sc->axisSwapped) {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + %s*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
+								}
+								else {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + %s*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
+								}
+								appendZeropadStartAxisSwapped(output, sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sprintf(output + strlen(output), "		%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
@@ -5228,11 +5856,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
-									else
-										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									if (sc->axisSwapped) {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									}
+									else {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									}
 								}
+								appendZeropadEndAxisSwapped(output, sc);
 								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
 									sprintf(output + strlen(output), "		}");
 							}
@@ -5245,20 +5882,29 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								else
 									sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
-								if (sc->localSize[1] == 1) {
+								if (sc->axisSwapped) {
 									sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-									sprintf(index_x, "(%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+									sprintf(index_x, "combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d", sc->localSize[0], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0], sc->localSize[0], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
 									indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sprintf(output + strlen(output), ";\n");
-									//sprintf(output + strlen(output), "		inoutID = indexOutput((%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d%s%s);\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
 								}
 								else {
-									sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-									sprintf(index_x, "combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
-									indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
-									sprintf(output + strlen(output), ";\n");
-									//sprintf(output + strlen(output), "		inoutID = indexOutput(combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d%s%s);\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
+									if (sc->localSize[1] == 1) {
+										sprintf(output + strlen(output), "			%s = ", sc->inoutID);
+										sprintf(index_x, "(%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+										indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
+										sprintf(output + strlen(output), ";\n");
+										//sprintf(output + strlen(output), "		inoutID = indexOutput((%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d%s%s);\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
+									}
+									else {
+										sprintf(output + strlen(output), "			%s = ", sc->inoutID);
+										sprintf(index_x, "combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+										indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
+										sprintf(output + strlen(output), ";\n");
+										//sprintf(output + strlen(output), "		inoutID = indexOutput(combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d%s%s);\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
+									}
 								}
+								appendZeropadStartAxisSwapped(output, sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sprintf(output + strlen(output), "		%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
@@ -5266,12 +5912,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", outputsStruct, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
-									else
-										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
-
+									if (sc->axisSwapped) {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "			%s[%s] = %ssdata[(combinedID %% %s)+(combinedID/%s)*sharedStride]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_WorkGroupSize_x, convTypeRight);
+										else
+											sprintf(output + strlen(output), "			outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %s)+(combinedID/%s)*sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_WorkGroupSize_x, convTypeRight);
+									}
+									else {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "			%s[%s] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
+										else
+											sprintf(output + strlen(output), "			outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
+									}
 								}
+								appendZeropadEndAxisSwapped(output, sc);
 							}
 							/*if (sc->outputBufferBlockNum == 1)
 								if (sc->localSize[1] == 1)
@@ -5302,13 +5956,19 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1]);
 								else
 									sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim, sc->fftDim, sc->outputStride[1]);
-								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-									sprintf(output + strlen(output), "		if(combinedID / %d + %s*%s< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->gl_WorkGroupSize_y, sc->size[sc->axis_id + 1]);
-
-								sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
+								if (sc->axisSwapped) {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + %s*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
+								}
+								else {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + %s*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
+								}
+								sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
 								sprintf(output + strlen(output), "			%s = ", sc->inoutID);
 								indexOutputVkFFT(output, sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
 								sprintf(output + strlen(output), ";\n");
+								appendZeropadStartAxisSwapped(output, sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sprintf(output + strlen(output), "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
@@ -5316,14 +5976,29 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
-									else
-										sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									if (sc->axisSwapped) {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									}
+									else {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									}
 								}
+								appendZeropadEndAxisSwapped(output, sc);
 								VkAppendLine(sc, "	}\n");
-								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-									sprintf(output + strlen(output), "		}");
+								if (sc->axisSwapped) {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+										sprintf(output + strlen(output), "		}");
+								}
+								else {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+										sprintf(output + strlen(output), "		}");
+								}
 							}
 						}
 					}
@@ -5333,11 +6008,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								if (sc->localSize[1] == 1)
 									sprintf(output + strlen(output), "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								else
-									sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
-								if (sc->localSize[1] == 1)
-									sprintf(output + strlen(output), "		inoutID = (%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d;\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
-								else
-									sprintf(output + strlen(output), "		inoutID = combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d;\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+									sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d * numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
+								if (sc->axisSwapped) {
+									sprintf(output + strlen(output), "		inoutID = combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d;\n", sc->localSize[0], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0], sc->localSize[0], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+								}
+								else {
+									if (sc->localSize[1] == 1)
+										sprintf(output + strlen(output), "		inoutID = (%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d;\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+									else
+										sprintf(output + strlen(output), "		inoutID = combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d;\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+								}
 								sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
 
 								sprintf(output + strlen(output), "			%s = ", sc->inoutID);
@@ -5345,6 +6025,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 								sprintf(output + strlen(output), ";\n");
 								//sprintf(output + strlen(output), "		inoutID = indexOutput(%s+i*%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)%s%s);\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, requestCoordinate, requestBatch);
+								appendZeropadStartAxisSwapped(output, sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sprintf(output + strlen(output), "		%s[inoutID]=%s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
@@ -5352,11 +6033,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "		%s[inoutID]=%ssdata[sharedStride*%s + (%s + %d)]%s;\n", outputsStruct, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
-									else
-										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[sharedStride*%s + (%s + %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
+									if (sc->axisSwapped) {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[inoutID]=%ssdata[%s + sharedStride*(%s + %d)]%s;\n", outputsStruct, convTypeLeft, sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[%s + sharedStride*(%s + %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], convTypeRight);
+									}
+									else {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[inoutID]=%ssdata[sharedStride*%s + (%s + %d)]%s;\n", outputsStruct, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[sharedStride*%s + (%s + %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
+									}
 								}
+								appendZeropadEndAxisSwapped(output, sc);
 								VkAppendLine(sc, "	}\n");
 							}
 						}
@@ -5384,9 +6074,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), ";\n");
 									//sprintf(output + strlen(output), "		inoutID = indexOutput((combinedID %% %d) + (combinedID / %d) * %d%s%s);\n", sc->fftDim, sc->fftDim, sc->outputStride[1], requestCoordinate, requestBatch);
 								}
-								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-									sprintf(output + strlen(output), "		if(combinedID / %d + %s*%s< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->gl_WorkGroupSize_y, sc->size[sc->axis_id + 1]);
-
+								if (sc->axisSwapped) {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + %s*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
+								}
+								else {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + %s*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
+								}
+								appendZeropadStartAxisSwapped(output, sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sprintf(output + strlen(output), "		%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
@@ -5394,14 +6090,28 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
-									else
-										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									if (sc->axisSwapped) {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									}
+									else {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									}
 								}
-								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-									sprintf(output + strlen(output), "		}");
-
+								appendZeropadEndAxisSwapped(output, sc);
+								if (sc->axisSwapped) {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+										sprintf(output + strlen(output), "		}");
+								}
+								else {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+										sprintf(output + strlen(output), "		}");
+								}
 							}
 						}
 					}
@@ -5409,10 +6119,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						for (uint32_t k = 0; k < sc->registerBoost; k++) {
 							for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
 								sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-								sprintf(index_x, "%s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
+								if (sc->axisSwapped) {
+									sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d* numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
+									sprintf(index_x, "(combinedID %% %d)+(combinedID / %d) * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize);
+								}
+								else {
+									sprintf(index_x, "%s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
+								}
 								indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 								sprintf(output + strlen(output), ";\n");
 								//sprintf(output + strlen(output), "		inoutID = indexOutput(%s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)%s%s);\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, requestCoordinate, requestBatch);
+								appendZeropadStartAxisSwapped(output, sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sprintf(output + strlen(output), "		%s[inoutID]=%s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
@@ -5420,11 +6137,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "		%s[inoutID]=%ssdata[sharedStride*%s + (%s + %d)]%s;\n", outputsStruct, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
-									else
-										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[sharedStride*%s + (%s + %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
+									if (sc->axisSwapped) {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[inoutID]=%ssdata[(combinedID / %d) + sharedStride*(combinedID %% %d)]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID / %d) + sharedStride*(combinedID %% %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									}
+									else {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[inoutID]=%ssdata[sharedStride*%s + (%s + %d)]%s;\n", outputsStruct, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[sharedStride*%s + (%s + %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
+									}
 								}
+								appendZeropadEndAxisSwapped(output, sc);
 							}
 						}
 					}
@@ -5464,9 +6190,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							}
 							else {
 								if (sc->outputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "			%s[%s] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sprintf(output + strlen(output), "			%s[%s] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 								else
-									sprintf(output + strlen(output), "			outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[%s*(%s+%d) + %s]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sprintf(output + strlen(output), "			outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[%s*(%s+%d) + %s]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 
 							}
 							VkAppendLine(sc, "	}\n");
@@ -5490,9 +6216,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							}
 							else {
 								if (sc->outputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 								else
-									sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 							}
 						}
 					}
@@ -5520,9 +6246,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							}
 							else {
 								if (sc->outputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "			%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sprintf(output + strlen(output), "			%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 								else
-									sprintf(output + strlen(output), "			outputBlocks[inoutID / %d]%s[inoutID %% %d] =  %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sprintf(output + strlen(output), "			outputBlocks[inoutID / %d]%s[inoutID %% %d] =  %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 							}
 							VkAppendLine(sc, "	}\n");
 						}
@@ -5545,9 +6271,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							}
 							else {
 								if (sc->outputBufferBlockNum == 1)
-									sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 								else
-									sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] =  %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] =  %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 							}
 						}
 					}
@@ -5582,9 +6308,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 						else {
 							if (sc->outputBufferBlockNum == 1)
-								sprintf(output + strlen(output), "			%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+								sprintf(output + strlen(output), "			%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 							else
-								sprintf(output + strlen(output), "			outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+								sprintf(output + strlen(output), "			outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 						}
 						VkAppendLine(sc, "	}\n");
 					}
@@ -5606,9 +6332,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 						else {
 							if (sc->outputBufferBlockNum == 1)
-								sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+								sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 							else
-								sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+								sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 						}
 					}
 				}
@@ -5619,133 +6345,296 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		case 5:
 		{//single_r2c
+			sc->writeFromRegisters = 0;
+			appendBarrierVkFFT(output, 1);
+			appendZeropadStart(output, sc);
+			char shiftX[500] = "";
+			if (sc->performWorkGroupShift[0])
+				sprintf(shiftX, " + consts.workGroupShiftX ");
 			char shiftY[500] = "";
 			if (sc->performWorkGroupShift[1])
-				sprintf(shiftY, " + consts.workGroupShiftY * %d", sc->localSize[1]);
+				sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
 			char shiftY2[100] = "";
 			if (sc->performWorkGroupShift[1])
 				sprintf(shiftY, " + consts.workGroupShiftY ");
-
+			uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			if (sc->reorderFourStep) {
 				//Not implemented
 			}
 			else {
-				appendBarrierVkFFT(output, 1);
-				appendZeropadStart(output, sc);
-				if (sc->fftDim == sc->fft_dim_full) {
-					if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-						sprintf(output + strlen(output), "		if(%s%s < %d){", sc->gl_GlobalInvocationID_y, shiftY, (uint32_t)ceil(sc->size[1] / 2.0));
-					sprintf(output + strlen(output), "\
+				//appendBarrierVkFFT(output, 1);
+				//appendZeropadStart(output, sc);
+				if (sc->zeropad[1]) {
+					if (sc->fftDim == sc->fft_dim_full) {
+						for (uint32_t k = 0; k < sc->registerBoost; k++) {
+							if (sc->mergeSequencesR2C) {
+								if (sc->axisSwapped) {
+									sprintf(output + strlen(output), "\
 	if (%s==0)\n\
 	{\n\
-		temp_0.x = sdata[sharedStride * %s].x;\n\
-		temp_0.y = 0;\n\
-		temp_1.x = sdata[sharedStride * %s].y;\n\
-		temp_1.y = 0;\n", sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_y);
-					sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-					sprintf(index_x, "0");
-					sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-					indexOutputVkFFT(output, sc, uintType, writeType, index_x, index_y, requestCoordinate, requestBatch);
-					sprintf(output + strlen(output), ";\n");
-					//sprintf(output + strlen(output), "		inoutID = indexOutput(2 * (%s%s), %d);\n", sc->gl_GlobalInvocationID_y, shiftY, sc->outputStride[2] / (sc->outputStride[1] + 2));
+		sdata[%s + %d* sharedStride] = sdata[%s];\n\
+	}\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->fftDim, sc->gl_LocalInvocationID_x);
+									appendZeropadEnd(output, sc);
+									appendBarrierVkFFT(output, 1);
+									appendZeropadStart(output, sc);
+								}
+								else {
+									sprintf(output + strlen(output), "\
+	if (%s==0)\n\
+	{\n\
+		sdata[%s * sharedStride + %d].x = sdata[%s * sharedStride].y;\n\
+	}\n", sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim, sc->gl_LocalInvocationID_y);
+									appendZeropadEnd(output, sc);
+									appendBarrierVkFFT(output, 1);
+									appendZeropadStart(output, sc);
+								}
+							}
+							for (uint32_t i = 0; i < ceil(sc->min_registers_per_thread / (2.0 / mult)) + 1; i++) {
+								if (sc->localSize[1] == 1)
+									sprintf(output + strlen(output), "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+								else
+									sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
-					if (sc->outputBufferBlockNum == 1)
-						sprintf(output + strlen(output), "		%s[inoutID] = %stemp_0%s;\n", outputsStruct, convTypeLeft, convTypeRight);
-					else
-						sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %stemp_0%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
-					sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-					sprintf(index_x, "%d", sc->outputStride[1]);
-					sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-					indexOutputVkFFT(output, sc, uintType, writeType, index_x, index_y, requestCoordinate, requestBatch);
-					sprintf(output + strlen(output), ";\n");
-					//sprintf(output + strlen(output), "		inoutID = indexOutput(2 * (%s%s) + 1, %d);\n", sc->gl_GlobalInvocationID_y, shiftY, sc->outputStride[2] / (sc->outputStride[1] + 2));
-					if (sc->outputBufferBlockNum == 1)
-						sprintf(output + strlen(output), "		%s[inoutID] = %stemp_1%s;\n", outputsStruct, convTypeLeft, convTypeRight);
-					else
-						sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %stemp_1%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
+								if (!sc->axisSwapped) {
+									sprintf(output + strlen(output), "			%s = ", sc->inoutID);
+									sprintf(index_x, "combinedID %% %d + ((combinedID/%d) * %d)", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
+									indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
+									sprintf(output + strlen(output), ";\n");
+								}
+								else {
+									sprintf(output + strlen(output), "			%s = ", sc->inoutID);
+									sprintf(index_x, "combinedID %% %d + ((combinedID/%d) * %d)", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
+									indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
+									sprintf(output + strlen(output), ";\n");
+								}
+								if (sc->axisSwapped) {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + %s*%d< %d){", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
+									if ((i >= mult * (sc->min_registers_per_thread / 2)))
+										sprintf(output + strlen(output), "		if(combinedID < %d){", mult * (sc->fftDim / 2 + 1) * sc->localSize[0]);
+								}
+								else {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + %s*%d< %d){", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
+									if ((i >= mult * (sc->min_registers_per_thread / 2)))
+										sprintf(output + strlen(output), "		if(combinedID < %d){", mult * (sc->fftDim / 2 + 1) * sc->localSize[1]);
+								}
+								sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
+								sprintf(output + strlen(output), "			%s = ", sc->inoutID);
+								indexOutputVkFFT(output, sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
+								sprintf(output + strlen(output), ";\n");
+								appendZeropadStartAxisSwapped(output, sc);
+								if (sc->writeFromRegisters) {
+									if (sc->outputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+									else
+										sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+								}
+								else {
+									if (sc->mergeSequencesR2C) {
+										if (sc->axisSwapped) {
+											sprintf(output + strlen(output), "if ( (combinedID / %d) %% 2 == 0){\n", sc->fftDim / 2 + 1);
+											sprintf(output + strlen(output), "		%s.x = 0.5%s*(sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].x+sdata[%d-(combinedID %% %d)* sharedStride + (combinedID / %d)].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "		%s.y = 0.5%s*(sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y-sdata[%d-(combinedID %% %d)* sharedStride + (combinedID / %d)].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "}else{\n");
+											sprintf(output + strlen(output), "		%s.x = 0.5%s*(sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y+sdata[%d-(combinedID %% %d)* sharedStride + (combinedID / %d)].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "		%s.y = 0.5%s*(-sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].x+sdata[%d-(combinedID %% %d)* sharedStride + (combinedID / %d)].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "}\n");
+											if (sc->outputBufferBlockNum == 1)
+												sprintf(output + strlen(output), "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], convTypeRight);
+											else
+												sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
+										}
+										else {
+											sprintf(output + strlen(output), "if ( (combinedID / %d) %% 2 == 0){\n", sc->fftDim / 2 + 1);
+											sprintf(output + strlen(output), "		%s.x = 0.5%s*(sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x+sdata[%d-(combinedID %% %d) + (combinedID / %d) * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "		%s.y = 0.5%s*(sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y-sdata[%d-(combinedID %% %d) + (combinedID / %d) * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "}else{\n");
+											sprintf(output + strlen(output), "		%s.x = 0.5%s*(sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y+sdata[%d-(combinedID %% %d) + (combinedID / %d) * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "		%s.y = 0.5%s*(-sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x+sdata[%d-(combinedID %% %d) + (combinedID / %d) * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "}\n");
+											if (sc->outputBufferBlockNum == 1)
+												sprintf(output + strlen(output), "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], convTypeRight);
+											else
+												sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
+										}
+									}
+									else {
+										if (!sc->axisSwapped) {
 
-					VkAppendLine(sc, "	}\n");
-
-					for (uint32_t i = 0; i < ceil(sc->min_registers_per_thread / 2.0); i++) {
-						if ((ceil(sc->min_registers_per_thread / 2.0) != sc->min_registers_per_thread / 2) && (i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
-							sprintf(output + strlen(output), "if (%s < %d){\n", sc->gl_LocalInvocationID_x, sc->fftDim / 2 - i * sc->localSize[0]);
-
-						if (sc->localSize[1] == 1)
-							sprintf(output + strlen(output), "\
-		temp_0.x = 0.5 * (sdata[%d + %s].x + sdata[%d - %s].x);\n\
-		temp_0.y = 0.5 * (sdata[%d + %s].y - sdata[%d - %s].y);\n\
-		temp_1.x = 0.5 * (sdata[%d + %s].y + sdata[%d - %s].y);\n\
-		temp_1.y = 0.5 * (-sdata[%d + %s].x + sdata[%d - %s].x);\n", 1 + i * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->fftDim - 1 - i * sc->localSize[0], sc->gl_LocalInvocationID_x, 1 + i * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->fftDim - 1 - i * sc->localSize[0], sc->gl_LocalInvocationID_x, 1 + i * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->fftDim - 1 - i * sc->localSize[0], sc->gl_LocalInvocationID_x, 1 + i * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->fftDim - 1 - i * sc->localSize[0], sc->gl_LocalInvocationID_x);
-						else
-							sprintf(output + strlen(output), "\
-		temp_0.x = 0.5 * (sdata[sharedStride * %s + (%d + %s)].x + sdata[sharedStride * %s + (%d - %s)].x);\n\
-		temp_0.y = 0.5 * (sdata[sharedStride * %s + (%d + %s)].y - sdata[sharedStride * %s + (%d - %s)].y);\n\
-		temp_1.x = 0.5 * (sdata[sharedStride * %s + (%d + %s)].y + sdata[sharedStride * %s + (%d - %s)].y);\n\
-		temp_1.y = 0.5 * (-sdata[sharedStride * %s + (%d + %s)].x + sdata[sharedStride * %s + (%d - %s)].x);\n", sc->gl_LocalInvocationID_y, 1 + i * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim - 1 - i * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, 1 + i * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim - 1 - i * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, 1 + i * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim - 1 - i * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, 1 + i * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim - 1 - i * sc->localSize[0], sc->gl_LocalInvocationID_x);
-						if (sc->zeropad[1]) {
-
-							sprintf(output + strlen(output), "		inoutID = %s+%d;\n", sc->gl_LocalInvocationID_x, i * sc->localSize[0] + 1);
-							sprintf(output + strlen(output), "		if((inoutID < %d)||(inoutID >= %d)){\n", sc->fft_zeropad_left_write[sc->axis_id], sc->fft_zeropad_right_write[sc->axis_id]);
-
-							sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-							sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-							indexOutputVkFFT(output, sc, uintType, writeType, sc->inoutID, index_y, requestCoordinate, requestBatch);
-							sprintf(output + strlen(output), ";\n");
-							if (sc->outputBufferBlockNum == 1)
-								sprintf(output + strlen(output), "		%s[%s] = %stemp_0%s;\n", outputsStruct, sc->inoutID, convTypeLeft, convTypeRight);
-							else
-								sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %stemp_0%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
-
-							sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-							sprintf(index_x, "%s+%d", sc->gl_LocalInvocationID_x, sc->outputStride[1] + i * sc->localSize[0] + 1);
-							sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-							indexOutputVkFFT(output, sc, uintType, writeType, index_x, index_y, requestCoordinate, requestBatch);
-							sprintf(output + strlen(output), ";\n");
-							//sprintf(output + strlen(output), "		inoutID = indexOutput(%s+%d, (%s%s));\n", sc->gl_LocalInvocationID_x, sc->outputStride[1] / 2 + i * sc->localSize[0], sc->gl_GlobalInvocationID_y, shiftY);
-
-							if (sc->outputBufferBlockNum == 1)
-								sprintf(output + strlen(output), "		%s[inoutID] = %stemp_1%s;\n", outputsStruct, convTypeLeft, convTypeRight);
-							else
-								sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %stemp_1%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
-
-							VkAppendLine(sc, "	}\n");
+											if (sc->outputBufferBlockNum == 1)
+												sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+											else
+												sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+										}
+										else {
+											if (sc->outputBufferBlockNum == 1)
+												sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+											else
+												sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+										}
+									}
+								}
+								appendZeropadEndAxisSwapped(output, sc);
+								VkAppendLine(sc, "	}\n");
+								if ((i >= (sc->min_registers_per_thread / 2)))
+									VkAppendLine(sc, "	}\n");
+								if (sc->axisSwapped) {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+										VkAppendLine(sc, "		}\n");
+								}
+								else {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+										VkAppendLine(sc, "		}\n");
+								}
+							}
 						}
-						else {
-							sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-							sprintf(index_x, "%s+%d", sc->gl_LocalInvocationID_x, i * sc->localSize[0] + 1);
-							sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-							indexOutputVkFFT(output, sc, uintType, writeType, index_x, index_y, requestCoordinate, requestBatch);
-							sprintf(output + strlen(output), ";\n");
-							//sprintf(output + strlen(output), "		inoutID = indexOutput(%s+%d, (%s%s));\n", sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_GlobalInvocationID_y, shiftY);
 
-							if (sc->outputBufferBlockNum == 1)
-								sprintf(output + strlen(output), "		%s[inoutID] = %stemp_0%s;\n", outputsStruct, convTypeLeft, convTypeRight);
-							else
-								sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %stemp_0%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
-
-							sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-							sprintf(index_x, "%s+%d", sc->gl_LocalInvocationID_x, sc->outputStride[1] + i * sc->localSize[0] + 1);
-							sprintf(index_y, "2*%s%s", sc->gl_GlobalInvocationID_y, shiftY);
-							indexOutputVkFFT(output, sc, uintType, writeType, index_x, index_y, requestCoordinate, requestBatch);
-							sprintf(output + strlen(output), ";\n");
-							//sprintf(output + strlen(output), "		inoutID = indexOutput(%s+%d, (%s%s));\n", sc->gl_LocalInvocationID_x, sc->outputStride[1] / 2 + i * sc->localSize[0], sc->gl_GlobalInvocationID_y, shiftY);
-
-							if (sc->outputBufferBlockNum == 1)
-								sprintf(output + strlen(output), "		%s[inoutID] = %stemp_1%s;\n", outputsStruct, convTypeLeft, convTypeRight);
-							else
-								sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %stemp_1%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
-
-						}
-						if ((ceil(sc->min_registers_per_thread / 2.0) != sc->min_registers_per_thread / 2) && (i == (ceil(sc->min_registers_per_thread / 2.0) - 1))) {
-							sprintf(output + strlen(output), "}\n");
-						}
 					}
-					if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-						sprintf(output + strlen(output), "		}");
+					else {
+
+					}
 				}
 				else {
-					//Not implemented
+					if (sc->fftDim == sc->fft_dim_full) {
+						for (uint32_t k = 0; k < sc->registerBoost; k++) {
+							if (sc->mergeSequencesR2C) {
+								if (sc->axisSwapped) {
+									sprintf(output + strlen(output), "\
+	if (%s==0)\n\
+	{\n\
+		sdata[%s + %d* sharedStride] = sdata[%s];\n\
+	}\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->fftDim, sc->gl_LocalInvocationID_x);
+									appendZeropadEnd(output, sc);
+									appendBarrierVkFFT(output, 1);
+									appendZeropadStart(output, sc);
+								}
+								else {
+									sprintf(output + strlen(output), "\
+	if (%s==0)\n\
+	{\n\
+		sdata[%s * sharedStride + %d].x = sdata[%s * sharedStride].y;\n\
+	}\n", sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim, sc->gl_LocalInvocationID_y);
+									appendZeropadEnd(output, sc);
+									appendBarrierVkFFT(output, 1);
+									appendZeropadStart(output, sc);
+								}
+							}
+							for (uint32_t i = 0; i < ceil(sc->min_registers_per_thread / (2.0 / mult)) + 1; i++) {
+								if (sc->localSize[1] == 1)
+									sprintf(output + strlen(output), "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+								else
+									sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+								if (!sc->axisSwapped) {
+									sprintf(output + strlen(output), "			%s = ", sc->inoutID);
+									sprintf(index_x, "combinedID %% %d + ((combinedID/%d) * %d)", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
+									indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
+									sprintf(output + strlen(output), ";\n");
+									//sprintf(output + strlen(output), "		inoutID = indexOutput((%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d%s%s);\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
+								}
+								else {
+									sprintf(output + strlen(output), "			%s = ", sc->inoutID);
+									sprintf(index_x, "combinedID %% %d + ((combinedID/%d) * %d)", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
+									indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
+									sprintf(output + strlen(output), ";\n");
+									//sprintf(output + strlen(output), "		inoutID = indexOutput(combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d%s%s);\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
+								}
+								if (sc->axisSwapped) {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + %s*%d< %d){", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
+									if ((i >= mult * (sc->min_registers_per_thread / 2)))
+										sprintf(output + strlen(output), "		if(combinedID < %d){", mult * (sc->fftDim / 2 + 1) * sc->localSize[0]);
+								}
+								else {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + %s*%d< %d){", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
+									if ((i >= mult * (sc->min_registers_per_thread / 2)))
+										sprintf(output + strlen(output), "		if(combinedID < %d){", mult * (sc->fftDim / 2 + 1) * sc->localSize[1]);
+								}
+								appendZeropadStartAxisSwapped(output, sc);
+								if (sc->writeFromRegisters) {
+									if (sc->outputBufferBlockNum == 1)
+										sprintf(output + strlen(output), "		%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+									else
+										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+								}
+								else {
+									if (sc->mergeSequencesR2C) {
+										if (sc->axisSwapped) {
+											sprintf(output + strlen(output), "if ( (combinedID / %d) %% 2 == 0){\n", sc->fftDim / 2 + 1);
+											sprintf(output + strlen(output), "		%s.x = 0.5%s*(sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].x+sdata[(%d-combinedID %% %d)* sharedStride + (combinedID / %d)].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "		%s.y = 0.5%s*(sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y-sdata[(%d-combinedID %% %d)* sharedStride + (combinedID / %d)].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "}else{\n");
+											sprintf(output + strlen(output), "		%s.x = 0.5%s*(sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y+sdata[(%d-combinedID %% %d)* sharedStride + (combinedID / %d)].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "		%s.y = 0.5%s*(-sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].x+sdata[(%d-combinedID %% %d)* sharedStride + (combinedID / %d)].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "}\n");
+											if (sc->outputBufferBlockNum == 1)
+												sprintf(output + strlen(output), "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], convTypeRight);
+											else
+												sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
+										}
+										else {
+											sprintf(output + strlen(output), "if ( (combinedID / %d) %% 2 == 0){\n", sc->fftDim / 2 + 1);
+											sprintf(output + strlen(output), "		%s.x = 0.5%s*(sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x+sdata[(%d-combinedID %% %d) + (combinedID / %d) * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "		%s.y = 0.5%s*(sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y-sdata[(%d-combinedID %% %d) + (combinedID / %d) * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "}else{\n");
+											sprintf(output + strlen(output), "		%s.x = 0.5%s*(sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y+sdata[(%d-combinedID %% %d) + (combinedID / %d) * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "		%s.y = 0.5%s*(-sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x+sdata[(%d-combinedID %% %d) + (combinedID / %d) * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->fftDim + 2, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim + 2);
+											sprintf(output + strlen(output), "}\n");
+											if (sc->outputBufferBlockNum == 1)
+												sprintf(output + strlen(output), "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], convTypeRight);
+											else
+												sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
+										}
+									}
+									else {
+										if (!sc->axisSwapped) {
+											if (sc->outputBufferBlockNum == 1)
+												sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+											else
+												sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+										}
+										else {
+											if (sc->outputBufferBlockNum == 1)
+												sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", outputsStruct, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+											else
+												sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+										}
+									}
+								}
+								appendZeropadEndAxisSwapped(output, sc);
+								if ((i >= mult * (sc->min_registers_per_thread / 2)))
+									VkAppendLine(sc, "	}\n");
+								if (sc->axisSwapped) {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
+										VkAppendLine(sc, "		}\n");
+								}
+								else {
+									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
+										VkAppendLine(sc, "		}\n");
+								}
+							}
+						}
+					}
+					else {
+
+					}
 				}
+				/*sprintf(output + strlen(output), "\
+	if (%s==%d) \n\
+	{\n", sc->gl_LocalInvocationID_x, sc->localSize[0] - 1);
+				sprintf(output + strlen(output), "			%s = ", sc->inoutID);
+				sprintf(index_x, "%d", sc->fftDim / 2);
+				sprintf(index_y, "%s%s", sc->gl_GlobalInvocationID_y, shiftY);
+				indexInputVkFFT(output, sc, uintType, writeType, index_x, index_y, requestCoordinate, requestBatch);
+				sprintf(output + strlen(output), ";\n");
+				//sprintf(output + strlen(output), "		inoutID = indexInput(2 * (%s%s), %d);\n", sc->gl_GlobalInvocationID_y, shiftY, sc->inputStride[2] / (sc->inputStride[1] + 2));
+				if (sc->outputBufferBlockNum == 1)
+					sprintf(output + strlen(output), "		%s[inoutID]=%ssdata[(%d + %s * sharedStride)]%s;\n", outputsStruct, convTypeLeft,sc->fftDim / 2, sc->gl_LocalInvocationID_y, convTypeRight);
+				else
+					sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d]=%ssdata[(%d + %s * sharedStride)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2, sc->gl_LocalInvocationID_y, convTypeRight);
+
+				VkAppendLine(sc, "	}\n");*/
 			}
 			break;
 		}
@@ -5753,12 +6642,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftY[500] = "";
 			if (sc->performWorkGroupShift[1])
 				sprintf(shiftY, " + consts.workGroupShiftY * %d", sc->localSize[1]);
-			if ((sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread / sc->stageRadix[sc->numStages - 1]) > sc->fftDim)) {
+			if ((sc->axisSwapped) || (sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread / sc->stageRadix[sc->numStages - 1]) > sc->fftDim)) {
 				sc->writeFromRegisters = 0;
 				appendBarrierVkFFT(output, 1);
 			}
 			else
 				sc->writeFromRegisters = 1;
+			uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			appendZeropadStart(output, sc);
 			if (sc->reorderFourStep) {
 				//Not implemented
@@ -5774,13 +6664,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
 								if (sc->outputStride[0] > 1)
-									sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim, sc->outputStride[0], sc->fftDim, 2 * sc->outputStride[1]);
+									sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim, sc->outputStride[0], sc->fftDim, mult * sc->outputStride[1]);
 								else
-									sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim, sc->fftDim, 2 * sc->outputStride[1]);
-								if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%s< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->gl_WorkGroupSize_y, (uint32_t)ceil(sc->size[1] / 2.0));
+									sprintf(output + strlen(output), "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim, sc->fftDim, mult * sc->outputStride[1]);
 
-								sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
+								if (sc->axisSwapped) {
+									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint32_t)ceil(sc->size[1] / (double)mult));
+								}
+								else {
+									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint32_t)ceil(sc->size[1] / (double)mult));
+								}
+								sprintf(output + strlen(output), "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
+								appendZeropadStartAxisSwapped(output, sc);
 								if (sc->writeFromRegisters) {
 									sprintf(output + strlen(output), "			%s = ", sc->inoutID);
 									indexOutputVkFFT(output, sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
@@ -5789,40 +6686,56 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sprintf(output + strlen(output), "		%s[%s] = %s%s.x%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i], convTypeRight);
 									else
 										sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s.x%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
+									if (sc->mergeSequencesR2C) {
+										sprintf(output + strlen(output), "			%s = %s + %d;", sc->inoutID, sc->inoutID, sc->outputStride[1]);
 
-									sprintf(output + strlen(output), "			%s = %s + %d;", sc->inoutID, sc->inoutID, sc->outputStride[1]);
-									/*sprintf(index_x, "%s+%d", sc->inoutID, sc->outputStride[1]);
-									indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
-									sprintf(output + strlen(output), ";\n");*/
-
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "		%s[%s] = %s%s.y%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i], convTypeRight);
-									else
-										sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s.y%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[%s] = %s%s.y%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i], convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s.y%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
+									}
 								}
 								else {
 									sprintf(output + strlen(output), "			%s = ", sc->inoutID);
 									indexOutputVkFFT(output, sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
 									sprintf(output + strlen(output), ";\n");
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
-									else
-										sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
-
-									sprintf(output + strlen(output), "			%s = %s + %d;", sc->inoutID, sc->inoutID, sc->outputStride[1]);
-									/*sprintf(index_x, "%s+%d", sc->inoutID, sc->outputStride[1]);
-									indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
-									sprintf(output + strlen(output), ";\n");*/
-
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
-									else
-										sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
-
+									if (sc->axisSwapped) {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										if (sc->mergeSequencesR2C) {
+											sprintf(output + strlen(output), "			%s = %s + %d;", sc->inoutID, sc->inoutID, sc->outputStride[1]);
+											if (sc->outputBufferBlockNum == 1)
+												sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											else
+												sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) * sharedStride+ (combinedID / %d)].y%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										}
+									}
+									else {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										if (sc->mergeSequencesR2C) {
+											sprintf(output + strlen(output), "			%s = %s + %d;", sc->inoutID, sc->inoutID, sc->outputStride[1]);
+											if (sc->outputBufferBlockNum == 1)
+												sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											else
+												sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										}
+									}
 								}
+								appendZeropadEndAxisSwapped(output, sc);
 								VkAppendLine(sc, "	}\n");
-								if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-									sprintf(output + strlen(output), "		}");
+								if (sc->axisSwapped) {
+									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+										sprintf(output + strlen(output), "		}");
+								}
+								else {
+									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+										sprintf(output + strlen(output), "		}");
+								}
 							}
 						}
 					}
@@ -5841,7 +6754,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 								if (sc->outputStride[0] > 1) {
 									sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-									sprintf(index_x, "(combinedID %% %d) * %d + (combinedID / %d) * %d", sc->fftDim, sc->outputStride[0], sc->fftDim, 2 * sc->outputStride[1]);
+									sprintf(index_x, "(combinedID %% %d) * %d + (combinedID / %d) * %d", sc->fftDim, sc->outputStride[0], sc->fftDim, mult * sc->outputStride[1]);
 									indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sprintf(output + strlen(output), ";\n");
 
@@ -5849,39 +6762,71 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								}
 								else {
 									sprintf(output + strlen(output), "			%s = ", sc->inoutID);
-									sprintf(index_x, "(combinedID %% %d) + (combinedID / %d) * %d", sc->fftDim, sc->fftDim, 2 * sc->outputStride[1]);
+									sprintf(index_x, "(combinedID %% %d) + (combinedID / %d) * %d", sc->fftDim, sc->fftDim, mult * sc->outputStride[1]);
 									indexOutputVkFFT(output, sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sprintf(output + strlen(output), ";\n");
 
 									//sprintf(output + strlen(output), "		inoutID = indexOutput((combinedID %% %d) + (combinedID / %d) * %d);\n", sc->fftDim, sc->fftDim, 2 * sc->outputStride[1]);
 								}
-								if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-									sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%s< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->gl_WorkGroupSize_y, (uint32_t)ceil(sc->size[1] / 2.0));
-
+								if (sc->axisSwapped) {
+									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint32_t)ceil(sc->size[1] / (double)mult));
+								}
+								else {
+									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+										sprintf(output + strlen(output), "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint32_t)ceil(sc->size[1] / (double)mult));
+								}
+								appendZeropadStartAxisSwapped(output, sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sprintf(output + strlen(output), "		%s[inoutID] = %s%s.x%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i], convTypeRight);
 									else
 										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s.x%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
-									sprintf(output + strlen(output), "		inoutID += %d;\n", sc->outputStride[1]);
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "		%s[inoutID] = %s%s.y%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i], convTypeRight);
-									else
-										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s.y%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
+									if (sc->mergeSequencesR2C) {
+										sprintf(output + strlen(output), "		inoutID += %d;\n", sc->outputStride[1]);
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[inoutID] = %s%s.y%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i], convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s.y%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
+									}
 								}
 								else {
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
-									else
-										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
-									sprintf(output + strlen(output), "		inoutID += %d;\n", sc->outputStride[1]);
-									if (sc->outputBufferBlockNum == 1)
-										sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
-									else
-										sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+									if (sc->axisSwapped) {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[%s] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										if (sc->mergeSequencesR2C) {
+											sprintf(output + strlen(output), "		inoutID += %d;\n", sc->outputStride[1]);
+											if (sc->outputBufferBlockNum == 1)
+												sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											else
+												sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										}
+									}
+									else {
+										if (sc->outputBufferBlockNum == 1)
+											sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										else
+											sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										if (sc->mergeSequencesR2C) {
+											sprintf(output + strlen(output), "		inoutID += %d;\n", sc->outputStride[1]);
+											if (sc->outputBufferBlockNum == 1)
+												sprintf(output + strlen(output), "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											else
+												sprintf(output + strlen(output), "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+										}
+									}
 								}
-								if ((uint32_t)ceil(sc->size[1] / 2.0) % sc->localSize[1] != 0)
-									sprintf(output + strlen(output), "		}");
+								appendZeropadEndAxisSwapped(output, sc);
+								if (sc->axisSwapped) {
+									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+										sprintf(output + strlen(output), "		}");
+								}
+								else {
+									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+										sprintf(output + strlen(output), "		}");
+								}
 							}
 						}
 					}
@@ -6012,10 +6957,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				appendRadixKernelVkFFT(output, sc, floatType, uintType, sc->stageRadix[i]);
 			}
 		}*/
+		uint32_t locType = (((type == 0) || (type == 5) || (type == 6)) && (sc->axisSwapped)) ? 1 : type;
 #if(VKFFT_BACKEND==0)
-		appendSharedMemoryVkFFT(output, sc, floatType, uintType, type);
+		appendSharedMemoryVkFFT(output, sc, floatType, uintType, locType);
 		sprintf(output + strlen(output), "void main() {\n");
 #elif(VKFFT_BACKEND==1)
+		sprintf(output + strlen(output), "extern __shared__ float shared[];\n");
 		if (type == 5)
 			sprintf(output + strlen(output), "extern \"C\" __global__ void VkFFT_main (%s* inputs, %s* outputs", floatTypeInputMemory, vecTypeOutput);
 		else {
@@ -6032,8 +6979,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		sprintf(output + strlen(output), ") {\n");
 		//sprintf(output + strlen(output), ", const PushConsts consts) {\n"); 
-		appendSharedMemoryVkFFT(output, sc, floatType, uintType, type);
+		appendSharedMemoryVkFFT(output, sc, floatType, uintType, locType);
 #elif(VKFFT_BACKEND==2)
+		sprintf(output + strlen(output), "extern __shared__ float shared[];\n");
 		if (type == 5)
 			sprintf(output + strlen(output), "extern \"C\" __global__ void VkFFT_main (%s* inputs, %s* outputs", floatTypeInputMemory, vecTypeOutput);
 		else {
@@ -6050,7 +6998,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		sprintf(output + strlen(output), ") {\n");
 		//sprintf(output + strlen(output), ", const PushConsts consts) {\n"); 
-		appendSharedMemoryVkFFT(output, sc, floatType, uintType, type);
+		appendSharedMemoryVkFFT(output, sc, floatType, uintType, locType);
 #endif
 		//if (type==0) sprintf(output + strlen(output), "return;\n");
 		appendInitialization(output, sc, floatType, uintType, type);
@@ -6059,25 +7007,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	coordinate--;\n", uintType, sc->matrixConvolution);
 		appendReadDataVkFFT(output, sc, floatType, floatTypeInputMemory, uintType, type);
 		//appendBarrierVkFFT(output, 1);
-		appendReorder4StepRead(output, sc, floatType, uintType, type);
-		appendBoostThreadDataReorder(output, sc, floatType, uintType, type, 1);
+		appendReorder4StepRead(output, sc, floatType, uintType, locType);
+		appendBoostThreadDataReorder(output, sc, floatType, uintType, locType, 1);
 		uint32_t stageSize = 1;
 		uint32_t stageSizeSum = 0;
 		double PI_const = 3.1415926535897932384626433832795;
 		double stageAngle = (sc->inverse) ? PI_const : -PI_const;
 		for (uint32_t i = 0; i < sc->numStages; i++) {
 			if ((i == sc->numStages - 1) && (sc->registerBoost > 1)) {
-				//appendRegisterBoostShuffle(output, sc, floatType, stageSize, sc->stageRadix[i-1], stageAngle, type, 1);
-				//appendRegisterBoostShuffle(output, sc, floatType, stageSize, sc->stageRadix[i], stageAngle, type, 0);
-				appendRadixStage(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], type);
-				//appendRegisterBoostShuffle(output, sc, floatType, stageSize, sc->stageRadix[i], stageAngle, type, 1);
-				//appendRegisterBoostShuffle(output, sc, floatType, 8 / ((sc->sharedMemSizePow2 / sc->complexSize) / (sc->fftDim / sc->stageRadix[i])), stageAngle, type, 0);
+				appendRadixStage(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], locType);
 
 			}
 			else {
-				//if (i>0)
-					//appendRegisterBoostShuffle(output, sc, floatType, sc->stageRadix[i], stageAngle, type, 0);
-				appendRadixStage(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], type);
+
+				appendRadixStage(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], locType);
 				switch (sc->stageRadix[i]) {
 				case 2:
 					stageSizeSum += stageSize;
@@ -6105,36 +7048,35 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					break;
 				}
 				if (i == sc->numStages - 1)
-					appendRadixShuffle(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], sc->stageRadix[i], type);
+					appendRadixShuffle(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], sc->stageRadix[i], locType);
 				else
-					appendRadixShuffle(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], sc->stageRadix[i + 1], type);
+					appendRadixShuffle(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], sc->stageRadix[i + 1], locType);
 				stageSize *= sc->stageRadix[i];
 				stageAngle /= sc->stageRadix[i];
 			}
 		}
 
 		if (sc->convolutionStep) {
-			appendCoordinateRegisterStore(output, sc, type);
+			appendCoordinateRegisterStore(output, sc, locType);
 
 			if (sc->matrixConvolution > 1)
 				sprintf(output + strlen(output), "	coordinate++;}\n");
 
 			if (sc->numKernels > 1)
-				appendPreparationBatchedKernelConvolution(output, sc, floatType, floatTypeKernelMemory, uintType, type);
+				appendPreparationBatchedKernelConvolution(output, sc, floatType, floatTypeKernelMemory, uintType, locType);
 
-			appendKernelConvolution(output, sc, floatType, floatTypeKernelMemory, uintType, type);
+			appendKernelConvolution(output, sc, floatType, floatTypeKernelMemory, uintType, locType);
 
 			if (sc->matrixConvolution > 1)
 				sprintf(output + strlen(output), "	for (%s coordinate=0; coordinate < %d; coordinate++){\n", uintType, sc->matrixConvolution);
 
-			appendCoordinateRegisterPull(output, sc, type);
+			appendCoordinateRegisterPull(output, sc, locType);
 
 			stageSize = 1;
 			stageSizeSum = 0;
 			stageAngle = PI_const;
 			for (uint32_t i = 0; i < sc->numStages; i++) {
-				//appendRegisterBoostShuffle(output, sc, floatType, sc->stageRadix[i], stageAngle, type, 0);
-				appendRadixStage(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], type);
+				appendRadixStage(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], locType);
 				switch (sc->stageRadix[i]) {
 				case 2:
 					stageSizeSum += stageSize;
@@ -6162,17 +7104,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					break;
 				}
 				if (i == sc->numStages - 1)
-					appendRadixShuffle(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], sc->stageRadix[i], type);
+					appendRadixShuffle(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], sc->stageRadix[i], locType);
 				else
-					appendRadixShuffle(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], sc->stageRadix[i + 1], type);
+					appendRadixShuffle(output, sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], sc->stageRadix[i + 1], locType);
 				stageSize *= sc->stageRadix[i];
 				stageAngle /= sc->stageRadix[i];
 			}
 
 		}
-		appendBoostThreadDataReorder(output, sc, floatType, uintType, type, 0);
-		appendReorder4StepWrite(output, sc, floatType, uintType, type);
-		//appendWriteSharedToRegistersVkFFT(output, sc, floatType, floatTypeOutputMemory, uintType, type);
+		appendBoostThreadDataReorder(output, sc, floatType, uintType, locType, 0);
+		appendReorder4StepWrite(output, sc, floatType, uintType, locType);
+
 		appendWriteDataVkFFT(output, sc, floatType, floatTypeOutputMemory, uintType, type);
 		if ((sc->convolutionStep) && (sc->matrixConvolution > 1))
 			VkAppendLine(sc, "	}\n");
@@ -6587,7 +7529,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				locAxisSplit[i] = swap;
 			}
 		}
-			FFTPlan->numAxisUploads[axis_id] = numPasses;
+		FFTPlan->numAxisUploads[axis_id] = numPasses;
 		for (uint32_t k = 0; k < numPasses; k++) {
 			tempSequence = locAxisSplit[k];
 			uint32_t loc_multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };//split the smaller sequence
@@ -6599,7 +7541,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 			}
 			uint32_t registers_per_thread = 8;
-			uint32_t registers_per_thread_per_radix[14] = {};
+			uint32_t registers_per_thread_per_radix[14] = { 0 };
 			uint32_t min_registers_per_thread = 8;
 			if (loc_multipliers[2] > 0) {
 				if (loc_multipliers[3] > 0) {
@@ -6607,9 +7549,28 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						if (loc_multipliers[7] > 0) {
 							if (loc_multipliers[11] > 0) {
 								if (loc_multipliers[13] > 0) {
-									registers_per_thread = 15;
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 15;
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 15;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 15;
+										break;
+									case 2:
+										registers_per_thread = 15;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									case 3:
+										registers_per_thread = 15;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									default:
+										registers_per_thread = 16;
+										registers_per_thread_per_radix[2] = 16;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									}
 									registers_per_thread_per_radix[5] = 15;
 									registers_per_thread_per_radix[7] = 14;
 									registers_per_thread_per_radix[11] = 11;
@@ -6617,9 +7578,28 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									min_registers_per_thread = 11;
 								}
 								else {
-									registers_per_thread = 15;
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 15;
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 15;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 15;
+										break;
+									case 2:
+										registers_per_thread = 15;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									case 3:
+										registers_per_thread = 15;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									default:
+										registers_per_thread = 16;
+										registers_per_thread_per_radix[2] = 16;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									}
 									registers_per_thread_per_radix[5] = 15;
 									registers_per_thread_per_radix[7] = 14;
 									registers_per_thread_per_radix[11] = 11;
@@ -6629,9 +7609,28 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							}
 							else {
 								if (loc_multipliers[13] > 0) {
-									registers_per_thread = 15;
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 15;
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 15;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 15;
+										break;
+									case 2:
+										registers_per_thread = 15;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									case 3:
+										registers_per_thread = 15;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									default:
+										registers_per_thread = 16;
+										registers_per_thread_per_radix[2] = 16;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									}
 									registers_per_thread_per_radix[5] = 15;
 									registers_per_thread_per_radix[7] = 14;
 									registers_per_thread_per_radix[11] = 0;
@@ -6639,108 +7638,140 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									min_registers_per_thread = 13;
 								}
 								else {
-									registers_per_thread = 15;
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 15;
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 15;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 15;
+										break;
+									case 2:
+										registers_per_thread = 15;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									case 3:
+										registers_per_thread = 15;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									default:
+										registers_per_thread = 16;
+										registers_per_thread_per_radix[2] = 16;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									}
 									registers_per_thread_per_radix[5] = 15;
 									registers_per_thread_per_radix[7] = 14;
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 0;
-							min_registers_per_thread = 14;
-						}
+									min_registers_per_thread = 14;
+								}
 							}
 						}
 						else {
-							if ((loc_multipliers[2] == 1)) {
-								if (loc_multipliers[11] > 0) {
-									if (loc_multipliers[13] > 0) {
+							if (loc_multipliers[11] > 0) {
+								if (loc_multipliers[13] > 0) {
+									switch (loc_multipliers[2]) {
+									case 1:
 										registers_per_thread = 15;
 										registers_per_thread_per_radix[2] = 10;
 										registers_per_thread_per_radix[3] = 15;
-										registers_per_thread_per_radix[5] = 10;
-										registers_per_thread_per_radix[7] = 0;
-										registers_per_thread_per_radix[11] = 11;
-										registers_per_thread_per_radix[13] = 13;
-										min_registers_per_thread = 10;
+										break;
+									case 2:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									default:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										break;
 									}
-									else {
-										registers_per_thread = 15;
-										registers_per_thread_per_radix[2] = 10;
-										registers_per_thread_per_radix[3] = 15;
-										registers_per_thread_per_radix[5] = 10;
-										registers_per_thread_per_radix[7] = 0;
-										registers_per_thread_per_radix[11] = 11;
-										registers_per_thread_per_radix[13] = 0;
-										min_registers_per_thread = 10;
-									}
+									registers_per_thread_per_radix[5] = 10;
+									registers_per_thread_per_radix[7] = 0;
+									registers_per_thread_per_radix[11] = 11;
+									registers_per_thread_per_radix[13] = 13;
+									min_registers_per_thread = 10;
 								}
 								else {
-									if (loc_multipliers[13] > 0) {
+									switch (loc_multipliers[2]) {
+									case 1:
 										registers_per_thread = 15;
 										registers_per_thread_per_radix[2] = 10;
 										registers_per_thread_per_radix[3] = 15;
-										registers_per_thread_per_radix[5] = 10;
-										registers_per_thread_per_radix[7] = 0;
-										registers_per_thread_per_radix[11] = 0;
-										registers_per_thread_per_radix[13] = 13;
-										min_registers_per_thread = 10;
+										break;
+									case 2:
+										registers_per_thread = 12;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										break;
+									default:
+										registers_per_thread = 12;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										break;
 									}
-									else {
-								registers_per_thread = 6;
-										registers_per_thread_per_radix[2] = 6;
-										registers_per_thread_per_radix[3] = 6;
-										registers_per_thread_per_radix[5] = 5;
-										registers_per_thread_per_radix[7] = 0;
-										registers_per_thread_per_radix[11] = 0;
-										registers_per_thread_per_radix[13] = 0;
-								min_registers_per_thread = 5;
-							}
+									registers_per_thread_per_radix[5] = 10;
+									registers_per_thread_per_radix[7] = 0;
+									registers_per_thread_per_radix[11] = 11;
+									registers_per_thread_per_radix[13] = 0;
+									min_registers_per_thread = 10;
 								}
 							}
 							else {
-								if (loc_multipliers[11] > 0) {
-									if (loc_multipliers[13] > 0) {
+								if (loc_multipliers[13] > 0) {
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 15;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 15;
+										break;
+									case 2:
 										registers_per_thread = 13;
-										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[2] = 12;
 										registers_per_thread_per_radix[3] = 12;
-										registers_per_thread_per_radix[5] = 10;
-										registers_per_thread_per_radix[7] = 0;
-										registers_per_thread_per_radix[11] = 11;
-										registers_per_thread_per_radix[13] = 13;
-										min_registers_per_thread = 10;
+										break;
+									default:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										break;
 									}
-									else {
-								registers_per_thread = 12;
-										registers_per_thread_per_radix[2] = 10;
-										registers_per_thread_per_radix[3] = 12;
-										registers_per_thread_per_radix[5] = 10;
-										registers_per_thread_per_radix[7] = 0;
-										registers_per_thread_per_radix[11] = 11;
-										registers_per_thread_per_radix[13] = 0;
-								min_registers_per_thread = 10;
-							}
-						}
+									registers_per_thread_per_radix[5] = 10;
+									registers_per_thread_per_radix[7] = 0;
+									registers_per_thread_per_radix[11] = 0;
+									registers_per_thread_per_radix[13] = 13;
+									min_registers_per_thread = 10;
+								}
 								else {
-									if (loc_multipliers[13] > 0) {
-										registers_per_thread = 13;
-										registers_per_thread_per_radix[2] = 10;
-										registers_per_thread_per_radix[3] = 12;
-										registers_per_thread_per_radix[5] = 10;
-										registers_per_thread_per_radix[7] = 0;
-										registers_per_thread_per_radix[11] = 0;
-										registers_per_thread_per_radix[13] = 13;
-										min_registers_per_thread = 10;
-					}
-									else {
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 6;
+										registers_per_thread_per_radix[2] = 6;
+										registers_per_thread_per_radix[3] = 6;
+										registers_per_thread_per_radix[5] = 5;
+										min_registers_per_thread = 5;
+										break;
+									case 2:
 										registers_per_thread = 12;
-										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[2] = 12;
 										registers_per_thread_per_radix[3] = 12;
 										registers_per_thread_per_radix[5] = 10;
-										registers_per_thread_per_radix[7] = 0;
-										registers_per_thread_per_radix[11] = 0;
-										registers_per_thread_per_radix[13] = 0;
 										min_registers_per_thread = 10;
+										break;
+									default:
+										registers_per_thread = 12;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										registers_per_thread_per_radix[5] = 10;
+										min_registers_per_thread = 10;
+										break;
 									}
+									registers_per_thread_per_radix[7] = 0;
+									registers_per_thread_per_radix[11] = 0;
+									registers_per_thread_per_radix[13] = 0;
+
 								}
 							}
 						}
@@ -6748,9 +7779,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					else
 					{
 						if (loc_multipliers[7] > 0) {
-							if ((loc_multipliers[2] == 1)) {
-								if (loc_multipliers[11] > 0) {
-									if (loc_multipliers[13] > 0) {
+							if (loc_multipliers[11] > 0) {
+								if (loc_multipliers[13] > 0) {
+									switch (loc_multipliers[2]) {
+									case 1:
 										registers_per_thread = 26;
 										registers_per_thread_per_radix[2] = 22;
 										registers_per_thread_per_radix[3] = 21;
@@ -6759,8 +7791,32 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 22;
 										registers_per_thread_per_radix[13] = 26;
 										min_registers_per_thread = 21;
+										break;
+									case 2:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 11;
+										break;
+									default:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 11;
+										break;
 									}
-									else {
+								}
+								else {
+									switch (loc_multipliers[2]) {
+									case 1:
 										registers_per_thread = 22;
 										registers_per_thread_per_radix[2] = 22;
 										registers_per_thread_per_radix[3] = 21;
@@ -6769,10 +7825,34 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 22;
 										registers_per_thread_per_radix[13] = 0;
 										min_registers_per_thread = 21;
+										break;
+									case 2:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 11;
+										break;
+									default:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 11;
+										break;
 									}
 								}
-								else {
-									if (loc_multipliers[13] > 0) {
+							}
+							else {
+								if (loc_multipliers[13] > 0) {
+									switch (loc_multipliers[2]) {
+									case 1:
 										registers_per_thread = 26;
 										registers_per_thread_per_radix[2] = 26;
 										registers_per_thread_per_radix[3] = 21;
@@ -6781,44 +7861,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 0;
 										registers_per_thread_per_radix[13] = 26;
 										min_registers_per_thread = 21;
-									}
-									else {
-								registers_per_thread = 7;
-										registers_per_thread_per_radix[2] = 6;
-										registers_per_thread_per_radix[3] = 6;
-										registers_per_thread_per_radix[5] = 0;
-										registers_per_thread_per_radix[7] = 7;
-										registers_per_thread_per_radix[11] = 0;
-										registers_per_thread_per_radix[13] = 0;
-								min_registers_per_thread = 6;
-							}
-								}
-							}
-							else {
-								if (loc_multipliers[11] > 0) {
-									if (loc_multipliers[13] > 0) {
-										registers_per_thread = 14;
-										registers_per_thread_per_radix[2] = 12;
-										registers_per_thread_per_radix[3] = 12;
-										registers_per_thread_per_radix[5] = 0;
-										registers_per_thread_per_radix[7] = 14;
-										registers_per_thread_per_radix[11] = 11;
-										registers_per_thread_per_radix[13] = 13;
-										min_registers_per_thread = 11;
-									}
-									else {
-										registers_per_thread = 14;
-										registers_per_thread_per_radix[2] = 12;
-										registers_per_thread_per_radix[3] = 12;
-										registers_per_thread_per_radix[5] = 0;
-										registers_per_thread_per_radix[7] = 14;
-										registers_per_thread_per_radix[11] = 11;
-										registers_per_thread_per_radix[13] = 0;
-										min_registers_per_thread = 11;
-									}
-								}
-								else {
-									if (loc_multipliers[13] > 0) {
+										break;
+									case 2:
 										registers_per_thread = 14;
 										registers_per_thread_per_radix[2] = 12;
 										registers_per_thread_per_radix[3] = 12;
@@ -6827,24 +7871,60 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 0;
 										registers_per_thread_per_radix[13] = 13;
 										min_registers_per_thread = 12;
-									}
-							else {
-								registers_per_thread = 14;
+										break;
+									default:
+										registers_per_thread = 14;
 										registers_per_thread_per_radix[2] = 12;
 										registers_per_thread_per_radix[3] = 12;
 										registers_per_thread_per_radix[5] = 0;
 										registers_per_thread_per_radix[7] = 14;
 										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 12;
+										break;
+									}
+								}
+								else {
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 7;
+										registers_per_thread_per_radix[2] = 6;
+										registers_per_thread_per_radix[3] = 6;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 7;
+										registers_per_thread_per_radix[11] = 0;
 										registers_per_thread_per_radix[13] = 0;
-								min_registers_per_thread = 12;
-							}
-						}
+										min_registers_per_thread = 6;
+										break;
+									case 2:
+										registers_per_thread = 7;
+										registers_per_thread_per_radix[2] = 6;
+										registers_per_thread_per_radix[3] = 6;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 7;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 6;
+										break;
+									default:
+										registers_per_thread = 8;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 6;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 7;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 6;
+										break;
+									}
+								}
 							}
 						}
 						else {
-							if ((loc_multipliers[2] == 1)) {
-								if (loc_multipliers[11] > 0) {
-									if (loc_multipliers[13] > 0) {
+							if (loc_multipliers[11] > 0) {
+								if (loc_multipliers[13] > 0) {
+									switch (loc_multipliers[2]) {
+									case 1:
 										registers_per_thread = 13;
 										registers_per_thread_per_radix[2] = 6;
 										registers_per_thread_per_radix[3] = 6;
@@ -6853,8 +7933,32 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 11;
 										registers_per_thread_per_radix[13] = 13;
 										min_registers_per_thread = 6;
+										break;
+									case 2:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 11;
+										break;
+									default:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 11;
+										break;
 									}
-									else {
+								}
+								else {
+									switch (loc_multipliers[2]) {
+									case 1:
 										registers_per_thread = 11;
 										registers_per_thread_per_radix[2] = 6;
 										registers_per_thread_per_radix[3] = 6;
@@ -6862,11 +7966,35 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[7] = 0;
 										registers_per_thread_per_radix[11] = 11;
 										registers_per_thread_per_radix[13] = 0;
-								min_registers_per_thread = 6;
-							}
+										min_registers_per_thread = 6;
+										break;
+									case 2:
+										registers_per_thread = 12;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 11;
+										break;
+									default:
+										registers_per_thread = 12;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 11;
+										break;
+									}
 								}
+							}
 							else {
-									if (loc_multipliers[13] > 0) {
+								if (loc_multipliers[13] > 0) {
+									switch (loc_multipliers[2]) {
+									case 1:
 										registers_per_thread = 13;
 										registers_per_thread_per_radix[2] = 6;
 										registers_per_thread_per_radix[3] = 6;
@@ -6875,8 +8003,32 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 0;
 										registers_per_thread_per_radix[13] = 13;
 										min_registers_per_thread = 6;
-							}
-									else {
+										break;
+									case 2:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 12;
+										break;
+									default:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 12;
+										break;
+									}
+								}
+								else {
+									switch (loc_multipliers[2]) {
+									case 1:
 										registers_per_thread = 6;
 										registers_per_thread_per_radix[2] = 6;
 										registers_per_thread_per_radix[3] = 6;
@@ -6885,149 +8037,346 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 0;
 										registers_per_thread_per_radix[13] = 0;
 										min_registers_per_thread = 6;
+										break;
+									case 2:
+										registers_per_thread = 12;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 12;
+										break;
+									default:
+										registers_per_thread = 12;
+										registers_per_thread_per_radix[2] = 12;
+										registers_per_thread_per_radix[3] = 12;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 12;
+										break;
+									}
+								}
+							}
 						}
 					}
 				}
 				else {
-								if (loc_multipliers[11] > 0) {
-									if (loc_multipliers[13] > 0) {
-										registers_per_thread = 13;
-										registers_per_thread_per_radix[2] = 12;
-										registers_per_thread_per_radix[3] = 12;
-										registers_per_thread_per_radix[5] = 0;
-										registers_per_thread_per_radix[7] = 0;
-										registers_per_thread_per_radix[11] = 11;
-										registers_per_thread_per_radix[13] = 13;
-										min_registers_per_thread = 11;
-						}
-						else {
-										registers_per_thread = 12;
-										registers_per_thread_per_radix[2] = 12;
-										registers_per_thread_per_radix[3] = 12;
-										registers_per_thread_per_radix[5] = 0;
-										registers_per_thread_per_radix[7] = 0;
-										registers_per_thread_per_radix[11] = 11;
-										registers_per_thread_per_radix[13] = 0;
-										min_registers_per_thread = 11;
-						}
-					}
-								else {
-									if (loc_multipliers[13] > 0) {
-										registers_per_thread = 13;
-										registers_per_thread_per_radix[2] = 12;
-										registers_per_thread_per_radix[3] = 12;
-										registers_per_thread_per_radix[5] = 0;
-										registers_per_thread_per_radix[7] = 0;
-										registers_per_thread_per_radix[11] = 0;
-										registers_per_thread_per_radix[13] = 13;
-										min_registers_per_thread = 12;
-						}
-						else {
-										registers_per_thread = 12;
-										registers_per_thread_per_radix[2] = 12;
-										registers_per_thread_per_radix[3] = 12;
-										registers_per_thread_per_radix[5] = 0;
-										registers_per_thread_per_radix[7] = 0;
-										registers_per_thread_per_radix[11] = 0;
-										registers_per_thread_per_radix[13] = 0;
-										min_registers_per_thread = 12;
-						}
-					}
-				}
-			}
-					}
-				}
-			else {
 					if (loc_multipliers[5] > 0) {
 						if (loc_multipliers[7] > 0) {
 							if (loc_multipliers[11] > 0) {
 								if (loc_multipliers[13] > 0) {
-									registers_per_thread = 14;
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									min_registers_per_thread = 10;
-						}
-						else {
-									registers_per_thread = 14;
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									min_registers_per_thread = 10;
-						}
-					}
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 10;
+										break;
+									case 2:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 10;
+										break;
+									case 3:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 8;
+										break;
+									default:
+										registers_per_thread = 16;
+										registers_per_thread_per_radix[2] = 16;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 10;
+										break;
+									}
+								}
+								else {
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 10;
+										break;
+									case 2:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 10;
+										break;
+									case 3:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 8;
+										break;
+									default:
+										registers_per_thread = 16;
+										registers_per_thread_per_radix[2] = 16;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 10;
+										break;
+									}
+								}
+							}
 							else {
 								if (loc_multipliers[13] > 0) {
-									registers_per_thread = 14;
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									min_registers_per_thread = 10;
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 10;
+										break;
+									case 2:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 10;
+										break;
+									case 3:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 8;
+										break;
+									default:
+										registers_per_thread = 16;
+										registers_per_thread_per_radix[2] = 16;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 10;
+										break;
+									}
+								}
+								else {
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 10;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 7;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 7;
+										break;
+									case 2:
+										registers_per_thread = 10;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 7;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 7;
+										break;
+									default:
+										registers_per_thread = 10;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 7;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 7;
+										break;
+									}
+								}
 							}
-							else {
-									registers_per_thread = 10;
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 7;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-								min_registers_per_thread = 7;
-							}
-						}
 						}
 						else {
 							if (loc_multipliers[11] > 0) {
 								if (loc_multipliers[13] > 0) {
-									registers_per_thread = 13;
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									min_registers_per_thread = 10;
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 10;
+										break;
+									case 2:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 10;
+										break;
+									default:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 8;
+										break;
+									}
+								}
+								else {
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 11;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 10;
+										break;
+									case 2:
+										registers_per_thread = 11;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 10;
+										break;
+									default:
+										registers_per_thread = 11;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 8;
+										break;
+									}
+								}
 							}
 							else {
-									registers_per_thread = 11;
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									min_registers_per_thread = 10;
-					}
-				}
-				else {
 								if (loc_multipliers[13] > 0) {
-									registers_per_thread = 13;
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									min_registers_per_thread = 10;
-						}
-						else {
-									registers_per_thread = 10;
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									min_registers_per_thread = 10;
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 10;
+										break;
+									case 2:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 10;
+										break;
+									default:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 8;
+										break;
+									}
+								}
+								else {
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 10;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 10;
+										break;
+									case 2:
+										registers_per_thread = 10;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 10;
+										break;
+									default:
+										registers_per_thread = 10;
+										registers_per_thread_per_radix[2] = 10;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 10;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 10;
+										break;
+									}
 								}
 							}
 						}
@@ -7037,72 +8386,276 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						if (loc_multipliers[7] > 0) {
 							if (loc_multipliers[11] > 0) {
 								if (loc_multipliers[13] > 0) {
-									registers_per_thread = 14;
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									min_registers_per_thread = 11;
-						}
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 11;
+										break;
+									case 2:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 11;
+										break;
+									case 3:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 8;
+										break;
+									default:
+										registers_per_thread = 16;
+										registers_per_thread_per_radix[2] = 16;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 11;
+										break;
+									}
+								}
 								else {
-									registers_per_thread = 14;
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									min_registers_per_thread = 11;
-					}
-				}
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 11;
+										break;
+									case 2:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 11;
+										break;
+									case 3:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 8;
+										break;
+									default:
+										registers_per_thread = 16;
+										registers_per_thread_per_radix[2] = 16;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 11;
+										break;
+									}
+								}
+							}
 							else {
 								if (loc_multipliers[13] > 0) {
-									registers_per_thread = 14;
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									min_registers_per_thread = 13;
-			}
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 13;
+										break;
+									case 2:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 13;
+										break;
+									case 3:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 8;
+										break;
+									default:
+										registers_per_thread = 16;
+										registers_per_thread_per_radix[2] = 16;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 13;
+										break;
+									}
+								}
 								else {
-									registers_per_thread = 14;
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									min_registers_per_thread = 14;
-			}
-			}
-			}
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 14;
+										break;
+									case 2:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 14;
+										break;
+									case 3:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 14;
+										break;
+									default:
+										registers_per_thread = 14;
+										registers_per_thread_per_radix[2] = 14;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 14;
+										registers_per_thread_per_radix[11] = 0;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 14;
+										break;
+									}
+								}
+							}
+						}
 						else {
 							if (loc_multipliers[11] > 0) {
 								if (loc_multipliers[13] > 0) {
-									registers_per_thread = 26;
-									registers_per_thread_per_radix[2] = 22;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 22;
-									registers_per_thread_per_radix[13] = 26;
-									min_registers_per_thread = 22;
-				}
-				else {
-									registers_per_thread = 22;
-									registers_per_thread_per_radix[2] = 22;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 22;
-									registers_per_thread_per_radix[13] = 0;
-									min_registers_per_thread = 22;
-				}
-			}
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 26;
+										registers_per_thread_per_radix[2] = 22;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 22;
+										registers_per_thread_per_radix[13] = 26;
+										min_registers_per_thread = 22;
+										break;
+									case 2:
+										registers_per_thread = 26;
+										registers_per_thread_per_radix[2] = 22;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 22;
+										registers_per_thread_per_radix[13] = 26;
+										min_registers_per_thread = 22;
+										break;
+									case 3:
+										registers_per_thread = 13;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 13;
+										min_registers_per_thread = 8;
+										break;
+									default:
+										registers_per_thread = 26;
+										registers_per_thread_per_radix[2] = 16;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 22;
+										registers_per_thread_per_radix[13] = 26;
+										min_registers_per_thread = 16;
+										break;
+									}
+								}
+								else {
+									switch (loc_multipliers[2]) {
+									case 1:
+										registers_per_thread = 22;
+										registers_per_thread_per_radix[2] = 22;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 22;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 22;
+										break;
+									case 2:
+										registers_per_thread = 22;
+										registers_per_thread_per_radix[2] = 22;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 22;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 22;
+										break;
+									case 3:
+										registers_per_thread = 11;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 11;
+										break;
+									default:
+										registers_per_thread = 11;
+										registers_per_thread_per_radix[2] = 8;
+										registers_per_thread_per_radix[3] = 0;
+										registers_per_thread_per_radix[5] = 0;
+										registers_per_thread_per_radix[7] = 0;
+										registers_per_thread_per_radix[11] = 11;
+										registers_per_thread_per_radix[13] = 0;
+										min_registers_per_thread = 11;
+										break;
+									}
+								}
+							}
 							else {
 								if (loc_multipliers[13] > 0) {
 									registers_per_thread = 26;
@@ -7113,7 +8666,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 26;
 									min_registers_per_thread = 26;
-			}
+								}
 								else {
 									registers_per_thread = (loc_multipliers[2] > 2) ? 8 : pow(2, loc_multipliers[2]);
 									registers_per_thread_per_radix[2] = (loc_multipliers[2] > 2) ? 8 : pow(2, loc_multipliers[2]);
@@ -7123,10 +8676,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 0;
 									min_registers_per_thread = (loc_multipliers[2] > 2) ? 8 : pow(2, loc_multipliers[2]);
+								}
+							}
+						}
 					}
-				}
-					}
-				}
 				}
 			}
 			else {
@@ -7143,8 +8696,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 11;
 									registers_per_thread_per_radix[13] = 13;
 									min_registers_per_thread = 11;
-				}
-				else {
+								}
+								else {
 									registers_per_thread = 21;
 									registers_per_thread_per_radix[2] = 0;
 									registers_per_thread_per_radix[3] = 15;
@@ -7153,8 +8706,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 11;
 									registers_per_thread_per_radix[13] = 0;
 									min_registers_per_thread = 11;
-						}
-					}
+								}
+							}
 							else {
 								if (loc_multipliers[13] > 0) {
 									registers_per_thread = 21;
@@ -7165,7 +8718,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 13;
 									min_registers_per_thread = 13;
-				}
+								}
 								else {
 									registers_per_thread = 21;
 									registers_per_thread_per_radix[2] = 0;
@@ -7175,9 +8728,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 0;
 									min_registers_per_thread = 15;
-			}
-				}
-			}
+								}
+							}
+						}
 						else {
 							if (loc_multipliers[11] > 0) {
 								if (loc_multipliers[13] > 0) {
@@ -7189,8 +8742,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 11;
 									registers_per_thread_per_radix[13] = 13;
 									min_registers_per_thread = 11;
-			}
-			else {
+								}
+								else {
 									registers_per_thread = 15;
 									registers_per_thread_per_radix[2] = 0;
 									registers_per_thread_per_radix[3] = 15;
@@ -7199,8 +8752,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 11;
 									registers_per_thread_per_radix[13] = 0;
 									min_registers_per_thread = 11;
-				}
-			}
+								}
+							}
 							else {
 								if (loc_multipliers[13] > 0) {
 									registers_per_thread = 15;
@@ -7211,7 +8764,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 13;
 									min_registers_per_thread = 13;
-		}
+								}
 								else {
 									registers_per_thread = 15;
 									registers_per_thread_per_radix[2] = 0;
@@ -7221,11 +8774,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 0;
 									min_registers_per_thread = 15;
-	}
-				}
-			}
+								}
+							}
+						}
 					}
-				else
+					else
 					{
 						if (loc_multipliers[7] > 0) {
 							if ((loc_multipliers[3] == 1)) {
@@ -7239,7 +8792,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 11;
 										registers_per_thread_per_radix[13] = 13;
 										min_registers_per_thread = 11;
-							}
+									}
 									else {
 										registers_per_thread = 21;
 										registers_per_thread_per_radix[2] = 0;
@@ -7249,9 +8802,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 11;
 										registers_per_thread_per_radix[13] = 0;
 										min_registers_per_thread = 11;
-						}
-					}
-					else {
+									}
+								}
+								else {
 									if (loc_multipliers[13] > 0) {
 										registers_per_thread = 21;
 										registers_per_thread_per_radix[2] = 0;
@@ -7261,7 +8814,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 0;
 										registers_per_thread_per_radix[13] = 13;
 										min_registers_per_thread = 13;
-							}
+									}
 									else {
 										registers_per_thread = 21;
 										registers_per_thread_per_radix[2] = 0;
@@ -7271,9 +8824,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 0;
 										registers_per_thread_per_radix[13] = 0;
 										min_registers_per_thread = 21;
-						}
-					}
-				}
+									}
+								}
+							}
 							else {
 								if (loc_multipliers[11] > 0) {
 									if (loc_multipliers[13] > 0) {
@@ -7285,7 +8838,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 11;
 										registers_per_thread_per_radix[13] = 13;
 										min_registers_per_thread = 7;
-						}
+									}
 									else {
 										registers_per_thread = 11;
 										registers_per_thread_per_radix[2] = 0;
@@ -7295,9 +8848,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 11;
 										registers_per_thread_per_radix[13] = 0;
 										min_registers_per_thread = 7;
-					}
-				}
-				else {
+									}
+								}
+								else {
 									if (loc_multipliers[13] > 0) {
 										registers_per_thread = 13;
 										registers_per_thread_per_radix[2] = 0;
@@ -7307,8 +8860,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 0;
 										registers_per_thread_per_radix[13] = 13;
 										min_registers_per_thread = 7;
-					}
-					else {
+									}
+									else {
 										registers_per_thread = 9;
 										registers_per_thread_per_radix[2] = 0;
 										registers_per_thread_per_radix[3] = 9;
@@ -7317,11 +8870,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 0;
 										registers_per_thread_per_radix[13] = 0;
 										min_registers_per_thread = 7;
-					}
-				}
-			}
+									}
+								}
+							}
 						}
-			else {
+						else {
 							if ((loc_multipliers[3] == 1)) {
 								if (loc_multipliers[11] > 0) {
 									if (loc_multipliers[13] > 0) {
@@ -7333,7 +8886,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 33;
 										registers_per_thread_per_radix[13] = 39;
 										min_registers_per_thread = 33;
-							}
+									}
 									else {
 										registers_per_thread = 33;
 										registers_per_thread_per_radix[2] = 0;
@@ -7343,9 +8896,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 33;
 										registers_per_thread_per_radix[13] = 0;
 										min_registers_per_thread = 33;
-						}
-					}
-					else {
+									}
+								}
+								else {
 									if (loc_multipliers[13] > 0) {
 										registers_per_thread = 39;
 										registers_per_thread_per_radix[2] = 0;
@@ -7355,7 +8908,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 0;
 										registers_per_thread_per_radix[13] = 39;
 										min_registers_per_thread = 39;
-							}
+									}
 									else {
 										registers_per_thread = 3;
 										registers_per_thread_per_radix[2] = 0;
@@ -7365,9 +8918,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 0;
 										registers_per_thread_per_radix[13] = 0;
 										min_registers_per_thread = 3;
-						}
-					}
-				}
+									}
+								}
+							}
 							else {
 								if (loc_multipliers[11] > 0) {
 									if (loc_multipliers[13] > 0) {
@@ -7379,7 +8932,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 11;
 										registers_per_thread_per_radix[13] = 13;
 										min_registers_per_thread = 9;
-						}
+									}
 									else {
 										registers_per_thread = 11;
 										registers_per_thread_per_radix[2] = 0;
@@ -7389,9 +8942,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 11;
 										registers_per_thread_per_radix[13] = 0;
 										min_registers_per_thread = 9;
-					}
-				}
-				else {
+									}
+								}
+								else {
 									if (loc_multipliers[13] > 0) {
 										registers_per_thread = 13;
 										registers_per_thread_per_radix[2] = 0;
@@ -7401,8 +8954,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 0;
 										registers_per_thread_per_radix[13] = 13;
 										min_registers_per_thread = 9;
-					}
-					else {
+									}
+									else {
 										registers_per_thread = 9;
 										registers_per_thread_per_radix[2] = 0;
 										registers_per_thread_per_radix[3] = 9;
@@ -7411,12 +8964,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										registers_per_thread_per_radix[11] = 0;
 										registers_per_thread_per_radix[13] = 0;
 										min_registers_per_thread = 9;
+									}
+								}
+							}
+						}
 					}
 				}
-			}
-		}
-		}
-		}
 				else {
 					if (loc_multipliers[5] > 0) {
 						if (loc_multipliers[7] > 0) {
@@ -7430,7 +8983,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 11;
 									registers_per_thread_per_radix[13] = 13;
 									min_registers_per_thread = 5;
-		}
+								}
 								else {
 									registers_per_thread = 11;
 									registers_per_thread_per_radix[2] = 0;
@@ -7440,8 +8993,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 11;
 									registers_per_thread_per_radix[13] = 0;
 									min_registers_per_thread = 5;
-			}
-		}
+								}
+							}
 							else {
 								if (loc_multipliers[13] > 0) {
 									registers_per_thread = 13;
@@ -7452,7 +9005,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 13;
 									min_registers_per_thread = 5;
-			}
+								}
 								else {
 									registers_per_thread = 7;
 									registers_per_thread_per_radix[2] = 0;
@@ -7462,9 +9015,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 0;
 									min_registers_per_thread = 5;
-		}
-			}
-		}
+								}
+							}
+						}
 						else {
 							if (loc_multipliers[11] > 0) {
 								if (loc_multipliers[13] > 0) {
@@ -7476,7 +9029,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 11;
 									registers_per_thread_per_radix[13] = 13;
 									min_registers_per_thread = 5;
-		}
+								}
 								else {
 									registers_per_thread = 11;
 									registers_per_thread_per_radix[2] = 0;
@@ -7486,8 +9039,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 11;
 									registers_per_thread_per_radix[13] = 0;
 									min_registers_per_thread = 5;
-		}
-			}
+								}
+							}
 							else {
 								if (loc_multipliers[13] > 0) {
 									registers_per_thread = 13;
@@ -7498,8 +9051,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 13;
 									min_registers_per_thread = 5;
-		}
-		else {
+								}
+								else {
 									registers_per_thread = 5;
 									registers_per_thread_per_radix[2] = 0;
 									registers_per_thread_per_radix[3] = 0;
@@ -7508,10 +9061,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 0;
 									min_registers_per_thread = 5;
-		}
-		}
-		}
-		}
+								}
+							}
+						}
+					}
 					else
 					{
 						if (loc_multipliers[7] > 0) {
@@ -7525,7 +9078,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 11;
 									registers_per_thread_per_radix[13] = 13;
 									min_registers_per_thread = 7;
-		}
+								}
 								else {
 									registers_per_thread = 11;
 									registers_per_thread_per_radix[2] = 0;
@@ -7535,9 +9088,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 11;
 									registers_per_thread_per_radix[13] = 0;
 									min_registers_per_thread = 7;
-		}
-						}
-						else {
+								}
+							}
+							else {
 								if (loc_multipliers[13] > 0) {
 									registers_per_thread = 13;
 									registers_per_thread_per_radix[2] = 0;
@@ -7547,7 +9100,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 13;
 									min_registers_per_thread = 7;
-						}
+								}
 								else {
 									registers_per_thread = 7;
 									registers_per_thread_per_radix[2] = 0;
@@ -7557,8 +9110,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 0;
 									min_registers_per_thread = 7;
-					}
-				}
+								}
+							}
 						}
 						else {
 							if (loc_multipliers[11] > 0) {
@@ -7571,7 +9124,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 11;
 									registers_per_thread_per_radix[13] = 13;
 									min_registers_per_thread = 11;
-						}
+								}
 								else {
 									registers_per_thread = 11;
 									registers_per_thread_per_radix[2] = 0;
@@ -7581,8 +9134,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 11;
 									registers_per_thread_per_radix[13] = 0;
 									min_registers_per_thread = 11;
-					}
-				}
+								}
+							}
 							else {
 								if (loc_multipliers[13] > 0) {
 									registers_per_thread = 13;
@@ -7593,16 +9146,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									registers_per_thread_per_radix[11] = 0;
 									registers_per_thread_per_radix[13] = 13;
 									min_registers_per_thread = 13;
-						}
-						else {
+								}
+								else {
 									return 11;
+								}
+							}
 						}
 					}
 				}
-				}
-			}
 
-					}
+			}
 			registers_per_thread_per_radix[8] = registers_per_thread_per_radix[2];
 			registers_per_thread_per_radix[4] = registers_per_thread_per_radix[2];
 			if ((registerBoost == 4) && (registers_per_thread % 4 != 0)) {
@@ -7639,27 +9192,21 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			uint32_t maxBatchCoalesced = ((axis_id == 0) && (((k == 0) && (!app->configuration.reorderFourStep)) || (numPasses == 1))) ? 1 : app->configuration.coalescedMemory / complexSize;
 			if (maxBatchCoalesced * locAxisSplit[k] / (min_registers_per_thread * registerBoost) > app->configuration.maxThreadsNum)
 			{
-				for (uint32_t i = 2; i < 14; i++) {
-					if (locAxisSplit[k] / (min_registers_per_thread * registerBoost) % i == 0) {
-						min_registers_per_thread *= i;
-						i = 14;
-			}
-			}
-				for (uint32_t i = 2; i < 14; i++) {
-					for (uint32_t j = 2; j < 14; j++) {
-						if (locAxisSplit[k] / (registers_per_thread_per_radix[i] * registerBoost) % j == 0) {
-							registers_per_thread_per_radix[i] *= j;
-							j = 14;
-			}
-			}
-					registers_per_thread_per_radix[i] *= 2;
+				uint32_t scaleRegistersNum = 1;
+				while ((maxBatchCoalesced * locAxisSplit[k] / (min_registers_per_thread * registerBoost * scaleRegistersNum)) > app->configuration.maxThreadsNum) {
+					for (uint32_t i = 2; i < 14; i++) {
+						if (locAxisSplit[k] / (min_registers_per_thread * registerBoost * scaleRegistersNum) % i == 0) {
+							scaleRegistersNum *= i;
+							i = 14;
+						}
+					}
 				}
+				registers_per_thread *= scaleRegistersNum;
+				min_registers_per_thread *= scaleRegistersNum;
 				for (uint32_t i = 2; i < 14; i++) {
-					if (locAxisSplit[k] / (registers_per_thread * registerBoost) % i == 0) {
-						registers_per_thread *= i;
-						i = 14;
+					registers_per_thread_per_radix[i] *= scaleRegistersNum;
 				}
-			}
+
 				if (min_registers_per_thread > registers_per_thread) {
 					uint32_t temp = min_registers_per_thread;
 					min_registers_per_thread = registers_per_thread;
@@ -7668,11 +9215,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				for (uint32_t i = 2; i < 14; i++) {
 					if (registers_per_thread_per_radix[i] > registers_per_thread) {
 						registers_per_thread = registers_per_thread_per_radix[i];
-				}
-					if (registers_per_thread_per_radix[i] < min_registers_per_thread) {
+					}
+					if ((registers_per_thread_per_radix[i] > 0) && (registers_per_thread_per_radix[i] < min_registers_per_thread)) {
 						min_registers_per_thread = registers_per_thread_per_radix[i];
-			}
-			}
+					}
+				}
 			}
 			uint32_t j = 0;
 			VkFFTAxis* axes = FFTPlan->axes[axis_id];
@@ -7681,7 +9228,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axes[k].specializationConstants.min_registers_per_thread = min_registers_per_thread;
 			for (uint32_t i = 2; i < 14; i++) {
 				axes[k].specializationConstants.registers_per_thread_per_radix[i] = registers_per_thread_per_radix[i];
-					}
+			}
 			axes[k].specializationConstants.numStages = 0;
 			axes[k].specializationConstants.fftDim = locAxisSplit[k];
 			uint32_t tempRegisterBoost = registerBoost;// ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) ? ceil(axes[k].specializationConstants.fftDim / (float)maxSingleSizeNonStrided) : ceil(axes[k].specializationConstants.fftDim / (float)maxSingleSizeStrided);
@@ -7697,9 +9244,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							loc_multipliers[i]--;
 							switchRegisterBoost = i;
 							i = 1;
+						}
+					}
 				}
-			}
-			}
 			}
 			for (uint32_t i = 14; i > 1; i--) {
 				if (loc_multipliers[i] > 0) {
@@ -7708,7 +9255,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					i++;
 					j++;
 					axes[k].specializationConstants.numStages++;
-			}
+				}
 			}
 			if (switchRegisterBoost > 0) {
 				axes[k].specializationConstants.stageRadix[axes[k].specializationConstants.numStages] = switchRegisterBoost;
@@ -7716,12 +9263,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				if (min_registers_per_thread != registers_per_thread) {
-					j = axes[k].specializationConstants.stageRadix[axes[k].specializationConstants.numStages - 1];
-					axes[k].specializationConstants.stageRadix[axes[k].specializationConstants.numStages - 1] = axes[k].specializationConstants.stageRadix[0];
-					axes[k].specializationConstants.stageRadix[0] = j;
-			}
-			}
+					for (uint32_t i = 0; i < axes[k].specializationConstants.numStages; i++) {
+						if (axes[k].specializationConstants.registers_per_thread_per_radix[axes[k].specializationConstants.stageRadix[i]] == min_registers_per_thread) {
+							j = axes[k].specializationConstants.stageRadix[i];
+							axes[k].specializationConstants.stageRadix[i] = axes[k].specializationConstants.stageRadix[0];
+							axes[k].specializationConstants.stageRadix[0] = j;
+							i = axes[k].specializationConstants.numStages;
+						}
+					}
 				}
+			}
+		}
 		return 0;
 	}
 	static inline uint32_t VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, uint32_t inverse) {
@@ -7820,6 +9372,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			maxSingleSizeStridedPow2 = pow(2, (uint32_t)log2(maxSingleSizeStrided));
 		}
 		axis->specializationConstants.performR2C = app->configuration.performR2C;
+		axis->specializationConstants.mergeSequencesR2C = ((axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory) && ((app->configuration.size[1] % 2) == 0) && (app->configuration.performR2C)) ? (1 - app->configuration.disableMergeSequencesR2C) : 0;
 		axis->specializationConstants.reorderFourStep = (FFTPlan->numAxisUploads[axis_id] > 1) ? app->configuration.reorderFourStep : 0;
 		uint32_t passID = FFTPlan->numAxisUploads[axis_id] - 1 - axis_upload_id;
 		axis->specializationConstants.fft_dim_full = app->configuration.size[axis_id];
@@ -8042,8 +9595,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		//configure strides
 		uint32_t* axisStride = axis->specializationConstants.inputStride;
 		uint32_t* usedStride = app->configuration.bufferStride;
-		if ((!inverse) && (axis_id == 0) && (axis_upload_id == 0) && ((app->configuration.isInputFormatted) || (app->configuration.performR2C))) usedStride = app->configuration.inputBufferStride;
-		if ((inverse) && (axis_id == app->configuration.FFTdim - 1) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isOutputFormatted)) usedStride = app->configuration.outputBufferStride;
+		if ((!inverse) && (axis_id == 0) && (axis_upload_id == 0) && (app->configuration.isInputFormatted)) usedStride = app->configuration.inputBufferStride;
+		if ((inverse) && (axis_id == app->configuration.FFTdim - 1) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted) && (!app->configuration.inverseReturnToInputBuffer)) usedStride = app->configuration.inputBufferStride;
 
 		axisStride[0] = 1;
 
@@ -8065,11 +9618,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		axisStride[3] = usedStride[2];
 
 		axisStride[4] = axisStride[3] * app->configuration.coordinateFeatures;
-
+		if ((!inverse) && (axis_id == 0) && (axis_upload_id == 0) && (axis->specializationConstants.performR2C) && (!(app->configuration.isInputFormatted))) {
+			axisStride[1] *= 2;
+			axisStride[2] *= 2;
+			axisStride[3] *= 2;
+			axisStride[4] *= 2;
+		}
 		axisStride = axis->specializationConstants.outputStride;
 		usedStride = app->configuration.bufferStride;
 		if ((!inverse) && (axis_id == app->configuration.FFTdim - 1) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isOutputFormatted)) usedStride = app->configuration.outputBufferStride;
-		if ((inverse) && (axis_id == 0) && (axis_upload_id == 0) && ((app->configuration.isInputFormatted) || (app->configuration.performR2C))) usedStride = app->configuration.inputBufferStride;
+		if ((inverse) && (axis_id == 0) && (axis_upload_id == 0) && ((app->configuration.isOutputFormatted))) usedStride = app->configuration.outputBufferStride;
+		if ((inverse) && (axis_id == 0) && (axis_upload_id == 0) && (app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer)) usedStride = app->configuration.inputBufferStride;
 
 		axisStride[0] = 1;
 
@@ -8091,7 +9650,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		axisStride[3] = usedStride[2];
 
 		axisStride[4] = axisStride[3] * app->configuration.coordinateFeatures;
-
+		if ((inverse) && (axis_id == 0) && (axis_upload_id == 0) && (axis->specializationConstants.performR2C) && (!((app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer))) && (!app->configuration.isOutputFormatted)) {
+			axisStride[1] *= 2;
+			axisStride[2] *= 2;
+			axisStride[3] *= 2;
+			axisStride[4] *= 2;
+		}
 		/*axis->specializationConstants.inputStride[3] = (app->configuration.coordinateFeatures == 1) ? 0 : axis->specializationConstants.inputStride[3];
 		axis->specializationConstants.outputStride[3] = (app->configuration.coordinateFeatures == 1) ? 0 : axis->specializationConstants.outputStride[3];
 
@@ -8142,7 +9706,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		if ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted) && (
 			((axis_id == 0) && (!inverse))
-			|| ((axis_id == app->configuration.FFTdim - 1) && (inverse) && (!app->configuration.performConvolution)))
+			|| ((axis_id == app->configuration.FFTdim - 1) && (inverse) && (!app->configuration.performConvolution) && (!app->configuration.inverseReturnToInputBuffer)))
 			) {
 			uint64_t totalSize = 0;
 			uint32_t locPageSize = initPageSize;
@@ -8201,13 +9765,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			}
 		}
+
 		if ((axis_upload_id == 0) && (app->configuration.isOutputFormatted && (
 			((axis_id == 0) && (inverse))
 			|| ((axis_id == app->configuration.FFTdim - 1) && (!inverse) && (!app->configuration.performConvolution))
 			|| ((axis_id == 0) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)))
 			) ||
 			((app->configuration.numberKernels > 1) && (
-			(inverse)
+				(inverse)
 				|| (axis_id == app->configuration.FFTdim - 1)))
 			) {
 			uint64_t totalSize = 0;
@@ -8249,7 +9814,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
 		}
-
+		if (axis->specializationConstants.inputBufferBlockNum == 0) axis->specializationConstants.inputBufferBlockNum = 1;
+		if (axis->specializationConstants.outputBufferBlockNum == 0) axis->specializationConstants.outputBufferBlockNum = 1;
 		if (app->configuration.performConvolution) {
 			uint64_t totalSize = 0;
 			uint32_t locPageSize = initPageSize;
@@ -8260,6 +9826,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->specializationConstants.kernelBlockSize = locPageSize / storageComplexSize;
 			axis->specializationConstants.kernelBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.kernelBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.kernelBlockNum == 1) axis->specializationConstants.inputBufferBlockSize = totalSize / storageComplexSize;
+			if (axis->specializationConstants.kernelBlockNum == 0) axis->specializationConstants.kernelBlockNum = 1;
 		}
 		else {
 			axis->specializationConstants.kernelBlockSize = 0;
@@ -8336,7 +9903,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (i == 0) {
 					if ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted) && (
 						((axis_id == 0) && (!inverse))
-						|| ((axis_id == app->configuration.FFTdim - 1) && (inverse) && (!app->configuration.performConvolution)))
+						|| ((axis_id == app->configuration.FFTdim - 1) && (inverse) && (!app->configuration.performConvolution) && (!app->configuration.inverseReturnToInputBuffer)))
 						) {
 						uint32_t bufferId = 0;
 						uint32_t offset = j;
@@ -8446,7 +10013,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						|| ((axis_id == 0) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)))
 						) ||
 						((app->configuration.numberKernels > 1) && (
-						(inverse)
+							(inverse)
 							|| (axis_id == app->configuration.FFTdim - 1)))
 						) {
 						uint32_t bufferId = 0;
@@ -8473,7 +10040,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						uint32_t bufferId = 0;
 						uint32_t offset = j;
 
-						if ((FFTPlan->axes[axis_id]->specializationConstants.reorderFourStep == 1) && (FFTPlan->numAxisUploads[axis_id] > 1))
+						if ((FFTPlan->axes[axis_id]->specializationConstants.reorderFourStep == 1) && (FFTPlan->numAxisUploads[axis_id] > 1)) {
 							if (axis_upload_id == 1) {
 								for (uint32_t l = 0; l < app->configuration.tempBufferNum; ++l) {
 									if (offset >= (uint32_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
@@ -8506,22 +10073,40 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
 #endif
 							}
-
+						}
 						else {
-							for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
-								if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
-									bufferId++;
-									offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
-								}
-								else {
-									l = app->configuration.bufferNum;
-								}
+							if ((inverse) && (axis_id == 0) && (axis_upload_id == 0) && (app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer)) {
+								for (uint32_t l = 0; l < app->configuration.inputBufferNum; ++l) {
+									if (offset >= (uint32_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+										bufferId++;
+										offset -= (uint32_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+									}
+									else {
+										l = app->configuration.inputBufferNum;
+									}
 
-							}
-							axis->outputBuffer = app->configuration.buffer;
+								}
+								axis->outputBuffer = app->configuration.inputBuffer;
 #if(VKFFT_BACKEND==0)
-							descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
+								descriptorBufferInfo.buffer = app->configuration.inputBuffer[bufferId];
 #endif
+							}
+							else {
+								for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
+									if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+										bufferId++;
+										offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+									}
+									else {
+										l = app->configuration.bufferNum;
+									}
+
+								}
+								axis->outputBuffer = app->configuration.buffer;
+#if(VKFFT_BACKEND==0)
+								descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
+#endif
+							}
 						}
 #if(VKFFT_BACKEND==0)
 						descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
@@ -8608,11 +10193,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			//axis->groupedBatch = 8;
 			//shared memory bank conflict resolve
-#if(VKFFT_BACKEND!=2)//for some reason, hip doesn't get performance increase from having variable shared memory strides.
+//#if(VKFFT_BACKEND!=2)//for some reason, hip doesn't get performance increase from having variable shared memory strides.
 			if ((FFTPlan->numAxisUploads[axis_id] == 2) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim * maxBatchCoalesced <= maxSequenceLengthSharedMemory)) {
 				axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 			}
-#endif
+			//#endif
 			if ((FFTPlan->numAxisUploads[axis_id] == 3) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory / (2 * complexSize))) {
 				axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 			}
@@ -8626,9 +10211,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if ((app->configuration.halfThreads) && (axis->groupedBatch * axis->specializationConstants.fftDim * complexSize >= app->configuration.sharedMemorySize))
 				axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
 			if (axis->groupedBatch > app->configuration.warpSize) axis->groupedBatch = (axis->groupedBatch / app->configuration.warpSize) * app->configuration.warpSize;
-			//if (axis->groupedBatch > maxBatchCoalesced) axis->groupedBatch = (axis->groupedBatch / maxBatchCoalesced) * maxBatchCoalesced;
-
+			if (axis->groupedBatch > 2 * maxBatchCoalesced) axis->groupedBatch = (axis->groupedBatch / (2 * maxBatchCoalesced)) * (2 * maxBatchCoalesced);
+			if (axis->groupedBatch > 4 * maxBatchCoalesced) axis->groupedBatch = (axis->groupedBatch / (4 * maxBatchCoalesced)) * (2 * maxBatchCoalesced);
 			uint32_t maxThreadNum = maxSequenceLengthSharedMemory / (axis->specializationConstants.min_registers_per_thread * axis->specializationConstants.registerBoost);
+			axis->specializationConstants.axisSwapped = 0;
+			uint32_t r2cmult = (axis->specializationConstants.mergeSequencesR2C) ? 2 : 1;
 			if (axis_id == 0) {
 
 				if (axis_upload_id == 0) {
@@ -8638,15 +10225,53 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (app->configuration.reorderFourStep && (FFTPlan->numAxisUploads[axis_id] > 1))
 						axis->axisBlock[1] = axis->groupedBatch;
 					else {
-						axis->axisBlock[1] = (axis->axisBlock[0] < app->configuration.warpSize) ? app->configuration.warpSize / axis->axisBlock[0] : 1;
-						if (app->configuration.performR2C) {
-							if (app->configuration.size[1]/2 < axis->axisBlock[1]) axis->axisBlock[1] = app->configuration.size[1]/2;
+						//axis->axisBlock[1] = (axis->axisBlock[0] < app->configuration.warpSize) ? app->configuration.warpSize / axis->axisBlock[0] : 1;
+						axis->axisBlock[1] = ((axis->axisBlock[0] < app->configuration.aimThreads)) ? app->configuration.aimThreads / axis->axisBlock[0] : 1;
+					}
+					uint32_t currentAxisBlock1 = axis->axisBlock[1];
+					for (uint32_t i = currentAxisBlock1; i < 2 * currentAxisBlock1; i++) {
+						if (((FFTPlan->numAxisUploads[0] > 1) && (((app->configuration.size[0] / axis->specializationConstants.fftDim) % i) == 0)) || ((FFTPlan->numAxisUploads[0] == 1) && (((app->configuration.size[1] / r2cmult) % i) == 0))) {
+							if (i * axis->specializationConstants.fftDim * complexSize <= app->configuration.sharedMemorySize) axis->axisBlock[1] = i;
+							i = 2 * currentAxisBlock1;
 						}
-						else {
-						if (app->configuration.size[1] < axis->axisBlock[1]) axis->axisBlock[1] = app->configuration.size[1];
 					}
+
+					if ((FFTPlan->numAxisUploads[0] > 1) && (ceil(app->configuration.size[0] / axis->specializationConstants.fftDim) < axis->axisBlock[1])) axis->axisBlock[1] = (uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim);
+					if ((axis->specializationConstants.mergeSequencesR2C != 0) && (axis->specializationConstants.fftDim * axis->axisBlock[1] >= maxSequenceLengthSharedMemory)) {
+						axis->specializationConstants.mergeSequencesR2C = 0;
+						/*if ((!inverse) && (axis_id == 0) && (axis_upload_id == 0) && (!(app->configuration.isInputFormatted))) {
+							axis->specializationConstants.inputStride[1] /= 2;
+							axis->specializationConstants.inputStride[2] /= 2;
+							axis->specializationConstants.inputStride[3] /= 2;
+							axis->specializationConstants.inputStride[4] /= 2;
+						}
+						if ((inverse) && (axis_id == 0) && (axis_upload_id == 0) && (!((app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer))) && (!app->configuration.isOutputFormatted)) {
+							axis->specializationConstants.outputStride[1] /= 2;
+							axis->specializationConstants.outputStride[2] /= 2;
+							axis->specializationConstants.outputStride[3] /= 2;
+							axis->specializationConstants.outputStride[4] /= 2;
+						}*/
+						r2cmult = 1;
 					}
+					if ((FFTPlan->numAxisUploads[0] == 1) && (ceil(app->configuration.size[1] / (double)r2cmult) < axis->axisBlock[1])) axis->axisBlock[1] = (uint32_t)ceil(app->configuration.size[1] / (double)r2cmult);
+
 					if (axis->axisBlock[1] > app->configuration.maxComputeWorkGroupSize[1]) axis->axisBlock[1] = app->configuration.maxComputeWorkGroupSize[1];
+					if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[1] /= 2;
+					if ((!((!app->configuration.reorderFourStep) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim < maxSequenceLengthSharedMemoryPow2) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2])))) {
+#if (VKFFT_BACKEND==0)
+					if (((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) != 0)) {
+						uint32_t temp = axis->axisBlock[1];
+						axis->axisBlock[1] = axis->axisBlock[0];
+						axis->axisBlock[0] = temp;
+						axis->specializationConstants.axisSwapped = 1;
+					}
+#else
+						uint32_t temp = axis->axisBlock[1];
+						axis->axisBlock[1] = axis->axisBlock[0];
+						axis->axisBlock[0] = temp;
+						axis->specializationConstants.axisSwapped = 1;
+#endif
+					}
 					axis->axisBlock[2] = 1;
 					axis->axisBlock[3] = axis->specializationConstants.fftDim;
 				}
@@ -8656,6 +10281,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (scale > 1) axis->groupedBatch *= scale;
 					axis->axisBlock[0] = (axis->specializationConstants.stageStartSize > axis->groupedBatch) ? axis->groupedBatch : axis->specializationConstants.stageStartSize;
 					if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
+					if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[0] /= 2;
 					axis->axisBlock[2] = 1;
 					axis->axisBlock[3] = axis->specializationConstants.fftDim;
 				}
@@ -8688,7 +10314,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							axis->axisBlock[0] = app->configuration.size[0];*/
 				}
 				if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
-
+				if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[0] /= 2;
 				axis->axisBlock[2] = 1;
 				axis->axisBlock[3] = axis->specializationConstants.fftDim;
 
@@ -8720,7 +10346,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							axis->axisBlock[0] = app->configuration.size[0];*/
 				}
 				if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
-
+				if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[0] /= 2;
 				axis->axisBlock[2] = 1;
 				axis->axisBlock[3] = axis->specializationConstants.fftDim;
 			}
@@ -8735,7 +10361,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					tempSize[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[1];
 				else
 					tempSize[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[0];
-				if (app->configuration.performR2C == 1) tempSize[1] = ceil(tempSize[1] / 2.0);
+				if ((app->configuration.performR2C == 1) && (axis->specializationConstants.mergeSequencesR2C)) tempSize[1] = ceil(tempSize[1] / 2.0);
 				//if (app->configuration.performZeropadding[1]) tempSize[1] = ceil(tempSize[1] / 2.0);
 				//if (app->configuration.performZeropadding[2]) tempSize[2] = ceil(tempSize[2] / 2.0);
 				if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
@@ -8746,7 +10372,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				else  axis->specializationConstants.performWorkGroupShift[2] = 0;
 			}
 			if (axis_id == 1) {
-				tempSize[0] = (app->configuration.performR2C == 1) ? ceil((app->configuration.size[0]/2+1) / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim) : ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+				tempSize[0] = (app->configuration.performR2C == 1) ? ceil((app->configuration.size[0] / 2 + 1) / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim) : ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 				tempSize[1] = 1;
 				tempSize[2] = app->configuration.size[2];
 				//if (app->configuration.performR2C == 1) tempSize[0] = ceil(tempSize[0] / 2.0);
@@ -8761,7 +10387,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			}
 			if (axis_id == 2) {
-				tempSize[0] = (app->configuration.performR2C == 1) ? ceil((app->configuration.size[0]/2+1) / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim) : ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
+				tempSize[0] = (app->configuration.performR2C == 1) ? ceil((app->configuration.size[0] / 2 + 1) / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim) : ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 				tempSize[1] = 1;
 				tempSize[2] = app->configuration.size[1];
 				//if (app->configuration.performR2C == 1) tempSize[0] = ceil(tempSize[0] / 2.0);
@@ -8910,7 +10536,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if ((axis_id == 0) && (!axis->specializationConstants.inverse) && (app->configuration.performR2C)) type = 5;
 			if ((axis_id == 0) && (axis->specializationConstants.inverse) && (app->configuration.performR2C)) type = 6;
 #if(VKFFT_BACKEND==0)
-			axis->specializationConstants.cacheShuffle = ((FFTPlan->numAxisUploads[axis_id] > 1) && ((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) == 0) && (!app->configuration.doublePrecision) && ((type == 0) || (type == 5) || (type == 6))) ? 1 : 0;
+			axis->specializationConstants.cacheShuffle = ((FFTPlan->numAxisUploads[axis_id] > 1) && ((axis->specializationConstants.fftDim& (axis->specializationConstants.fftDim - 1)) == 0) && (!app->configuration.doublePrecision) && ((type == 0) || (type == 5) || (type == 6))) ? 1 : 0;
 #elif(VKFFT_BACKEND==1)
 			axis->specializationConstants.cacheShuffle = 0;
 #elif(VKFFT_BACKEND==2)
@@ -9016,16 +10642,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				/* .maxDualSourceDrawBuffersEXT = */ 1,
 
 				/* .limits = */ {
-				/* .nonInductiveForLoops = */ 1,
-				/* .whileLoops = */ 1,
-				/* .doWhileLoops = */ 1,
-				/* .generalUniformIndexing = */ 1,
-				/* .generalAttributeMatrixVectorIndexing = */ 1,
-				/* .generalVaryingIndexing = */ 1,
-				/* .generalSamplerIndexing = */ 1,
-				/* .generalVariableIndexing = */ 1,
-				/* .generalConstantMatrixVectorIndexing = */ 1,
-			} };
+					/* .nonInductiveForLoops = */ 1,
+					/* .whileLoops = */ 1,
+					/* .doWhileLoops = */ 1,
+					/* .generalUniformIndexing = */ 1,
+					/* .generalAttributeMatrixVectorIndexing = */ 1,
+					/* .generalVaryingIndexing = */ 1,
+					/* .generalSamplerIndexing = */ 1,
+					/* .generalVariableIndexing = */ 1,
+					/* .generalConstantMatrixVectorIndexing = */ 1,
+				} };
 			glslang_target_client_version_t client_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_VULKAN_1_1 : GLSLANG_TARGET_VULKAN_1_0;
 			glslang_target_language_version_t target_language_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_SPV_1_3 : GLSLANG_TARGET_SPV_1_0;
 			const glslang_input_t input =
@@ -9142,8 +10768,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			// Destroy the program.
 			result = nvrtcDestroyProgram(&prog);
 			if (result != NVRTC_SUCCESS) printf("5 error: %s\n", nvrtcGetErrorString(result));
-			axis->VkFFTKernel = {};
-			axis->VkFFTModule = {};
+			//axis->VkFFTKernel = {};
+			//axis->VkFFTModule = {};
 			CUresult result2 = cuModuleLoadDataEx(&axis->VkFFTModule, ptx, 0, 0, 0);
 
 			if (result2 != CUDA_SUCCESS) {
@@ -9154,7 +10780,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				printf("7 error: %d\n", result2);
 			}
 			if (axis->specializationConstants.usedSharedMemory > app->configuration.sharedMemorySizeStatic) {
-				result2 = cuFuncSetCacheConfig(axis->VkFFTKernel, CU_FUNC_CACHE_PREFER_SHARED);
+				result2 = cuFuncSetAttribute(axis->VkFFTKernel, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, axis->specializationConstants.usedSharedMemory);
 				if (result2 != CUDA_SUCCESS) {
 					printf("7.5 error: %d\n", result2);
 				}
@@ -9171,7 +10797,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char* headers = (char*)malloc(sizeof(char) * 100);
 			sprintf(headers, "C://Program Files//NVIDIA GPU Computing Toolkit//CUDA//v11.1//include//cuComplex.h");
 			sprintf(includeNames, "cuComplex.h");*/
-			hiprtcResult result = hiprtcCreateProgram(&prog,         // prog
+			enum hiprtcResult result = hiprtcCreateProgram(&prog,         // prog
 				code0,         // buffer
 				"VkFFT.hip",    // name
 				0,             // numHeaders
@@ -9203,8 +10829,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			// Destroy the program.
 			result = hiprtcDestroyProgram(&prog);
 			if (result != HIPRTC_SUCCESS) printf("5 error: %s\n", hiprtcGetErrorString(result));
-			axis->VkFFTKernel = {};
-			axis->VkFFTModule = {};
+			//axis->VkFFTKernel = {};
+			//axis->VkFFTModule = {};
 			hipError_t result2 = hipModuleLoadDataEx(&axis->VkFFTModule, code, 0, 0, 0);
 
 			if (result2 != hipSuccess) {
@@ -9215,7 +10841,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				printf("7 error: %d\n", result2);
 			}
 			if (axis->specializationConstants.usedSharedMemory > app->configuration.sharedMemorySizeStatic) {
-				result2 = hipFuncSetCacheConfig(axis->VkFFTKernel, hipFuncCachePreferShared);
+				result2 = hipFuncSetAttribute(axis->VkFFTKernel, hipFuncAttributeMaxDynamicSharedMemorySize, axis->specializationConstants.usedSharedMemory);
+				//result2 = hipFuncSetCacheConfig(axis->VkFFTKernel, hipFuncCachePreferShared);
 				if (result2 != hipSuccess) {
 					printf("7.5 error: %d\n", result2);
 				}
@@ -9230,7 +10857,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 			free(code0);
 		}
-
+		if (axis->specializationConstants.axisSwapped) {//swap back for correct dispatch
+			uint32_t temp = axis->axisBlock[1];
+			axis->axisBlock[1] = axis->axisBlock[0];
+			axis->axisBlock[0] = temp;
+			axis->specializationConstants.axisSwapped = 0;
+		}
 		return 0;
 	}
 	static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
@@ -9256,11 +10888,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 	}
 	static inline uint32_t initializeVkFFT(VkFFTApplication* app, VkFFTConfiguration inputLaunchConfiguration) {
-		app->configuration = {};// inputLaunchConfiguration;
+		//app->configuration = {};// inputLaunchConfiguration;
 		if (inputLaunchConfiguration.doublePrecision != 0)	app->configuration.doublePrecision = inputLaunchConfiguration.doublePrecision;
 		if (inputLaunchConfiguration.halfPrecision != 0)	app->configuration.halfPrecision = inputLaunchConfiguration.halfPrecision;
 		if (inputLaunchConfiguration.halfPrecisionMemoryOnly != 0)	app->configuration.halfPrecisionMemoryOnly = inputLaunchConfiguration.halfPrecisionMemoryOnly;
-		//set device parameters:
+		//set device parameters:disa
 #if(VKFFT_BACKEND==0)
 		if (inputLaunchConfiguration.physicalDevice == 0) return 1001;
 		app->configuration.physicalDevice = inputLaunchConfiguration.physicalDevice;
@@ -9273,7 +10905,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (inputLaunchConfiguration.fence == 0) return 1005;
 		app->configuration.fence = inputLaunchConfiguration.fence;
 
-		VkPhysicalDeviceProperties physicalDeviceProperties = {};
+		VkPhysicalDeviceProperties physicalDeviceProperties = { {0} };
 		vkGetPhysicalDeviceProperties(app->configuration.physicalDevice[0], &physicalDeviceProperties);
 		if (inputLaunchConfiguration.isCompilerInitialized != 0) app->configuration.isCompilerInitialized = inputLaunchConfiguration.isCompilerInitialized;
 		if (!app->configuration.isCompilerInitialized)
@@ -9350,8 +10982,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.maxComputeWorkGroupSize[2] = value;
 		cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK, app->configuration.device[0]);
 		app->configuration.sharedMemorySizeStatic = value;
-		//cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN, app->configuration.device[0]);
-		app->configuration.sharedMemorySize = value;
+		cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN, app->configuration.device[0]);
+		app->configuration.sharedMemorySize = (value > 65536) ? 65536 : value;
 		cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_WARP_SIZE, app->configuration.device[0]);
 		app->configuration.warpSize = value;
 		app->configuration.sharedMemorySizePow2 = (uint32_t)pow(2, (uint32_t)log2(app->configuration.sharedMemorySize));
@@ -9365,7 +10997,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
 		app->configuration.useLUT = (app->configuration.doublePrecision) ? 1 : 0;
 		app->configuration.registerBoostNonPow2 = 0;
-		app->configuration.registerBoost = 2;
+		app->configuration.registerBoost = 1;
 		app->configuration.registerBoost4Step = 1;
 		app->configuration.swapTo3Stage4Step = 0;
 
@@ -9392,8 +11024,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.maxComputeWorkGroupSize[2] = value;
 		hipDeviceGetAttribute(&value, hipDeviceAttributeMaxSharedMemoryPerBlock, app->configuration.device[0]);
 		app->configuration.sharedMemorySizeStatic = value;
-		//hipDeviceGetAttribute(&value, hipDeviceAttributeMaxSharedMemoryPerBlockOptin, app->configuration.device[0]);
-		app->configuration.sharedMemorySize = value;
+		hipDeviceGetAttribute(&value, hipDeviceAttributeMaxSharedMemoryPerBlockOptin, app->configuration.device[0]);
+		app->configuration.sharedMemorySize = (value > 65536) ? 65536 : value;
 		hipDeviceGetAttribute(&value, hipDeviceAttributeWarpSize, app->configuration.device[0]);
 		app->configuration.warpSize = value;
 		app->configuration.sharedMemorySizePow2 = (uint32_t)pow(2, (uint32_t)log2(app->configuration.sharedMemorySize));
@@ -9424,7 +11056,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (inputLaunchConfiguration.performR2C)
 				app->configuration.bufferStride[0] = app->configuration.size[0] / 2 + 1;
 			else
-			app->configuration.bufferStride[0] = app->configuration.size[0];
+				app->configuration.bufferStride[0] = app->configuration.size[0];
 		}
 		else
 			app->configuration.bufferStride[0] = inputLaunchConfiguration.bufferStride[0];
@@ -9433,7 +11065,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (inputLaunchConfiguration.performR2C)
 				app->configuration.inputBufferStride[0] = app->configuration.size[0] + 2;
 			else
-			app->configuration.inputBufferStride[0] = app->configuration.size[0];
+				app->configuration.inputBufferStride[0] = app->configuration.size[0];
 		}
 		else
 			app->configuration.inputBufferStride[0] = inputLaunchConfiguration.inputBufferStride[0];
@@ -9442,7 +11074,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (inputLaunchConfiguration.performR2C)
 				app->configuration.outputBufferStride[0] = app->configuration.size[0] + 2;
 			else
-			app->configuration.outputBufferStride[0] = app->configuration.size[0];
+				app->configuration.outputBufferStride[0] = app->configuration.size[0];
 		}
 		else
 			app->configuration.outputBufferStride[0] = inputLaunchConfiguration.outputBufferStride[0];
@@ -9548,36 +11180,21 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (inputLaunchConfiguration.aimThreads != 0)	app->configuration.aimThreads = inputLaunchConfiguration.aimThreads;
 		app->configuration.numSharedBanks = 32;
 		if (inputLaunchConfiguration.numSharedBanks != 0)	app->configuration.numSharedBanks = inputLaunchConfiguration.numSharedBanks;
+		if (inputLaunchConfiguration.inverseReturnToInputBuffer != 0)	app->configuration.inverseReturnToInputBuffer = inputLaunchConfiguration.inverseReturnToInputBuffer;
+
+		if (inputLaunchConfiguration.useLUT != 0)	app->configuration.useLUT = inputLaunchConfiguration.useLUT;
 
 		if (inputLaunchConfiguration.performR2C != 0) {
 			app->configuration.performR2C = inputLaunchConfiguration.performR2C;
-			/*if (inputLaunchConfiguration.bufferStride[0] == 0)
-				app->configuration.bufferStride[0] = app->configuration.size[0];
-
-			if (inputLaunchConfiguration.inputBufferStride[0] == 0)
-				app->configuration.inputBufferStride[0] = app->configuration.size[0];
-
-			if (inputLaunchConfiguration.outputBufferStride[0] == 0)
-				app->configuration.outputBufferStride[0] = app->configuration.size[0];
-
-			if (inputLaunchConfiguration.bufferStride[1] == 0)
-				app->configuration.bufferStride[1] = (app->configuration.bufferStride[0] / 2 + 1) * app->configuration.size[1];
-
-			if (inputLaunchConfiguration.inputBufferStride[1] == 0)
-				app->configuration.inputBufferStride[1] = (app->configuration.inputBufferStride[0] / 2 + 1) * app->configuration.size[1];
-
-			if (inputLaunchConfiguration.outputBufferStride[1] == 0)
-				app->configuration.outputBufferStride[1] = (app->configuration.outputBufferStride[0] / 2 + 1) * app->configuration.size[1];
-
-			if (inputLaunchConfiguration.bufferStride[2] == 0)
-				app->configuration.bufferStride[2] = app->configuration.bufferStride[1] * app->configuration.size[2];
-
-			if (inputLaunchConfiguration.inputBufferStride[2] == 0)
-				app->configuration.inputBufferStride[2] = app->configuration.inputBufferStride[1] * app->configuration.size[2];
-
-			if (inputLaunchConfiguration.outputBufferStride[2] == 0)
-				app->configuration.outputBufferStride[2] = app->configuration.outputBufferStride[1] * app->configuration.size[2];*/
 		}
+		if (inputLaunchConfiguration.disableMergeSequencesR2C != 0) {
+			app->configuration.disableMergeSequencesR2C = inputLaunchConfiguration.disableMergeSequencesR2C;
+		}
+
+		//temporary fix
+		app->configuration.disableMergeSequencesR2C = 1;
+	
+
 		app->configuration.normalize = 0;
 		if (inputLaunchConfiguration.normalize != 0)	app->configuration.normalize = inputLaunchConfiguration.normalize;
 		app->configuration.reorderFourStep = 1;
@@ -9663,6 +11280,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (res != 0) return res;
 			}
 		}
+		//printf("%d %d %d\n", app->localFFTPlan->axes[0]->specializationConstants.localSize[0], app->localFFTPlan->axes[0]->specializationConstants.localSize[1], app->localFFTPlan->axes[0]->specializationConstants.localSize[2]);
 #if(VKFFT_BACKEND==0)
 		if (!app->configuration.isCompilerInitialized)
 			glslang_finalize_process();
@@ -9737,18 +11355,18 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						result = cuLaunchKernel(axis->VkFFTKernel,
 							maxBlockSize[0], maxBlockSize[1], maxBlockSize[2],     // grid dim
 							axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2],   // block dim
-							0, app->configuration.stream[app->configuration.streamID],             // shared mem and stream
+							axis->specializationConstants.usedSharedMemory, app->configuration.stream[app->configuration.streamID],             // shared mem and stream
 							args, 0);
 					}
 					else {
 						result = cuLaunchKernel(axis->VkFFTKernel,
 							maxBlockSize[0], maxBlockSize[1], maxBlockSize[2],     // grid dim
 							axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2],   // block dim
-							0, NULL,             // shared mem and stream
+							axis->specializationConstants.usedSharedMemory, NULL,             // shared mem and stream
 							args, 0);
 					}
 					if (result != CUDA_SUCCESS) {
-						printf("Error: %d\n", result);
+						printf("Error: %d, %d %d %d - %d %d %d\n", result, maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
 					}
 					if (app->configuration.num_streams > 1) {
 						app->configuration.streamID = app->configuration.streamCounter % app->configuration.num_streams;
@@ -9782,18 +11400,18 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						result = hipModuleLaunchKernel(axis->VkFFTKernel,
 							maxBlockSize[0], maxBlockSize[1], maxBlockSize[2],     // grid dim
 							axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2],   // block dim
-							0, app->configuration.stream[app->configuration.streamID],             // shared mem and stream
+							axis->specializationConstants.usedSharedMemory, app->configuration.stream[app->configuration.streamID],             // shared mem and stream
 							args, 0);
 					}
 					else {
 						result = hipModuleLaunchKernel(axis->VkFFTKernel,
 							maxBlockSize[0], maxBlockSize[1], maxBlockSize[2],     // grid dim
 							axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2],   // block dim
-							0, NULL,             // shared mem and stream
+							axis->specializationConstants.usedSharedMemory, NULL,             // shared mem and stream
 							args, 0);
 					}
 					if (result != hipSuccess) {
-						printf("Error: %d\n", result);
+						printf("Error: %d, %d %d %d - %d %d %d\n", result, maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
 					}
 					if (app->configuration.num_streams > 1) {
 						app->configuration.streamID = app->configuration.streamCounter % app->configuration.num_streams;
@@ -9839,7 +11457,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==2)
 		app->configuration.streamCounter = 0;
 #endif
-		uint32_t localSize0 = (app->configuration.performR2C == 1) ? app->configuration.size[0]/2+1 : app->configuration.size[0];
+		uint32_t localSize0 = (app->configuration.performR2C == 1) ? app->configuration.size[0] / 2 + 1 : app->configuration.size[0];
 		if (inverse != 1) {
 			//FFT axis 0
 			for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
@@ -9876,7 +11494,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							dispatchBlock[1] = app->configuration.size[1];
 						}
 						dispatchBlock[2] = app->configuration.size[2];
-						if (app->configuration.performR2C == 1) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
+						if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
 						//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
 						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
 						dispatchEnhanced(app, axis, dispatchBlock);
@@ -9889,36 +11507,6 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 				//FFT axis 1
 				if ((app->configuration.FFTdim == 2) && (app->configuration.performConvolution)) {
-					/*if (app->configuration.performR2C == 1) {
-						for (int l = app->localFFTPlan->numSupportAxisUploads[0] - 1; l >= 0; l--) {
-							VkFFTAxis* axis = &app->localFFTPlan->supportAxes[0][l];
-							uint32_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (l == 0)) ? 1 : app->configuration.coordinateFeatures;
-							for (uint32_t i = 0; i < maxCoordinate; i++) {
-								axis->pushConstants.coordinate = i;
-
-								axis->pushConstants.batch = ((l == 0) && (app->configuration.matrixConvolution == 1)) ? app->configuration.numberKernels : 0;
-
-#if(VKFFT_BACKEND==0)
-								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
-								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
-#endif
-								uint32_t dispatchBlock[3];
-								if (l == 0)
-									dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim;
-								else
-									dispatchBlock[0] = ceil(app->configuration.size[1] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
-
-								dispatchBlock[1] = 1;
-								dispatchBlock[2] = app->configuration.size[2];
-								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
-								dispatchEnhanced(app, axis, dispatchBlock);
-
-							}
-							if (l > 0)
-								VkFFTSync(app);
-						}
-
-					}*/
 
 					for (int l = app->localFFTPlan->numAxisUploads[1] - 1; l >= 0; l--) {
 						VkFFTAxis* axis = &app->localFFTPlan->axes[1][l];
@@ -9935,7 +11523,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
-							//if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
 							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
 							dispatchEnhanced(app, axis, dispatchBlock);
 						}
@@ -9943,34 +11531,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				else {
-					/*if (app->configuration.performR2C == 1) {
-						for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-							for (int l = app->localFFTPlan->numSupportAxisUploads[0] - 1; l >= 0; l--) {
-								VkFFTAxis* axis = &app->localFFTPlan->supportAxes[0][l];
-								axis->pushConstants.batch = j;
-								for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
-									axis->pushConstants.coordinate = i;
-#if(VKFFT_BACKEND==0)
-									vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
-									vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
-#endif
-									uint32_t dispatchBlock[3];
-									if (l == 0)
-										dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim;
-									else
-										dispatchBlock[0] = ceil(app->configuration.size[1] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 
-									dispatchBlock[1] = 1;
-									dispatchBlock[2] = app->configuration.size[2];
-									//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
-									dispatchEnhanced(app, axis, dispatchBlock);
-
-								}
-								if (l > 0)
-									VkFFTSync(app);
-							}
-						}
-					}*/
 					for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
 						for (int l = app->localFFTPlan->numAxisUploads[1] - 1; l >= 0; l--) {
 							VkFFTAxis* axis = &app->localFFTPlan->axes[1][l];
@@ -9986,7 +11547,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[2];
-								//if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
 								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
 								dispatchEnhanced(app, axis, dispatchBlock);
 							}
@@ -9999,31 +11560,6 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//FFT axis 2
 			if (app->configuration.FFTdim > 2) {
 				if ((app->configuration.FFTdim == 3) && (app->configuration.performConvolution)) {
-
-					/*if (app->configuration.performR2C == 1) {
-
-						for (int l = app->localFFTPlan->numSupportAxisUploads[1] - 1; l >= 0; l--) {
-							VkFFTAxis* axis = &app->localFFTPlan->supportAxes[1][l];
-							uint32_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (l == 0)) ? 1 : app->configuration.coordinateFeatures;
-							for (uint32_t i = 0; i < maxCoordinate; i++) {
-								axis->pushConstants.coordinate = i;
-
-								axis->pushConstants.batch = ((l == 0) && (app->configuration.matrixConvolution == 1)) ? app->configuration.numberKernels : 0;
-#if(VKFFT_BACKEND==0)
-								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
-								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
-#endif
-								uint32_t dispatchBlock[3];
-								dispatchBlock[0] = ceil(app->configuration.size[1] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
-								dispatchBlock[1] = 1;
-								dispatchBlock[2] = 1;
-								dispatchEnhanced(app, axis, dispatchBlock);
-
-							}
-							if (l > 0)
-								VkFFTSync(app);
-						}
-					}*/
 
 					for (int l = app->localFFTPlan->numAxisUploads[2] - 1; l >= 0; l--) {
 
@@ -10040,7 +11576,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[1];
-							//if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
 							dispatchEnhanced(app, axis, dispatchBlock);
 
 						}
@@ -10048,29 +11584,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				else {
-					/*if (app->configuration.performR2C == 1) {
-						for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-							for (int l = app->localFFTPlan->numSupportAxisUploads[1] - 1; l >= 0; l--) {
-								VkFFTAxis* axis = &app->localFFTPlan->supportAxes[1][l];
-								axis->pushConstants.batch = j;
-								for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
-									axis->pushConstants.coordinate = i;
-#if(VKFFT_BACKEND==0)
-									vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
-									vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
-#endif
-									uint32_t dispatchBlock[3];
-									dispatchBlock[0] = ceil(app->configuration.size[1] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
-									dispatchBlock[1] = 1;
-									dispatchBlock[2] = 1;
-									dispatchEnhanced(app, axis, dispatchBlock);
 
-								}
-								if (l > 0)
-									VkFFTSync(app);
-							}
-						}
-					}*/
 					for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
 						for (int l = app->localFFTPlan->numAxisUploads[2] - 1; l >= 0; l--) {
 							VkFFTAxis* axis = &app->localFFTPlan->axes[2][l];
@@ -10085,7 +11599,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[1];
-								//if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
 								dispatchEnhanced(app, axis, dispatchBlock);
 							}
 							VkFFTSync(app);
@@ -10101,30 +11615,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 				//multiple upload ifft leftovers
 				if (app->configuration.FFTdim == 3) {
-					/*if (app->configuration.performR2C == 1) {
-						for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
-							for (int l = 1; l < app->localFFTPlan_inverse->numSupportAxisUploads[1]; l++) {
-								VkFFTAxis* axis = &app->localFFTPlan_inverse->supportAxes[1][l];
-								uint32_t maxCoordinate = app->configuration.coordinateFeatures;
-								for (uint32_t i = 0; i < maxCoordinate; i++) {
-									axis->pushConstants.coordinate = i;
-									axis->pushConstants.batch = j;
-#if(VKFFT_BACKEND==0)
-									vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
-									vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
-#endif
-									uint32_t dispatchBlock[3];
-									dispatchBlock[0] = ceil(app->configuration.size[1] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
-									dispatchBlock[1] = 1;
-									dispatchBlock[2] = 1;
-									dispatchEnhanced(app, axis, dispatchBlock);
 
-								}
-								if (l > 0)
-									VkFFTSync(app);
-							}
-						}
-					}*/
 					for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
 						for (int l = 1; l < app->localFFTPlan_inverse->numAxisUploads[2]; l++) {
 							VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[2][l];
@@ -10140,40 +11631,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[1];
-								//if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
 								dispatchEnhanced(app, axis, dispatchBlock);
 							}
 							VkFFTSync(app);
 						}
 					}
 				}
-				/*if (app->configuration.performR2C == 1) {
-					for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
-						for (int l = 0; l < app->localFFTPlan_inverse->numSupportAxisUploads[0]; l++) {
-							VkFFTAxis* axis = &app->localFFTPlan_inverse->supportAxes[0][l];
-							axis->pushConstants.batch = j;
-							for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 
-								axis->pushConstants.coordinate = i;
-#if(VKFFT_BACKEND==0)
-								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
-								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
-#endif
-								uint32_t dispatchBlock[3];
-								if (l == 0)
-									dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim;
-								else
-									dispatchBlock[0] = ceil(app->configuration.size[1] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
-								dispatchBlock[1] = 1;
-								dispatchBlock[2] = app->configuration.size[2];
-								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
-								dispatchEnhanced(app, axis, dispatchBlock);
-							}
-							if (l < app->localFFTPlan_inverse->numSupportAxisUploads[0] - 1)
-								VkFFTSync(app);
-						}
-					}
-				}*/
 				for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
 					for (int l = 0; l < app->localFFTPlan_inverse->numAxisUploads[1]; l++) {
 						VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[1][l];
@@ -10188,7 +11653,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
-							//if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
 							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
 							dispatchEnhanced(app, axis, dispatchBlock);
 
@@ -10200,35 +11665,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			if (app->configuration.FFTdim > 1) {
 				if (app->configuration.FFTdim == 2) {
-					/*if (app->configuration.performR2C == 1) {
-						for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
-							for (int l = 1; l < app->localFFTPlan_inverse->numSupportAxisUploads[0]; l++) {
-								VkFFTAxis* axis = &app->localFFTPlan_inverse->supportAxes[0][l];
-								uint32_t maxCoordinate = app->configuration.coordinateFeatures;
-								for (uint32_t i = 0; i < maxCoordinate; i++) {
-									axis->pushConstants.coordinate = i;
-									axis->pushConstants.batch = j;
-#if(VKFFT_BACKEND==0)
-									vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
-									vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
-#endif
-									uint32_t dispatchBlock[3];
-									if (l == 0)
-										dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim;
-									else
-										dispatchBlock[0] = ceil(app->configuration.size[1] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
-									dispatchBlock[1] = 1;
-									dispatchBlock[2] = app->configuration.size[2];
-									//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
-									dispatchEnhanced(app, axis, dispatchBlock);
 
-								}
-								if (l > 0)
-									VkFFTSync(app);
-							}
-						}
-
-					}*/
 					for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
 						for (int l = 1; l < app->localFFTPlan_inverse->numAxisUploads[1]; l++) {
 							VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[1][l];
@@ -10245,7 +11682,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[2];
-								//if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
 								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
 								dispatchEnhanced(app, axis, dispatchBlock);
 
@@ -10286,7 +11723,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								dispatchBlock[1] = app->configuration.size[1];
 							}
 							dispatchBlock[2] = app->configuration.size[2];
-							if (app->configuration.performR2C == 1) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
+							if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
 							//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
 							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
 							dispatchEnhanced(app, axis, dispatchBlock);
@@ -10314,7 +11751,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
-							//if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
 							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
 							dispatchEnhanced(app, axis, dispatchBlock);
 
@@ -10329,33 +11766,6 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//we start from axis 2 and go back to axis 0
 			//FFT axis 2
 			if (app->configuration.FFTdim > 2) {
-				/*if (app->configuration.performR2C == 1) {
-					for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-						for (int l = app->localFFTPlan->numSupportAxisUploads[1] - 1; l >= 0; l--) {
-							if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numSupportAxisUploads[1] - 1 - l;
-							VkFFTAxis* axis = &app->localFFTPlan->supportAxes[1][l];
-							axis->pushConstants.batch = j;
-							for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
-								axis->pushConstants.coordinate = i;
-#if(VKFFT_BACKEND==0)
-								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
-								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
-#endif
-								uint32_t dispatchBlock[3];
-								dispatchBlock[0] = ceil(app->configuration.size[1] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
-								dispatchBlock[1] = 1;
-								dispatchBlock[2] = 1;
-								//if (app->configuration.performZeropaddingInverse[1]) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
-
-								dispatchEnhanced(app, axis, dispatchBlock);
-
-							}
-							if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numSupportAxisUploads[1] - 1 - l;
-							if (l > 0)
-								VkFFTSync(app);
-						}
-					}
-				}*/
 
 				for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
 					for (int l = app->localFFTPlan_inverse->numAxisUploads[2] - 1; l >= 0; l--) {
@@ -10375,7 +11785,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							//if (app->configuration.performZeropaddingInverse[0]) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
 							//if (app->configuration.performZeropaddingInverse[1]) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
 
-							//if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
 							dispatchEnhanced(app, axis, dispatchBlock);
 						}
 						VkFFTSync(app);
@@ -10387,35 +11797,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (app->configuration.FFTdim > 1) {
 
 				//FFT axis 1
-				/*if (app->configuration.performR2C == 1) {
-					for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
-						for (int l = app->localFFTPlan->numSupportAxisUploads[0] - 1; l >= 0; l--) {
-							if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numSupportAxisUploads[0] - 1 - l;
-							VkFFTAxis* axis = &app->localFFTPlan->supportAxes[0][l];
-							axis->pushConstants.batch = j;
-							for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
-								axis->pushConstants.coordinate = i;
-#if(VKFFT_BACKEND==0)
-								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
-								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, NULL);
-#endif
-								uint32_t dispatchBlock[3];
-								if (l == 0)
-									dispatchBlock[0] = app->configuration.size[1] / axis->specializationConstants.fftDim;
-								else
-									dispatchBlock[0] = ceil(app->configuration.size[1] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
-								dispatchBlock[1] = 1;
-								dispatchBlock[2] = app->configuration.size[2];
-								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
-								dispatchEnhanced(app, axis, dispatchBlock);
 
-							}
-							if (!app->configuration.reorderFourStep) l = app->localFFTPlan->numSupportAxisUploads[0] - 1 - l;
-							if (l > 0)
-								VkFFTSync(app);
-						}
-					}
-				}*/
 				for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
 					for (int l = app->localFFTPlan_inverse->numAxisUploads[1] - 1; l >= 0; l--) {
 						if (!app->configuration.reorderFourStep) l = app->localFFTPlan_inverse->numAxisUploads[1] - 1 - l;
@@ -10431,7 +11813,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
-							//if (app->configuration.performR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
 							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
 							//if (app->configuration.performZeropaddingInverse[0]) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
 
@@ -10479,7 +11861,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							dispatchBlock[1] = app->configuration.size[1];
 						}
 						dispatchBlock[2] = app->configuration.size[2];
-						if (app->configuration.performR2C == 1) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
+						if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
 						//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
 						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
 						dispatchEnhanced(app, axis, dispatchBlock);
@@ -10528,13 +11910,6 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				deleteAxis(app, &app->localFFTPlan->axes[i][j]);
 		}
 
-		/*for (uint32_t i = 0; i < app->configuration.FFTdim - 1; i++) {
-
-			if (app->configuration.performR2C) {
-				for (uint32_t j = 0; j < app->localFFTPlan->numSupportAxisUploads[i]; j++)
-					deleteAxis(app, &app->localFFTPlan->supportAxes[i][j]);
-			}
-		}*/
 		free(app->localFFTPlan);
 
 		for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {

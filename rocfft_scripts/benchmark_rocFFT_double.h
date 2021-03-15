@@ -1,0 +1,1 @@
+void launch_benchmark_rocFFT_double(bool file_output, FILE* output);

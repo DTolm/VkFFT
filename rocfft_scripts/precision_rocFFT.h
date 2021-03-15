@@ -1,0 +1,1 @@
+void launch_precision_rocFFT_single(void* inputC, void* output_cuFFT, uint32_t* dims);

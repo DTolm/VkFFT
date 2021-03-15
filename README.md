@@ -4,7 +4,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
 
 ## I am looking for a PhD position/job that may be interested in my set of skills. Contact me by email: <d.tolmachev@fz-juelich.de> | <dtolm96@gmail.com>
 
-## Added Windows executables for benchmark: versions with CUDA benchmark (requires CUDA 11) and without (requires only graphics drivers). Both require FFTW dll placed in the same location as executable. Uses ~3.5GB of VRAM. 
+## Added Windows executables for benchmark: versions with CUDA benchmark (requires CUDA 9.0) and without (requires only graphics drivers). Both require FFTW dll placed in the same location as executable. Uses ~3.5GB of VRAM. 
 
 ## Benchmark results of VkFFT can be found here: https://openbenchmarking.org/test/pts/vkfft
 
@@ -45,8 +45,9 @@ VkFFT has a command-line interface with the following set of commands:\
 -devices: print the list of available GPU devices\
 -d X: select GPU device (default 0)\
 -o NAME: specify output file path\
--vkfft X: launch VkFFT sample X (0-14) (if FFTW is enabled in CMakeLists.txt)\
--cufft X: launch cuFFT sample X (0-3) (if enabled in CMakeLists.txt)\
+-vkfft X: launch VkFFT sample X (0-15, 1000-1003) (if FFTW is enabled in CMakeLists.txt)\
+-cufft X: launch cuFFT sample X (0-4, 1000-1003) (if enabled in CMakeLists.txt)\
+-rocfft X: launch rocFFT sample X (0-4, 1000-1003) (if enabled in CMakeLists.txt)\
 -test: (or no other keys) launch all VkFFT and cuFFT benchmarks\
 So, the command to launch single precision benchmark of VkFFT and cuFFT and save log to output.txt file on device 0 will look like this on Windows:\
 .\Vulkan_FFT.exe -d 0 -o output.txt -vkfft 0 -cufft 0\
@@ -68,12 +69,12 @@ Multidimensional systems are optimized as well. Benchmark shows Radeon RX 6800XT
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_2d.png?raw=true)
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/vkfft_benchmark_3d.png?raw=true)
 ## Precision comparison of cuFFT/VkFFT/FFTW
-To measure how VkFFT (single/double/half precision) results compare to cuFFT (single/double/half precision) and FFTW (double precision), a set of ~60 systems covering full FFT range was filled with random complex data on the scale of [-1,1] and one C2C transform was performed on each system. Samples 11(single), 12(double), 13(half) calculate for each value of the transformed system:
+To measure how VkFFT (single/double/half precision) results compare to cuFFT/rocFFT (single/double/half precision) and FFTW (double precision), a set of ~60 systems covering full FFT range was filled with random complex data on the scale of [-1,1] and one C2C transform was performed on each system. Samples 11(single), 12(double), 13(half) calculate for each value of the transformed system:
 
-- Max difference between cuFFT/VkFFT result and FFTW result
-- Average difference between cuFFT/VkFFT result and FFTW result
-- Max ratio of the difference between cuFFT/VkFFT result and FFTW result to the FFTW result
-- Average ratio of the difference between cuFFT/VkFFT result and FFTW result to the FFTW result
+- Max difference between cuFFT/rocFFT/VkFFT result and FFTW result
+- Average difference between cuFFT/rocFFT/VkFFT result and FFTW result
+- Max ratio of the difference between cuFFT/rocFFT/VkFFT result and FFTW result to the FFTW result
+- Average ratio of the difference between cuFFT/rocFFT/VkFFT result and FFTW result to the FFTW result
 
 FFTW is required to launch these samples (specify in CMakeLists include and library directories). If cuFFT is disabled, only FFTW/VkFFT results are calculated.\
 The precision_cuFFT_VkFFT_FFTW.txt file contains the single precision results for Nvidia's 1660Ti GPU and AMD Ryzen 2700 CPU. On average, the results fluctuate both for cuFFT and VkFFT with no clear winner in single precision. Max ratio stays in range of 2% for both cuFFT and VkFFT, while average ratio stays below 1e-6.\
@@ -81,6 +82,6 @@ The precision_cuFFT_VkFFT_FFTW_double.txt file contains the double precision res
 The precision_cuFFT_VkFFT_FFTW_half.txt file contains the half precision results for Nvidia's 1660Ti GPU and AMD Ryzen 2700 CPU. On average, VkFFT is at least two times more precise than cuFFT in half precision (see: max_difference and max_eps coloumns), while being faster on average (vkfft_benchmark_half.png). Note that half precision is still in testing and is only used to store data in VkFFT. cuFFT script can probably also be improved. Average ratio stays in range of 0.2% for both cuFFT and VkFFT. Overall, half precision of VkFFT is ~50%-100% times faster than single on Nvidia's 1660Ti GPU.
 ## Contact information
 Initial version of VkFFT is developed by Tolmachev Dmitrii\
-Peter Grünberg Institute and Institute for Advanced Simulation, Forschungszentrum Jülich,  D-52425 Jülich, Germany\
+Formerly Peter Grünberg Institute and Institute for Advanced Simulation, Forschungszentrum Jülich,  D-52425 Jülich, Germany\
 E-mail 1: <d.tolmachev@fz-juelich.de>\
 E-mail 2: <dtolm96@gmail.com>

@@ -1,0 +1,1 @@
+void launch_benchmark_cuFFT_single_2_4096(bool file_output, FILE* output);

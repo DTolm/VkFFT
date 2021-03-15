@@ -15,32 +15,45 @@
 #define GROUP 1
 
 
-void launch_benchmark_cuFFT_double(bool file_output, FILE* output)
+void launch_benchmark_cuFFT_double_2_4096(bool file_output, FILE* output)
 {
 
 	const int num_runs = 3;
 	if (file_output)
-		fprintf(output, "1 - cuFFT FFT + iFFT C2C benchmark 1D batched in double precision\n");
-	printf("1 - cuFFT FFT + iFFT C2C benchmark 1D batched in double precision\n");
+		fprintf(output, "1001 - cuFFT FFT + iFFT C2C benchmark 1D batched in double precision: all supported systems from 2 to 4096\n");
+	printf("1001 - cuFFT FFT + iFFT C2C benchmark 1D batched in double precision: all supported systems from 2 to 4096\n");
 	double benchmark_result[2] = { 0,0 };//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	cufftDoubleComplex* inputC = (cufftDoubleComplex*)malloc((uint64_t)sizeof(cufftDoubleComplex) *pow(2, 27));
 	for (uint64_t i = 0; i <pow(2, 27); i++) {
 		inputC[i].x = 2 * ((double)rand()) / RAND_MAX - 1.0;
 		inputC[i].y = 2 * ((double)rand()) / RAND_MAX - 1.0;
 	}
-	for (int n = 0; n < 24; n++) {
+	int num_systems = 0;
+	for (int n = 1; n < 4097; n++) {
 		double run_time[num_runs][2];
 		for (int r = 0; r < num_runs; r++) {
 			cufftHandle planZ2Z;
 			cufftDoubleComplex* dataC;
 
 			uint32_t dims[3];
-			dims[0] = 4 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
-			if (n == 0) dims[0] = 2048;
-			dims[1] = 64 * 32 * pow(2, 15) / dims[0];
-			//dims[1] = (dims[1] > 32768) ? 32768 : dims[1];
-			if (dims[1] == 0) dims[1] = 1;
+
+			dims[0] = n;
+			if (n == 1) dims[0] = 4096;
+			uint32_t temp = dims[0];
+
+			for (uint32_t j = 2; j < 14; j++)
+			{
+				if (temp % j == 0) {
+					temp /= j;
+					j = 1;
+				}
+			}
+			if (temp != 1) break;
+			dims[1] = pow(2, (uint32_t)log2(64 * 32 * pow(2, 16) / dims[0]));
+			if (dims[1] < 1) dims[1] = 1;
 			dims[2] = 1;
+			num_systems++;
+			
 			cudaMalloc((void**)&dataC, sizeof(cufftDoubleComplex) * dims[0] * dims[1] * dims[2]);
 
 			cudaMemcpy(dataC, inputC, sizeof(cufftDoubleComplex) * dims[0] * dims[1] * dims[2], cudaMemcpyHostToDevice);
@@ -78,7 +91,7 @@ void launch_benchmark_cuFFT_double(bool file_output, FILE* output)
 			auto timeEnd = std::chrono::steady_clock::now();
 			totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001) / num_iter;
 			run_time[r][0] = totTime;
-			if (n > 0) {
+			if (n > 1) {
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
@@ -90,10 +103,12 @@ void launch_benchmark_cuFFT_double(bool file_output, FILE* output)
 						std_error += (run_time[t][0] - avg_time) * (run_time[t][0] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
+					
 					if (file_output)
-						fprintf(output, "cuFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d\n", (int)log2(dims[0]), dims[0], dims[1], cuBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)cuBufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time));
+						fprintf(output, "cuFFT System: %d %d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", dims[0], dims[1], cuBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)cuBufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time), cuBufferSize / 1024.0 / 1024.0 / 1.024 * 4 / avg_time);
 
-					printf("cuFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d\n", (int)log2(dims[0]), dims[0], dims[1], cuBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)cuBufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time));
+					printf("cuFFT System: %d %d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", dims[0], dims[1], cuBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)cuBufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time), cuBufferSize / 1024.0 / 1024.0 / 1.024 * 4 / avg_time);
+					
 					benchmark_result[0] += ((double)cuBufferSize * sizeof(float)/sizeof(double)/ 1024) / avg_time;
 				}
 
@@ -109,7 +124,7 @@ void launch_benchmark_cuFFT_double(bool file_output, FILE* output)
 		}
 	}
 	free(inputC);
-	benchmark_result[0] /= (24 - 1);
+	benchmark_result[0] /= (num_systems - 1);
 	if (file_output)
 		fprintf(output, "Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));
 	printf("Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));
