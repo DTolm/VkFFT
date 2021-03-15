@@ -10905,7 +10905,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (inputLaunchConfiguration.fence == 0) return 1005;
 		app->configuration.fence = inputLaunchConfiguration.fence;
 
-		VkPhysicalDeviceProperties physicalDeviceProperties = { {0} };
+		VkPhysicalDeviceProperties physicalDeviceProperties = {0};
 		vkGetPhysicalDeviceProperties(app->configuration.physicalDevice[0], &physicalDeviceProperties);
 		if (inputLaunchConfiguration.isCompilerInitialized != 0) app->configuration.isCompilerInitialized = inputLaunchConfiguration.isCompilerInitialized;
 		if (!app->configuration.isCompilerInitialized)
@@ -11024,7 +11024,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.maxComputeWorkGroupSize[2] = value;
 		hipDeviceGetAttribute(&value, hipDeviceAttributeMaxSharedMemoryPerBlock, app->configuration.device[0]);
 		app->configuration.sharedMemorySizeStatic = value;
-		hipDeviceGetAttribute(&value, hipDeviceAttributeMaxSharedMemoryPerBlockOptin, app->configuration.device[0]);
+		//hipDeviceGetAttribute(&value, hipDeviceAttributeMaxSharedMemoryPerBlockOptin, app->configuration.device[0]);
 		app->configuration.sharedMemorySize = (value > 65536) ? 65536 : value;
 		hipDeviceGetAttribute(&value, hipDeviceAttributeWarpSize, app->configuration.device[0]);
 		app->configuration.warpSize = value;

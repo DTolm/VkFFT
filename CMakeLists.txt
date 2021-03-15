@@ -161,9 +161,12 @@ if(build_VkFFT_rocFFT_benchmark)
 	else()
 		add_library(rocfft_scripts STATIC
 		rocfft_scripts/benchmark_rocFFT.cpp
+		rocfft_scripts/benchmark_rocFFT_2_4096.cpp
 		rocfft_scripts/benchmark_rocFFT_r2c.cpp
 		rocfft_scripts/benchmark_rocFFT_double.cpp
-		rocfft_scripts/benchmark_rocFFT_3d.cpp)
+		rocfft_scripts/benchmark_rocFFT_double_2_4096.cpp
+		rocfft_scripts/benchmark_rocFFT_3d.cpp
+		rocfft_scripts/benchmark_rocFFT_3d_2_512.cpp)
 	endif()
 	target_include_directories(rocfft_scripts PUBLIC "rocfft_scripts/")
 	target_link_libraries(rocfft_scripts PRIVATE hip::host roc::rocfft)
