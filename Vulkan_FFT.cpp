@@ -3914,7 +3914,7 @@ uint32_t sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 		}
 	}
 	free(buffer_input);
-	benchmark_result /= (num_systems - 1);
+	benchmark_result /= (num_systems/num_runs - 1);
 
 	if (file_output) {
 		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
@@ -4073,7 +4073,7 @@ uint32_t sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 		}
 	}
 	free(buffer_input);
-	benchmark_result /= (num_systems - 1);
+	benchmark_result /= (num_systems/num_runs - 1);
 	if (file_output) {
 		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
 #if(VKFFT_BACKEND==0)
@@ -4226,7 +4226,7 @@ uint32_t sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 		}
 	}
 	free(buffer_input);
-	benchmark_result /= (num_systems - 1);
+	benchmark_result /= (num_systems/num_runs - 1);
 
 	if (file_output) {
 		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));

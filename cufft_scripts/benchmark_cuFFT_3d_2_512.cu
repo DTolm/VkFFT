@@ -119,7 +119,7 @@ const int num_runs = 3;
 		}
 	}
 	free(inputC);
-	benchmark_result[0] /= (num_systems - 1);
+	benchmark_result[0] /= (num_systems/num_runs - 1);
 	if (file_output)
 		fprintf(output, "Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));
 	printf("Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));
