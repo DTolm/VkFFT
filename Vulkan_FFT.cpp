@@ -3810,7 +3810,6 @@ uint32_t sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			configuration.size[1] = pow(2, (uint32_t)log2(64 * 32 * pow(2, 16) / configuration.size[0]));
 			if (configuration.size[1] < 1) configuration.size[1] = 1;
 			configuration.size[2] = 1;
-			num_systems++;
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 			configuration.device = &vkGPU->device;
 #if(VKFFT_BACKEND==0)
@@ -3876,6 +3875,7 @@ uint32_t sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			run_time[r] = totTime;
 			if (n > 1) {
 				if (r == num_runs - 1) {
+					num_systems++;
 					double std_error = 0;
 					double avg_time = 0;
 					for (uint32_t t = 0; t < num_runs; t++) {
@@ -3914,7 +3914,7 @@ uint32_t sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 		}
 	}
 	free(buffer_input);
-	benchmark_result /= (num_systems/num_runs - 1);
+	benchmark_result /= (num_systems);
 
 	if (file_output) {
 		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
@@ -3965,9 +3965,7 @@ uint32_t sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			configuration.size[1] = pow(2, (uint32_t)log2(64 * 32 * pow(2, 15) / configuration.size[0]));
 			if (configuration.size[1] < 1) configuration.size[1] = 1;
 			configuration.size[2] = 1;
-			num_systems++;
-
-
+			
 			configuration.doublePrecision = true;
 
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
@@ -4036,6 +4034,7 @@ uint32_t sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			run_time[r] = totTime;
 			if (n > 1) {
 				if (r == num_runs - 1) {
+					num_systems++;
 					double std_error = 0;
 					double avg_time = 0;
 					for (uint32_t t = 0; t < num_runs; t++) {
@@ -4073,7 +4072,7 @@ uint32_t sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 		}
 	}
 	free(buffer_input);
-	benchmark_result /= (num_systems/num_runs - 1);
+	benchmark_result /= (num_systems);
 	if (file_output) {
 		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
 #if(VKFFT_BACKEND==0)
@@ -4122,7 +4121,6 @@ uint32_t sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			if (temp != 1) break;
 			configuration.size[1] = configuration.size[0];
 			configuration.size[2] = configuration.size[0];
-			num_systems++;
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 			configuration.device = &vkGPU->device;
 #if(VKFFT_BACKEND==0)
@@ -4188,6 +4186,7 @@ uint32_t sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			run_time[r] = totTime;
 			if (n > 1) {
 				if (r == num_runs - 1) {
+					num_systems++;
 					double std_error = 0;
 					double avg_time = 0;
 					for (uint32_t t = 0; t < num_runs; t++) {
@@ -4226,7 +4225,7 @@ uint32_t sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 		}
 	}
 	free(buffer_input);
-	benchmark_result /= (num_systems/num_runs - 1);
+	benchmark_result /= (num_systems);
 
 	if (file_output) {
 		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));

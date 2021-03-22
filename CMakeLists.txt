@@ -123,10 +123,13 @@ if(build_VkFFT_cuFFT_benchmark)
 	else()
 		add_library(cufft_scripts STATIC
 		cufft_scripts/benchmark_cuFFT.cu
+		cufft_scripts/benchmark_cuFFT_2_4096.cu
 		cufft_scripts/benchmark_cuFFT_r2c.cu
 		cufft_scripts/benchmark_cuFFT_double.cu
+		cufft_scripts/benchmark_cuFFT_double_2_4096.cu
 		cufft_scripts/benchmark_cuFFT_half.cu
-		cufft_scripts/benchmark_cuFFT_3d.cu)
+		cufft_scripts/benchmark_cuFFT_3d.cu
+		cufft_scripts/benchmark_cuFFT_3d_2_512.cu)
 	endif()
 	set_property(TARGET cufft_scripts PROPERTY CUDA_ARCHITECTURES 60 70 75 80 86)
 	CUDA_ADD_CUFFT_TO_TARGET(cufft_scripts)

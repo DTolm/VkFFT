@@ -2407,7 +2407,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			sc->sharedStrideReadWriteConflict = ((sc->numSharedBanks / 2 <= sc->localSize[1])) ? sc->fftDim / sc->registerBoost + 1 : sc->fftDim / sc->registerBoost + (sc->numSharedBanks / 2) / sc->localSize[1];
 			if (sc->sharedStrideReadWriteConflict < sc->fftDim / sc->registerBoost + mergeR2C) sc->sharedStrideReadWriteConflict = sc->fftDim / sc->registerBoost + mergeR2C;
 			sc->maxSharedStride = (sc->sharedStrideBankConflictFirstStages < sc->sharedStrideReadWriteConflict) ? sc->sharedStrideReadWriteConflict : sc->sharedStrideBankConflictFirstStages;
-			sc->maxSharedStride = (((maxSequenceSharedMemory - sc->localSize[1] * sc->fftDim / sc->registerBoost) == 0)) ? sc->fftDim / sc->registerBoost : sc->maxSharedStride;
+			sc->usedSharedMemory = vecSize * sc->localSize[1] * sc->maxSharedStride;
+			sc->maxSharedStride = ((sc->sharedMemSize < sc->usedSharedMemory)) ? sc->fftDim / sc->registerBoost : sc->maxSharedStride;
 
 			sc->sharedStrideBankConflictFirstStages = (sc->maxSharedStride == sc->fftDim / sc->registerBoost) ? sc->fftDim / sc->registerBoost : sc->sharedStrideBankConflictFirstStages;
 			sc->sharedStrideReadWriteConflict = (sc->maxSharedStride == sc->fftDim / sc->registerBoost) ? sc->fftDim / sc->registerBoost : sc->sharedStrideReadWriteConflict;
@@ -2571,7 +2572,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			case 1: {
 				if (!sc->supportAxis) {
-					char idX[100] = "";
+					char idX[500] = "";
 					if (sc->performWorkGroupShift[0])
 						sprintf(idX, "(%s + consts.workGroupShiftX * %s)", sc->gl_GlobalInvocationID_x, sc->gl_WorkGroupSize_x);
 					else
@@ -2585,13 +2586,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			case 2: {
 				if (!sc->supportAxis) {
-					char idY[100] = "";
+					char idY[500] = "";
 					if (sc->performWorkGroupShift[1])//y axis is along z workgroup here
 						sprintf(idY, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
 					else
 						sprintf(idY, "%s", sc->gl_GlobalInvocationID_z);
 
-					char idX[100] = "";
+					char idX[500] = "";
 					if (sc->performWorkGroupShift[0])
 						sprintf(idX, "(%s + consts.workGroupShiftX * %s)", sc->gl_GlobalInvocationID_x, sc->gl_WorkGroupSize_x);
 					else
@@ -2605,7 +2606,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							sprintf(output + strlen(output), "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
 				}
 				else {
-					char idY[100] = "";
+					char idY[500] = "";
 					if (sc->performWorkGroupShift[1])//for support axes y is along x workgroup
 						sprintf(idY, "(%s + consts.workGroupShiftX * %s)", sc->gl_GlobalInvocationID_x, sc->gl_WorkGroupSize_x);
 					else
@@ -2621,7 +2622,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		else {
 			switch (sc->axis_id) {
 			case 0: {
-				char idY[100] = "";
+				char idY[500] = "";
 				if (sc->axisSwapped) {
 
 				}
@@ -2631,7 +2632,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					else
 						sprintf(idY, "%s", sc->gl_GlobalInvocationID_y);
 
-					char idZ[100] = "";
+					char idZ[500] = "";
 					if (sc->performWorkGroupShift[2])
 						sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
 					else
@@ -2646,7 +2647,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				break;
 			}
 			case 1: {
-				char idZ[100] = "";
+				char idZ[500] = "";
 				if (sc->performWorkGroupShift[2])
 					sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
 				else
@@ -2673,7 +2674,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			case 1: {
 				if (!sc->supportAxis) {
-					char idX[100] = "";
+					char idX[500] = "";
 					if (sc->performWorkGroupShift[0])
 						sprintf(idX, "(%s + consts.workGroupShiftX * %s)", sc->gl_GlobalInvocationID_x, sc->gl_WorkGroupSize_x);
 					else
@@ -2687,13 +2688,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			case 2: {
 				if (!sc->supportAxis) {
-					char idY[100] = "";
+					char idY[500] = "";
 					if (sc->performWorkGroupShift[1])//y axis is along z workgroup here
 						sprintf(idY, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
 					else
 						sprintf(idY, "%s", sc->gl_GlobalInvocationID_z);
 
-					char idX[100] = "";
+					char idX[500] = "";
 					if (sc->performWorkGroupShift[0])
 						sprintf(idX, "(%s + consts.workGroupShiftX * %s)", sc->gl_GlobalInvocationID_x, sc->gl_WorkGroupSize_x);
 					else
@@ -2706,7 +2707,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							sprintf(output + strlen(output), "		}\n");
 				}
 				else {
-					char idY[100] = "";
+					char idY[500] = "";
 					if (sc->performWorkGroupShift[1])//for support axes y is along x workgroup
 						sprintf(idY, "(%s + consts.workGroupShiftX * %s)", sc->gl_GlobalInvocationID_x, sc->gl_WorkGroupSize_x);
 					else
@@ -2722,7 +2723,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		else {
 			switch (sc->axis_id) {
 			case 0: {
-				char idY[100] = "";
+				char idY[500] = "";
 				if (sc->axisSwapped) {
 
 				}
@@ -2732,7 +2733,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					else
 						sprintf(idY, "%s", sc->gl_GlobalInvocationID_y);
 
-					char idZ[100] = "";
+					char idZ[500] = "";
 					if (sc->performWorkGroupShift[2])
 						sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
 					else
@@ -2747,7 +2748,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				break;
 			}
 			case 1: {
-				char idZ[100] = "";
+				char idZ[500] = "";
 				if (sc->performWorkGroupShift[2])
 					sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
 				else
@@ -2772,7 +2773,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		else {
 			switch (sc->axis_id) {
 			case 0: {
-				char idY[100] = "";
+				char idY[500] = "";
 				uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 				if (sc->axisSwapped) {
 					if (sc->performWorkGroupShift[1])
@@ -2780,7 +2781,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					else
 						sprintf(idY, "(%s/%d + %s*%s)", sc->combinedID, sc->fftDim / mult, sc->gl_WorkGroupID_y, sc->gl_WorkGroupSize_x);
 
-					char idZ[100] = "";
+					char idZ[500] = "";
 					if (sc->performWorkGroupShift[2])
 						sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
 					else
@@ -4075,7 +4076,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							sprintf(output + strlen(output), "	mult.y = -mult.y;\n");
 					}
 					else {
-						sprintf(output + strlen(output), "		angle = 2 * loc_PI * (((((%s%s) / %d) %% (%d)) * (%s + %d)) / %f%s;\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
+						sprintf(output + strlen(output), "		angle = 2 * loc_PI * ((((%s%s) / %d) %% (%d)) * (%s + %d)) / %f%s;\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
 						if (!strcmp(floatType, "float")) {
 							sprintf(output + strlen(output), "		mult.x = %s(angle);\n", cosDef);
 							sprintf(output + strlen(output), "		mult.y = %s(angle);\n", sinDef);
@@ -6383,8 +6384,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), "\
 	if (%s==0)\n\
 	{\n\
-		sdata[%s * sharedStride + %d].x = sdata[%s * sharedStride].y;\n\
-	}\n", sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim, sc->gl_LocalInvocationID_y);
+		sdata[%s * sharedStride + sharedStride] = sdata[%s * sharedStride];\n\
+	}\n", sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_y);
 									appendZeropadEnd(output, sc);
 									appendBarrierVkFFT(output, 1);
 									appendZeropadStart(output, sc);
@@ -6514,7 +6515,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sprintf(output + strlen(output), "\
 	if (%s==0)\n\
 	{\n\
-		sdata[%s * sharedStride + %d].x = sdata[%s * sharedStride].y;\n\
+		sdata[%s * sharedStride + %d] = sdata[%s * sharedStride];\n\
 	}\n", sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim, sc->gl_LocalInvocationID_y);
 									appendZeropadEnd(output, sc);
 									appendBarrierVkFFT(output, 1);
@@ -10259,7 +10260,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (axis->axisBlock[1] > app->configuration.maxComputeWorkGroupSize[1]) axis->axisBlock[1] = app->configuration.maxComputeWorkGroupSize[1];
 					if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[1] /= 2;
 					while ((axis->axisBlock[1] * (axis->specializationConstants.fftDim / axis->specializationConstants.registerBoost)) > maxSequenceLengthSharedMemory) axis->axisBlock[1] /= 2;
-					if ((!((!app->configuration.reorderFourStep) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim < maxSequenceLengthSharedMemoryPow2) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2])))) {
+					if (((axis->specializationConstants.fftDim % 2 == 0)||(axis->axisBlock[0]< app->configuration.numSharedBanks/4))&& (!((!app->configuration.reorderFourStep) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim < maxSequenceLengthSharedMemoryPow2) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2])))) {
 #if (VKFFT_BACKEND==0)
 					if (((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) != 0)) {
 						uint32_t temp = axis->axisBlock[1];
@@ -11192,10 +11193,6 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (inputLaunchConfiguration.disableMergeSequencesR2C != 0) {
 			app->configuration.disableMergeSequencesR2C = inputLaunchConfiguration.disableMergeSequencesR2C;
 		}
-
-		//temporary fix
-		app->configuration.disableMergeSequencesR2C = 1;
-	
 
 		app->configuration.normalize = 0;
 		if (inputLaunchConfiguration.normalize != 0)	app->configuration.normalize = inputLaunchConfiguration.normalize;

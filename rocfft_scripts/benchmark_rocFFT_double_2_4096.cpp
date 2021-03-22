@@ -51,7 +51,6 @@ void launch_benchmark_rocFFT_double_2_4096(bool file_output, FILE* output)
 			dims[1] = pow(2, (uint32_t)log2(64 * 32 * pow(2, 15) / dims[0]));
 			if (dims[1] < 1) dims[1] = 1;
 			dims[2] = 1;
-			num_systems++;
 			
 			hipMalloc((void**)&dataC, sizeof(hipfftDoubleComplex) * dims[0] * dims[1] * dims[2]);
 
@@ -92,6 +91,7 @@ void launch_benchmark_rocFFT_double_2_4096(bool file_output, FILE* output)
 			run_time[r][0] = totTime;
 			if (n > 1) {
 				if (r == num_runs - 1) {
+					num_systems++;
 					double std_error = 0;
 					double avg_time = 0;
 					for (uint32_t t = 0; t < num_runs; t++) {
@@ -123,7 +123,7 @@ void launch_benchmark_rocFFT_double_2_4096(bool file_output, FILE* output)
 		}
 	}
 	free(inputC);
-	benchmark_result[0] /= (num_systems/num_runs - 1);
+	benchmark_result[0] /= (num_systems);
 	if (file_output)
 		fprintf(output, "Benchmark score rocFFT: %d\n", (int)(benchmark_result[0]));
 	printf("Benchmark score rocFFT: %d\n", (int)(benchmark_result[0]));

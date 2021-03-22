@@ -51,8 +51,6 @@ const int num_runs = 3;
 			dims[1] = dims[0];
 			dims[2] = dims[0];
 			
-			num_systems++;
-
 			hipMalloc((void**)&dataC, sizeof(hipfftComplex) * dims[0] * dims[1] * dims[2]);
 
 			hipMemcpy(dataC, inputC, sizeof(hipfftComplex) * dims[0] * dims[1] * dims[2], hipMemcpyHostToDevice);
@@ -88,6 +86,7 @@ const int num_runs = 3;
 			run_time[r][0] = totTime;
 			if (n > 1) {
 				if (r == num_runs - 1) {
+					num_systems++;
 					double std_error = 0;
 					double avg_time = 0;
 					for (uint32_t t = 0; t < num_runs; t++) {
@@ -118,7 +117,7 @@ const int num_runs = 3;
 		}
 	}
 	free(inputC);
-	benchmark_result[0] /= (num_systems/num_runs - 1);
+	benchmark_result[0] /= (num_systems);
 	if (file_output)
 		fprintf(output, "Benchmark score rocFFT: %d\n", (int)(benchmark_result[0]));
 	printf("Benchmark score rocFFT: %d\n", (int)(benchmark_result[0]));
