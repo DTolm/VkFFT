@@ -63,7 +63,7 @@ void launch_benchmark_rocFFT_single_2_4096(bool file_output, FILE* output)
 			switch (1) {
 			case 1:
 				hipfftPlan1d(&planC2C, dims[0], HIPFFT_C2C, dims[1]);
-				hipfftGetSize1d(planC2C, dims[0], HIPFFT_C2C, dims[1], &sizeROCM);
+				hipfftGetSize1d(planC2C, dims[0], HIPFFT_C2C, dims[1], (size_t*)&sizeROCM);
 				break;
 			case 2:
 				hipfftPlan2d(&planC2C, dims[1], dims[0], HIPFFT_C2C);
@@ -78,14 +78,14 @@ void launch_benchmark_rocFFT_single_2_4096(bool file_output, FILE* output)
 			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / rocBufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / rocBufferSize;
 			if (num_iter == 0) num_iter = 1;
 
-			auto timeSubmit = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 			for (int i = 0; i < num_iter; i++) {
 
 				hipfftExecC2C(planC2C, dataC, dataC, -1);
 				hipfftExecC2C(planC2C, dataC, dataC, 1);
 			}
 			hipDeviceSynchronize();
-			auto timeEnd = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 			totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001) / num_iter;
 			run_time[r][0] = totTime;
 			if (n > 1) {

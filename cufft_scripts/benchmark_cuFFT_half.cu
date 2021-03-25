@@ -80,7 +80,7 @@ void launch_benchmark_cuFFT_half(bool file_output, FILE* output)
 			uint64_t cuBufferSize = sizeof(half) * 2 * dims[0] * dims[1] * dims[2];
 			uint64_t num_iter = ((4096 * 1024.0 * 1024.0) / cuBufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / cuBufferSize ;
 			if (num_iter == 0) num_iter = 1;
-			auto timeSubmit = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 			for (int i = 0; i < num_iter; i++) {
 
 				res=cufftXtExec(planHalf, dataC_in, dataC_out, CUFFT_FORWARD);
@@ -89,7 +89,7 @@ void launch_benchmark_cuFFT_half(bool file_output, FILE* output)
 				//assert(res == CUFFT_SUCCESS);
 			}
 			cudaDeviceSynchronize();
-			auto timeEnd = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 			totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001) / num_iter;
 			run_time[r][0] = totTime;
 			if (n > 0) {

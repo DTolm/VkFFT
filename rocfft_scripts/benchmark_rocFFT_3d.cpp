@@ -67,14 +67,14 @@ void launch_benchmark_rocFFT_single_3d(bool file_output, FILE* output)
 			uint32_t rocBufferSize = sizeof(float) * 2 * dims[0] * dims[1] * dims[2];
 			uint32_t batch = ((4096 * 1024.0 * 1024.0) / rocBufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / rocBufferSize;
 			if (batch == 0) batch = 1;
-			auto timeSubmit = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 			for (int i = 0; i < batch; i++) {
 
 				hipfftExecC2C(planC2C, dataC, dataC, -1);
 				hipfftExecC2C(planC2C, dataC, dataC, 1);
 			}
 			hipDeviceSynchronize();
-			auto timeEnd = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 			totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001) / batch;
 			run_time[r][0] = totTime;
 			if (n > 0) {

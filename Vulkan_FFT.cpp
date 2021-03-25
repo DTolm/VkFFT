@@ -32,10 +32,12 @@
 #include "benchmark_cuFFT_half.h"
 #include "benchmark_cuFFT_3d.h"
 #include "benchmark_cuFFT_3d_2_512.h"
+#ifdef USE_FFTW
 #include "precision_cuFFT.h"
 #include "precision_cuFFT_r2c.h"
 #include "precision_cuFFT_double.h"
 #include "precision_cuFFT_half.h"
+#endif
 #endif  
 #ifdef USE_rocFFT
 #include "benchmark_rocFFT.h"
@@ -45,9 +47,11 @@
 #include "benchmark_rocFFT_double_2_4096.h"
 #include "benchmark_rocFFT_3d.h"
 #include "benchmark_rocFFT_3d_2_512.h"
+#ifdef USE_FFTW
 #include "precision_rocFFT.h"
 #include "precision_rocFFT_r2c.h"
 #include "precision_rocFFT_double.h"
+#endif
 #endif 
 #ifdef USE_FFTW
 #include "fftw3.h"
@@ -381,7 +385,7 @@ VkResult createCommandPool(VkGPU* vkGPU) {
 	return res;
 }
 
-VkResult findMemoryType(VkGPU* vkGPU, uint32_t memoryTypeBits, uint32_t memorySize, VkMemoryPropertyFlags properties, uint32_t* memoryTypeIndex) {
+VkFFTResult findMemoryType(VkGPU* vkGPU, uint32_t memoryTypeBits, uint32_t memorySize, VkMemoryPropertyFlags properties, uint32_t* memoryTypeIndex) {
 	VkPhysicalDeviceMemoryProperties memoryProperties = { 0 };
 
 	vkGetPhysicalDeviceMemoryProperties(vkGPU->physicalDevice, &memoryProperties);
@@ -390,14 +394,15 @@ VkResult findMemoryType(VkGPU* vkGPU, uint32_t memoryTypeBits, uint32_t memorySi
 		if ((memoryTypeBits & (1 << i)) && ((memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) && (memoryProperties.memoryHeaps[memoryProperties.memoryTypes[i].heapIndex].size >= memorySize))
 		{
 			memoryTypeIndex[0] = i;
-			return VK_SUCCESS;
+			return VKFFT_SUCCESS;
 		}
 	}
-	return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+	return VKFFT_ERROR_FAILED_TO_FIND_MEMORY;
 }
 
-VkResult allocateFFTBuffer(VkGPU* vkGPU, VkBuffer* buffer, VkDeviceMemory* deviceMemory, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags propertyFlags, uint64_t size) {
+VkFFTResult allocateBuffer(VkGPU* vkGPU, VkBuffer* buffer, VkDeviceMemory* deviceMemory, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags propertyFlags, uint64_t size) {
 	//allocate the buffer used by the GPU with specified properties
+	VkFFTResult resFFT = VKFFT_SUCCESS;
 	VkResult res = VK_SUCCESS;
 	uint32_t queueFamilyIndices;
 	VkBufferCreateInfo bufferCreateInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
@@ -407,30 +412,31 @@ VkResult allocateFFTBuffer(VkGPU* vkGPU, VkBuffer* buffer, VkDeviceMemory* devic
 	bufferCreateInfo.size = size;
 	bufferCreateInfo.usage = usageFlags;
 	res = vkCreateBuffer(vkGPU->device, &bufferCreateInfo, NULL, buffer);
-	if (res != VK_SUCCESS) return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_BUFFER;
 	VkMemoryRequirements memoryRequirements = { 0 };
 	vkGetBufferMemoryRequirements(vkGPU->device, buffer[0], &memoryRequirements);
 	VkMemoryAllocateInfo memoryAllocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
 	memoryAllocateInfo.allocationSize = memoryRequirements.size;
-	res = findMemoryType(vkGPU, memoryRequirements.memoryTypeBits, memoryRequirements.size, propertyFlags, &memoryAllocateInfo.memoryTypeIndex);
-	if (res != VK_SUCCESS) return res;
+	resFFT = findMemoryType(vkGPU, memoryRequirements.memoryTypeBits, memoryRequirements.size, propertyFlags, &memoryAllocateInfo.memoryTypeIndex);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	res = vkAllocateMemory(vkGPU->device, &memoryAllocateInfo, NULL, deviceMemory);
-	if (res != VK_SUCCESS) return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE_MEMORY;
 	res = vkBindBufferMemory(vkGPU->device, buffer[0], deviceMemory[0], 0);
-	if (res != VK_SUCCESS) return res;
-	return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_BIND_BUFFER_MEMORY;
+	return resFFT;
 }
-VkResult transferDataFromCPU(VkGPU* vkGPU, void* arr, VkBuffer* buffer, uint64_t bufferSize) {
+VkFFTResult transferDataFromCPU(VkGPU* vkGPU, void* arr, VkBuffer* buffer, uint64_t bufferSize) {
 	//a function that transfers data from the CPU to the GPU using staging buffer, because the GPU memory is not host-coherent
+	VkFFTResult resFFT = VKFFT_SUCCESS;
 	VkResult res = VK_SUCCESS;
 	uint64_t stagingBufferSize = bufferSize;
 	VkBuffer stagingBuffer = { 0 };
 	VkDeviceMemory stagingBufferMemory = { 0 };
-	res = allocateFFTBuffer(vkGPU, &stagingBuffer, &stagingBufferMemory, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBufferSize);
-	if (res != VK_SUCCESS) return res;
+	resFFT = allocateBuffer(vkGPU, &stagingBuffer, &stagingBufferMemory, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	void* data;
 	res = vkMapMemory(vkGPU->device, stagingBufferMemory, 0, stagingBufferSize, 0, &data);
-	if (res != VK_SUCCESS) return res;
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	memcpy(data, arr, stagingBufferSize);
 	vkUnmapMemory(vkGPU->device, stagingBufferMemory);
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
@@ -439,172 +445,219 @@ VkResult transferDataFromCPU(VkGPU* vkGPU, void* arr, VkBuffer* buffer, uint64_t
 	commandBufferAllocateInfo.commandBufferCount = 1;
 	VkCommandBuffer commandBuffer = { 0 };
 	res = vkAllocateCommandBuffers(vkGPU->device, &commandBufferAllocateInfo, &commandBuffer);
-	if (res != VK_SUCCESS) return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
 	VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-	if (res != VK_SUCCESS) return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
 	VkBufferCopy copyRegion = { 0 };
 	copyRegion.srcOffset = 0;
 	copyRegion.dstOffset = 0;
 	copyRegion.size = stagingBufferSize;
 	vkCmdCopyBuffer(commandBuffer, stagingBuffer, buffer[0], 1, &copyRegion);
 	res = vkEndCommandBuffer(commandBuffer);
-	if (res != VK_SUCCESS) return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
 	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &commandBuffer;
 	res = vkQueueSubmit(vkGPU->queue, 1, &submitInfo, vkGPU->fence);
-	if (res != VK_SUCCESS) return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
 	res = vkWaitForFences(vkGPU->device, 1, &vkGPU->fence, VK_TRUE, 100000000000);
-	if (res != VK_SUCCESS) return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
 	res = vkResetFences(vkGPU->device, 1, &vkGPU->fence);
-	if (res != VK_SUCCESS) return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
 	vkFreeCommandBuffers(vkGPU->device, vkGPU->commandPool, 1, &commandBuffer);
 	vkDestroyBuffer(vkGPU->device, stagingBuffer, NULL);
 	vkFreeMemory(vkGPU->device, stagingBufferMemory, NULL);
-	return res;
+	return resFFT;
 }
-VkResult transferDataToCPU(VkGPU* vkGPU, void* arr, VkBuffer* buffer, uint64_t bufferSize) {
+VkFFTResult transferDataToCPU(VkGPU* vkGPU, void* arr, VkBuffer* buffer, uint64_t bufferSize) {
 	//a function that transfers data from the GPU to the CPU using staging buffer, because the GPU memory is not host-coherent
+	VkFFTResult resFFT = VKFFT_SUCCESS;
 	VkResult res = VK_SUCCESS;
 	uint64_t stagingBufferSize = bufferSize;
 	VkBuffer stagingBuffer = { 0 };
 	VkDeviceMemory stagingBufferMemory = { 0 };
-	res = allocateFFTBuffer(vkGPU, &stagingBuffer, &stagingBufferMemory, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBufferSize);
-	if (res != VK_SUCCESS) return res;
+	resFFT = allocateBuffer(vkGPU, &stagingBuffer, &stagingBufferMemory, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	commandBufferAllocateInfo.commandPool = vkGPU->commandPool;
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	commandBufferAllocateInfo.commandBufferCount = 1;
 	VkCommandBuffer commandBuffer = { 0 };
 	res = vkAllocateCommandBuffers(vkGPU->device, &commandBufferAllocateInfo, &commandBuffer);
-	if (res != VK_SUCCESS) return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
 	VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-	if (res != VK_SUCCESS) return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
 	VkBufferCopy copyRegion = { 0 };
 	copyRegion.srcOffset = 0;
 	copyRegion.dstOffset = 0;
 	copyRegion.size = stagingBufferSize;
 	vkCmdCopyBuffer(commandBuffer, buffer[0], stagingBuffer, 1, &copyRegion);
-	vkEndCommandBuffer(commandBuffer);
+	res = vkEndCommandBuffer(commandBuffer);
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
 	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &commandBuffer;
 	res = vkQueueSubmit(vkGPU->queue, 1, &submitInfo, vkGPU->fence);
-	if (res != VK_SUCCESS) return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
 	res = vkWaitForFences(vkGPU->device, 1, &vkGPU->fence, VK_TRUE, 100000000000);
-	if (res != VK_SUCCESS) return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
 	res = vkResetFences(vkGPU->device, 1, &vkGPU->fence);
-	if (res != VK_SUCCESS) return res;
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
 	vkFreeCommandBuffers(vkGPU->device, vkGPU->commandPool, 1, &commandBuffer);
 	void* data;
 	res = vkMapMemory(vkGPU->device, stagingBufferMemory, 0, stagingBufferSize, 0, &data);
-	if (res != VK_SUCCESS) return res;
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	memcpy(arr, data, stagingBufferSize);
 	vkUnmapMemory(vkGPU->device, stagingBufferMemory);
 	vkDestroyBuffer(vkGPU->device, stagingBuffer, NULL);
 	vkFreeMemory(vkGPU->device, stagingBufferMemory, NULL);
-	return res;
+	return resFFT;
 }
 #endif
-void performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, int inverse, uint32_t num_iter) {
+VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, int inverse, uint32_t num_iter) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	commandBufferAllocateInfo.commandPool = vkGPU->commandPool;
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	commandBufferAllocateInfo.commandBufferCount = 1;
 	VkCommandBuffer commandBuffer = {};
-	vkAllocateCommandBuffers(vkGPU->device, &commandBufferAllocateInfo, &commandBuffer);
+	res = vkAllocateCommandBuffers(vkGPU->device, &commandBufferAllocateInfo, &commandBuffer);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
 	VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
+	res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
 	//Record commands num_iter times. Allows to perform multiple convolutions/transforms in one submit.
 	for (uint32_t i = 0; i < num_iter; i++) {
-		VkFFTAppend(app, inverse, &commandBuffer);
+		resFFT = VkFFTAppend(app, inverse, &commandBuffer);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
 	}
-	vkEndCommandBuffer(commandBuffer);
+	res = vkEndCommandBuffer(commandBuffer);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
 	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &commandBuffer;
-	auto timeSubmit = std::chrono::system_clock::now();
-	vkQueueSubmit(vkGPU->queue, 1, &submitInfo, vkGPU->fence);
-	vkWaitForFences(vkGPU->device, 1, &vkGPU->fence, VK_TRUE, 100000000000);
-	auto timeEnd = std::chrono::system_clock::now();
-	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
+	res = vkQueueSubmit(vkGPU->queue, 1, &submitInfo, vkGPU->fence);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+	res = vkWaitForFences(vkGPU->device, 1, &vkGPU->fence, VK_TRUE, 100000000000);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
+	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 	//printf("Pure submit execution time per num_iter: %.3f ms\n", totTime / num_iter);
-	vkResetFences(vkGPU->device, 1, &vkGPU->fence);
+	res = vkResetFences(vkGPU->device, 1, &vkGPU->fence);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
 	vkFreeCommandBuffers(vkGPU->device, vkGPU->commandPool, 1, &commandBuffer);
 #elif(VKFFT_BACKEND==1)
-
-	auto timeSubmit = std::chrono::system_clock::now();
+	cudaError_t res = cudaSuccess;
+	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 	for (uint32_t i = 0; i < num_iter; i++) {
-		VkFFTAppend(app, inverse, NULL);
+		resFFT = VkFFTAppend(app, inverse, NULL);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
 	}
-	cudaDeviceSynchronize();
-	auto timeEnd = std::chrono::system_clock::now();
-	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	res = cudaDeviceSynchronize();
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
+	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 #elif(VKFFT_BACKEND==2)
-	auto timeSubmit = std::chrono::system_clock::now();
+	hipError_t res = hipSuccess;
+	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 	for (uint32_t i = 0; i < num_iter; i++) {
-		VkFFTAppend(app, inverse, NULL);
+		resFFT = VkFFTAppend(app, inverse, NULL);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
 	}
-	hipDeviceSynchronize();
-	auto timeEnd = std::chrono::system_clock::now();
-	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	res = hipDeviceSynchronize();
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
+	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 #endif
+	return resFFT;
 }
-float performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, uint32_t num_iter) {
+VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, uint32_t num_iter, float* time_result) {
 #if(VKFFT_BACKEND==0)
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+	VkResult res = VK_SUCCESS;
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	commandBufferAllocateInfo.commandPool = vkGPU->commandPool;
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	commandBufferAllocateInfo.commandBufferCount = 1;
 	VkCommandBuffer commandBuffer = {};
-	vkAllocateCommandBuffers(vkGPU->device, &commandBufferAllocateInfo, &commandBuffer);
+	res = vkAllocateCommandBuffers(vkGPU->device, &commandBufferAllocateInfo, &commandBuffer);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
 	VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
+	res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
 	for (uint32_t i = 0; i < num_iter; i++) {
-		VkFFTAppend(app, -1, &commandBuffer);
-		VkFFTAppend(app, 1, &commandBuffer);
+		resFFT = VkFFTAppend(app, -1, &commandBuffer);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		resFFT = VkFFTAppend(app, 1, &commandBuffer);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
 	}
-	vkEndCommandBuffer(commandBuffer);
+	res = vkEndCommandBuffer(commandBuffer);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
 	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &commandBuffer;
-	auto timeSubmit = std::chrono::high_resolution_clock::now();
-	vkQueueSubmit(vkGPU->queue, 1, &submitInfo, vkGPU->fence);
-	vkWaitForFences(vkGPU->device, 1, &vkGPU->fence, VK_TRUE, 100000000000);
-	auto timeEnd = std::chrono::high_resolution_clock::now();
+	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
+	res = vkQueueSubmit(vkGPU->queue, 1, &submitInfo, vkGPU->fence);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+	res = vkWaitForFences(vkGPU->device, 1, &vkGPU->fence, VK_TRUE, 100000000000);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
-	vkResetFences(vkGPU->device, 1, &vkGPU->fence);
+	time_result[0] = totTime / num_iter;
+	res = vkResetFences(vkGPU->device, 1, &vkGPU->fence);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
 	vkFreeCommandBuffers(vkGPU->device, vkGPU->commandPool, 1, &commandBuffer);
 #elif(VKFFT_BACKEND==1)
-	auto timeSubmit = std::chrono::system_clock::now();
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+	cudaError_t res = cudaSuccess;
+	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 	for (uint32_t i = 0; i < num_iter; i++) {
-		VkFFTAppend(app, -1, NULL);
-		VkFFTAppend(app, 1, NULL);
+		resFFT = VkFFTAppend(app, -1, NULL);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		resFFT = VkFFTAppend(app, 1, NULL);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
 	}
-	cudaDeviceSynchronize();
-	auto timeEnd = std::chrono::system_clock::now();
-	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	res = cudaDeviceSynchronize();
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
+	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	time_result[0] = totTime / num_iter;
 #elif(VKFFT_BACKEND==2)
-	auto timeSubmit = std::chrono::system_clock::now();
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+	hipError_t res = hipSuccess;
+	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 	for (uint32_t i = 0; i < num_iter; i++) {
-		VkFFTAppend(app, -1, NULL);
-		VkFFTAppend(app, 1, NULL);
+		resFFT = VkFFTAppend(app, -1, NULL);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		resFFT = VkFFTAppend(app, 1, NULL);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
 	}
-	hipDeviceSynchronize();
-	auto timeEnd = std::chrono::system_clock::now();
-	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	res = hipDeviceSynchronize();
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
+	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	time_result[0] = totTime / num_iter;
 #endif
-	return totTime / num_iter;
+	return resFFT;
 }
-uint32_t sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "0 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision\n");
 	printf("0 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision\n");
@@ -644,15 +697,18 @@ uint32_t sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};
-			allocateFFTBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			configuration.buffer = &buffer;
 #elif(VKFFT_BACKEND==1)
 			cuFloatComplex* buffer = 0;
-			cudaMalloc((void**)&buffer, bufferSize);
+			res = cudaMalloc((void**)&buffer, bufferSize);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
-			hipMalloc((void**)&buffer, bufferSize);
+			res = hipMalloc((void**)&buffer, bufferSize);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #endif
 
@@ -673,16 +729,19 @@ uint32_t sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			*/
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 #if(VKFFT_BACKEND==0)
-			transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			resFFT = transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-			cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			res = cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-			hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
 			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
@@ -690,8 +749,9 @@ uint32_t sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
-			float totTime = performVulkanFFTiFFT(vkGPU, &app, num_iter);
-
+			float totTime = 0;
+			resFFT = performVulkanFFTiFFT(vkGPU, &app, num_iter, &totTime);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			run_time[r] = totTime;
 			if (n > 0) {
 				if (r == num_runs - 1) {
@@ -745,10 +805,17 @@ uint32_t sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
-	return res;
+	return resFFT;
 }
-uint32_t sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "1 - VkFFT FFT + iFFT C2C benchmark 1D batched in double precision LUT\n");
 	printf("1 - VkFFT FFT + iFFT C2C benchmark 1D batched in double precision LUT\n");
@@ -792,15 +859,18 @@ uint32_t sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};
-			allocateFFTBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			configuration.buffer = &buffer;
 #elif(VKFFT_BACKEND==1)
 			cuFloatComplex* buffer = 0;
-			cudaMalloc((void**)&buffer, bufferSize);
+			res = cudaMalloc((void**)&buffer, bufferSize);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
-			hipMalloc((void**)&buffer, bufferSize);
+			res = hipMalloc((void**)&buffer, bufferSize);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #endif
 
@@ -819,17 +889,20 @@ uint32_t sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			*/
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 #if(VKFFT_BACKEND==0)
-			transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			resFFT = transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-			cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			res = cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-			hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//free(buffer_input);
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
 			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
@@ -837,9 +910,9 @@ uint32_t sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #endif
 			if (num_iter == 0) num_iter = 1;
-
-			float totTime = performVulkanFFTiFFT(vkGPU, &app, num_iter);
-
+			float totTime = 0;
+			resFFT = performVulkanFFTiFFT(vkGPU, &app, num_iter, &totTime);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			run_time[r] = totTime;
 			if (n > 0) {
 				if (r == num_runs - 1) {
@@ -891,11 +964,18 @@ uint32_t sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
-	return res;
+	return resFFT;
 }
 #if (VK_API_VERSION>10)
-uint32_t sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "2 - VkFFT FFT + iFFT C2C benchmark 1D batched in half precision\n");
 	printf("2 - VkFFT FFT + iFFT C2C benchmark 1D batched in half precision\n");
@@ -947,15 +1027,18 @@ uint32_t sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};
-			allocateFFTBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			configuration.buffer = &buffer;
 #elif(VKFFT_BACKEND==1)
 			cuFloatComplex* buffer = 0;
-			cudaMalloc((void**)&buffer, bufferSize);
+			res = cudaMalloc((void**)&buffer, bufferSize);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
-			hipMalloc((void**)&buffer, bufferSize);
+			res = hipMalloc((void**)&buffer, bufferSize);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #endif
 
@@ -974,17 +1057,20 @@ uint32_t sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			*/
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 #if(VKFFT_BACKEND==0)
-			transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			resFFT = transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-			cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			res = cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-			hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//free(buffer_input);
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
 			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
@@ -992,8 +1078,9 @@ uint32_t sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #endif
 			if (num_iter == 0) num_iter = 1;
-			float totTime = performVulkanFFTiFFT(vkGPU, &app, num_iter);
-
+			float totTime = 0;
+			resFFT = performVulkanFFTiFFT(vkGPU, &app, num_iter, &totTime);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			run_time[r] = totTime;
 			if (n > 0) {
 				if (r == num_runs - 1) {
@@ -1045,11 +1132,18 @@ uint32_t sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
-	return res;
+	return resFFT;
 }
 #endif
-uint32_t sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "3 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
 	printf("3 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
@@ -1098,15 +1192,18 @@ uint32_t sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};
-			allocateFFTBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			configuration.buffer = &buffer;
 #elif(VKFFT_BACKEND==1)
 			cuFloatComplex* buffer = 0;
-			cudaMalloc((void**)&buffer, bufferSize);
+			res = cudaMalloc((void**)&buffer, bufferSize);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
-			hipMalloc((void**)&buffer, bufferSize);
+			res = hipMalloc((void**)&buffer, bufferSize);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #endif
 
@@ -1125,17 +1222,20 @@ uint32_t sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			*/
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 #if(VKFFT_BACKEND==0)
-			transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			resFFT = transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-			cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			res = cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-			hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//free(buffer_input);
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
 			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
@@ -1143,9 +1243,9 @@ uint32_t sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #endif
 			if (num_iter == 0) num_iter = 1;
-
-			float totTime = performVulkanFFTiFFT(vkGPU, &app, num_iter);
-
+			float totTime = 0;
+			resFFT = performVulkanFFTiFFT(vkGPU, &app, num_iter, &totTime);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			run_time[r] = totTime;
 			if (n > 0) {
 				if (r == num_runs - 1) {
@@ -1198,10 +1298,17 @@ uint32_t sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
-	return res;
+	return resFFT;
 }
-uint32_t sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "4 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
 	printf("4 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
@@ -1261,15 +1368,18 @@ uint32_t sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};
-			allocateFFTBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			configuration.buffer = &buffer;
 #elif(VKFFT_BACKEND==1)
 			cuFloatComplex* buffer = 0;
-			cudaMalloc((void**)&buffer, bufferSize);
+			res = cudaMalloc((void**)&buffer, bufferSize);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
-			hipMalloc((void**)&buffer, bufferSize);
+			res = hipMalloc((void**)&buffer, bufferSize);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #endif
 
@@ -1288,17 +1398,20 @@ uint32_t sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			*/
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 #if(VKFFT_BACKEND==0)
-			transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			resFFT = transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-			cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			res = cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-			hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//free(buffer_input);
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
 			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
@@ -1306,9 +1419,9 @@ uint32_t sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #endif
 			if (num_iter == 0) num_iter = 1;
-
-			float totTime = performVulkanFFTiFFT(vkGPU, &app, num_iter);
-
+			float totTime = 0;
+			resFFT = performVulkanFFTiFFT(vkGPU, &app, num_iter, &totTime);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			run_time[r] = totTime;
 			if (n > 0) {
 				if (r == num_runs - 1) {
@@ -1360,10 +1473,17 @@ uint32_t sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
-	return res;
+	return resFFT;
 }
-uint32_t sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "5 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n");
 	printf("5 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n");
@@ -1406,15 +1526,18 @@ uint32_t sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};
-			allocateFFTBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			configuration.buffer = &buffer;
 #elif(VKFFT_BACKEND==1)
 			cuFloatComplex* buffer = 0;
-			cudaMalloc((void**)&buffer, bufferSize);
+			res = cudaMalloc((void**)&buffer, bufferSize);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
-			hipMalloc((void**)&buffer, bufferSize);
+			res = hipMalloc((void**)&buffer, bufferSize);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #endif
 
@@ -1435,17 +1558,20 @@ uint32_t sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			*/
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 #if(VKFFT_BACKEND==0)
-			transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			resFFT = transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-			cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			res = cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-			hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//free(buffer_input);
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
 			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
@@ -1453,8 +1579,9 @@ uint32_t sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #endif
 			if (num_iter == 0) num_iter = 1;
-			float totTime = performVulkanFFTiFFT(vkGPU, &app, num_iter);
-
+			float totTime = 0;
+			resFFT = performVulkanFFTiFFT(vkGPU, &app, num_iter, &totTime);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			run_time[r] = totTime;
 			if (n > 0) {
 				if (r == num_runs - 1) {
@@ -1507,10 +1634,17 @@ uint32_t sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
-	return res;
+	return resFFT;
 }
-uint32_t sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "6 - VkFFT FFT + iFFT R2C/C2R benchmark\n");
 	printf("6 - VkFFT FFT + iFFT R2C/C2R benchmark\n");
@@ -1556,15 +1690,18 @@ uint32_t sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};
-			allocateFFTBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			configuration.buffer = &buffer;
 #elif(VKFFT_BACKEND==1)
 			cuFloatComplex* buffer = 0;
-			cudaMalloc((void**)&buffer, bufferSize);
+			res = cudaMalloc((void**)&buffer, bufferSize);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
-			hipMalloc((void**)&buffer, bufferSize);
+			res = hipMalloc((void**)&buffer, bufferSize);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #endif
 
@@ -1582,15 +1719,18 @@ uint32_t sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			*/
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 #if(VKFFT_BACKEND==0)
-			transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			resFFT = transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-			cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			res = cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-			hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
 			uint32_t num_iter = ((4096.0 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096.0 * 1024.0 * 1024.0) / bufferSize;
@@ -1600,7 +1740,9 @@ uint32_t sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 			if (num_iter == 0) num_iter = 1;
 
 			//num_iter *= 5; //makes result more smooth, takes longer time
-			float totTime = performVulkanFFTiFFT(vkGPU, &app, num_iter);
+			float totTime = 0;
+			resFFT = performVulkanFFTiFFT(vkGPU, &app, num_iter, &totTime);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			//float* buffer_output = (float*)malloc(bufferSize);
 			run_time[r] = totTime;
 			if (n > 0) {
@@ -1666,10 +1808,17 @@ uint32_t sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
-	return res;
+	return resFFT;
 }
-uint32_t sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "7 - VkFFT convolution example with identitiy kernel\n");
 	printf("7 - VkFFT convolution example with identitiy kernel\n");
@@ -1709,15 +1858,18 @@ uint32_t sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 	VkBuffer kernel = {};
 	VkDeviceMemory kernelDeviceMemory = {};
-	allocateFFTBuffer(vkGPU, &kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
+	resFFT = allocateBuffer(vkGPU, &kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	configuration.buffer = &kernel;
 #elif(VKFFT_BACKEND==1)
 	cuFloatComplex* kernel = 0;
-	cudaMalloc((void**)&kernel, kernelSize);
+	res = cudaMalloc((void**)&kernel, kernelSize);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = (void**)&kernel;
 #elif(VKFFT_BACKEND==2)
 	hipFloatComplex* kernel = 0;
-	hipMalloc((void**)&kernel, kernelSize);
+	res = hipMalloc((void**)&kernel, kernelSize);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = (void**)&kernel;
 #endif
 
@@ -1751,16 +1903,19 @@ uint32_t sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 	}
 	//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 #if(VKFFT_BACKEND==0)
-	transferDataFromCPU(vkGPU, kernel_input, &kernel, kernelSize);
+	resFFT = transferDataFromCPU(vkGPU, kernel_input, &kernel, kernelSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-	cudaMemcpy(kernel, kernel_input, kernelSize, cudaMemcpyHostToDevice);
+	res = cudaMemcpy(kernel, kernel_input, kernelSize, cudaMemcpyHostToDevice);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-	hipMemcpy(kernel, kernel_input, kernelSize, hipMemcpyHostToDevice);
+	res = hipMemcpy(kernel, kernel_input, kernelSize, hipMemcpyHostToDevice);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 	//Initialize application responsible for the kernel. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-	res = initializeVkFFT(&app_kernel, configuration);
-	if (res != 0) return res;
+	resFFT = initializeVkFFT(&app_kernel, configuration);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	//Sample forward FFT command buffer allocation + execution performed on kernel. Second number determines how many times perform application in one submit. FFT can also be appended to user defined command buffers.
 
 	//Uncomment the line below if you want to perform kernel FFT. In this sample we use predefined identitiy kernel.
@@ -1791,15 +1946,18 @@ uint32_t sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 	VkBuffer buffer = {};
 	VkDeviceMemory bufferDeviceMemory = {};
-	allocateFFTBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+	resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	convolution_configuration.buffer = &buffer;
 #elif(VKFFT_BACKEND==1)
 	cuFloatComplex* buffer = 0;
-	cudaMalloc((void**)&buffer, bufferSize);
+	res = cudaMalloc((void**)&buffer, bufferSize);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	convolution_configuration.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 	hipFloatComplex* buffer = 0;
-	hipMalloc((void**)&buffer, bufferSize);
+	res = hipMalloc((void**)&buffer, bufferSize);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	convolution_configuration.buffer = (void**)&buffer;
 #endif
 
@@ -1824,28 +1982,35 @@ uint32_t sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 	}
 	//Transfer data to GPU using staging buffer.
 #if(VKFFT_BACKEND==0)
-	transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+	resFFT = transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-	cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+	res = cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-	hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+	res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 	//Initialize application responsible for the convolution.
-	res = initializeVkFFT(&app_convolution, convolution_configuration);
-	if (res != 0) return res;
+	resFFT = initializeVkFFT(&app_convolution, convolution_configuration);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	//Sample forward FFT command buffer allocation + execution performed on kernel. FFT can also be appended to user defined command buffers.
-	performVulkanFFT(vkGPU, &app_convolution, -1, 1);
+	resFFT = performVulkanFFT(vkGPU, &app_convolution, -1, 1);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	//The kernel has been trasnformed.
 
 	float* buffer_output = (float*)malloc(bufferSize);
 	//Transfer data from GPU using staging buffer.
 #if(VKFFT_BACKEND==0)
-	transferDataToCPU(vkGPU, buffer_output, &buffer, bufferSize);
+	resFFT = transferDataToCPU(vkGPU, buffer_output, &buffer, bufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-	cudaMemcpy(buffer_output, buffer, bufferSize, cudaMemcpyDeviceToHost);
+	res = cudaMemcpy(buffer_output, buffer, bufferSize, cudaMemcpyDeviceToHost);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-	hipMemcpy(buffer_output, buffer, bufferSize, hipMemcpyDeviceToHost);
+	res = hipMemcpy(buffer_output, buffer, bufferSize, hipMemcpyDeviceToHost);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 	//Print data, if needed.
 	for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
@@ -1880,10 +2045,17 @@ uint32_t sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #endif	
 	deleteVkFFT(&app_kernel);
 	deleteVkFFT(&app_convolution);
-	return res;
+	return resFFT;
 }
-uint32_t sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "8 - VkFFT zeropadding convolution example with identitiy kernel\n");
 	printf("8 - VkFFT zeropadding convolution example with identitiy kernel\n");
@@ -1932,15 +2104,18 @@ uint32_t sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 	VkBuffer kernel = {};
 	VkDeviceMemory kernelDeviceMemory = {};
-	allocateFFTBuffer(vkGPU, &kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
+	resFFT = allocateBuffer(vkGPU, &kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	configuration.buffer = &kernel;
 #elif(VKFFT_BACKEND==1)
 	cuFloatComplex* kernel = 0;
-	cudaMalloc((void**)&kernel, kernelSize);
+	res = cudaMalloc((void**)&kernel, kernelSize);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = (void**)&kernel;
 #elif(VKFFT_BACKEND==2)
 	hipFloatComplex* kernel = 0;
-	hipMalloc((void**)&kernel, kernelSize);
+	res = hipMalloc((void**)&kernel, kernelSize);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = (void**)&kernel;
 #endif
 
@@ -1975,15 +2150,18 @@ uint32_t sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 	}
 	//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 #if(VKFFT_BACKEND==0)
-	transferDataFromCPU(vkGPU, kernel_input, &kernel, kernelSize);
+	resFFT = transferDataFromCPU(vkGPU, kernel_input, &kernel, kernelSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-	cudaMemcpy(kernel, kernel_input, kernelSize, cudaMemcpyHostToDevice);
+	res = cudaMemcpy(kernel, kernel_input, kernelSize, cudaMemcpyHostToDevice);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-	hipMemcpy(kernel, kernel_input, kernelSize, hipMemcpyHostToDevice);
+	res = hipMemcpy(kernel, kernel_input, kernelSize, hipMemcpyHostToDevice);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 	//Initialize application responsible for the kernel. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-	res = initializeVkFFT(&app_kernel, configuration);
-	if (res != 0) return res;
+	resFFT = initializeVkFFT(&app_kernel, configuration);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	//Sample forward FFT command buffer allocation + execution performed on kernel. Second number determines how many times perform application in one submit. FFT can also be appended to user defined command buffers.
 
 	//Uncomment the line below if you want to perform kernel FFT. In this sample we use predefined identitiy kernel.
@@ -2015,15 +2193,18 @@ uint32_t sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 	VkBuffer buffer = {};
 	VkDeviceMemory bufferDeviceMemory = {};
-	allocateFFTBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+	resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	convolution_configuration.buffer = &buffer;
 #elif(VKFFT_BACKEND==1)
 	cuFloatComplex* buffer = 0;
-	cudaMalloc((void**)&buffer, bufferSize);
+	res = cudaMalloc((void**)&buffer, bufferSize);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	convolution_configuration.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 	hipFloatComplex* buffer = 0;
-	hipMalloc((void**)&buffer, bufferSize);
+	res = hipMalloc((void**)&buffer, bufferSize);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	convolution_configuration.buffer = (void**)&buffer;
 #endif
 
@@ -2047,27 +2228,34 @@ uint32_t sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 	}
 	//Transfer data to GPU using staging buffer.
 #if(VKFFT_BACKEND==0)
-	transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+	resFFT = transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-	cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+	res = cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-	hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+	res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 	//Initialize application responsible for the convolution.
-	res = initializeVkFFT(&app_convolution, convolution_configuration);
-	if (res != 0) return res;
+	resFFT = initializeVkFFT(&app_convolution, convolution_configuration);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	//Sample forward FFT command buffer allocation + execution performed on kernel. FFT can also be appended to user defined command buffers.
-	performVulkanFFT(vkGPU, &app_convolution, -1, 1);
+	resFFT = performVulkanFFT(vkGPU, &app_convolution, -1, 1);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	//The kernel has been trasnformed.
 
 	float* buffer_output = (float*)malloc(bufferSize);
 	//Transfer data from GPU using staging buffer.
 #if(VKFFT_BACKEND==0)
-	transferDataToCPU(vkGPU, buffer_output, &buffer, bufferSize);
+	resFFT = transferDataToCPU(vkGPU, buffer_output, &buffer, bufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-	cudaMemcpy(buffer_output, buffer, bufferSize, cudaMemcpyDeviceToHost);
+	res = cudaMemcpy(buffer_output, buffer, bufferSize, cudaMemcpyDeviceToHost);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-	hipMemcpy(buffer_output, buffer, bufferSize, hipMemcpyDeviceToHost);
+	res = hipMemcpy(buffer_output, buffer, bufferSize, hipMemcpyDeviceToHost);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 	//Print data, if needed.
@@ -2103,10 +2291,17 @@ uint32_t sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #endif	
 	deleteVkFFT(&app_kernel);
 	deleteVkFFT(&app_convolution);
-	return res;
+	return resFFT;
 }
-uint32_t sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "9 - VkFFT batched convolution example with identitiy kernel\n");
 	printf("9 - VkFFT batched convolution example with identitiy kernel\n");
@@ -2147,15 +2342,18 @@ uint32_t sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #if(VKFFT_BACKEND==0)
 	VkBuffer kernel = {};
 	VkDeviceMemory kernelDeviceMemory = {};
-	allocateFFTBuffer(vkGPU, &kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
+	resFFT = allocateBuffer(vkGPU, &kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	configuration.buffer = &kernel;
 #elif(VKFFT_BACKEND==1)
 	cuFloatComplex* kernel = 0;
-	cudaMalloc((void**)&kernel, kernelSize);
+	res = cudaMalloc((void**)&kernel, kernelSize);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = (void**)&kernel;
 #elif(VKFFT_BACKEND==2)
 	hipFloatComplex* kernel = 0;
-	hipMalloc((void**)&kernel, kernelSize);
+	res = hipMalloc((void**)&kernel, kernelSize);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = (void**)&kernel;
 #endif
 
@@ -2185,15 +2383,18 @@ uint32_t sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 	}
 	//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 #if(VKFFT_BACKEND==0)
-	transferDataFromCPU(vkGPU, kernel_input, &kernel, kernelSize);
+	resFFT = transferDataFromCPU(vkGPU, kernel_input, &kernel, kernelSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-	cudaMemcpy(kernel, kernel_input, kernelSize, cudaMemcpyHostToDevice);
+	res = cudaMemcpy(kernel, kernel_input, kernelSize, cudaMemcpyHostToDevice);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-	hipMemcpy(kernel, kernel_input, kernelSize, hipMemcpyHostToDevice);
+	res = hipMemcpy(kernel, kernel_input, kernelSize, hipMemcpyHostToDevice);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 	//Initialize application responsible for the kernel. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-	res = initializeVkFFT(&app_kernel, configuration);
-	if (res != 0) return res;
+	resFFT = initializeVkFFT(&app_kernel, configuration);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	//Sample forward FFT command buffer allocation + execution performed on kernel. Second number determines how many times perform application in one submit. FFT can also be appended to user defined command buffers.
 
 	//Uncomment the line below if you want to perform kernel FFT. In this sample we use predefined identitiy kernel.
@@ -2230,22 +2431,28 @@ uint32_t sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 	VkBuffer buffer = {};
 	VkDeviceMemory inputBufferDeviceMemory = {};
 	VkDeviceMemory bufferDeviceMemory = {};
-	allocateFFTBuffer(vkGPU, &inputBuffer, &inputBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, inputBufferSize);
-	allocateFFTBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+	resFFT = allocateBuffer(vkGPU, &inputBuffer, &inputBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, inputBufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
+	resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	convolution_configuration.inputBuffer = &inputBuffer;
 	convolution_configuration.buffer = &buffer;
 #elif(VKFFT_BACKEND==1)
 	cuFloatComplex* inputBuffer = 0;
 	cuFloatComplex* buffer = 0;
-	cudaMalloc((void**)&inputBuffer, inputBufferSize);
-	cudaMalloc((void**)&buffer, bufferSize);
+	res = cudaMalloc((void**)&inputBuffer, inputBufferSize);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	res = cudaMalloc((void**)&buffer, bufferSize);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	convolution_configuration.inputBuffer = (void**)&inputBuffer;
 	convolution_configuration.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 	hipFloatComplex* inputBuffer = 0;
 	hipFloatComplex* buffer = 0;
-	hipMalloc((void**)&inputBuffer, inputBufferSize);
-	hipMalloc((void**)&buffer, bufferSize);
+	res = hipMalloc((void**)&inputBuffer, inputBufferSize);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	res = hipMalloc((void**)&buffer, bufferSize);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	convolution_configuration.inputBuffer = (void**)&inputBuffer;
 	convolution_configuration.buffer = (void**)&buffer;
 #endif
@@ -2271,28 +2478,35 @@ uint32_t sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 	}
 	//Transfer data to GPU using staging buffer.
 #if(VKFFT_BACKEND==0)
-	transferDataFromCPU(vkGPU, buffer_input, &inputBuffer, inputBufferSize);
+	resFFT = transferDataFromCPU(vkGPU, buffer_input, &inputBuffer, inputBufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-	cudaMemcpy(inputBuffer, buffer_input, inputBufferSize, cudaMemcpyHostToDevice);
+	res = cudaMemcpy(inputBuffer, buffer_input, inputBufferSize, cudaMemcpyHostToDevice);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-	hipMemcpy(inputBuffer, buffer_input, inputBufferSize, hipMemcpyHostToDevice);
+	res = hipMemcpy(inputBuffer, buffer_input, inputBufferSize, hipMemcpyHostToDevice);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 	//Initialize application responsible for the convolution.
-	res = initializeVkFFT(&app_convolution, convolution_configuration);
-	if (res != 0) return res;
+	resFFT = initializeVkFFT(&app_convolution, convolution_configuration);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	//Sample forward FFT command buffer allocation + execution performed on kernel. FFT can also be appended to user defined command buffers.
-	performVulkanFFT(vkGPU, &app_convolution, -1, 1);
+	resFFT = performVulkanFFT(vkGPU, &app_convolution, -1, 1);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	//The kernel has been trasnformed.
 
 	float* buffer_output = (float*)malloc(bufferSize);
 	//Transfer data from GPU using staging buffer.
 #if(VKFFT_BACKEND==0)
-	transferDataToCPU(vkGPU, buffer_output, &buffer, bufferSize);
+	resFFT = transferDataToCPU(vkGPU, buffer_output, &buffer, bufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-	cudaMemcpy(buffer_output, buffer, bufferSize, cudaMemcpyDeviceToHost);
+	res = cudaMemcpy(buffer_output, buffer, bufferSize, cudaMemcpyDeviceToHost);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-	hipMemcpy(buffer_output, buffer, bufferSize, hipMemcpyDeviceToHost);
+	res = hipMemcpy(buffer_output, buffer, bufferSize, hipMemcpyDeviceToHost);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 	//Print data, if needed.
@@ -2338,11 +2552,18 @@ uint32_t sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* outp
 #endif	
 	deleteVkFFT(&app_kernel);
 	deleteVkFFT(&app_convolution);
-	return res;
+	return resFFT;
 }
 #if(VKFFT_BACKEND==0)
-uint32_t sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "10 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision, multiple buffer split FFT\n");
 	printf("10 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision, multiple buffer split FFT\n");
@@ -2397,9 +2618,10 @@ uint32_t sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 				tempBuffer[i] = {};
 				bufferDeviceMemory[i] = {};
 				tempBufferDeviceMemory[i] = {};
-				allocateFFTBuffer(vkGPU, &buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
-				allocateFFTBuffer(vkGPU, &tempBuffer[i], &tempBufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
-
+				resFFT = allocateBuffer(vkGPU, &buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
+				resFFT = allocateBuffer(vkGPU, &tempBuffer[i], &tempBufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 			}
 
 			configuration.bufferNum = numBuf;
@@ -2425,23 +2647,25 @@ uint32_t sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 			uint64_t shift = 0;
 			for (uint32_t i = 0; i < numBuf; i++) {
-				transferDataFromCPU(vkGPU, (buffer_input + shift / sizeof(float)), &buffer[i], bufferSize[i]);
+				resFFT = transferDataFromCPU(vkGPU, (buffer_input + shift / sizeof(float)), &buffer[i], bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 				shift += bufferSize[i];
 			}
 
 			//free(buffer_input);
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
 			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / (numBuf * bufferSize[0]) > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / (numBuf * bufferSize[0]);
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 			if (num_iter == 0) num_iter = 1;
 			if (vkGPU->physicalDeviceProperties.vendorID != 0x8086) num_iter *= 5;
-			float totTime = performVulkanFFTiFFT(vkGPU, &app, num_iter);
-
+			float totTime = 0;
+			resFFT = performVulkanFFTiFFT(vkGPU, &app, num_iter, &totTime);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			run_time[r] = totTime;
 			if (n > 0) {
 				if (r == num_runs - 1) {
@@ -2494,12 +2718,19 @@ uint32_t sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 	}
 	printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
 	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
-	return res;
+	return resFFT;
 }
 #endif
 #ifdef USE_FFTW
-uint32_t sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "11 - VkFFT/FFTW C2C precision test in single precision\n");
 	printf("11 - VkFFT/FFTW C2C precision test in single precision\n");
@@ -2611,11 +2842,14 @@ uint32_t sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 #if(VKFFT_BACKEND==0)
 				buffer[i] = {};
 				bufferDeviceMemory[i] = {};
-				allocateFFTBuffer(vkGPU, &buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				resFFT = allocateBuffer(vkGPU, &buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMalloc((void**)&buffer, bufferSize[i]);
+				res = cudaMalloc((void**)&buffer, bufferSize[i]);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #elif(VKFFT_BACKEND==2)
-				hipMalloc((void**)&buffer, bufferSize[i]);
+				res = hipMalloc((void**)&buffer, bufferSize[i]);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #endif
 			}
 
@@ -2634,32 +2868,39 @@ uint32_t sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			uint64_t shift = 0;
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
-				transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
+				resFFT = transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMemcpy(buffer, inputC, bufferSize[i], cudaMemcpyHostToDevice);
+				res = cudaMemcpy(buffer, inputC, bufferSize[i], cudaMemcpyHostToDevice);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-				hipMemcpy(buffer, inputC, bufferSize[i], hipMemcpyHostToDevice);
+				res = hipMemcpy(buffer, inputC, bufferSize[i], hipMemcpyHostToDevice);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
 			//num_iter = 1;
-			performVulkanFFT(vkGPU, &app, -1, num_iter);
+			resFFT = performVulkanFFT(vkGPU, &app, -1, num_iter);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			fftwf_complex* output_VkFFT = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * dims[0] * dims[1] * dims[2]));
 
 			//Transfer data from GPU using staging buffer.
 			shift = 0;
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
-				transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
+				resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMemcpy(output_VkFFT, buffer, bufferSize[i], cudaMemcpyDeviceToHost);
+				res = cudaMemcpy(output_VkFFT, buffer, bufferSize[i], cudaMemcpyDeviceToHost);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-				hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
+				res = hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
@@ -2745,10 +2986,17 @@ uint32_t sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			free(output_FFTW);
 		}
 	}
-	return res;
+	return resFFT;
 }
-uint32_t sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "12 - VkFFT/FFTW C2C precision test in double precision\n");
 	printf("12 - VkFFT/FFTW C2C precision test in double precision\n");
@@ -2860,11 +3108,14 @@ uint32_t sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 #if(VKFFT_BACKEND==0)
 				buffer[i] = {};
 				bufferDeviceMemory[i] = {};
-				allocateFFTBuffer(vkGPU, &buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				resFFT = allocateBuffer(vkGPU, &buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMalloc((void**)&buffer, bufferSize[i]);
+				res = cudaMalloc((void**)&buffer, bufferSize[i]);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #elif(VKFFT_BACKEND==2)
-				hipMalloc((void**)&buffer, bufferSize[i]);
+				res = hipMalloc((void**)&buffer, bufferSize[i]);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #endif
 			}
 
@@ -2884,32 +3135,38 @@ uint32_t sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			uint64_t shift = 0;
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
-				transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftw_complex)), &buffer[i], bufferSize[i]);
+				resFFT = transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftw_complex)), &buffer[i], bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMemcpy(buffer, inputC, bufferSize[i], cudaMemcpyHostToDevice);
+				res = cudaMemcpy(buffer, inputC, bufferSize[i], cudaMemcpyHostToDevice);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-				hipMemcpy(buffer, inputC, bufferSize[i], hipMemcpyHostToDevice);
+				res = hipMemcpy(buffer, inputC, bufferSize[i], hipMemcpyHostToDevice);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			//Submit FFT+iFFT.
 			//num_iter = 1;
-			performVulkanFFT(vkGPU, &app, -1, num_iter);
-
+			resFFT = performVulkanFFT(vkGPU, &app, -1, num_iter);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			fftw_complex* output_VkFFT = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
 
 			//Transfer data from GPU using staging buffer.
 			shift = 0;
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
-				transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftw_complex)), &buffer[i], bufferSize[i]);
+				resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftw_complex)), &buffer[i], bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMemcpy(output_VkFFT, buffer, bufferSize[i], cudaMemcpyDeviceToHost);
+				res = cudaMemcpy(output_VkFFT, buffer, bufferSize[i], cudaMemcpyDeviceToHost);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-				hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
+				res = hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
@@ -2996,11 +3253,18 @@ uint32_t sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			free(output_FFTW);
 		}
 	}
-	return res;
+	return resFFT;
 }
 #if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
-uint32_t sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "13 - VkFFT/FFTW C2C precision test in half precision\n");
 	printf("13 - VkFFT/FFTW C2C precision test in half precision\n");
@@ -3110,11 +3374,14 @@ uint32_t sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 #if(VKFFT_BACKEND==0)
 				buffer[i] = {};
 				bufferDeviceMemory[i] = {};
-				allocateFFTBuffer(vkGPU, &buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				resFFT = allocateBuffer(vkGPU, &buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMalloc((void**)&buffer, bufferSize[i]);
+				res = cudaMalloc((void**)&buffer, bufferSize[i]);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #elif(VKFFT_BACKEND==2)
-				hipMalloc((void**)&buffer, bufferSize[i]);
+				res = hipMalloc((void**)&buffer, bufferSize[i]);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #endif
 			}
 
@@ -3134,31 +3401,38 @@ uint32_t sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			uint64_t shift = 0;
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
-				transferDataFromCPU(vkGPU, (inputC + shift / 2 / sizeof(half)), &buffer[i], bufferSize[i]);
+				resFFT = transferDataFromCPU(vkGPU, (inputC + shift / 2 / sizeof(half)), &buffer[i], bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMemcpy(buffer, inputC, bufferSize[i], cudaMemcpyHostToDevice);
+				res = cudaMemcpy(buffer, inputC, bufferSize[i], cudaMemcpyHostToDevice);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-				hipMemcpy(buffer, inputC, bufferSize[i], hipMemcpyHostToDevice);
+				res = hipMemcpy(buffer, inputC, bufferSize[i], hipMemcpyHostToDevice);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			//Submit FFT+iFFT.
 			//num_iter = 1;
-			performVulkanFFT(vkGPU, &app, -1, num_iter);
+			resFFT = performVulkanFFT(vkGPU, &app, -1, num_iter);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			half2* output_VkFFT = (half2*)(malloc(2 * sizeof(half) * dims[0] * dims[1] * dims[2]));
 
 			//Transfer data from GPU using staging buffer.
 			shift = 0;
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
-				transferDataToCPU(vkGPU, (output_VkFFT + shift / 2 / sizeof(half)), &buffer[i], bufferSize[i]);
+				resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / 2 / sizeof(half)), &buffer[i], bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMemcpy(output_VkFFT, buffer, bufferSize[i], cudaMemcpyDeviceToHost);
+				res = cudaMemcpy(output_VkFFT, buffer, bufferSize[i], cudaMemcpyDeviceToHost);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-				hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
+				res = hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
@@ -3240,12 +3514,19 @@ uint32_t sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			free(output_FFTW);
 		}
 	}
-	return res;
+	return resFFT;
 }
 #endif
 
-uint32_t sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "14 - VkFFT/FFTW C2C power 3/5/7/11/13 precision test in single precision\n");
 	printf("14 - VkFFT/FFTW C2C power 3/5/7/11/13 precision test in single precision\n");
@@ -3358,11 +3639,14 @@ uint32_t sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 #if(VKFFT_BACKEND==0)
 				buffer[i] = {};
 				bufferDeviceMemory[i] = {};
-				allocateFFTBuffer(vkGPU, &buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				resFFT = allocateBuffer(vkGPU, &buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMalloc((void**)&buffer, bufferSize[i]);
+				res = cudaMalloc((void**)&buffer, bufferSize[i]);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #elif(VKFFT_BACKEND==2)
-				hipMalloc((void**)&buffer, bufferSize[i]);
+				res = hipMalloc((void**)&buffer, bufferSize[i]);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #endif
 			}
 
@@ -3382,31 +3666,38 @@ uint32_t sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			uint64_t shift = 0;
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
-				transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
+				resFFT = transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMemcpy(buffer, inputC, bufferSize[i], cudaMemcpyHostToDevice);
+				res = cudaMemcpy(buffer, inputC, bufferSize[i], cudaMemcpyHostToDevice);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-				hipMemcpy(buffer, inputC, bufferSize[i], hipMemcpyHostToDevice);
+				res = hipMemcpy(buffer, inputC, bufferSize[i], hipMemcpyHostToDevice);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			//Submit FFT+iFFT.
 			//num_iter = 1;
-			performVulkanFFT(vkGPU, &app, -1, num_iter);
+			resFFT = performVulkanFFT(vkGPU, &app, -1, num_iter);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			fftwf_complex* output_VkFFT = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * dims[0] * dims[1] * dims[2]));
 
 			//Transfer data from GPU using staging buffer.
 			shift = 0;
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
-				transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
+				resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMemcpy(output_VkFFT, buffer, bufferSize[i], cudaMemcpyDeviceToHost);
+				res = cudaMemcpy(output_VkFFT, buffer, bufferSize[i], cudaMemcpyDeviceToHost);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-				hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
+				res = hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
@@ -3470,10 +3761,17 @@ uint32_t sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			free(output_FFTW);
 		}
 	}
-	return res;
+	return resFFT;
 }
-uint32_t sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "15 - VkFFT / FFTW R2C+C2R precision test in single precision\n");
 	printf("15 - VkFFT / FFTW R2C+C2R precision test in single precision\n");
@@ -3599,16 +3897,22 @@ uint32_t sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 #if(VKFFT_BACKEND==0)
 				buffer[i] = {};
 				bufferDeviceMemory[i] = {};
-				allocateFFTBuffer(vkGPU, &buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				resFFT = allocateBuffer(vkGPU, &buffer[i], &bufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 				ibuffer[i] = {};
 				ibufferDeviceMemory[i] = {};
-				allocateFFTBuffer(vkGPU, &ibuffer[i], &ibufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, inputBufferSize[i]);
+				resFFT = allocateBuffer(vkGPU, &ibuffer[i], &ibufferDeviceMemory[i], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, inputBufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMalloc((void**)&ibuffer, inputBufferSize[i]);
-				cudaMalloc((void**)&buffer, bufferSize[i]);
+				res = cudaMalloc((void**)&ibuffer, inputBufferSize[i]);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+				res = cudaMalloc((void**)&buffer, bufferSize[i]);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #elif(VKFFT_BACKEND==2)
-				hipMalloc((void**)&ibuffer, inputBufferSize[i]);
-				hipMalloc((void**)&buffer, bufferSize[i]);
+				res = hipMalloc((void**)&ibuffer, inputBufferSize[i]);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+				res = hipMalloc((void**)&buffer, bufferSize[i]);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #endif
 			}
 			configuration.inputBufferNum = numBuf;
@@ -3644,22 +3948,27 @@ uint32_t sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			uint64_t shift = 0;
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
-				transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftwf_complex)), &ibuffer[i], inputBufferSize[i]);
+				resFFT = transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftwf_complex)), &ibuffer[i], inputBufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				cudaMemcpy(ibuffer, inputC, inputBufferSize[i], cudaMemcpyHostToDevice);
+				res = cudaMemcpy(ibuffer, inputC, inputBufferSize[i], cudaMemcpyHostToDevice);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-				hipMemcpy(ibuffer, inputC, inputBufferSize[i], hipMemcpyHostToDevice);
+				res = hipMemcpy(ibuffer, inputC, inputBufferSize[i], hipMemcpyHostToDevice);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += inputBufferSize[i];
 			}
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
 			//num_iter = 1;
-			performVulkanFFT(vkGPU, &app, -1, num_iter);
-			performVulkanFFT(vkGPU, &app, 1, num_iter);
+			resFFT = performVulkanFFT(vkGPU, &app, -1, num_iter);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
+			resFFT = performVulkanFFT(vkGPU, &app, 1, num_iter);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			//fftwf_complex* output_VkFFT = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * (dims[0] / 2 + 1) * dims[1] * dims[2]));
 			float* output_VkFFT = (float*)(malloc(bufferSize[0]));
 
@@ -3667,14 +3976,17 @@ uint32_t sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 			shift = 0;
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
-				//transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
-				transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftwf_complex)), &ibuffer[i], inputBufferSize[i]);
+				//resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
+				resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftwf_complex)), &ibuffer[i], inputBufferSize[i]);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-				//cudaMemcpy(output_VkFFT, buffer, bufferSize[i], cudaMemcpyDeviceToHost);
-				cudaMemcpy(output_VkFFT, ibuffer, inputBufferSize[i], cudaMemcpyDeviceToHost);
+				//res = cudaMemcpy(output_VkFFT, buffer, bufferSize[i], cudaMemcpyDeviceToHost);
+				res = cudaMemcpy(output_VkFFT, ibuffer, inputBufferSize[i], cudaMemcpyDeviceToHost);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-				//hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
-				hipMemcpy(output_VkFFT, ibuffer, inputBufferSize[i], hipMemcpyDeviceToHost);
+				//res = hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
+				res = hipMemcpy(output_VkFFT, ibuffer, inputBufferSize[i], hipMemcpyDeviceToHost);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += inputBufferSize[i];
 			}
@@ -3770,11 +4082,18 @@ uint32_t sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* out
 #endif
 		}
 	}
-	return res;
+	return resFFT;
 }
 #endif
-uint32_t sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "1000 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision: all supported systems from 2 to 4096\n");
 	printf("1000 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision: all supported systems from 2 to 4096\n");
@@ -3824,15 +4143,18 @@ uint32_t sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #if(VKFFT_BACKEND==0)
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};
-			allocateFFTBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			configuration.buffer = &buffer;
 #elif(VKFFT_BACKEND==1)
 			cuFloatComplex* buffer = 0;
-			cudaMalloc((void**)&buffer, bufferSize);
+			res = cudaMalloc((void**)&buffer, bufferSize);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
-			hipMalloc((void**)&buffer, bufferSize);
+			res = hipMalloc((void**)&buffer, bufferSize);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #endif
 
@@ -3853,16 +4175,19 @@ uint32_t sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			*/
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 #if(VKFFT_BACKEND==0)
-			transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			resFFT = transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-			cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			res = cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-			hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
 			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
@@ -3870,8 +4195,9 @@ uint32_t sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
-			float totTime = performVulkanFFTiFFT(vkGPU, &app, num_iter);
-
+			float totTime = 0;
+			resFFT = performVulkanFFTiFFT(vkGPU, &app, num_iter, &totTime);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			run_time[r] = totTime;
 			if (n > 1) {
 				if (r == num_runs - 1) {
@@ -3926,10 +4252,17 @@ uint32_t sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #if(VKFFT_BACKEND==0)
 	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
-	return res;
+	return resFFT;
 }
-uint32_t sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "1001 - VkFFT FFT + iFFT C2C benchmark 1D batched in double precision: all supported systems from 2 to 4096\n");
 	printf("1001 - VkFFT FFT + iFFT C2C benchmark 1D batched in double precision: all supported systems from 2 to 4096\n");
@@ -3965,7 +4298,7 @@ uint32_t sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			configuration.size[1] = pow(2, (uint32_t)log2(64 * 32 * pow(2, 15) / configuration.size[0]));
 			if (configuration.size[1] < 1) configuration.size[1] = 1;
 			configuration.size[2] = 1;
-			
+
 			configuration.doublePrecision = true;
 
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
@@ -3983,15 +4316,18 @@ uint32_t sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #if(VKFFT_BACKEND==0)
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};
-			allocateFFTBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			configuration.buffer = &buffer;
 #elif(VKFFT_BACKEND==1)
 			cuFloatComplex* buffer = 0;
-			cudaMalloc((void**)&buffer, bufferSize);
+			res = cudaMalloc((void**)&buffer, bufferSize);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
-			hipMalloc((void**)&buffer, bufferSize);
+			res = hipMalloc((void**)&buffer, bufferSize);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #endif
 
@@ -4010,17 +4346,20 @@ uint32_t sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			*/
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 #if(VKFFT_BACKEND==0)
-			transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			resFFT = transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-			cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			res = cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-			hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//free(buffer_input);
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
 			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
@@ -4028,9 +4367,9 @@ uint32_t sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #endif
 			if (num_iter == 0) num_iter = 1;
-
-			float totTime = performVulkanFFTiFFT(vkGPU, &app, num_iter);
-
+			float totTime = 0;
+			resFFT = performVulkanFFTiFFT(vkGPU, &app, num_iter, &totTime);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			run_time[r] = totTime;
 			if (n > 1) {
 				if (r == num_runs - 1) {
@@ -4083,10 +4422,17 @@ uint32_t sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #if(VKFFT_BACKEND==0)
 	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
-	return res;
+	return resFFT;
 }
-uint32_t sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
-	uint32_t res = 0;
+VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#endif
 	if (file_output)
 		fprintf(output, "1003 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
 	printf("1003 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
@@ -4135,15 +4481,18 @@ uint32_t sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #if(VKFFT_BACKEND==0)
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};
-			allocateFFTBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			configuration.buffer = &buffer;
 #elif(VKFFT_BACKEND==1)
 			cuFloatComplex* buffer = 0;
-			cudaMalloc((void**)&buffer, bufferSize);
+			res = cudaMalloc((void**)&buffer, bufferSize);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
-			hipMalloc((void**)&buffer, bufferSize);
+			res = hipMalloc((void**)&buffer, bufferSize);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
 #endif
 
@@ -4164,16 +4513,19 @@ uint32_t sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			*/
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 #if(VKFFT_BACKEND==0)
-			transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			resFFT = transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
-			cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			res = cudaMemcpy(buffer, buffer_input, bufferSize, cudaMemcpyHostToDevice);
+			if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #elif(VKFFT_BACKEND==2)
-			hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
-			res = initializeVkFFT(&app, configuration);
-			if (res != 0) return res;
+			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
 			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
@@ -4181,8 +4533,9 @@ uint32_t sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
-			float totTime = performVulkanFFTiFFT(vkGPU, &app, num_iter);
-
+			float totTime = 0;
+			resFFT = performVulkanFFTiFFT(vkGPU, &app, num_iter, &totTime);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			run_time[r] = totTime;
 			if (n > 1) {
 				if (r == num_runs - 1) {
@@ -4237,62 +4590,75 @@ uint32_t sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #if(VKFFT_BACKEND==0)
 	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
-	return res;
+	return resFFT;
 }
-uint32_t launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output) {
+VkFFTResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output) {
 	//Sample Vulkan project GPU initialization.
-	uint32_t res = 0;
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+
 #if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
 	//create instance - a connection between the application and the Vulkan library 
 	res = createInstance(vkGPU, sample_id);
 	if (res != 0) {
-		printf("Instance creation failed, error code: %d\n", res);
-		return res;
+		//printf("Instance creation failed, error code: %d\n", res);
+		return VKFFT_ERROR_FAILED_TO_CREATE_INSTANCE;
 	}
 	//set up the debugging messenger 
 	res = setupDebugMessenger(vkGPU);
 	if (res != 0) {
-		printf("Debug messenger creation failed, error code: %d\n", res);
-		return res;
+		//printf("Debug messenger creation failed, error code: %d\n", res);
+		return VKFFT_ERROR_FAILED_TO_SETUP_DEBUG_MESSENGER;
 	}
 	//check if there are GPUs that support Vulkan and select one
 	res = findPhysicalDevice(vkGPU);
 	if (res != 0) {
-		printf("Physical device not found, error code: %d\n", res);
-		return res;
+		//printf("Physical device not found, error code: %d\n", res);
+		return VKFFT_ERROR_FAILED_TO_FIND_PHYSICAL_DEVICE;
 	}
 	//create logical device representation
 	res = createDevice(vkGPU, sample_id);
 	if (res != 0) {
-		printf("Device creation failed, error code: %d\n", res);
-		return res;
+		//printf("Device creation failed, error code: %d\n", res);
+		return VKFFT_ERROR_FAILED_TO_CREATE_DEVICE;
 	}
 	//create fence for synchronization 
 	res = createFence(vkGPU);
 	if (res != 0) {
-		printf("Fence creation failed, error code: %d\n", res);
-		return res;
+		//printf("Fence creation failed, error code: %d\n", res);
+		return VKFFT_ERROR_FAILED_TO_CREATE_FENCE;
 	}
 	//create a place, command buffer memory is allocated from
 	res = createCommandPool(vkGPU);
 	if (res != 0) {
-		printf("Fence creation failed, error code: %d\n", res);
-		return res;
+		//printf("Fence creation failed, error code: %d\n", res);
+		return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_POOL;
 	}
 	vkGetPhysicalDeviceProperties(vkGPU->physicalDevice, &vkGPU->physicalDeviceProperties);
 	vkGetPhysicalDeviceMemoryProperties(vkGPU->physicalDevice, &vkGPU->physicalDeviceMemoryProperties);
 
 	glslang_initialize_process();//compiler can be initialized before VkFFT
 #elif(VKFFT_BACKEND==1)
-	cuInit(0);
-	cudaSetDevice(vkGPU->device_id);
-	cuDeviceGet(&vkGPU->device, vkGPU->device_id);
-	cuCtxCreate(&vkGPU->context, 0, vkGPU->device);
+	CUresult res = CUDA_SUCCESS;
+	cudaError_t res2 = cudaSuccess;
+	res = cuInit(0);
+	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	res2 = cudaSetDevice(vkGPU->device_id);
+	if (res2 != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID;
+	res = cuDeviceGet(&vkGPU->device, vkGPU->device_id);
+	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+	res = cuCtxCreate(&vkGPU->context, 0, vkGPU->device);
+	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
 #elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
 	hipInit(0);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
 	hipSetDevice(vkGPU->device_id);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID;
 	hipDeviceGet(&vkGPU->device, vkGPU->device_id);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
 	hipCtxCreate(&vkGPU->context, 0, vkGPU->device);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
 #endif
 
 	uint32_t isCompilerInitialized = 1;
@@ -4300,105 +4666,105 @@ uint32_t launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	switch (sample_id) {
 	case 0:
 	{
-		sample_0(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_0(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 	case 1:
 	{
-		sample_1(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_1(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 #if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
 	case 2:
 	{
-		sample_2(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_2(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 #endif
 	case 3:
 	{
-		sample_3(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_3(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 	case 4:
 	{
-		sample_4(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_4(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 	case 5:
 	{
-		sample_5(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_5(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 	case 6:
 	{
-		sample_6(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_6(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 	case 7:
 	{
-		sample_7(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_7(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 	case 8:
 	{
-		sample_8(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_8(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 	case 9:
 	{
-		sample_9(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_9(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 #if(VKFFT_BACKEND==0)
 	case 10:
 	{
-		sample_10(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_10(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 #endif
 #ifdef USE_FFTW
 	case 11:
 	{
-		sample_11(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_11(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 	case 12:
 	{
-		sample_12(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_12(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 #if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
 	case 13:
 	{
-		sample_13(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_13(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 #endif
 	case 14:
 	{
-		sample_14(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_14(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 	case 15:
 	{
-		sample_15(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_15(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 #endif
 	case 1000:
 	{
-		sample_1000(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_1000(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 	case 1001:
 	{
-		sample_1001(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_1001(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 	case 1003:
 	{
-		sample_1003(vkGPU, sample_id, file_output, output, isCompilerInitialized);
+		resFFT = sample_1003(vkGPU, sample_id, file_output, output, isCompilerInitialized);
 		break;
 	}
 	}
@@ -4415,7 +4781,7 @@ uint32_t launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	hipCtxDestroy(vkGPU->context);
 #endif
 
-	return 0;
+	return resFFT;
 }
 
 bool findFlag(char** start, char** end, const std::string& flag) {
@@ -4439,7 +4805,14 @@ int main(int argc, char* argv[])
 	if (findFlag(argv, argv + argc, "-h"))
 	{
 		//print help
-		printf("VkFFT v1.1.10 (15-03-2021). Author: Tolmachev Dmitrii\n");
+		printf("VkFFT v1.1.11 (25-03-2021). Author: Tolmachev Dmitrii\n");
+#if (VKFFT_BACKEND==0)
+		printf("Vulkan backend\n");
+#elif (VKFFT_BACKEND==1)
+		printf("CUDA backend\n");
+#elif (VKFFT_BACKEND==2)
+		printf("HIP backend\n");
+#endif
 		printf("	-h: print help\n");
 #if (VKFFT_BACKEND==0)
 		printf("	-devices: print the list of available GPU devices\n");
@@ -4491,7 +4864,7 @@ int main(int argc, char* argv[])
 #endif
 		printf("		1000 - FFT + iFFT C2C benchmark 1D batched in single precision: all supported systems from 2 to 4096\n");
 		printf("		1001 - FFT + iFFT C2C benchmark 1D batched in double precision: all supported systems from 2 to 4096\n");
-		printf("		1003 - FFT + iFFT C2C multidimensional benchmark in single precision: all supported rocbes from 2 to 512\n");
+		printf("		1003 - FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
 #ifdef USE_cuFFT
 		printf("	-cufft X: launch cuFFT sample X (0-3):\n");
 		printf("		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n");
@@ -4501,7 +4874,7 @@ int main(int argc, char* argv[])
 		printf("		4 - FFT + iFFT R2C / C2R benchmark\n");
 		printf("		1000 - FFT + iFFT C2C benchmark 1D batched in single precision: all supported systems from 2 to 4096\n");
 		printf("		1001 - FFT + iFFT C2C benchmark 1D batched in double precision: all supported systems from 2 to 4096\n");
-		printf("		1003 - FFT + iFFT C2C multidimensional benchmark in single precision: all supported rocbes from 2 to 512\n");
+		printf("		1003 - FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
 		printf("	-test: (or no -vkfft and -cufft keys) run vkfft benchmarks 0-6 and cufft benchmarks 0-4\n");
 #elif USE_rocFFT
 		printf("	-rocfft X: launch rocFFT sample X (0-3):\n");
@@ -4511,7 +4884,7 @@ int main(int argc, char* argv[])
 		printf("		4 - FFT + iFFT R2C / C2R benchmark\n");
 		printf("		1000 - FFT + iFFT C2C benchmark 1D batched in single precision: all supported systems from 2 to 4096\n");
 		printf("		1001 - FFT + iFFT C2C benchmark 1D batched in double precision: all supported systems from 2 to 4096\n");
-		printf("		1003 - FFT + iFFT C2C multidimensional benchmark in single precision: all supported rocbes from 2 to 512\n");
+		printf("		1003 - FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
 		printf("	-test: (or no -vkfft and -rocfft keys) run vkfft benchmarks 0-6 and rocfft benchmarks 0-4\n");
 #else
 		printf("	-test: run vkfft benchmarks 0-6\n");
@@ -4560,8 +4933,8 @@ int main(int argc, char* argv[])
 		if (value != 0) {
 			uint32_t sample_id = 0;
 			sscanf(value, "%d", &sample_id);
-			uint32_t res = launchVkFFT(&vkGPU, sample_id, file_output, output);
-			if (res != 0) return res;
+			VkFFTResult resFFT = launchVkFFT(&vkGPU, sample_id, file_output, output);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 		}
 		else {
 			printf("No sample is selected with -vkfft flag\n");
@@ -4656,8 +5029,8 @@ int main(int argc, char* argv[])
 #if((VKFFT_BACKEND>0) || (VK_API_VERSION == 10))
 			if (i == 2) i++;
 #endif
-			uint32_t res = launchVkFFT(&vkGPU, i, file_output, output);
-			if (res != 0) return res;
+			VkFFTResult resFFT = launchVkFFT(&vkGPU, i, file_output, output);
+			if (resFFT != VKFFT_SUCCESS) return resFFT;
 		}
 #ifdef USE_cuFFT
 		launch_benchmark_cuFFT_single(file_output, output);

@@ -64,15 +64,15 @@ void launch_benchmark_cuFFT_double_2_4096(bool file_output, FILE* output)
 			switch (1) {
 			case 1:
 				cufftPlan1d(&planZ2Z, dims[0], CUFFT_Z2Z, dims[1]);
-				cufftEstimate1d(dims[0], CUFFT_Z2Z, 1, &sizeCUDA);
+				cufftEstimate1d(dims[0], CUFFT_Z2Z, 1, (size_t*)&sizeCUDA);
 				break;
 			case 2:
 				cufftPlan2d(&planZ2Z, dims[1], dims[0], CUFFT_Z2Z);
-				cufftEstimate2d(dims[1], dims[0], CUFFT_Z2Z, &sizeCUDA);
+				cufftEstimate2d(dims[1], dims[0], CUFFT_Z2Z, (size_t*)&sizeCUDA);
 				break;
 			case 3:
 				cufftPlan3d(&planZ2Z, dims[2], dims[1], dims[0], CUFFT_Z2Z);
-				cufftEstimate3d(dims[2], dims[1], dims[0], CUFFT_Z2Z, &sizeCUDA);
+				cufftEstimate3d(dims[2], dims[1], dims[0], CUFFT_Z2Z, (size_t*)&sizeCUDA);
 				break;
 			}
 

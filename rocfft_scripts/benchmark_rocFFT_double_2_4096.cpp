@@ -59,19 +59,19 @@ void launch_benchmark_rocFFT_double_2_4096(bool file_output, FILE* output)
 				fprintf(stderr, "ROCM error: Failed to allocate\n");
 				return;
 			}
-			uint64_t sizerocDA;
+			uint64_t sizeROCm;
 			switch (1) {
 			case 1:
 				hipfftPlan1d(&planZ2Z, dims[0], HIPFFT_Z2Z, dims[1]);
-				hipfftEstimate1d(dims[0], HIPFFT_Z2Z, 1, &sizerocDA);
+				hipfftEstimate1d(dims[0], HIPFFT_Z2Z, 1, (size_t*)&sizeROCm);
 				break;
 			case 2:
 				hipfftPlan2d(&planZ2Z, dims[1], dims[0], HIPFFT_Z2Z);
-				hipfftEstimate2d(dims[1], dims[0], HIPFFT_Z2Z, &sizerocDA);
+				hipfftEstimate2d(dims[1], dims[0], HIPFFT_Z2Z, (size_t*)&sizeROCm);
 				break;
 			case 3:
 				hipfftPlan3d(&planZ2Z, dims[2], dims[1], dims[0], HIPFFT_Z2Z);
-				hipfftEstimate3d(dims[2], dims[1], dims[0], HIPFFT_Z2Z, &sizerocDA);
+				hipfftEstimate3d(dims[2], dims[1], dims[0], HIPFFT_Z2Z, (size_t*)&sizeROCm);
 				break;
 			}
 
@@ -79,14 +79,14 @@ void launch_benchmark_rocFFT_double_2_4096(bool file_output, FILE* output)
 			uint64_t rocBufferSize = sizeof(double) * 2 * dims[0] * dims[1] * dims[2];
 			uint64_t num_iter = ((4096 * 1024.0 * 1024.0) / rocBufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / rocBufferSize ;
 			if (num_iter == 0) num_iter = 1;
-			auto timeSubmit = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 			for (int i = 0; i < num_iter; i++) {
 
 				hipfftExecZ2Z(planZ2Z, dataC, dataC, -1);
 				hipfftExecZ2Z(planZ2Z, dataC, dataC, 1);
 			}
 			hipDeviceSynchronize();
-			auto timeEnd = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 			totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001) / num_iter;
 			run_time[r][0] = totTime;
 			if (n > 1) {

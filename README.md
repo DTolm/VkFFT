@@ -2,7 +2,7 @@
 # VkFFT - Vulkan Fast Fourier Transform library
 VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan/CUDA/HIP projects. VkFFT aims to provide community with an open-source alternative to Nvidia's cuFFT library, while achieving better performance. VkFFT is written in C language and supports Vulkan, CUDA and HIP as backends.
 
-## I am looking for a PhD position/job that may be interested in my set of skills. Contact me by email: <d.tolmachev@fz-juelich.de> | <dtolm96@gmail.com>
+## Join my panel at Nvidia's GTC 2021 in Higher Education and Research category on April 13th, 2021: https://gtc21.event.nvidia.com/
 
 ## Added Windows executables for benchmark: versions with CUDA benchmark (requires CUDA 9.0) and without (requires only graphics drivers). Both require FFTW dll placed in the same location as executable. Uses ~3.5GB of VRAM. 
 

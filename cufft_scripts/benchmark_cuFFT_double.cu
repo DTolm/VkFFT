@@ -52,15 +52,15 @@ void launch_benchmark_cuFFT_double(bool file_output, FILE* output)
 			switch (1) {
 			case 1:
 				cufftPlan1d(&planZ2Z, dims[0], CUFFT_Z2Z, dims[1]);
-				cufftEstimate1d(dims[0], CUFFT_Z2Z, 1, &sizeCUDA);
+				cufftEstimate1d(dims[0], CUFFT_Z2Z, 1, (size_t*)&sizeCUDA);
 				break;
 			case 2:
 				cufftPlan2d(&planZ2Z, dims[1], dims[0], CUFFT_Z2Z);
-				cufftEstimate2d(dims[1], dims[0], CUFFT_Z2Z, &sizeCUDA);
+				cufftEstimate2d(dims[1], dims[0], CUFFT_Z2Z, (size_t*)&sizeCUDA);
 				break;
 			case 3:
 				cufftPlan3d(&planZ2Z, dims[2], dims[1], dims[0], CUFFT_Z2Z);
-				cufftEstimate3d(dims[2], dims[1], dims[0], CUFFT_Z2Z, &sizeCUDA);
+				cufftEstimate3d(dims[2], dims[1], dims[0], CUFFT_Z2Z, (size_t*)&sizeCUDA);
 				break;
 			}
 
@@ -68,14 +68,14 @@ void launch_benchmark_cuFFT_double(bool file_output, FILE* output)
 			uint64_t cuBufferSize = sizeof(double) * 2 * dims[0] * dims[1] * dims[2];
 			uint64_t num_iter = ((4096 * 1024.0 * 1024.0) / cuBufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / cuBufferSize ;
 			if (num_iter == 0) num_iter = 1;
-			auto timeSubmit = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 			for (int i = 0; i < num_iter; i++) {
 
 				cufftExecZ2Z(planZ2Z, dataC, dataC, -1);
 				cufftExecZ2Z(planZ2Z, dataC, dataC, 1);
 			}
 			cudaDeviceSynchronize();
-			auto timeEnd = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 			totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001) / num_iter;
 			run_time[r][0] = totTime;
 			if (n > 0) {

@@ -65,17 +65,17 @@ void launch_benchmark_cuFFT_single_r2c(bool file_output, FILE* output)
 			}
 
 			float totTime = 0;
-			uint32_t cuBufferSize = sizeof(float) * 2 * dims[0] * dims[1] * dims[2];
+			uint32_t cuBufferSize = sizeof(float) * 2 * (dims[0]/2+1) * dims[1] * dims[2];
 			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / cuBufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / cuBufferSize;
 			if (num_iter == 0) num_iter = 1;
-			auto timeSubmit = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 			for (int i = 0; i < num_iter; i++) {
 
 				cufftExecR2C(planR2C, dataR, dataC);
 				cufftExecC2R(planC2R, dataC, dataR);
 			}
 			cudaDeviceSynchronize();
-			auto timeEnd = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 			totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001) / num_iter;
 			run_time[r][0] = totTime;
 			if (n > 0) {

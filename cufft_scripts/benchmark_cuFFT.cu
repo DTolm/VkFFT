@@ -53,7 +53,7 @@ void launch_benchmark_cuFFT_single(bool file_output, FILE* output)
 			switch (1) {
 			case 1:
 				cufftPlan1d(&planC2C, dims[0], CUFFT_C2C, dims[1]);
-				cufftGetSize1d(planC2C, dims[0], CUFFT_C2C, dims[1], &sizeCUDA);
+				cufftGetSize1d(planC2C, dims[0], CUFFT_C2C, dims[1], (size_t*)&sizeCUDA);
 				break;
 			case 2:
 				cufftPlan2d(&planC2C, dims[1], dims[0], CUFFT_C2C);
@@ -68,14 +68,14 @@ void launch_benchmark_cuFFT_single(bool file_output, FILE* output)
 			uint32_t batch = ((3*4096 * 1024.0 * 1024.0) / cuBufferSize > 1000) ? 1000 : (3*4096 * 1024.0 * 1024.0) / cuBufferSize;
 			if (batch == 0) batch = 1;
 			
-			auto timeSubmit = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 			for (int i = 0; i < batch; i++) {
 
 				cufftExecC2C(planC2C, dataC, dataC, -1);
 				cufftExecC2C(planC2C, dataC, dataC, 1);
 			}
 			cudaDeviceSynchronize();
-			auto timeEnd = std::chrono::steady_clock::now();
+			std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 			totTime = (std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001) / batch;
 			run_time[r][0] = totTime;
 			if (n > 0) {
