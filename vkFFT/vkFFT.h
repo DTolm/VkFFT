@@ -109,6 +109,8 @@ extern "C" {
 		uint32_t normalize; //normalize inverse transform (0 - off, 1 - on)
 		uint32_t disableReorderFourStep; // disables unshuffling of Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on)
 		uint32_t useLUT; //switches from calculating sincos to using precomputed LUT tables (0 - off, 1 - on). Configured by initialization routine
+		uint32_t makeForwardPlanOnly; //generate code only for forward FFT (0 - off, 1 - on)
+		uint32_t makeInversePlanOnly; //generate code only for inverse FFT (0 - off, 1 - on)
 
 		uint32_t bufferStride[3];//buffer strides - default set to x - x*y - x*y*z values
 		uint32_t isInputFormatted; //specify if input buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
@@ -175,6 +177,8 @@ extern "C" {
 		VKFFT_ERROR_INVALID_QUEUE = 1003,
 		VKFFT_ERROR_INVALID_COMMAND_POOL = 1004,
 		VKFFT_ERROR_INVALID_FENCE = 1005,
+		VKFFT_ERROR_ONLY_FORWARD_FFT_INITIALIZED = 1006,
+		VKFFT_ERROR_ONLY_INVERSE_FFT_INITIALIZED = 1007,
 		VKFFT_ERROR_EMPTY_FFTdim = 2001,
 		VKFFT_ERROR_EMPTY_size = 2002,
 		VKFFT_ERROR_EMPTY_bufferSize = 2003,
@@ -1383,14 +1387,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char* tf[2];
 			//VkAppendLine(sc, "	{\n");
 			for (uint32_t i = 0; i < 2; i++) {
-				tf[i] = (char*)malloc(sizeof(char) * 40);
+				tf[i] = (char*)malloc(sizeof(char) * 50);
 			}
 
 			sprintf(tf[0], "-0.5%s", LFending);
 			sprintf(tf[1], "-0.8660254037844386467637231707529%s", LFending);
 
 			/*for (uint32_t i = 0; i < 3; i++) {
-				sc->locID[i] = (char*)malloc(sizeof(char) * 40);
+				sc->locID[i] = (char*)malloc(sizeof(char) * 50);
 				sprintf(sc->locID[i], "loc_%d", i);
 				sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->locID[i]);
 				VkAppendLine(sc, sc->tempStr);
@@ -1573,7 +1577,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char* tf[5];
 			//VkAppendLine(sc, "	{\n");
 			for (uint32_t i = 0; i < 5; i++) {
-				tf[i] = (char*)malloc(sizeof(char) * 40);
+				tf[i] = (char*)malloc(sizeof(char) * 50);
 			}
 			sprintf(tf[0], "-0.5%s", LFending);
 			sprintf(tf[1], "1.538841768587626701285145288018455%s", LFending);
@@ -1582,7 +1586,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			sprintf(tf[4], "-0.587785252292473129168705954639073%s", LFending);
 
 			/*for (uint32_t i = 0; i < 5; i++) {
-				sc->locID[i] = (char*)malloc(sizeof(char) * 40);
+				sc->locID[i] = (char*)malloc(sizeof(char) * 50);
 				sprintf(sc->locID[i], "loc_%d", i);
 				sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->locID[i]);
 				VkAppendLine(sc, sc->tempStr);
@@ -1718,7 +1722,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			//VkAppendLine(sc, "	{\n");
 			for (uint32_t i = 0; i < 8; i++) {
-				tf[i] = (char*)malloc(sizeof(char) * 40);
+				tf[i] = (char*)malloc(sizeof(char) * 50);
 
 			}
 			sprintf(tf[0], "-1.16666666666666651863693004997913%s", LFending);
@@ -1738,7 +1742,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(tf[7], "-0.87484229096165666561546458979137%s", LFending);
 			}
 			/*for (uint32_t i = 0; i < 7; i++) {
-				sc->locID[i] = (char*)malloc(sizeof(char) * 40);
+				sc->locID[i] = (char*)malloc(sizeof(char) * 50);
 				sprintf(sc->locID[i], "loc_%d", i);
 				sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->locID[i]);
 				VkAppendLine(sc, sc->tempStr);
@@ -2075,9 +2079,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//char* tf2inv[4];
 			//VkAppendLine(sc, "	{\n");
 			for (uint32_t i = 0; i < 20; i++) {
-				tf[i] = (char*)malloc(sizeof(char) * 40);
-				//tf2[i] = (char*)malloc(sizeof(char) * 40);
-				//tf2inv[i] = (char*)malloc(sizeof(char) * 40);
+				tf[i] = (char*)malloc(sizeof(char) * 50);
+				//tf2[i] = (char*)malloc(sizeof(char) * 50);
+				//tf2inv[i] = (char*)malloc(sizeof(char) * 50);
 			}
 			sprintf(tf[0], "-1.100000000000000%s", LFending);
 
@@ -2249,9 +2253,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//char* tf2inv[4];
 			//VkAppendLine(sc, "	{\n");
 			for (uint32_t i = 0; i < 20; i++) {
-				tf[i] = (char*)malloc(sizeof(char) * 40);
-				//tf2[i] = (char*)malloc(sizeof(char) * 40);
-				//tf2inv[i] = (char*)malloc(sizeof(char) * 40);
+				tf[i] = (char*)malloc(sizeof(char) * 50);
+				//tf2[i] = (char*)malloc(sizeof(char) * 50);
+				//tf2inv[i] = (char*)malloc(sizeof(char) * 50);
 			}
 			sprintf(tf[0], "-1.083333333333333%s", LFending);
 			sprintf(tf[1], "-0.300462606288666%s", LFending);
@@ -2548,7 +2552,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "	dummy=dummy/gl_LocalInvocationID.x-1;\n");
 			sc->regIDs = (char**)malloc(sizeof(char*) * logicalStoragePerThread);
 			for (uint32_t i = 0; i < logicalStoragePerThread; i++) {
-				sc->regIDs[i] = (char*)malloc(sizeof(char) * 40);
+				sc->regIDs[i] = (char*)malloc(sizeof(char) * 50);
 				if (i < logicalRegistersPerThread)
 					sprintf(sc->regIDs[i], "temp_%d", i);
 				else
@@ -4466,7 +4470,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				char** regID = (char**)malloc(sizeof(char*) * stageRadix);
 				for (uint32_t i = 0; i < stageRadix; i++) {
-					regID[i] = (char*)malloc(sizeof(char) * 40);
+					regID[i] = (char*)malloc(sizeof(char) * 50);
 					uint32_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
 					id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 					sprintf(regID[i], "%s", sc->regIDs[id]);
@@ -4561,7 +4565,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 				char** regID = (char**)malloc(sizeof(char*) * stageRadix);
 				for (uint32_t i = 0; i < stageRadix; i++) {
-					regID[i] = (char*)malloc(sizeof(char) * 40);
+					regID[i] = (char*)malloc(sizeof(char) * 50);
 					uint32_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
 					id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 					sprintf(regID[i], "%s", sc->regIDs[id]);
@@ -4650,7 +4654,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				char** tempID;
 				tempID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
 				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
-					tempID[i] = (char*)malloc(sizeof(char) * 40);
+					tempID[i] = (char*)malloc(sizeof(char) * 50);
 				}
 				appendZeropadStart(sc);
 				VkAppendLine(sc, sc->disableThreadsStart);
@@ -4807,7 +4811,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				tempID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
 				//resID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
 				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
-					tempID[i] = (char*)malloc(sizeof(char) * 40);
+					tempID[i] = (char*)malloc(sizeof(char) * 50);
 				}
 				for (uint32_t k = 0; k < sc->registerBoost; ++k) {
 					for (uint32_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
@@ -4884,7 +4888,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				char** tempID;
 				tempID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
 				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
-					tempID[i] = (char*)malloc(sizeof(char) * 40);
+					tempID[i] = (char*)malloc(sizeof(char) * 50);
 				}
 				appendZeropadStart(sc);
 				VkAppendLine(sc, sc->disableThreadsStart);
@@ -4987,7 +4991,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				tempID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
 				//resID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
 				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
-					tempID[i] = (char*)malloc(sizeof(char) * 40);
+					tempID[i] = (char*)malloc(sizeof(char) * 50);
 				}
 				for (uint32_t k = 0; k < sc->registerBoost; ++k) {
 					for (uint32_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
@@ -6908,7 +6912,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		sprintf(sc->inoutID, "inoutID");
 		sprintf(sc->sdataID, "sdataID");
 		//sprintf(sc->tempReg, "temp");
-		sc->disableThreadsStart = (char*)malloc(sizeof(char) * 200);
+		sc->disableThreadsStart = (char*)malloc(sizeof(char) * 500);
 		sc->disableThreadsEnd = (char*)malloc(sizeof(char) * 2);
 		sprintf(sc->disableThreadsStart, "");
 		sprintf(sc->disableThreadsEnd, "");
@@ -7306,22 +7310,26 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				app->configuration.tempBufferSize = 0;
 			}
 		}
-		for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
-			for (uint32_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
-				deleteAxis(app, &app->localFFTPlan->axes[i][j]);
+		if (!app->configuration.makeInversePlanOnly) {
+			for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
+				for (uint32_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
+					deleteAxis(app, &app->localFFTPlan->axes[i][j]);
+			}
+			if (app->localFFTPlan != 0) {
+				free(app->localFFTPlan);
+				app->localFFTPlan = 0;
+			}
 		}
-		if (app->localFFTPlan != 0) {
-			free(app->localFFTPlan);
-			app->localFFTPlan = 0;
-		}
-		for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
-			for (uint32_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
-				deleteAxis(app, &app->localFFTPlan_inverse->axes[i][j]);
-		}
+		if (!app->configuration.makeForwardPlanOnly) {
+			for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
+				for (uint32_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
+					deleteAxis(app, &app->localFFTPlan_inverse->axes[i][j]);
+			}
 
-		if (app->localFFTPlan_inverse != 0) {
-			free(app->localFFTPlan_inverse);
-			app->localFFTPlan_inverse = 0;
+			if (app->localFFTPlan_inverse != 0) {
+				free(app->localFFTPlan_inverse);
+				app->localFFTPlan_inverse = 0;
+			}
 		}
 	}
 	static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t supportAxis) {
@@ -9571,7 +9579,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 					}
 				axis->referenceLUT = 0;
-				if (!inverse) {
+				if ((!inverse)&&(!app->configuration.makeForwardPlanOnly)) {
 					axis->bufferLUT = app->localFFTPlan_inverse->axes[axis_id][axis_upload_id].bufferLUT;
 #if(VKFFT_BACKEND==0)
 					axis->bufferLUTDeviceMemory = app->localFFTPlan_inverse->axes[axis_id][axis_upload_id].bufferLUTDeviceMemory;
@@ -9690,7 +9698,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 					}
 				axis->referenceLUT = 0;
-				if (!inverse) {
+				if ((!inverse) && (!app->configuration.makeForwardPlanOnly)) {
 					axis->bufferLUT = app->localFFTPlan_inverse->axes[axis_id][axis_upload_id].bufferLUT;
 #if(VKFFT_BACKEND==0)
 					axis->bufferLUTDeviceMemory = app->localFFTPlan_inverse->axes[axis_id][axis_upload_id].bufferLUTDeviceMemory;
@@ -11460,6 +11468,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		app->configuration.normalize = 0;
 		if (inputLaunchConfiguration.normalize != 0)	app->configuration.normalize = inputLaunchConfiguration.normalize;
+		if (inputLaunchConfiguration.makeForwardPlanOnly != 0)	app->configuration.makeForwardPlanOnly = inputLaunchConfiguration.makeForwardPlanOnly;
+		if (inputLaunchConfiguration.makeInversePlanOnly != 0)	app->configuration.makeInversePlanOnly = inputLaunchConfiguration.makeInversePlanOnly;
+
 		app->configuration.reorderFourStep = 1;
 		if (inputLaunchConfiguration.disableReorderFourStep != 0) app->configuration.reorderFourStep = 0;
 		if (inputLaunchConfiguration.frequencyZeroPadding != 0) app->configuration.frequencyZeroPadding = inputLaunchConfiguration.frequencyZeroPadding;
@@ -11481,14 +11492,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 
 		app->configuration.coordinateFeatures = 1;
-		app->configuration.matrixConvolution = 1;
 		app->configuration.numberBatches = 1;
+		if (inputLaunchConfiguration.coordinateFeatures != 0)	app->configuration.coordinateFeatures = inputLaunchConfiguration.coordinateFeatures;
+		if (inputLaunchConfiguration.numberBatches != 0)	app->configuration.numberBatches = inputLaunchConfiguration.numberBatches;
+
+		app->configuration.matrixConvolution = 1;
 		app->configuration.numberKernels = 1;
-
 		if (inputLaunchConfiguration.kernelConvolution != 0) {
-			if (inputLaunchConfiguration.coordinateFeatures != 0)	app->configuration.coordinateFeatures = inputLaunchConfiguration.coordinateFeatures;
-			if (inputLaunchConfiguration.numberBatches != 0)	app->configuration.numberBatches = inputLaunchConfiguration.numberBatches;
-
 			app->configuration.kernelConvolution = inputLaunchConfiguration.kernelConvolution;
 			app->configuration.reorderFourStep = 0;
 			app->configuration.registerBoost = 1;
@@ -11498,9 +11508,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		if (app->configuration.performConvolution) {
 
-			if (inputLaunchConfiguration.coordinateFeatures != 0)	app->configuration.coordinateFeatures = inputLaunchConfiguration.coordinateFeatures;
 			if (inputLaunchConfiguration.matrixConvolution != 0)	app->configuration.matrixConvolution = inputLaunchConfiguration.matrixConvolution;
-			if (inputLaunchConfiguration.numberBatches != 0)	app->configuration.numberBatches = inputLaunchConfiguration.numberBatches;
 			if (inputLaunchConfiguration.numberKernels != 0)	app->configuration.numberKernels = inputLaunchConfiguration.numberKernels;
 
 			if (inputLaunchConfiguration.symmetricKernel != 0)	app->configuration.symmetricKernel = inputLaunchConfiguration.symmetricKernel;
@@ -11525,19 +11533,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		VkFFTResult resFFT = VKFFT_SUCCESS;
 		uint32_t initSharedMemory = app->configuration.sharedMemorySize;
-		app->localFFTPlan_inverse = (VkFFTPlan*)malloc(sizeof(VkFFTPlan));
-		for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
-			app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
-			resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, i, 0);
-			if (resFFT != VKFFT_SUCCESS) {
-#if(VKFFT_BACKEND==0)
-				if (!app->configuration.isCompilerInitialized)
-					glslang_finalize_process();
-#endif
-				return resFFT;
-			}
-			for (uint32_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
-				resFFT = VkFFTPlanAxis(app, app->localFFTPlan_inverse, i, j, 1);
+		if (!app->configuration.makeForwardPlanOnly) {
+			app->localFFTPlan_inverse = (VkFFTPlan*)malloc(sizeof(VkFFTPlan));
+			for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
+				app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
+				resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, i, 0);
 				if (resFFT != VKFFT_SUCCESS) {
 #if(VKFFT_BACKEND==0)
 					if (!app->configuration.isCompilerInitialized)
@@ -11545,27 +11545,39 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 					return resFFT;
 				}
+				for (uint32_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
+					resFFT = VkFFTPlanAxis(app, app->localFFTPlan_inverse, i, j, 1);
+					if (resFFT != VKFFT_SUCCESS) {
+#if(VKFFT_BACKEND==0)
+						if (!app->configuration.isCompilerInitialized)
+							glslang_finalize_process();
+#endif
+						return resFFT;
+					}
+				}
 			}
 		}
-		app->localFFTPlan = (VkFFTPlan*)malloc(sizeof(VkFFTPlan));
-		for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
-			app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
-			resFFT = VkFFTScheduler(app, app->localFFTPlan, i, 0);
-			if (resFFT != VKFFT_SUCCESS) {
-#if(VKFFT_BACKEND==0)
-				if (!app->configuration.isCompilerInitialized)
-					glslang_finalize_process();
-#endif
-				return resFFT;
-			}
-			for (uint32_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++) {
-				resFFT = VkFFTPlanAxis(app, app->localFFTPlan, i, j, 0);
+		if (!app->configuration.makeInversePlanOnly) {
+			app->localFFTPlan = (VkFFTPlan*)malloc(sizeof(VkFFTPlan));
+			for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
+				app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
+				resFFT = VkFFTScheduler(app, app->localFFTPlan, i, 0);
 				if (resFFT != VKFFT_SUCCESS) {
 #if(VKFFT_BACKEND==0)
 					if (!app->configuration.isCompilerInitialized)
 						glslang_finalize_process();
 #endif
 					return resFFT;
+				}
+				for (uint32_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++) {
+					resFFT = VkFFTPlanAxis(app, app->localFFTPlan, i, j, 0);
+					if (resFFT != VKFFT_SUCCESS) {
+#if(VKFFT_BACKEND==0)
+						if (!app->configuration.isCompilerInitialized)
+							glslang_finalize_process();
+#endif
+						return resFFT;
+					}
 				}
 			}
 		}
@@ -11764,6 +11776,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.streamCounter = 0;
 #endif
 		uint32_t localSize0 = (app->configuration.performR2C == 1) ? app->configuration.size[0] / 2 + 1 : app->configuration.size[0];
+		if ((inverse != 1) && (app->configuration.makeInversePlanOnly)) return VKFFT_ERROR_ONLY_INVERSE_FFT_INITIALIZED;
+		if ((inverse == 1) && (app->configuration.makeForwardPlanOnly)) return VKFFT_ERROR_ONLY_FORWARD_FFT_INITIALIZED;
+
 		if (inverse != 1) {
 			//FFT axis 0
 			for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {

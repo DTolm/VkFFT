@@ -4805,7 +4805,7 @@ int main(int argc, char* argv[])
 	if (findFlag(argv, argv + argc, "-h"))
 	{
 		//print help
-		printf("VkFFT v1.1.11 (25-03-2021). Author: Tolmachev Dmitrii\n");
+		printf("VkFFT v1.1.12 (29-03-2021). Author: Tolmachev Dmitrii\n");
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
