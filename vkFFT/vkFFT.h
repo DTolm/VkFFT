@@ -3722,7 +3722,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (sc->fftDim == sc->fft_dim_full) {
 					for (uint32_t k = 0; k < sc->registerBoost; k++) {
 						uint32_t num_in = (sc->axisSwapped) ? (int)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (int)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
-						//num_in = ceil(num_in / (double)sc->min_registers_per_thread);
+						//num_in = (uint32_t)ceil(num_in / (double)sc->min_registers_per_thread);
 						for (uint32_t i = 0; i < num_in; i++) {
 							if (sc->localSize[1] == 1)
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * num_in) * sc->localSize[0]);
@@ -3812,7 +3812,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s + (%s+%d) * sharedStride].y + sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
 									}
 									else {
-										if (i >= ceil(sc->min_registers_per_thread / 2.0)) {
+										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%d-%s) * sharedStride].x + sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s + (%d-%s) * sharedStride].y + sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
 										}
@@ -3833,7 +3833,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s * sharedStride + (%s+%d)].y + sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
 									}
 									else {
-										if (i >= ceil(sc->min_registers_per_thread / 2.0)) {
+										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%d-%s)].x + sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s * sharedStride + (%d-%s)].y + sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
 										}
@@ -3856,7 +3856,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
 									}
 									else {
-										if (i >= ceil(sc->min_registers_per_thread / 2.0)) {
+										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
 										}
@@ -3877,7 +3877,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
 									}
 									else {
-										if (i >= ceil(sc->min_registers_per_thread / 2.0)) {
+										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
 										}
@@ -3906,7 +3906,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (sc->fftDim == sc->fft_dim_full) {
 					for (uint32_t k = 0; k < sc->registerBoost; k++) {
 						uint32_t num_in = (sc->axisSwapped) ? (int)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (int)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
-						//num_in = ceil(num_in / (double)sc->min_registers_per_thread);
+						//num_in = (uint32_t)ceil(num_in / (double)sc->min_registers_per_thread);
 						for (uint32_t i = 0; i < num_in; i++) {
 
 							if (sc->localSize[1] == 1)
@@ -3975,18 +3975,18 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 
 						appendBarrierVkFFT(sc, 1);
-						/*for (uint32_t i = 0; i < ceil(sc->min_registers_per_thread / 2.0); i++) {
+						/*for (uint32_t i = 0; i < (uint32_t)ceil(sc->min_registers_per_thread / 2.0); i++) {
 
 							if (sc->localSize[1] == 1)
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 							else
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 							if (sc->axisSwapped) {
-								if ((i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
+								if ((i == ((uint32_t)ceil(sc->min_registers_per_thread / 2.0) - 1)))
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "if (combinedID / %d < %d){\n", (uint32_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[0]);
 							}
 							else {
-								if ((i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
+								if ((i == ((uint32_t)ceil(sc->min_registers_per_thread / 2.0) - 1)))
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "if (combinedID / %d < %d){\n", (uint32_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[1]);
 							}
 							if (!sc->axisSwapped) {
@@ -3997,7 +3997,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[((%d - (combinedID %% %d)) * sharedStride + (combinedID / %d))].x = sdata[(((combinedID %% %d) + 1) * sharedStride + (combinedID / %d))].x;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[((%d - (combinedID %% %d)) * sharedStride + (combinedID / %d))].y = -sdata[(((combinedID %% %d) + 1) * sharedStride + (combinedID / %d))].y;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
 							}
-							if ((i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
+							if ((i == ((uint32_t)ceil(sc->min_registers_per_thread / 2.0) - 1)))
 								VkAppendLine(sc, "	}");
 						}*/
 						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
@@ -4006,7 +4006,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 							else
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
-							if ((i == (ceil(sc->min_registers_per_thread / 2.0) - 1)))
+							if ((i == ((uint32_t)ceil(sc->min_registers_per_thread / 2.0) - 1)))
 							{
 								if (sc->axisSwapped)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "if (combinedID / %d < %d){\n", (uint32_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[0]);
@@ -4020,7 +4020,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s + (%s+%d) * sharedStride].y + sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
 									}
 									else {
-										if (i >= ceil(sc->min_registers_per_thread / 2.0)) {
+										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%d-%s) * sharedStride].x + sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s + (%d-%s) * sharedStride].y + sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
 										}
@@ -4041,7 +4041,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s * sharedStride + (%s+%d)].y + sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
 									}
 									else {
-										if (i >= ceil(sc->min_registers_per_thread / 2.0)) {
+										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%d-%s)].x + sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s * sharedStride + (%d-%s)].y + sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
 										}
@@ -4064,7 +4064,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
 									}
 									else {
-										if (i >= ceil(sc->min_registers_per_thread / 2.0)) {
+										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
 										}
@@ -4085,7 +4085,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
 									}
 									else {
-										if (i >= ceil(sc->min_registers_per_thread / 2.0)) {
+										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
 										}
@@ -6400,8 +6400,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									appendZeropadStart(sc);
 								}
 							}
-							uint32_t num_out = (sc->axisSwapped) ? ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
-							//num_out = ceil(num_out / (double)sc->min_registers_per_thread);
+							uint32_t num_out = (sc->axisSwapped) ? (uint32_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (uint32_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
+							//num_out = (uint32_t)ceil(num_out / (double)sc->min_registers_per_thread);
 							for (uint32_t i = 0; i < num_out; i++) {
 								if (sc->localSize[1] == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * num_out) * sc->localSize[0]);
@@ -6539,8 +6539,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									appendZeropadStart(sc);
 								}
 							}
-							uint32_t num_out = (sc->axisSwapped) ? ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
-							//num_out = ceil(num_out / (double)sc->min_registers_per_thread);
+							uint32_t num_out = (sc->axisSwapped) ? (uint32_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (uint32_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
+							//num_out = (uint32_t)ceil(num_out / (double)sc->min_registers_per_thread);
 							for (uint32_t i = 0; i < num_out; i++) {
 								if (sc->localSize[1] == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * num_out) * sc->localSize[0]);
@@ -7750,7 +7750,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t numPasses = 1;
 		uint32_t numPassesHalfBandwidth = 1;
 		uint32_t temp;
-		temp = (axis_id == nonStridedAxisId) ? ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStrided);
+		temp = (axis_id == nonStridedAxisId) ? (uint32_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : (uint32_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStrided);
 		if (temp > 1) {//more passes than one
 			for (uint32_t i = 1; i <= app->configuration.registerBoost4Step; i++) {
 				if (app->configuration.size[axis_id] % (i * i) == 0) {
@@ -7765,7 +7765,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else
 				numPasses += (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStrided));
 		}
-		registerBoost = ((axis_id == nonStridedAxisId) && ((!app->configuration.reorderFourStep) || (numPasses == 1))) ? ceil(app->configuration.size[axis_id] / (float)(pow(maxSequenceLengthSharedMemoryStrided, numPasses - 1) * maxSequenceLengthSharedMemory)) : ceil(app->configuration.size[axis_id] / (float)pow(maxSequenceLengthSharedMemoryStrided, numPasses));
+		registerBoost = ((axis_id == nonStridedAxisId) && ((!app->configuration.reorderFourStep) || (numPasses == 1))) ? (uint32_t)ceil(app->configuration.size[axis_id] / (float)(pow(maxSequenceLengthSharedMemoryStrided, numPasses - 1) * maxSequenceLengthSharedMemory)) : (uint32_t)ceil(app->configuration.size[axis_id] / (float)pow(maxSequenceLengthSharedMemoryStrided, numPasses));
 		uint32_t canBoost = 0;
 		for (uint32_t i = registerBoost; i <= app->configuration.registerBoost; i++) {
 			if (app->configuration.size[axis_id] % (i * i) == 0) {
@@ -7783,12 +7783,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		uint32_t maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
 		if ((app->configuration.performHalfBandwidthBoost)) {
 			maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / 2 > complexSize) ? app->configuration.sharedMemorySizePow2 / (app->configuration.coalescedMemory / 2) : app->configuration.sharedMemorySizePow2 / complexSize;
-			temp = (axis_id == nonStridedAxisId) ? ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
+			temp = (axis_id == nonStridedAxisId) ? (uint32_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : (uint32_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
 			//temp = app->configuration.size[axis_id] / maxSingleSizeNonStrided;
 			if (temp > 1) {//more passes than two
-				temp = (!app->configuration.reorderFourStep) ? ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
+				temp = (!app->configuration.reorderFourStep) ? (uint32_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : (uint32_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
 				for (uint32_t i = 0; i < 5; i++) {
-					temp = ceil(temp / (double)maxSingleSizeStrided);
+					temp = (uint32_t)ceil(temp / (double)maxSingleSizeStrided);
 					numPassesHalfBandwidth++;
 					if (temp == 1) i = 5;
 				}
@@ -7878,7 +7878,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				else {
-					uint32_t sqrtSequence = ceil(sqrt(app->configuration.size[axis_id]));
+					uint32_t sqrtSequence = (uint32_t)ceil(sqrt(app->configuration.size[axis_id]));
 					for (uint32_t i = 0; i < sqrtSequence; i++) {
 						if (app->configuration.size[axis_id] % (sqrtSequence - i) == 0) {
 							if ((sqrtSequence - i <= maxSingleSizeStrided) && (app->configuration.size[axis_id] / (sqrtSequence - i) <= maxSingleSizeStridedHalfBandwidth)) {
@@ -7987,7 +7987,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) {
 					for (uint32_t i = 0; i < maxSequenceLengthSharedMemory; i++) {
 						if (app->configuration.size[axis_id] % (maxSequenceLengthSharedMemory - i) == 0) {
-							uint32_t sqrt3Sequence = ceil(sqrt(app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i)));
+							uint32_t sqrt3Sequence = (uint32_t)ceil(sqrt(app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i)));
 							for (uint32_t j = 0; j < sqrt3Sequence; j++) {
 								if ((app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i)) % (sqrt3Sequence - j) == 0) {
 									if (((maxSequenceLengthSharedMemory - i) <= maxSequenceLengthSharedMemory) && (sqrt3Sequence - j <= maxSingleSizeStrided) && (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i) / (sqrt3Sequence - j) <= maxSingleSizeStrided)) {
@@ -8004,10 +8004,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				else {
-					uint32_t sqrt3Sequence = ceil(pow(app->configuration.size[axis_id], 1.0 / 3.0));
+					uint32_t sqrt3Sequence = (uint32_t)ceil(pow(app->configuration.size[axis_id], 1.0 / 3.0));
 					for (uint32_t i = 0; i < sqrt3Sequence; i++) {
 						if (app->configuration.size[axis_id] % (sqrt3Sequence - i) == 0) {
-							uint32_t sqrt2Sequence = ceil(sqrt(app->configuration.size[axis_id] / (sqrt3Sequence - i)));
+							uint32_t sqrt2Sequence = (uint32_t)ceil(sqrt(app->configuration.size[axis_id] / (sqrt3Sequence - i)));
 							for (uint32_t j = 0; j < sqrt2Sequence; j++) {
 								if ((app->configuration.size[axis_id] / (sqrt3Sequence - i)) % (sqrt2Sequence - j) == 0) {
 									if ((sqrt3Sequence - i <= maxSingleSizeStrided) && (sqrt2Sequence - j <= maxSingleSizeStrided) && (app->configuration.size[axis_id] / (sqrt3Sequence - i) / (sqrt2Sequence - j) <= maxSingleSizeStridedHalfBandwidth)) {
@@ -9774,7 +9774,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			axes[k].specializationConstants.numStages = 0;
 			axes[k].specializationConstants.fftDim = locAxisSplit[k];
-			uint32_t tempRegisterBoost = registerBoost;// ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) ? ceil(axes[k].specializationConstants.fftDim / (float)maxSingleSizeNonStrided) : ceil(axes[k].specializationConstants.fftDim / (float)maxSingleSizeStrided);
+			uint32_t tempRegisterBoost = registerBoost;// ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) ? (uint32_t)ceil(axes[k].specializationConstants.fftDim / (float)maxSingleSizeNonStrided) : (uint32_t)ceil(axes[k].specializationConstants.fftDim / (float)maxSingleSizeStrided);
 			uint32_t switchRegisterBoost = 0;
 			if (tempRegisterBoost > 1) {
 				if (loc_multipliers[tempRegisterBoost] > 0) {
@@ -10539,7 +10539,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			}
 
-			axis->specializationConstants.inputBufferBlockSize = ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.inputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
 			axis->specializationConstants.inputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 		}
 
@@ -10552,7 +10552,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
 			}
 
-			axis->specializationConstants.outputBufferBlockSize = ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.outputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
 			axis->specializationConstants.outputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
@@ -10567,7 +10567,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				totalSize += app->configuration.kernelSize[i];
 				if (app->configuration.kernelSize[i] < locPageSize) locPageSize = app->configuration.kernelSize[i];
 			}
-			axis->specializationConstants.kernelBlockSize = ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.kernelBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
 			axis->specializationConstants.kernelBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.kernelBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.kernelBlockNum == 1) axis->specializationConstants.inputBufferBlockSize = totalSize / storageComplexSize;
 			if (axis->specializationConstants.kernelBlockNum == 0) axis->specializationConstants.kernelBlockNum = 1;
@@ -10676,7 +10676,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->axisBlock[1] = 1;
 			axis->axisBlock[2] = 1;
 
-			uint32_t tempSize[3] = { ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0])), 1, 1 };
+			uint32_t tempSize[3] = { (uint32_t)ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0])), 1, 1 };
 
 
 			if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
@@ -11716,7 +11716,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				totalSize += app->configuration.inputBufferSize[i];
 				if (app->configuration.inputBufferSize[i] < locPageSize) locPageSize = app->configuration.inputBufferSize[i];
 			}
-			axis->specializationConstants.inputBufferBlockSize = ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.inputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
 			axis->specializationConstants.inputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.inputBufferBlockNum == 1) axis->specializationConstants.inputBufferBlockSize = totalSize / storageComplexSize;
 
@@ -11730,7 +11730,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (app->configuration.outputBufferSize[i] < locPageSize) locPageSize = app->configuration.outputBufferSize[i];
 				}
 
-				axis->specializationConstants.inputBufferBlockSize = ceil(locPageSize / (double)storageComplexSize);
+				axis->specializationConstants.inputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
 				axis->specializationConstants.inputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 				//if (axis->specializationConstants.inputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
@@ -11761,7 +11761,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 
-				axis->specializationConstants.inputBufferBlockSize = ceil(locPageSize / (double)storageComplexSize);
+				axis->specializationConstants.inputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
 				axis->specializationConstants.inputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 				//if (axis->specializationConstants.inputBufferBlockNum == 1) axis->specializationConstants.inputBufferBlockSize = totalSize / storageComplexSize;
 
@@ -11784,7 +11784,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (app->configuration.outputBufferSize[i] < locPageSize) locPageSize = app->configuration.outputBufferSize[i];
 			}
 
-			axis->specializationConstants.outputBufferBlockSize = ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.outputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
 			axis->specializationConstants.outputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
@@ -11811,7 +11811,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
 				}
 			}
-			axis->specializationConstants.outputBufferBlockSize = ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.outputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
 			axis->specializationConstants.outputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
@@ -11825,7 +11825,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				totalSize += app->configuration.kernelSize[i];
 				if (app->configuration.kernelSize[i] < locPageSize) locPageSize = app->configuration.kernelSize[i];
 			}
-			axis->specializationConstants.kernelBlockSize = ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.kernelBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
 			axis->specializationConstants.kernelBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.kernelBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.kernelBlockNum == 1) axis->specializationConstants.inputBufferBlockSize = totalSize / storageComplexSize;
 			if (axis->specializationConstants.kernelBlockNum == 0) axis->specializationConstants.kernelBlockNum = 1;
@@ -11956,7 +11956,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else {
 				axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
 			}*/
-			//if (axis->groupedBatch * ceil(axis->specializationConstants.fftDim / 8.0) < app->configuration.warpSize) axis->groupedBatch = app->configuration.warpSize / ceil(axis->specializationConstants.fftDim / 8.0);
+			//if (axis->groupedBatch * (uint32_t)ceil(axis->specializationConstants.fftDim / 8.0) < app->configuration.warpSize) axis->groupedBatch = app->configuration.warpSize / (uint32_t)ceil(axis->specializationConstants.fftDim / 8.0);
 			//axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
 			if (((FFTPlan->numAxisUploads[axis_id] == 1) && (axis_id == 0)) || ((axis_id == 0) && (!app->configuration.reorderFourStep) && (axis_upload_id == 0))) {
 				axis->groupedBatch = (maxSequenceLengthSharedMemoryPow2 / axis->specializationConstants.fftDim > axis->groupedBatch) ? maxSequenceLengthSharedMemoryPow2 / axis->specializationConstants.fftDim : axis->groupedBatch;
@@ -11968,21 +11968,21 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//shared memory bank conflict resolve
 	//#if(VKFFT_BACKEND!=2)//for some reason, hip doesn't get performance increase from having variable shared memory strides.
 			if ((FFTPlan->numAxisUploads[axis_id] == 2) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim * maxBatchCoalesced <= maxSequenceLengthSharedMemory)) {
-				axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
+				axis->groupedBatch = (uint32_t)ceil(axis->groupedBatch / 2.0);
 			}
 			//#endif
 			if ((FFTPlan->numAxisUploads[axis_id] == 3) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory / (2 * complexSize))) {
-				axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
+				axis->groupedBatch = (uint32_t)ceil(axis->groupedBatch / 2.0);
 			}
 			if (axis->groupedBatch < maxBatchCoalesced) axis->groupedBatch = maxBatchCoalesced;
 			axis->groupedBatch = (axis->groupedBatch / maxBatchCoalesced) * maxBatchCoalesced;
 			//half bandiwdth technique
 			if (!((axis_id == 0) && (FFTPlan->numAxisUploads[axis_id] == 1)) && !((axis_id == 0) && (axis_upload_id == 0) && (!app->configuration.reorderFourStep)) && (axis->specializationConstants.fftDim > maxSingleSizeStrided)) {
-				axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
+				axis->groupedBatch = (uint32_t)ceil(axis->groupedBatch / 2.0);
 			}
 
 			if ((app->configuration.halfThreads) && (axis->groupedBatch * axis->specializationConstants.fftDim * complexSize >= app->configuration.sharedMemorySize))
-				axis->groupedBatch = ceil(axis->groupedBatch / 2.0);
+				axis->groupedBatch = (uint32_t)ceil(axis->groupedBatch / 2.0);
 			if (axis->groupedBatch > app->configuration.warpSize) axis->groupedBatch = (axis->groupedBatch / app->configuration.warpSize) * app->configuration.warpSize;
 			if (axis->groupedBatch > 2 * maxBatchCoalesced) axis->groupedBatch = (axis->groupedBatch / (2 * maxBatchCoalesced)) * (2 * maxBatchCoalesced);
 			if (axis->groupedBatch > 4 * maxBatchCoalesced) axis->groupedBatch = (axis->groupedBatch / (4 * maxBatchCoalesced)) * (2 * maxBatchCoalesced);
@@ -12009,7 +12009,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 					}
 
-					if ((FFTPlan->numAxisUploads[0] > 1) && (ceil(app->configuration.size[0] / axis->specializationConstants.fftDim) < axis->axisBlock[1])) axis->axisBlock[1] = (uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim);
+					if ((FFTPlan->numAxisUploads[0] > 1) && ((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim) < axis->axisBlock[1])) axis->axisBlock[1] = (uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim);
 					if ((axis->specializationConstants.mergeSequencesR2C != 0) && (axis->specializationConstants.fftDim * axis->axisBlock[1] >= maxSequenceLengthSharedMemory)) {
 						axis->specializationConstants.mergeSequencesR2C = 0;
 						/*if ((!inverse) && (axis_id == 0) && (axis_upload_id == 0) && (!(app->configuration.isInputFormatted))) {
@@ -12026,7 +12026,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}*/
 						r2cmult = 1;
 					}
-					if ((FFTPlan->numAxisUploads[0] == 1) && (ceil(app->configuration.size[1] / (double)r2cmult) < axis->axisBlock[1])) axis->axisBlock[1] = (uint32_t)ceil(app->configuration.size[1] / (double)r2cmult);
+					if ((FFTPlan->numAxisUploads[0] == 1) && ((uint32_t)ceil(app->configuration.size[1] / (double)r2cmult) < axis->axisBlock[1])) axis->axisBlock[1] = (uint32_t)ceil(app->configuration.size[1] / (double)r2cmult);
 
 					if (axis->axisBlock[1] > app->configuration.maxComputeWorkGroupSize[1]) axis->axisBlock[1] = app->configuration.maxComputeWorkGroupSize[1];
 					if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[1] /= 2;
@@ -12135,9 +12135,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					tempSize[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[1];
 				else
 					tempSize[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[0];
-				if ((app->configuration.performR2C == 1) && (axis->specializationConstants.mergeSequencesR2C)) tempSize[1] = ceil(tempSize[1] / 2.0);
-				//if (app->configuration.performZeropadding[1]) tempSize[1] = ceil(tempSize[1] / 2.0);
-				//if (app->configuration.performZeropadding[2]) tempSize[2] = ceil(tempSize[2] / 2.0);
+				if ((app->configuration.performR2C == 1) && (axis->specializationConstants.mergeSequencesR2C)) tempSize[1] = (uint32_t)ceil(tempSize[1] / 2.0);
+				//if (app->configuration.performZeropadding[1]) tempSize[1] = (uint32_t)ceil(tempSize[1] / 2.0);
+				//if (app->configuration.performZeropadding[2]) tempSize[2] = (uint32_t)ceil(tempSize[2] / 2.0);
 				if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
 				else  axis->specializationConstants.performWorkGroupShift[0] = 0;
 				if (tempSize[1] > app->configuration.maxComputeWorkGroupCount[1]) axis->specializationConstants.performWorkGroupShift[1] = 1;
@@ -12146,11 +12146,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				else  axis->specializationConstants.performWorkGroupShift[2] = 0;
 			}
 			if (axis_id == 1) {
-				tempSize[0] = (app->configuration.performR2C == 1) ? ceil((app->configuration.size[0] / 2 + 1) / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim) : ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+				tempSize[0] = (app->configuration.performR2C == 1) ? (uint32_t)ceil((app->configuration.size[0] / 2 + 1) / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim) : (uint32_t)ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 				tempSize[1] = 1;
 				tempSize[2] = app->configuration.size[2];
-				//if (app->configuration.performR2C == 1) tempSize[0] = ceil(tempSize[0] / 2.0);
-				//if (app->configuration.performZeropadding[2]) tempSize[2] = ceil(tempSize[2] / 2.0);
+				//if (app->configuration.performR2C == 1) tempSize[0] = (uint32_t)ceil(tempSize[0] / 2.0);
+				//if (app->configuration.performZeropadding[2]) tempSize[2] = (uint32_t)ceil(tempSize[2] / 2.0);
 
 				if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
 				else  axis->specializationConstants.performWorkGroupShift[0] = 0;
@@ -12161,10 +12161,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			}
 			if (axis_id == 2) {
-				tempSize[0] = (app->configuration.performR2C == 1) ? ceil((app->configuration.size[0] / 2 + 1) / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim) : ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
+				tempSize[0] = (app->configuration.performR2C == 1) ? (uint32_t)ceil((app->configuration.size[0] / 2 + 1) / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim) : (uint32_t)ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 				tempSize[1] = 1;
 				tempSize[2] = app->configuration.size[1];
-				//if (app->configuration.performR2C == 1) tempSize[0] = ceil(tempSize[0] / 2.0);
+				//if (app->configuration.performR2C == 1) tempSize[0] = (uint32_t)ceil(tempSize[0] / 2.0);
 
 				if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
 				else  axis->specializationConstants.performWorkGroupShift[0] = 0;
@@ -13400,28 +13400,28 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						uint32_t dispatchBlock[3];
 						if (l == 0) {
 							if (app->localFFTPlan->numAxisUploads[0] > 2) {
-								dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan->axisSplit[0][1]) * app->localFFTPlan->axisSplit[0][1];
+								dispatchBlock[0] = (uint32_t)ceil((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan->axisSplit[0][1]) * app->localFFTPlan->axisSplit[0][1];
 								dispatchBlock[1] = app->configuration.size[1];
 							}
 							else {
 								if (app->localFFTPlan->numAxisUploads[0] > 1) {
-									dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
+									dispatchBlock[0] = (uint32_t)ceil((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
 									dispatchBlock[1] = app->configuration.size[1];
 								}
 								else {
 									dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
-									dispatchBlock[1] = ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
+									dispatchBlock[1] = (uint32_t)ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
 								}
 							}
 						}
 						else {
-							dispatchBlock[0] = ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
+							dispatchBlock[0] = (uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 							dispatchBlock[1] = app->configuration.size[1];
 						}
 						dispatchBlock[2] = app->configuration.size[2];
-						if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
-						//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
-						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
+						if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
+						//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
+						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
 						resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
 					}
@@ -13445,7 +13445,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 						uint32_t dispatchBlock[3];
 
-						dispatchBlock[0] = ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0]));
+						dispatchBlock[0] = (uint32_t)ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0]));
 						dispatchBlock[1] = 1;
 						dispatchBlock[2] = 1;
 						resFFT = dispatchEnhanced(app, axis, dispatchBlock);
@@ -13475,11 +13475,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
 							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+							dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
-							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
-							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 						}
@@ -13503,11 +13503,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 								uint32_t dispatchBlock[3];
 
-								dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+								dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[2];
-								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
-								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
+								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
+								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
 								resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 								if (resFFT != VKFFT_SUCCESS) return resFFT;
 							}
@@ -13536,10 +13536,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
 							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
+							dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[1];
-							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 
@@ -13563,10 +13563,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
 								uint32_t dispatchBlock[3];
-								dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
+								dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[1];
-								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
 								resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 								if (resFFT != VKFFT_SUCCESS) return resFFT;
 							}
@@ -13599,10 +13599,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
 								uint32_t dispatchBlock[3];
-								dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
+								dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[1];
-								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
 								resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 								if (resFFT != VKFFT_SUCCESS) return resFFT;
 							}
@@ -13625,11 +13625,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
 							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+							dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
-							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
-							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 						}
@@ -13657,11 +13657,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
 								uint32_t dispatchBlock[3];
-								dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+								dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[2];
-								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
-								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
+								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
+								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
 								resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 								if (resFFT != VKFFT_SUCCESS) return resFFT;
 							}
@@ -13685,28 +13685,28 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							uint32_t dispatchBlock[3];
 							if (l == 0) {
 								if (app->localFFTPlan->numAxisUploads[0] > 2) {
-									dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan->axisSplit[0][1]) * app->localFFTPlan->axisSplit[0][1];
+									dispatchBlock[0] = (uint32_t)ceil((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan->axisSplit[0][1]) * app->localFFTPlan->axisSplit[0][1];
 									dispatchBlock[1] = app->configuration.size[1];
 								}
 								else {
 									if (app->localFFTPlan->numAxisUploads[0] > 1) {
-										dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
+										dispatchBlock[0] = (uint32_t)ceil((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
 										dispatchBlock[1] = app->configuration.size[1];
 									}
 									else {
 										dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
-										dispatchBlock[1] = ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
+										dispatchBlock[1] = (uint32_t)ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
 									}
 								}
 							}
 							else {
-								dispatchBlock[0] = ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
+								dispatchBlock[0] = (uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 								dispatchBlock[1] = app->configuration.size[1];
 							}
 							dispatchBlock[2] = app->configuration.size[2];
-							if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
-							//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
-							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
+							if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
+							//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
+							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 						}
@@ -13733,11 +13733,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
 							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+							dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
-							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
-							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 						}
@@ -13767,13 +13767,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
 							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
+							dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[1];
-							//if (app->configuration.performZeropaddingInverse[0]) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
-							//if (app->configuration.performZeropaddingInverse[1]) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
+							//if (app->configuration.performZeropaddingInverse[0]) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.performZeropaddingInverse[1]) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
 
-							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 						}
@@ -13802,12 +13802,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
 							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+							dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
-							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
-							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
-							//if (app->configuration.performZeropaddingInverse[0]) dispatchBlock[0] = ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
+							//if (app->configuration.performZeropaddingInverse[0]) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
 
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -13836,7 +13836,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 						uint32_t dispatchBlock[3];
 
-						dispatchBlock[0] = ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0]));
+						dispatchBlock[0] = (uint32_t)ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0]));
 						dispatchBlock[1] = 1;
 						dispatchBlock[2] = 1;
 						resFFT = dispatchEnhanced(app, axis, dispatchBlock);
@@ -13864,28 +13864,28 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						uint32_t dispatchBlock[3];
 						if (l == 0) {
 							if (app->localFFTPlan_inverse->numAxisUploads[0] > 2) {
-								dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan_inverse->axisSplit[0][1]) * app->localFFTPlan_inverse->axisSplit[0][1];
+								dispatchBlock[0] = (uint32_t)ceil((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan_inverse->axisSplit[0][1]) * app->localFFTPlan_inverse->axisSplit[0][1];
 								dispatchBlock[1] = app->configuration.size[1];
 							}
 							else {
 								if (app->localFFTPlan_inverse->numAxisUploads[0] > 1) {
-									dispatchBlock[0] = ceil(ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
+									dispatchBlock[0] = (uint32_t)ceil((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
 									dispatchBlock[1] = app->configuration.size[1];
 								}
 								else {
 									dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
-									dispatchBlock[1] = ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
+									dispatchBlock[1] = (uint32_t)ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
 								}
 							}
 						}
 						else {
-							dispatchBlock[0] = ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
+							dispatchBlock[0] = (uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 							dispatchBlock[1] = app->configuration.size[1];
 						}
 						dispatchBlock[2] = app->configuration.size[2];
-						if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
-						//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = ceil(dispatchBlock[1] / 2.0);
-						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = ceil(dispatchBlock[2] / 2.0);
+						if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
+						//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
+						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
 						resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
 					}
