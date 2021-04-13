@@ -30,6 +30,12 @@ extern "C" {
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
+#elif(VKFFT_BACKEND==3)
+#ifdef __APPLE__
+#include <OpenCL/opencl.h>
+#else
+#include <CL/cl.h>
+#endif 
 #endif
 
 	typedef struct {
@@ -56,6 +62,10 @@ extern "C" {
 		//hipCtx_t* context;//pointer to HIP context, obtained from hipDeviceGet
 		hipStream_t* stream;//pointer to streams (can be more than 1), where to execute the kernels
 		uint32_t num_streams;//try to submit HIP kernels in multiple streams for asynchronous execution. Default 1
+#elif(VKFFT_BACKEND==3)
+		cl_platform_id* platform;
+		cl_device_id* device;
+		cl_context* context;
 #endif
 
 		//data parameters:
@@ -91,6 +101,12 @@ extern "C" {
 		void** inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
 		void** outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
 		void** kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
+#elif(VKFFT_BACKEND==3)
+		cl_mem* buffer;//pointer to device buffer used for computations
+		cl_mem* tempBuffer;//needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
+		cl_mem* inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
+		cl_mem* outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
+		cl_mem* kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
 #endif
 
 		//optional: (default 0 if not stated otherwise)
@@ -167,6 +183,8 @@ extern "C" {
 		hipEvent_t* stream_event;//Filled at app creation
 		uint32_t streamCounter;//Filled at app creation
 		uint32_t streamID;//Filled at app creation
+#elif(VKFFT_BACKEND==3)
+		cl_command_queue* commandQueue;
 #endif
 	} VkFFTConfiguration;//parameters specified at plan creation
 
@@ -191,6 +209,14 @@ extern "C" {
 		void** inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
 		void** outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
 		void** kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
+#elif(VKFFT_BACKEND==3)
+		cl_command_queue* commandQueue;//commandBuffer to which FFT is appended
+
+		cl_mem* buffer;//pointer to device buffer used for computations
+		cl_mem* tempBuffer;//needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
+		cl_mem* inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
+		cl_mem* outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
+		cl_mem* kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
 #endif
 	} VkFFTLaunchParams;//parameters specified at plan execution
 	typedef enum VkFFTResult {
@@ -202,6 +228,8 @@ extern "C" {
 		VKFFT_ERROR_INVALID_FENCE = 1005,
 		VKFFT_ERROR_ONLY_FORWARD_FFT_INITIALIZED = 1006,
 		VKFFT_ERROR_ONLY_INVERSE_FFT_INITIALIZED = 1007,
+		VKFFT_ERROR_INVALID_CONTEXT = 1008,
+		VKFFT_ERROR_INVALID_PLATFORM = 1009,
 		VKFFT_ERROR_EMPTY_FFTdim = 2001,
 		VKFFT_ERROR_EMPTY_size = 2002,
 		VKFFT_ERROR_EMPTY_bufferSize = 2003,
@@ -262,7 +290,11 @@ extern "C" {
 		VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID = 4043,
 		VKFFT_ERROR_FAILED_TO_GET_DEVICE = 4044,
 		VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT = 4045,
-		VKFFT_ERROR_FAILED_TO_CREATE_PIPELINE = 4046
+		VKFFT_ERROR_FAILED_TO_CREATE_PIPELINE = 4046,
+		VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG = 4047,
+		VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE = 4048,
+		VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE = 4049,
+		VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES = 4050
 	} VkFFTResult;
 	typedef struct {
 		uint32_t size[3];
@@ -365,25 +397,11 @@ extern "C" {
 		char* output;
 		uint32_t currentLen;
 	} VkFFTSpecializationConstantsLayout;
-#if(VKFFT_BACKEND==0)
 	typedef struct {
 		uint32_t coordinate;
 		uint32_t batch;
 		uint32_t workGroupShift[3];
 	} VkFFTPushConstantsLayout;
-#elif(VKFFT_BACKEND==1)
-	typedef struct {
-		uint32_t coordinate;
-		uint32_t batch;
-		uint32_t workGroupShift[3];
-	} VkFFTPushConstantsLayout;
-#elif(VKFFT_BACKEND==2)
-	typedef struct {
-		uint32_t coordinate;
-		uint32_t batch;
-		uint32_t workGroupShift[3];
-	} VkFFTPushConstantsLayout;
-#endif
 	typedef struct {
 		uint32_t numBindings;
 		uint32_t axisBlock[4];
@@ -414,6 +432,12 @@ extern "C" {
 		hipFunction_t VkFFTKernel;
 		void* bufferLUT;
 		hipDeviceptr_t consts_addr;
+#elif(VKFFT_BACKEND==3)
+		cl_mem* inputBuffer;
+		cl_mem* outputBuffer;
+		cl_program  program;
+		cl_kernel kernel;
+		cl_mem bufferLUT;
 #endif
 		uint64_t bufferLUTSize;
 		uint32_t referenceLUT;
@@ -624,10 +648,6 @@ extern "C" {
 	static inline void appendVersion(VkFFTSpecializationConstantsLayout* sc) {
 #if(VKFFT_BACKEND==0)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "#version 450\n\n");
-#elif(VKFFT_BACKEND==1)
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "");
-#elif(VKFFT_BACKEND==2)
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "");
 #endif
 	}
 	static inline void appendExtensions(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory) {
@@ -639,26 +659,13 @@ extern "C" {
 		if ((!strcmp(floatTypeInputMemory, "half")) || (!strcmp(floatTypeOutputMemory, "half")) || (!strcmp(floatTypeKernelMemory, "half")))
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "#extension GL_EXT_shader_16bit_storage : require\n\n");
 #elif(VKFFT_BACKEND==1)
-		//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-#include <stdint.h>\n");
 #elif(VKFFT_BACKEND==2)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 #include <hip/hip_runtime.h>\n");
-
-		/*if (!strcmp(floatType, "float")) {
+#elif(VKFFT_BACKEND==3)
+		if (!strcmp(floatType, "double"))
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-typedef struct\n\
-{\n\
-	float x, y;\n\
-} float2;\n");
-		}
-		if (!strcmp(floatType, "double")) {
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-typedef struct\n\
-{\n\
-	double x, y;\n\
-} double2;\n");
-		}*/
+#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n\n");
 #endif
 	}
 	static inline void appendLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc) {
@@ -666,10 +673,15 @@ typedef struct\n\
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "layout (local_size_x = %d, local_size_y = %d, local_size_z = %d) in;\n", sc->localSize[0], sc->localSize[1], sc->localSize[2]);
 #elif(VKFFT_BACKEND==1)
 #elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND==3)
 #endif
 	}
 	static inline void appendConstant(VkFFTSpecializationConstantsLayout* sc, const char* type, const char* name, const char* defaultVal, const char* LFending) {
+#if(VKFFT_BACKEND==3)
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "__constant %s %s = %s%s;\n", type, name, defaultVal, LFending);
+#else
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "const %s %s = %s%s;\n", type, name, defaultVal, LFending);
+#endif
 	}
 	static inline void appendPushConstant(VkFFTSpecializationConstantsLayout* sc, const char* type, const char* name) {
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s %s;\n", type, name);
@@ -684,6 +696,8 @@ typedef struct\n\
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s__syncthreads();\n\n", tabs);
 #elif(VKFFT_BACKEND==2)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s__syncthreads();\n\n", tabs);
+#elif(VKFFT_BACKEND==3)
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "%sbarrier(CLK_LOCAL_MEM_FENCE);\n\n", tabs);
 #endif
 	}
 	static inline void appendPushConstantsVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType) {
@@ -713,6 +727,15 @@ typedef struct\n\
 		appendPushConstant(sc, uintType, "workGroupShiftZ");
 		VkAppendLine(sc, "	}PushConsts;\n");
 		VkAppendLine(sc, "	__constant__ PushConsts consts;\n");
+#elif(VKFFT_BACKEND==3)
+		VkAppendLine(sc, "	typedef struct {\n");
+		appendPushConstant(sc, uintType, "coordinate");
+		appendPushConstant(sc, uintType, "batchID");
+		appendPushConstant(sc, uintType, "workGroupShiftX");
+		appendPushConstant(sc, uintType, "workGroupShiftY");
+		appendPushConstant(sc, uintType, "workGroupShiftZ");
+		VkAppendLine(sc, "	}PushConsts;\n");
+		//VkAppendLine(sc, "	__constant PushConsts consts;\n");
 #endif
 	}
 	static inline void appendConstantsVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType) {
@@ -724,17 +747,11 @@ typedef struct\n\
 		if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #elif(VKFFT_BACKEND==2)
 		if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+#elif(VKFFT_BACKEND==3)
+		//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #endif
-#if(VKFFT_BACKEND==0)
 		appendConstant(sc, floatType, "loc_PI", "3.1415926535897932384626433832795", LFending);
 		appendConstant(sc, floatType, "loc_SQRT1_2", "0.70710678118654752440084436210485", LFending);
-#elif(VKFFT_BACKEND==1)
-		appendConstant(sc, floatType, "loc_PI", "3.1415926535897932384626433832795", LFending);
-		appendConstant(sc, floatType, "loc_SQRT1_2", "0.70710678118654752440084436210485", LFending);
-#elif(VKFFT_BACKEND==2)
-		appendConstant(sc, floatType, "loc_PI", "3.1415926535897932384626433832795", LFending);
-		appendConstant(sc, floatType, "loc_SQRT1_2", "0.70710678118654752440084436210485", LFending);
-#endif
 	}
 	static inline void appendSinCos20(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType) {
 		char functionDefinitions[100] = "";
@@ -758,6 +775,12 @@ typedef struct\n\
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 		if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 		sprintf(functionDefinitions, "__device__ static __inline__ ");
+#elif(VKFFT_BACKEND==3)
+		if (!strcmp(floatType, "half")) sprintf(vecType, "f16vec2");
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+		//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+		sprintf(functionDefinitions, "static __inline__ ");
 #endif
 		appendConstant(sc, floatType, "loc_2_PI", "0.63661977236758134307553505349006", LFending);
 		appendConstant(sc, floatType, "loc_PI_2", "1.5707963267948966192313216916398", LFending);
@@ -815,6 +838,10 @@ layout(std430, binding = %d) buffer DataIn{\n\
 			if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
 			if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
 			if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
+#elif(VKFFT_BACKEND==3)
+			if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
+			if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
+			if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
 #endif
 			break;
 		}
@@ -867,6 +894,10 @@ layout(std430, binding = %d) buffer DataOut{\n\
 			if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
 			if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
 			if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
+#elif(VKFFT_BACKEND==3)
+			if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
+			if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
+			if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
 #endif
 			break;
 		}
@@ -900,18 +931,22 @@ layout(std430, binding = %d) buffer DataOut{\n\
 		if (sc->kernelBlockNum == 1)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 layout(std430, binding = %d) buffer Kernel_FFT{\n\
-	%s kernel[%d];\n\
+	%s kernel_obj[%d];\n\
 };\n\n", id, vecType, sc->kernelBlockSize);
 		else
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 layout(std430, binding = %d) buffer Kernel_FFT{\n\
-	%s kernel[%d];\n\
+	%s kernel_obj[%d];\n\
 } kernelBlocks[%d];\n\n", id, vecType, sc->kernelBlockSize, sc->kernelBlockNum);
 #elif(VKFFT_BACKEND==1)
 		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
 		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
 #elif(VKFFT_BACKEND==2)
+		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
+		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
+#elif(VKFFT_BACKEND==3)
 		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
 		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
@@ -934,17 +969,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==2)
 		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+#elif(VKFFT_BACKEND==3)
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 #endif
 
 	}
 	static inline void indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* uintType, uint32_t inputType, const char* index_x, const char* index_y, const char* coordinate, const char* batchID) {
-		char functionDefinitions[100] = "";
-#if(VKFFT_BACKEND==0)
-#elif(VKFFT_BACKEND==1)
-		sprintf(functionDefinitions, "__device__ static __inline__ ");
-#elif(VKFFT_BACKEND==2)
-		sprintf(functionDefinitions, "__device__ static __inline__ ");
-#endif
 		switch (inputType) {
 		case 0: case 2: case 3: case 4:case 5: case 6: {//single_c2c + single_c2c_strided
 			char inputOffset[30] = "";
@@ -1005,10 +1036,6 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				else
 					sprintf(shiftBatch, " + consts.batchID * %d", sc->inputStride[4]);
 			}
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-%s%s indexInput(%s index%s%s) {\n\
-	return %s%s%s%s%s%s;\n\
-}\n\n", functionDefinitions, uintType, uintType, requestCoordinate, requestBatch, inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s%s%s%s%s%s", inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
 			break;
 		}
@@ -1054,96 +1081,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s%s%s%s%s%s", inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
 			break;
 		}
-			  /*case 5: {//single_r2c
-				  char inputOffset[30] = "";
-				  if (sc->inputOffset > 0)
-					  sprintf(inputOffset, "%d + ", sc->inputOffset);
-				  char shiftX[500] = "";
-				  if (sc->inputStride[0] == 1)
-					  sprintf(shiftX, "(%s)", index_x);
-				  else
-					  sprintf(shiftX, "(%s) * %d", index_x, sc->inputStride[0]);
-				  char shiftY[500] = "";
-				  uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
-				  if (sc->size[1] > 1) {
-					  if (sc->fftDim == sc->fft_dim_full) {
-						  if (sc->axisSwapped) {
-							  if (sc->performWorkGroupShift[1])
-								  sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->inputStride[1]);
-							  else
-								  sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->inputStride[1]);
-						  }
-						  else {
-							  if (sc->performWorkGroupShift[1])
-								  sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->inputStride[1]);
-							  else
-								  sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult* sc->localSize[1] * sc->inputStride[1]);
-						  }
-					  }
-					  else {
-						  if (sc->performWorkGroupShift[1])
-							  sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->inputStride[1]);
-						  else
-							  sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult* sc->inputStride[1]);
-					  }
-				  }
-				  char shiftZ[500] = "";
-				  if (sc->size[2] > 1) {
-					  if (sc->performWorkGroupShift[2])
-						  sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->inputStride[2]);
-					  else
-						  sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->inputStride[2]);
-				  }
-				  char shiftCoordinate[100] = "";
-				  if (sc->numCoordinates * sc->matrixConvolution > 1) {
-					  sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->inputStride[3]);
-				  }
-				  char shiftBatch[100] = "";
-				  if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
-					  sprintf(shiftBatch, " + consts.batchID * %d", sc->inputStride[4]);
-				  }
-				  sc->currentLen += sprintf(sc->output + sc->currentLen, "%s%s%s%s%s%s", inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
-				  break;
-			  }
-			  case 6: {//single_c2r
-				  char inputOffset[30] = "";
-				  if (sc->inputOffset > 0)
-					  sprintf(inputOffset, "%d + ", sc->inputOffset);
-				  char shiftX[500] = "";
-				  if (sc->inputStride[0] == 1)
-					  sprintf(shiftX, "(%s)", index_x);
-				  else
-					  sprintf(shiftX, "(%s) * %d", index_x, sc->inputStride[0]);
-				  char shiftY[500] = "";
-				  sprintf(shiftY, " + (%s) * %d", index_y, sc->inputStride[1]);
-				  char shiftZ[500] = "";
-				  if (sc->size[2] > 1) {
-					  if (sc->performWorkGroupShift[2])
-						  sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->inputStride[2]);
-					  else
-						  sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->inputStride[2]);
-				  }
-				  char shiftCoordinate[100] = "";
-				  if (sc->numCoordinates * sc->matrixConvolution > 1) {
-					  sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->inputStride[3]);
-				  }
-				  char shiftBatch[100] = "";
-				  if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
-					  sprintf(shiftBatch, " + consts.batchID * %d", sc->inputStride[4]);
-				  }
-				  sc->currentLen += sprintf(sc->output + sc->currentLen, "%s%s%s%s%s%s", inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
-				  break;
-			  }*/
 		}
 	}
 	static inline void indexOutputVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* uintType, uint32_t outputType, const char* index_x, const char* index_y, const char* coordinate, const char* batchID) {
-		char functionDefinitions[100] = "";
-#if(VKFFT_BACKEND==0)
-#elif(VKFFT_BACKEND==1)
-		sprintf(functionDefinitions, "__device__ static __inline__ ");
-#elif(VKFFT_BACKEND==2)
-		sprintf(functionDefinitions, "__device__ static __inline__ ");
-#endif
 		switch (outputType) {//single_c2c + single_c2c_strided
 		case 0: case 2: case 3: case 4: case 5: case 6: {
 			char outputOffset[30] = "";
@@ -1248,86 +1188,6 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			break;
 
 		}
-			  /*case 5: {//single_r2c
-				  char outputOffset[30] = "";
-				  if (sc->outputOffset > 0)
-					  sprintf(outputOffset, "%d + ", sc->outputOffset);
-				  char shiftX[500] = "";
-				  if (sc->outputStride[0] == 1)
-					  sprintf(shiftX, "(%s)", index_x);
-				  else
-					  sprintf(shiftX, "(%s) * %d", index_x, sc->outputStride[0]);
-				  char shiftY[500] = "";
-				  sprintf(shiftY, " + (%s) * %d", index_y, sc->outputStride[1]);
-				  char shiftZ[500] = "";
-				  if (sc->size[2] > 1) {
-					  if (sc->performWorkGroupShift[2])
-						  sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->outputStride[2]);
-					  else
-						  sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->outputStride[2]);
-				  }
-				  char shiftCoordinate[100] = "";
-				  if (sc->numCoordinates * sc->matrixConvolution > 1) {
-					  sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->outputStride[3]);
-				  }
-				  char shiftBatch[100] = "";
-				  if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
-					  sprintf(shiftBatch, " + consts.batchID * %d", sc->outputStride[4]);
-				  }
-				  sc->currentLen += sprintf(sc->output + sc->currentLen, "%s%s%s%s%s%s", outputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
-				  break;
-			  }
-			  case 6: {//single_c2r
-				  char outputOffset[30] = "";
-				  if (sc->outputOffset > 0)
-					  sprintf(outputOffset, "%d + ", sc->outputOffset);
-				  char shiftX[500] = "";
-				  if (sc->outputStride[0] == 1)
-					  sprintf(shiftX, "(%s)", index_x);
-				  else
-					  sprintf(shiftX, "(%s) * %d", index_x, sc->outputStride[0]);
-				  char shiftY[500] = "";
-				  uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
-				  if (sc->size[1] > 1) {
-					  if (sc->fftDim == sc->fft_dim_full) {
-						  if (sc->axisSwapped) {
-							  if (sc->performWorkGroupShift[1])
-								  sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->outputStride[1]);
-							  else
-								  sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult* sc->localSize[0] * sc->outputStride[1]);
-						  }
-						  else {
-							  if (sc->performWorkGroupShift[1])
-								  sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->outputStride[1]);
-							  else
-								  sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult* sc->localSize[1] * sc->outputStride[1]);
-						  }
-					  }
-					  else {
-						  if (sc->performWorkGroupShift[1])
-							  sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->outputStride[1]);
-						  else
-							  sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult * sc->outputStride[1]);
-					  }
-				  }
-				  char shiftZ[500] = "";
-				  if (sc->size[2] > 1) {
-					  if (sc->performWorkGroupShift[2])
-						  sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->outputStride[2]);
-					  else
-						  sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->outputStride[2]);
-				  }
-				  char shiftCoordinate[100] = "";
-				  if (sc->numCoordinates * sc->matrixConvolution > 1) {
-					  sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->outputStride[3]);
-				  }
-				  char shiftBatch[100] = "";
-				  if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
-					  sprintf(shiftBatch, " + consts.batchID * %d", sc->outputStride[4]);
-				  }
-				  sc->currentLen += sprintf(sc->output + sc->currentLen, "%s%s%s%s%s%s", outputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
-				  break;
-			  }*/
 		}
 	}
 
@@ -1353,6 +1213,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		char cosDef[20] = "__cosf";
 		char sinDef[20] = "__sinf";
 		if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+#elif(VKFFT_BACKEND==3)
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+		char cosDef[20] = "native_cos";
+		char sinDef[20] = "native_sin";
+		//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #endif
 		char* temp = sc->temp;
 		//sprintf(temp, "loc_0");
@@ -2461,11 +2327,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==1)
 			sprintf(vecType, "float2");
 			sprintf(sharedDefinitions, "__shared__");
-			//sprintf(sharedDefinitions, "extern __shared__");
 #elif(VKFFT_BACKEND==2)
 			sprintf(vecType, "float2");
 			sprintf(sharedDefinitions, "__shared__");
-			//sprintf(sharedDefinitions, "extern __shared__");
+#elif(VKFFT_BACKEND==3)
+			sprintf(vecType, "float2");
+			sprintf(sharedDefinitions, "__local");
 #endif
 			vecSize = 8;
 		}
@@ -2476,11 +2343,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==1)
 			sprintf(vecType, "double2");
 			sprintf(sharedDefinitions, "__shared__");
-			//sprintf(sharedDefinitions, "extern __shared__");
 #elif(VKFFT_BACKEND==2)
 			sprintf(vecType, "double2");
 			sprintf(sharedDefinitions, "__shared__");
-			//sprintf(sharedDefinitions, "extern __shared__");
+#elif(VKFFT_BACKEND==3)
+			sprintf(vecType, "double2");
+			sprintf(sharedDefinitions, "__local");
 #endif
 			vecSize = 16;
 		}
@@ -2513,6 +2381,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%d];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s* sdata = (%s*)shared;\n\n", vecType, vecType);
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType);
+#elif(VKFFT_BACKEND==3)
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%d];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
 #endif
 			sc->usedSharedMemory = vecSize * sc->localSize[1] * sc->maxSharedStride;
 			break;
@@ -2534,6 +2404,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%d];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s* sdata = (%s*)shared;\n\n", vecType, vecType);
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[];\n\n", sharedDefinitions, vecType);
+#elif(VKFFT_BACKEND==3)
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%d];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
 #endif
 			sc->usedSharedMemory = vecSize * sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost;
 			break;
@@ -2549,6 +2421,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 #elif(VKFFT_BACKEND==2)
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+#elif(VKFFT_BACKEND==3)
 		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 #endif
@@ -2927,6 +2802,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 		sprintf(inputsStruct, "inputs");
+#elif(VKFFT_BACKEND==3)
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+		sprintf(inputsStruct, "inputs");
 #endif
 		char convTypeLeft[20] = "";
 		char convTypeRight[20] = "";
@@ -2941,6 +2820,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(float)");
 				sprintf(convTypeRight, "");
+#elif(VKFFT_BACKEND==3)
+				sprintf(convTypeLeft, "(float)");
+				sprintf(convTypeRight, "");
 #endif
 			}
 			else {
@@ -2953,6 +2835,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(float2)");
 				sprintf(convTypeRight, "");
+#elif(VKFFT_BACKEND==3)
+				sprintf(convTypeLeft, "convert_float2(");
+				sprintf(convTypeRight, ")");
 #endif
 			}
 		}
@@ -2967,6 +2852,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(double)");
 				sprintf(convTypeRight, "");
+#elif(VKFFT_BACKEND==3)
+				sprintf(convTypeLeft, "(double)");
+				sprintf(convTypeRight, "");
 #endif
 			}
 			else {
@@ -2979,6 +2867,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(double2)");
 				sprintf(convTypeRight, "");
+#elif(VKFFT_BACKEND==3)
+				sprintf(convTypeLeft, "convert_double2(");
+				sprintf(convTypeRight, ")");
 #endif
 			}
 		}
@@ -3722,7 +3613,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (sc->fftDim == sc->fft_dim_full) {
 					for (uint32_t k = 0; k < sc->registerBoost; k++) {
 						uint32_t num_in = (sc->axisSwapped) ? (int)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (int)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
-						//num_in = (uint32_t)ceil(num_in / (double)sc->min_registers_per_thread);
+						//num_in =(uint32_t)ceil(num_in / (double)sc->min_registers_per_thread);
 						for (uint32_t i = 0; i < num_in; i++) {
 							if (sc->localSize[1] == 1)
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * num_in) * sc->localSize[0]);
@@ -4140,6 +4031,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		char cosDef[20] = "__cosf";
 		char sinDef[20] = "__sinf";
 		if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+#elif(VKFFT_BACKEND==3)
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+		char cosDef[20] = "native_cos";
+		char sinDef[20] = "native_sin";
+		//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #endif
 
 		uint32_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[sc->stageRadix[0]];// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
@@ -4284,6 +4181,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		char cosDef[20] = "__cosf";
 		char sinDef[20] = "__sinf";
 		if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+#elif(VKFFT_BACKEND==3)
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+		char cosDef[20] = "native_cos";
+		char sinDef[20] = "native_sin";
+		//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #endif
 
 		uint32_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]];// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
@@ -4443,6 +4346,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 		if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+#elif(VKFFT_BACKEND==3)
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+		//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #endif
 
 		char convolutionInverse[10] = "";
@@ -4551,6 +4458,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 		if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+#elif(VKFFT_BACKEND==3)
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+		//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #endif
 
 		char convolutionInverse[10] = "";
@@ -4655,6 +4566,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 #elif(VKFFT_BACKEND==2)
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+#elif(VKFFT_BACKEND==3)
 		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 #endif
@@ -4886,6 +4800,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 #elif(VKFFT_BACKEND==2)
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+#elif(VKFFT_BACKEND==3)
 		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 #endif
@@ -5385,6 +5302,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==2)
 		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+#elif(VKFFT_BACKEND==3)
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 #endif
 		char separateRegisterStore[100] = "_store";
 
@@ -5492,9 +5412,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							k = (j * sc->matrixConvolution + l);
 						}
 						if (l == 0)
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%d += kernel[inoutID+%d].x * %s%s.x - kernel[inoutID+%d].y * %s%s.y;\n", j, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%d += kernel_obj[inoutID+%d].x * %s%s.x - kernel_obj[inoutID+%d].y * %s%s.y;\n", j, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
 						else
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%d += kernel[inoutID+%d].x * %s_%d%s.x - kernel[inoutID+%d].y * %s_%d%s.y;\n", j, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%d += kernel_obj[inoutID+%d].x * %s_%d%s.x - kernel_obj[inoutID+%d].y * %s_%d%s.y;\n", j, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
 					}
 					for (uint32_t l = 0; l < sc->matrixConvolution; l++) {
 						uint32_t k = 0;
@@ -5505,9 +5425,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							k = (j * sc->matrixConvolution + l);
 						}
 						if (l == 0)
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%d += kernel[inoutID+%d].x * %s%s.y + kernel[inoutID+%d].y * %s%s.x;\n", j, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%d += kernel_obj[inoutID+%d].x * %s%s.y + kernel_obj[inoutID+%d].y * %s%s.x;\n", j, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
 						else
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%d += kernel[inoutID+%d].x * %s_%d%s.y + kernel[inoutID+%d].y * %s_%d%s.x;\n", j, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%d += kernel_obj[inoutID+%d].x * %s_%d%s.y + kernel_obj[inoutID+%d].y * %s_%d%s.x;\n", j, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
 
 					}
 				}
@@ -5531,9 +5451,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							k = (j * sc->matrixConvolution + l);
 						}
 						if (l == 0)
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%d += kernelBlocks[(inoutID+%d)/%d].kernel[(inoutID+%d) %% %d].x * %s%s.x - kernelBlocks[(inoutID+%d)/%d].kernel[(inoutID+%d) %% %d].y * %s%s.y;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%d += kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].x * %s%s.x - kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].y * %s%s.y;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore);
 						else
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%d += kernelBlocks[(inoutID+%d)/%d].kernel[(inoutID+%d) %% %d].x * %s_%d%s.x - kernelBlocks[(inoutID+%d)/%d].kernel[(inoutID+%d) %% %d].y * %s_%d%s.y;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%d += kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].x * %s_%d%s.x - kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].y * %s_%d%s.y;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore);
 
 					}
 
@@ -5547,9 +5467,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							k = (j * sc->matrixConvolution + l);
 						}
 						if (l == 0)
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%d += kernelBlocks[(inoutID+%d)/%d].kernel[(inoutID+%d) %% %d].x * %s%s.y + kernelBlocks[(inoutID+%d)/%d].kernel[(inoutID+%d) %% %d].y * %s%s.x;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%d += kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].x * %s%s.y + kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].y * %s%s.x;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore);
 						else
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%d += kernelBlocks[(inoutID+%d)/%d].kernel[(inoutID+%d) %% %d].x * %s_%d%s.y + kernelBlocks[(inoutID+%d)/%d].kernel[(inoutID+%d) %% %d].y * %s_%d%s.x;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%d += kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].x * %s_%d%s.y + kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].y * %s_%d%s.x;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore);
 					}
 				}
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = temp_real0;", sc->regIDs[i]);
@@ -5586,6 +5506,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 		sprintf(outputsStruct, "outputs");
 		if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+#elif(VKFFT_BACKEND==3)
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+		sprintf(outputsStruct, "outputs");
+		//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #endif
 		char convTypeLeft[20] = "";
 		char convTypeRight[20] = "";
@@ -5610,6 +5535,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(float)");
 				sprintf(convTypeRight, "");
+#elif(VKFFT_BACKEND==3)
+				sprintf(convTypeLeft, "(float)");
+				sprintf(convTypeRight, "");
 #endif
 			}
 			else {
@@ -5622,6 +5550,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(float2)");
 				sprintf(convTypeRight, "");
+#elif(VKFFT_BACKEND==3)
+				sprintf(convTypeLeft, "convert_float2(");
+				sprintf(convTypeRight, ")");
 #endif
 			}
 		}
@@ -5636,6 +5567,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(double)");
 				sprintf(convTypeRight, "");
+#elif(VKFFT_BACKEND==3)
+				sprintf(convTypeLeft, "(double)");
+				sprintf(convTypeRight, "");
 #endif
 			}
 			else {
@@ -5648,6 +5582,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(double2)");
 				sprintf(convTypeRight, "");
+#elif(VKFFT_BACKEND==3)
+				sprintf(convTypeLeft, "convert_double2(");
+				sprintf(convTypeRight, ")");
 #endif
 			}
 		}
@@ -6967,6 +6904,33 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 		char cosDef[20] = "__cosf";
 		char sinDef[20] = "__sinf";
+#elif(VKFFT_BACKEND==3)
+		sprintf(inputsStruct, "inputs");
+		sprintf(outputsStruct, "outputs");
+		if (!strcmp(floatType, "half")) sprintf(vecType, "f16vec2");
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+		if (!strcmp(floatTypeInputMemory, "half")) sprintf(vecTypeInput, "f16vec2");
+		if (!strcmp(floatTypeInputMemory, "float")) sprintf(vecTypeInput, "float2");
+		if (!strcmp(floatTypeInputMemory, "double")) sprintf(vecTypeInput, "double2");
+		if (!strcmp(floatTypeOutputMemory, "half")) sprintf(vecTypeOutput, "f16vec2");
+		if (!strcmp(floatTypeOutputMemory, "float")) sprintf(vecTypeOutput, "float2");
+		if (!strcmp(floatTypeOutputMemory, "double")) sprintf(vecTypeOutput, "double2");
+		sprintf(sc->gl_LocalInvocationID_x, "get_local_id(0)");
+		sprintf(sc->gl_LocalInvocationID_y, "get_local_id(1)");
+		sprintf(sc->gl_LocalInvocationID_z, "get_local_id(2)");
+		sprintf(sc->gl_GlobalInvocationID_x, "get_global_id(0)");
+		sprintf(sc->gl_GlobalInvocationID_y, "get_global_id(1)");
+		sprintf(sc->gl_GlobalInvocationID_z, "get_global_id(2)");
+		sprintf(sc->gl_WorkGroupID_x, "get_group_id(0)");
+		sprintf(sc->gl_WorkGroupID_y, "get_group_id(1)");
+		sprintf(sc->gl_WorkGroupID_z, "get_group_id(2)");
+		sprintf(sc->gl_WorkGroupSize_x, "get_local_size(0)");
+		sprintf(sc->gl_WorkGroupSize_y, "get_local_size(1)");
+		sprintf(sc->gl_WorkGroupSize_z, "get_local_size(2)");
+		//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+		char cosDef[20] = "native_cos";
+		char sinDef[20] = "native_sin";
 #endif
 		sprintf(sc->stageInvocationID, "stageInvocationID");
 		sprintf(sc->blockInvocationID, "blockInvocationID");
@@ -7020,7 +6984,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "(%s* inputs, %s* outputs", vecTypeInput, vecTypeOutput);
 		}
 		if (sc->convolutionStep) {
-			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* kernel", vecType);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* kernel_obj", vecType);
 		}
 		if (sc->LUT) {
 			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* twiddleLUT", vecType);
@@ -7039,11 +7003,30 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "(%s* inputs, %s* outputs", vecTypeInput, vecTypeOutput);
 		}
 		if (sc->convolutionStep) {
-			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* kernel", vecType);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* kernel_obj", vecType);
 		}
 		if (sc->LUT) {
 			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* twiddleLUT", vecType);
 		}
+		sc->currentLen += sprintf(sc->output + sc->currentLen, ") {\n");
+		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
+#elif(VKFFT_BACKEND==3)
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "__kernel __attribute__((reqd_work_group_size(%d, %d, %d))) void VkFFT_main_R2C ", sc->localSize[0], sc->localSize[1], sc->localSize[2]);
+		if (type == 5)
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "(__global %s* inputs, __global %s* outputs", vecTypeInput, vecTypeOutput);
+		else {
+			if (type == 6)
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "(__global %s* inputs, __global %s* outputs", vecTypeInput, vecTypeOutput);
+			else
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "(__global %s* inputs, __global %s* outputs", vecTypeInput, vecTypeOutput);
+		}
+		if (sc->convolutionStep) {
+			sc->currentLen += sprintf(sc->output + sc->currentLen, ", __global %s* kernel_obj", vecType);
+		}
+		if (sc->LUT) {
+			sc->currentLen += sprintf(sc->output + sc->currentLen, ", __global %s* twiddleLUT", vecType);
+		}
+		sc->currentLen += sprintf(sc->output + sc->currentLen, ", PushConsts consts");
 		sc->currentLen += sprintf(sc->output + sc->currentLen, ") {\n");
 		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
 #endif
@@ -7271,6 +7254,28 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		sprintf(sc->gl_WorkGroupSize_x, "blockDim.x");
 		sprintf(sc->gl_WorkGroupSize_y, "blockDim.y");
 		sprintf(sc->gl_WorkGroupSize_z, "blockDim.z");
+#elif(VKFFT_BACKEND==3)
+		if (!strcmp(floatType, "half")) sprintf(vecType, "f16vec2");
+		if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+		if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+		if (!strcmp(floatTypeInputMemory, "half")) sprintf(vecTypeInput, "f16vec2");
+		if (!strcmp(floatTypeInputMemory, "float")) sprintf(vecTypeInput, "float2");
+		if (!strcmp(floatTypeInputMemory, "double")) sprintf(vecTypeInput, "double2");
+		if (!strcmp(floatTypeOutputMemory, "half")) sprintf(vecTypeOutput, "f16vec2");
+		if (!strcmp(floatTypeOutputMemory, "float")) sprintf(vecTypeOutput, "float2");
+		if (!strcmp(floatTypeOutputMemory, "double")) sprintf(vecTypeOutput, "double2");
+		sprintf(sc->gl_LocalInvocationID_x, "get_local_id(0)");
+		sprintf(sc->gl_LocalInvocationID_y, "get_local_id(1)");
+		sprintf(sc->gl_LocalInvocationID_z, "get_local_id(2)");
+		sprintf(sc->gl_GlobalInvocationID_x, "get_global_id(0)");
+		sprintf(sc->gl_GlobalInvocationID_y, "get_global_id(1)");
+		sprintf(sc->gl_GlobalInvocationID_z, "get_global_id(2)");
+		sprintf(sc->gl_WorkGroupID_x, "get_group_id(0)");
+		sprintf(sc->gl_WorkGroupID_y, "get_group_id(1)");
+		sprintf(sc->gl_WorkGroupID_z, "get_group_id(2)");
+		sprintf(sc->gl_WorkGroupSize_x, "get_local_size(0)");
+		sprintf(sc->gl_WorkGroupSize_y, "get_local_size(1)");
+		sprintf(sc->gl_WorkGroupSize_z, "get_local_size(2)");
 #endif
 		sprintf(sc->stageInvocationID, "stageInvocationID");
 		sprintf(sc->blockInvocationID, "blockInvocationID");
@@ -7329,7 +7334,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "(%s* inputs, %s* outputs", vecTypeInput, vecTypeOutput);
 		}
 		if (sc->convolutionStep) {
-			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* kernel", vecType);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* kernel_obj", vecType);
 		}
 		if (sc->LUT) {
 			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* twiddleLUT", vecType);
@@ -7349,11 +7354,31 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "(%s* inputs, %s* outputs", vecTypeInput, vecTypeOutput);
 		}
 		if (sc->convolutionStep) {
-			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* kernel", vecType);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* kernel_obj", vecType);
 		}
 		if (sc->LUT) {
 			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* twiddleLUT", vecType);
 		}
+		sc->currentLen += sprintf(sc->output + sc->currentLen, ") {\n");
+		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
+		appendSharedMemoryVkFFT(sc, floatType, uintType, locType);
+#elif(VKFFT_BACKEND==3)
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "__kernel __attribute__((reqd_work_group_size(%d, %d, %d))) void VkFFT_main ", sc->localSize[0], sc->localSize[1], sc->localSize[2]);
+		if (type == 5)
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "(__global %s* inputs, __global %s* outputs", floatTypeInputMemory, vecTypeOutput);
+		else {
+			if (type == 6)
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "(__global %s* inputs, __global %s* outputs", vecTypeInput, floatTypeOutputMemory);
+			else
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "(__global %s* inputs, __global %s* outputs", vecTypeInput, vecTypeOutput);
+		}
+		if (sc->convolutionStep) {
+			sc->currentLen += sprintf(sc->output + sc->currentLen, ", __global %s* kernel_obj", vecType);
+		}
+		if (sc->LUT) {
+			sc->currentLen += sprintf(sc->output + sc->currentLen, ", __global %s* twiddleLUT", vecType);
+		}
+		sc->currentLen += sprintf(sc->output + sc->currentLen, ", PushConsts consts");
 		sc->currentLen += sprintf(sc->output + sc->currentLen, ") {\n");
 		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
 		appendSharedMemoryVkFFT(sc, floatType, uintType, locType);
@@ -7617,6 +7642,19 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			hipModuleUnload(axis->VkFFTModule);
 			axis->VkFFTModule = 0;
 		}
+#elif(VKFFT_BACKEND==3)
+		if ((app->configuration.useLUT) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
+			clReleaseMemObject(axis->bufferLUT);
+			axis->bufferLUT = 0;
+		}
+		if (axis->program != 0) {
+			clReleaseProgram(axis->program);
+			axis->program = 0;
+		}
+		if (axis->kernel != 0) {
+			clReleaseKernel(axis->kernel);
+			axis->kernel = 0;
+		}
 #endif
 	}
 	static inline void deleteVkFFT(VkFFTApplication* app) {
@@ -7669,6 +7707,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					hipFree(app->configuration.tempBuffer[0]);
 					app->configuration.tempBuffer[0] = 0;
 				}
+#elif(VKFFT_BACKEND==3)
+				if (app->configuration.tempBuffer[0] != 0) {
+					clReleaseMemObject(app->configuration.tempBuffer[0]);
+					app->configuration.tempBuffer[0] = 0;
+				}
 #endif
 				if (app->configuration.tempBuffer != 0) {
 					free(app->configuration.tempBuffer);
@@ -7681,33 +7724,41 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 		}
 		if (!app->configuration.makeInversePlanOnly) {
-			for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
-				if(app->localFFTPlan->numAxisUploads[i]>0){
-					for (uint32_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
-						deleteAxis(app, &app->localFFTPlan->axes[i][j]);
-				}
-			}
-			if (app->localFFTPlan->multiUploadR2C) {
-				deleteAxis(app, &app->localFFTPlan->R2Cdecomposition);
-			}
 			if (app->localFFTPlan != 0) {
-				free(app->localFFTPlan);
-				app->localFFTPlan = 0;
+				for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
+					if (app->localFFTPlan->numAxisUploads != 0) {
+						if (app->localFFTPlan->numAxisUploads[i] > 0) {
+							for (uint32_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
+								deleteAxis(app, &app->localFFTPlan->axes[i][j]);
+						}
+					}
+				}
+				if (app->localFFTPlan->multiUploadR2C) {
+					deleteAxis(app, &app->localFFTPlan->R2Cdecomposition);
+				}
+				if (app->localFFTPlan != 0) {
+					free(app->localFFTPlan);
+					app->localFFTPlan = 0;
+				}
 			}
 		}
 		if (!app->configuration.makeForwardPlanOnly) {
-			for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
-				if(app->localFFTPlan_inverse->numAxisUploads[i]>0){
-					for (uint32_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
-						deleteAxis(app, &app->localFFTPlan_inverse->axes[i][j]);
-				}
-			}
-			if (app->localFFTPlan_inverse->multiUploadR2C) {
-				deleteAxis(app, &app->localFFTPlan_inverse->R2Cdecomposition);
-			}
 			if (app->localFFTPlan_inverse != 0) {
-				free(app->localFFTPlan_inverse);
-				app->localFFTPlan_inverse = 0;
+				for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
+					if (app->localFFTPlan_inverse->numAxisUploads != 0) {
+						if (app->localFFTPlan_inverse->numAxisUploads[i] > 0) {
+							for (uint32_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
+								deleteAxis(app, &app->localFFTPlan_inverse->axes[i][j]);
+						}
+					}
+				}
+				if (app->localFFTPlan_inverse->multiUploadR2C) {
+					deleteAxis(app, &app->localFFTPlan_inverse->R2Cdecomposition);
+				}
+				if (app->localFFTPlan_inverse != 0) {
+					free(app->localFFTPlan_inverse);
+					app->localFFTPlan_inverse = 0;
+				}
 			}
 		}
 	}
@@ -9822,7 +9873,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	static inline VkFFTResult VkFFTCheckUpdateBufferSet(VkFFTApplication* app, VkFFTAxis* axis, uint32_t planStage, VkFFTLaunchParams* launchParams) {
 		uint32_t performUpdate = planStage;
 		if (!planStage) {
-			if (launchParams!=0){
+			if (launchParams != 0) {
 				if ((launchParams->buffer != 0) && (app->configuration.buffer != launchParams->buffer)) {
 					app->configuration.buffer = launchParams->buffer;
 					performUpdate = 1;
@@ -10314,6 +10365,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 		hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+		cl_int res = CL_SUCCESS;
 #endif
 		VkFFTAxis* axis = &FFTPlan->R2Cdecomposition;
 		axis->specializationConstants.warpSize = app->configuration.warpSize;
@@ -10403,6 +10456,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						tempLUT = 0;
 						return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 					}
+#elif(VKFFT_BACKEND==3)
+					axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
+					if (res != CL_SUCCESS) {
+						deleteVkFFT(app);
+						free(tempLUT);
+						tempLUT = 0;
+						return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+					}
 #endif
 					free(tempLUT);
 					tempLUT = 0;
@@ -10467,6 +10528,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					res = hipMemcpy(axis->bufferLUT, tempLUT, axis->bufferLUTSize, hipMemcpyHostToDevice);
 					if (res != hipSuccess) {
+						deleteVkFFT(app);
+						free(tempLUT);
+						tempLUT = 0;
+						return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+					}
+#elif(VKFFT_BACKEND==3)
+					axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
+					if (res != CL_SUCCESS) {
 						deleteVkFFT(app);
 						free(tempLUT);
 						tempLUT = 0;
@@ -10799,6 +10868,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==1)
 			sprintf(uintType, "unsigned int");
 #elif(VKFFT_BACKEND==2)
+			sprintf(uintType, "unsigned int");
+#elif(VKFFT_BACKEND==3)
 			sprintf(uintType, "unsigned int");
 #endif
 			//uint32_t LUT = app->configuration.useLUT;
@@ -11214,6 +11285,27 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 
 			free(code);
+#elif(VKFFT_BACKEND==3)
+			size_t codelen = strlen(code0);
+			axis->program = clCreateProgramWithSource(app->configuration.context[0], 1, (const char**)&code0, &codelen, &res);
+			if (res != CL_SUCCESS) {
+				free(code0);
+				deleteVkFFT(app);
+				return VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM;
+			}
+			res = clBuildProgram(axis->program, 1, app->configuration.device, 0, 0, 0);
+			if (res != CL_SUCCESS) {
+				printf("%s\n", code0);
+				free(code0);
+				deleteVkFFT(app);
+				return VKFFT_ERROR_FAILED_TO_COMPILE_PROGRAM;
+			}
+			axis->kernel = clCreateKernel(axis->program, "VkFFT_main_R2C", &res);
+			if (res != CL_SUCCESS) {
+				free(code0);
+				deleteVkFFT(app);
+				return VKFFT_ERROR_FAILED_TO_CREATE_SHADER_MODULE;
+			}
 #endif
 			free(code0);
 		}
@@ -11228,6 +11320,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 		hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+		cl_int res = CL_SUCCESS;
 #endif
 		VkFFTAxis* axis = &FFTPlan->axes[axis_id][axis_upload_id];
 		axis->specializationConstants.warpSize = app->configuration.warpSize;
@@ -11302,6 +11396,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			app->configuration.tempBuffer = (void**)malloc(sizeof(void*));
 			res = hipMalloc(app->configuration.tempBuffer, app->configuration.tempBufferSize[0]);
 			if (res != hipSuccess) {
+				deleteVkFFT(app);
+				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			}
+#elif(VKFFT_BACKEND==3)
+			app->configuration.tempBuffer = (cl_mem*)malloc(sizeof(cl_mem));
+			app->configuration.tempBuffer[0] = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_WRITE, app->configuration.tempBufferSize[0], 0, &res);
+			if (res != CL_SUCCESS) {
 				deleteVkFFT(app);
 				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			}
@@ -11455,6 +11556,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								tempLUT = 0;
 								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 							}
+#elif(VKFFT_BACKEND==3)
+							axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
+							if (res != CL_SUCCESS) {
+								deleteVkFFT(app);
+								free(tempLUT);
+								tempLUT = 0;
+								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+							}
 #endif
 						}
 					}
@@ -11569,6 +11678,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							}
 							res = hipMemcpy(axis->bufferLUT, tempLUT, axis->bufferLUTSize, hipMemcpyHostToDevice);
 							if (res != hipSuccess) {
+								deleteVkFFT(app);
+								free(tempLUT);
+								tempLUT = 0;
+								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+							}
+#elif(VKFFT_BACKEND==3)
+							axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
+							if (res != CL_SUCCESS) {
 								deleteVkFFT(app);
 								free(tempLUT);
 								tempLUT = 0;
@@ -12055,7 +12172,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (scale > 1) axis->groupedBatch *= scale;
 					axis->axisBlock[0] = (axis->specializationConstants.stageStartSize > axis->groupedBatch) ? axis->groupedBatch : axis->specializationConstants.stageStartSize;
 					if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
-					if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[0] /= 2;
+					if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) {
+						for (uint32_t i = 1; i <= axis->axisBlock[0]; i++) {
+							if ((axis->axisBlock[0] / i) * axis->axisBlock[1] <= app->configuration.maxThreadsNum)
+							{
+								axis->axisBlock[0] /= i;
+								i = axis->axisBlock[0]+1;
+							}
+
+						}
+					}
 					axis->axisBlock[2] = 1;
 					axis->axisBlock[3] = axis->specializationConstants.fftDim;
 				}
@@ -12088,7 +12214,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							axis->axisBlock[0] = app->configuration.size[0];*/
 				}
 				if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
-				if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[0] /= 2;
+				if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) {
+					for (uint32_t i = 1; i <= axis->axisBlock[0]; i++) {
+						if ((axis->axisBlock[0] / i) * axis->axisBlock[1] <= app->configuration.maxThreadsNum)
+						{
+							axis->axisBlock[0] /= i;
+							i = axis->axisBlock[0] + 1;
+						}
+
+					}
+				}
 				axis->axisBlock[2] = 1;
 				axis->axisBlock[3] = axis->specializationConstants.fftDim;
 
@@ -12120,7 +12255,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							axis->axisBlock[0] = app->configuration.size[0];*/
 				}
 				if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
-				if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[0] /= 2;
+				if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) {
+					for (uint32_t i = 1; i <= axis->axisBlock[0]; i++) {
+						if ((axis->axisBlock[0] / i) * axis->axisBlock[1] <= app->configuration.maxThreadsNum)
+						{
+							axis->axisBlock[0] /= i;
+							i = axis->axisBlock[0] + 1;
+						}
+
+					}
+				}
 				axis->axisBlock[2] = 1;
 				axis->axisBlock[3] = axis->specializationConstants.fftDim;
 			}
@@ -12300,7 +12444,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			sprintf(uintType, "unsigned int");
 #elif(VKFFT_BACKEND==2)
 			sprintf(uintType, "unsigned int");
+#elif(VKFFT_BACKEND==3)
+			sprintf(uintType, "unsigned int");
 #endif
+
 			//uint32_t LUT = app->configuration.useLUT;
 			uint32_t type = 0;
 			if ((axis_id == 0) && (axis_upload_id == 0)) type = 0;
@@ -12314,6 +12461,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==1)
 			axis->specializationConstants.cacheShuffle = 0;
 #elif(VKFFT_BACKEND==2)
+			axis->specializationConstants.cacheShuffle = 0;
+#elif(VKFFT_BACKEND==3)
 			axis->specializationConstants.cacheShuffle = 0;
 #endif
 
@@ -12725,6 +12874,33 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 
 			free(code);
+#elif(VKFFT_BACKEND==3)
+			size_t codelen = strlen(code0);
+			axis->program = clCreateProgramWithSource(app->configuration.context[0], 1, (const char**)&code0, &codelen, &res);
+			if (res != CL_SUCCESS) {
+				free(code0);
+				deleteVkFFT(app);
+				return VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM;
+			}
+			res = clBuildProgram(axis->program, 1, app->configuration.device, 0, 0, 0);
+			if (res != CL_SUCCESS) {
+				size_t log_size;
+				clGetProgramBuildInfo(axis->program, app->configuration.device[0], CL_PROGRAM_BUILD_LOG, 0, 0, &log_size);
+				char* log = (char*)malloc(log_size);
+				clGetProgramBuildInfo(axis->program, app->configuration.device[0], CL_PROGRAM_BUILD_LOG, log_size, log, 0);
+				printf("%s\n", log);
+				free(log);
+				printf("%s\n", code0);
+				free(code0);
+				deleteVkFFT(app);
+				return VKFFT_ERROR_FAILED_TO_COMPILE_PROGRAM;
+			}
+			axis->kernel = clCreateKernel(axis->program, "VkFFT_main", &res);
+			if (res != CL_SUCCESS) {
+				free(code0);
+				deleteVkFFT(app);
+				return VKFFT_ERROR_FAILED_TO_CREATE_SHADER_MODULE;
+			}
 #endif
 			free(code0);
 		}
@@ -12785,7 +12961,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			app->configuration.useLUT = 1;
 			app->configuration.warpSize = 32;
 			app->configuration.registerBoostNonPow2 = 0;
-			app->configuration.registerBoost = 2;
+			app->configuration.registerBoost = (physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 1 : 2;
 			app->configuration.registerBoost4Step = 1;
 			app->configuration.swapTo3Stage4Step = 0;
 			break;
@@ -12890,7 +13066,75 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.registerBoost = 1;
 		app->configuration.registerBoost4Step = 1;
 		app->configuration.swapTo3Stage4Step = 0;
+#elif(VKFFT_BACKEND==3)
+		if (inputLaunchConfiguration.device == 0) return VKFFT_ERROR_INVALID_DEVICE;
+		app->configuration.device = inputLaunchConfiguration.device;
+		if (inputLaunchConfiguration.context == 0) return VKFFT_ERROR_INVALID_CONTEXT;
+		app->configuration.context = inputLaunchConfiguration.context;
+		if (inputLaunchConfiguration.platform == 0) return VKFFT_ERROR_INVALID_PLATFORM;
+		app->configuration.platform = inputLaunchConfiguration.platform;
+		cl_uint vendorID;
+		size_t value_int64;
+		uint32_t value_uint;
+		clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
+		clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &value_int64, 0);
+		app->configuration.maxThreadsNum = value_int64;
+		clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, sizeof(uint32_t), &value_uint, 0);
+		size_t* dims = (size_t*)malloc(sizeof(size_t) * value_uint);
+		clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(size_t) * value_uint, dims, 0);
+		app->configuration.maxComputeWorkGroupSize[0] = dims[0];
+		app->configuration.maxComputeWorkGroupSize[1] = dims[1];
+		app->configuration.maxComputeWorkGroupSize[2] = dims[2];
+		free(dims);
+		app->configuration.maxComputeWorkGroupCount[0] = -1;
+		app->configuration.maxComputeWorkGroupCount[1] = -1;
+		app->configuration.maxComputeWorkGroupCount[2] = -1;
+		if ((vendorID == 0x8086) && (!app->configuration.doublePrecision)) app->configuration.halfThreads = 1;
+		cl_ulong sharedMemorySize;
+		clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_LOCAL_MEM_SIZE, sizeof(cl_ulong), &sharedMemorySize, 0);
+		app->configuration.sharedMemorySize = sharedMemorySize;
+		app->configuration.sharedMemorySizePow2 = (uint32_t)pow(2, (uint32_t)log2(sharedMemorySize));
 
+		switch (vendorID) {
+		case 0x10DE://NVIDIA
+			app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
+			app->configuration.useLUT = (app->configuration.doublePrecision) ? 1 : 0;
+			app->configuration.warpSize = 32;
+			app->configuration.registerBoostNonPow2 = 0;
+			app->configuration.registerBoost = 4;
+			app->configuration.registerBoost4Step = 1;
+			app->configuration.swapTo3Stage4Step = 0;
+			app->configuration.sharedMemorySize -= 0x10;//reserved by system
+			app->configuration.sharedMemorySizePow2 = (uint32_t)pow(2, (uint32_t)log2(app->configuration.sharedMemorySize));
+			break;
+		case 0x8086://INTEL
+			app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
+			app->configuration.useLUT = 1;
+			app->configuration.warpSize = 32;
+			app->configuration.registerBoostNonPow2 = 0;
+			app->configuration.registerBoost = (sharedMemorySize >= 65536) ? 1 : 2;
+			app->configuration.registerBoost4Step = 1;
+			app->configuration.swapTo3Stage4Step = 0;
+			break;
+		case 0x1002://AMD
+			app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;
+			app->configuration.useLUT = (app->configuration.doublePrecision) ? 1 : 0;
+			app->configuration.warpSize = 64;
+			app->configuration.registerBoostNonPow2 = 0;
+			app->configuration.registerBoost = (sharedMemorySize >= 65536) ? 2 : 4;
+			app->configuration.registerBoost4Step = 1;
+			app->configuration.swapTo3Stage4Step = 0;
+			break;
+		default:
+			app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
+			app->configuration.useLUT = (app->configuration.doublePrecision) ? 1 : 0;
+			app->configuration.warpSize = 32;
+			app->configuration.registerBoostNonPow2 = 0;
+			app->configuration.registerBoost = 1;
+			app->configuration.registerBoost4Step = 1;
+			app->configuration.swapTo3Stage4Step = 0;
+			break;
+		}
 #endif
 		//set main parameters:
 		if (inputLaunchConfiguration.FFTdim == 0)
@@ -13323,6 +13567,47 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 						app->configuration.streamCounter++;
 					}
+#elif(VKFFT_BACKEND==3)
+					cl_int result = CL_SUCCESS;
+					void* args[5];
+					args[0] = axis->inputBuffer;
+					result = clSetKernelArg(axis->kernel, 0, sizeof(cl_mem), args[0]);
+					if (result != CL_SUCCESS) {
+						return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
+					}
+					args[1] = axis->outputBuffer;
+					result = clSetKernelArg(axis->kernel, 1, sizeof(cl_mem), args[1]);
+					if (result != CL_SUCCESS) {
+						return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
+					}
+					uint32_t args_id = 2;
+					if (axis->specializationConstants.convolutionStep) {
+						args[args_id] = app->configuration.kernel;
+						result = clSetKernelArg(axis->kernel, args_id, sizeof(cl_mem), args[args_id]);
+						if (result != CL_SUCCESS) {
+							return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
+						}
+						args_id++;
+					}
+					if (axis->specializationConstants.LUT) {
+						args[args_id] = &axis->bufferLUT;
+						result = clSetKernelArg(axis->kernel, args_id, sizeof(cl_mem), args[args_id]);
+						if (result != CL_SUCCESS) {
+							return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
+						}
+						args_id++;
+					}
+					result = clSetKernelArg(axis->kernel, args_id, sizeof(VkFFTPushConstantsLayout), &axis->pushConstants);
+					if (result != CL_SUCCESS) {
+						return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
+					}
+					args_id++;
+					size_t local_work_size[3] = { (size_t)axis->specializationConstants.localSize[0], (size_t)axis->specializationConstants.localSize[1],(size_t)axis->specializationConstants.localSize[2] };
+					size_t global_work_size[3] = { (size_t)maxBlockSize[0] * local_work_size[0] , (size_t)maxBlockSize[1] * local_work_size[1] ,(size_t)maxBlockSize[2] * local_work_size[2] };
+					result = clEnqueueNDRangeKernel(app->configuration.commandQueue[0], axis->kernel, 3, 0, global_work_size, local_work_size, 0, 0, 0);
+					if (result != CL_SUCCESS) {
+						return VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL;
+					}
 #endif
 				}
 			}
@@ -13350,6 +13635,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			app->configuration.streamCounter = 0;
 		}
+#elif(VKFFT_BACKEND==3)
 #endif
 		return VKFFT_SUCCESS;
 	}
@@ -13369,6 +13655,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.streamCounter = 0;
 #elif(VKFFT_BACKEND==2)
 		app->configuration.streamCounter = 0;
+#elif(VKFFT_BACKEND==3)
+		app->configuration.commandQueue = launchParams->commandQueue;
 #endif
 		uint32_t localSize0 = (app->configuration.performR2C == 1) ? app->configuration.size[0] / 2 + 1 : app->configuration.size[0];
 		if ((inverse != 1) && (app->configuration.makeInversePlanOnly)) return VKFFT_ERROR_ONLY_INVERSE_FFT_INITIALIZED;
@@ -13898,6 +14186,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		}
 		return resFFT;
+	}
+	static inline uint32_t VkFFTGetVersion() {
+		return 10200; //X.XX.XX format
 	}
 #ifdef __cplusplus
 }

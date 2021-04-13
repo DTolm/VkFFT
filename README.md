@@ -1,6 +1,6 @@
 [![Build Status](https://travis-ci.com/DTolm/VkFFT.svg?token=nMgUQeqx7PXMeCFaXqsb&branch=master)](https://travis-ci.com/github/DTolm/VkFFT)
 # VkFFT - Vulkan/CUDA/HIP Fast Fourier Transform library
-VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan/CUDA/HIP projects. VkFFT aims to provide community with an open-source alternative to Nvidia's cuFFT library, while achieving better performance. VkFFT is written in C language and supports Vulkan, CUDA and HIP as backends.
+VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan/CUDA/HIP/OpenCL projects. VkFFT aims to provide community with an open-source alternative to Nvidia's cuFFT library, while achieving better performance. VkFFT is written in C language and supports Vulkan, CUDA, HIP and OpenCL as backends.
 
 ## Join my panel at Nvidia's GTC 2021 in Higher Education and Research category on April 13th, 2021: https://gtc21.event.nvidia.com/
 
@@ -23,7 +23,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - Multiple feature/batch convolutions - one input, multiple kernels
   - Multiple input/output/temporary buffer split. Allows to use data split between different memory allocations and mitigate 4GB single allocation limit.
   - Works on Nvidia, AMD and Intel GPUs (tested on Nvidia RTX 3080, GTX 1660 Ti, AMD Radeon VII and Intel UHD 620)
-  - VkFFT supports Vulkan, CUDA and HIP as backend to cover wide range of APIs
+  - VkFFT supports Vulkan, CUDA, HIP and OpenCL as backend to cover wide range of APIs
   - Header-only library with Vulkan interface, which allows to append VkFFT directly to user's command buffer. Shaders are compiled once during the plan creation stage
 ## Future release plan
  - ##### Planned
@@ -41,6 +41,9 @@ CUDA/HIP:
 Include the vkFFT.h file and make sure your system has NVRTC/HIPRTC built. Provide the library with correctly chosen VKFFT_BACKEND definition. Only single/double precision for now.\
 To build CUDA/HIP version of benchmark, replace VKFFT_BACKEND in CMakeLists (line 5) with the correct one and optionally enable FFTW. VKFFT_BACKEND=1 for CUDA, VKFFT_BACKEND=2 for HIP.
 
+OpenCL:
+Include the vkFFT.h file. Provide the library with correctly chosen VKFFT_BACKEND definition. Only single/double precision for now.\
+To build OpenCL version of benchmark, replace VKFFT_BACKEND in CMakeLists (line 5) with the value 3 and optionally enable FFTW.
 ## Command-line interface
 VkFFT has a command-line interface with the following set of commands:\
 -h: print help\

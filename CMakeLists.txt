@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 project(Vulkan_FFT)
 set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
-set(VKFFT_BACKEND 0)#0 - Vulkan, 1 - CUDA, 2 - HIP
+set(VKFFT_BACKEND 0)#0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL
 
 if(${VKFFT_BACKEND} EQUAL 1)
 	option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" ON)
@@ -59,6 +59,8 @@ elseif(${VKFFT_BACKEND} EQUAL 2)
 	set_target_properties(hiprt PROPERTIES
 		INTERFACE_LINK_LIBRARIES ${HIP_hiprtc_LIBRARY}
 	)
+elseif(${VKFFT_BACKEND} EQUAL 3)
+	find_package(OpenCL REQUIRED)
 endif()
 target_compile_definitions(${PROJECT_NAME} PUBLIC -DVK_API_VERSION=11)#10 - Vulkan 1.0, 11 - Vulkan 1.1, 12 - Vulkan 1.2 
 if(${VKFFT_BACKEND} EQUAL 0)
@@ -78,6 +80,8 @@ elseif(${VKFFT_BACKEND} EQUAL 1)
 	target_link_libraries(${PROJECT_NAME} PUBLIC cuda ${CUDA_NVRTC_LIB} VkFFT half)
 elseif(${VKFFT_BACKEND} EQUAL 2)
 	target_link_libraries(${PROJECT_NAME} PUBLIC hip::host VkFFT half)
+elseif(${VKFFT_BACKEND} EQUAL 3)
+	target_link_libraries(${PROJECT_NAME} PUBLIC OpenCL::OpenCL VkFFT half)
 endif()
 
 if(build_VkFFT_FFTW_precision)

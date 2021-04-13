@@ -20,6 +20,12 @@
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
+#elif(VKFFT_BACKEND==3)
+#ifdef __APPLE__
+#include <OpenCL/opencl.h>
+#else
+#include <CL/cl.h>
+#endif 
 #endif
 #include "vkFFT.h"
 #include "half.hpp"
@@ -82,6 +88,11 @@ typedef struct {
 #elif(VKFFT_BACKEND==2)
 	hipDevice_t device;
 	hipCtx_t context;
+#elif(VKFFT_BACKEND==3)
+	cl_platform_id platform;
+	cl_device_id device;
+	cl_context context;
+	cl_command_queue commandQueue;
 #endif
 	uint32_t device_id;//an id of a device, reported by Vulkan device list
 } VkGPU;//an example structure containing Vulkan primitives
@@ -246,36 +257,6 @@ VkResult findPhysicalDevice(VkGPU* vkGPU) {
 	vkGPU->physicalDevice = devices[vkGPU->device_id];
 	free(devices);
 	return VK_SUCCESS;
-}
-VkResult devices_list() {
-	//this function creates an instance and prints the list of available devices
-	VkResult res = VK_SUCCESS;
-	VkInstance local_instance = { 0 };
-	VkInstanceCreateInfo createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
-	createInfo.flags = 0;
-	createInfo.pApplicationInfo = NULL;
-	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = { VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT };
-	createInfo.enabledLayerCount = 0;
-	createInfo.enabledExtensionCount = 0;
-	createInfo.pNext = NULL;
-	res = vkCreateInstance(&createInfo, NULL, &local_instance);
-	if (res != VK_SUCCESS) return res;
-
-	uint32_t deviceCount;
-	res = vkEnumeratePhysicalDevices(local_instance, &deviceCount, NULL);
-	if (res != VK_SUCCESS) return res;
-
-	VkPhysicalDevice* devices = (VkPhysicalDevice*)malloc(sizeof(VkPhysicalDevice) * deviceCount);
-	res = vkEnumeratePhysicalDevices(local_instance, &deviceCount, devices);
-	if (res != VK_SUCCESS) return res;
-	for (uint32_t i = 0; i < deviceCount; i++) {
-		VkPhysicalDeviceProperties device_properties;
-		vkGetPhysicalDeviceProperties(devices[i], &device_properties);
-		printf("Device id: %d name: %s API:%d.%d.%d\n", i, device_properties.deviceName, (device_properties.apiVersion >> 22), ((device_properties.apiVersion >> 12) & 0x3ff), (device_properties.apiVersion & 0xfff));
-	}
-	free(devices);
-	vkDestroyInstance(local_instance, NULL);
-	return res;
 }
 VkResult getComputeQueueFamilyIndex(VkGPU* vkGPU) {
 	//find a queue family for a selected GPU, select the first available for use
@@ -518,6 +499,98 @@ VkFFTResult transferDataToCPU(VkGPU* vkGPU, void* arr, VkBuffer* buffer, uint64_
 	return resFFT;
 }
 #endif
+VkFFTResult devices_list() {
+	//this function creates an instance and prints the list of available devices
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+	VkInstance local_instance = { 0 };
+	VkInstanceCreateInfo createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
+	createInfo.flags = 0;
+	createInfo.pApplicationInfo = NULL;
+	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = { VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT };
+	createInfo.enabledLayerCount = 0;
+	createInfo.enabledExtensionCount = 0;
+	createInfo.pNext = NULL;
+	res = vkCreateInstance(&createInfo, NULL, &local_instance);
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_INSTANCE;
+
+	uint32_t deviceCount;
+	res = vkEnumeratePhysicalDevices(local_instance, &deviceCount, NULL);
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES;
+
+	VkPhysicalDevice* devices = (VkPhysicalDevice*)malloc(sizeof(VkPhysicalDevice) * deviceCount);
+	res = vkEnumeratePhysicalDevices(local_instance, &deviceCount, devices);
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES;
+	for (uint32_t i = 0; i < deviceCount; i++) {
+		VkPhysicalDeviceProperties device_properties;
+		vkGetPhysicalDeviceProperties(devices[i], &device_properties);
+		printf("Device id: %d name: %s API:%d.%d.%d\n", i, device_properties.deviceName, (device_properties.apiVersion >> 22), ((device_properties.apiVersion >> 12) & 0x3ff), (device_properties.apiVersion & 0xfff));
+	}
+	free(devices);
+	vkDestroyInstance(local_instance, NULL);
+#elif(VKFFT_BACKEND==1)
+	CUresult res = CUDA_SUCCESS;
+	res = cuInit(0);
+	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	int numDevices;
+	res = cuDeviceGetCount(&numDevices);
+	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID;
+	for (uint32_t i = 0; i < numDevices; i++) {
+		char deviceName[256];
+		CUdevice device = {};
+		res = cuDeviceGet(&device, i);
+		if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+		res = cuDeviceGetName(deviceName, 256, device);
+		if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+		printf("Device id: %d name: %s\n", i, deviceName);
+	}
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+	res = hipInit(0);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	int numDevices;
+	res = hipGetDeviceCount(&numDevices);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID;
+	for (uint32_t i = 0; i < numDevices; i++) {
+		char deviceName[256];
+		hipDevice_t device = {};
+		res = hipDeviceGet(&device, i);
+		if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+		res = hipDeviceGetName(deviceName, 256, device);
+		if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+		printf("Device id: %d name: %s\n", i, deviceName);
+	}
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
+	cl_uint numPlatforms;
+	res = clGetPlatformIDs(0, 0, &numPlatforms);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	cl_platform_id* platforms = (cl_platform_id*)malloc(sizeof(cl_platform_id) * numPlatforms);
+	res = clGetPlatformIDs(numPlatforms, platforms, 0);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	uint32_t k = 0;
+	for (uint32_t j = 0; j < numPlatforms; j++) {
+		cl_uint numDevices;
+		res = clGetDeviceIDs(platforms[j], CL_DEVICE_TYPE_ALL, 0, 0, &numDevices);
+		cl_device_id* deviceList = (cl_device_id*)malloc(sizeof(cl_device_id) * numDevices);
+		res = clGetDeviceIDs(platforms[j], CL_DEVICE_TYPE_ALL, numDevices, deviceList, 0);
+		if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+		for (uint32_t i = 0; i < numDevices; i++) {
+			char deviceName[256];
+			char apiVersion[256];
+			res = clGetDeviceInfo(deviceList[i], CL_DEVICE_NAME, 256 * sizeof(char), deviceName, 0);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES;
+			res = clGetDeviceInfo(deviceList[i], CL_DEVICE_VERSION, 256 * sizeof(char), apiVersion, 0);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES;
+			printf("Platform id: %d Device id: %d name: %s API:%s\n", j, k, deviceName, apiVersion);
+			k++;
+		}
+		free(deviceList);
+	}
+	free(platforms);
+#endif
+	return VKFFT_SUCCESS;
+}
 VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchParams* launchParams, int inverse, uint32_t num_iter) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
@@ -577,12 +650,24 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
+	launchParams->commandQueue = &vkGPU->commandQueue;
+	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
+	for (uint32_t i = 0; i < num_iter; i++) {
+		resFFT = VkFFTAppend(app, inverse, launchParams);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
+	}
+	res = clFinish(vkGPU->commandQueue);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
+	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 #endif
 	return resFFT;
 }
 VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchParams* launchParams, uint32_t num_iter, float* time_result) {
-#if(VKFFT_BACKEND==0)
 	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	commandBufferAllocateInfo.commandPool = vkGPU->commandPool;
@@ -619,7 +704,6 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	if (res != 0) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
 	vkFreeCommandBuffers(vkGPU->device, vkGPU->commandPool, 1, &commandBuffer);
 #elif(VKFFT_BACKEND==1)
-	VkFFTResult resFFT = VKFFT_SUCCESS;
 	cudaError_t res = cudaSuccess;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 	for (uint32_t i = 0; i < num_iter; i++) {
@@ -634,7 +718,6 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 	time_result[0] = totTime / num_iter;
 #elif(VKFFT_BACKEND==2)
-	VkFFTResult resFFT = VKFFT_SUCCESS;
 	hipError_t res = hipSuccess;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 	for (uint32_t i = 0; i < num_iter; i++) {
@@ -645,6 +728,21 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	}
 	res = hipDeviceSynchronize();
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
+	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	time_result[0] = totTime / num_iter;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
+	launchParams->commandQueue = &vkGPU->commandQueue;
+	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
+	for (uint32_t i = 0; i < num_iter; i++) {
+		resFFT = VkFFTAppend(app, -1, launchParams);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		resFFT = VkFFTAppend(app, 1, launchParams);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
+	}
+	res = clFinish(vkGPU->commandQueue);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 	time_result[0] = totTime / num_iter;
@@ -659,6 +757,8 @@ VkFFTResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "0 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision\n");
@@ -693,6 +793,9 @@ VkFFTResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif
 			//Allocate buffer for the input data.
 			uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2];;
@@ -712,6 +815,11 @@ VkFFTResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			res = hipMalloc((void**)&buffer, bufferSize);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
+			buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			configuration.buffer = &buffer;
 #endif
 
 			configuration.bufferSize = &bufferSize;
@@ -739,6 +847,9 @@ VkFFTResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+			res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
@@ -749,6 +860,10 @@ VkFFTResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
+#elif(VKFFT_BACKEND==3)
+			cl_uint vendorID;
+			clGetDeviceInfo(vkGPU->device, CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
+			if (vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
 			float totTime = 0;
@@ -790,6 +905,8 @@ VkFFTResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 			hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+			clReleaseMemObject(buffer);
 #endif
 
 			deleteVkFFT(&app);
@@ -819,6 +936,8 @@ VkFFTResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "1 - VkFFT FFT + iFFT C2C benchmark 1D batched in double precision LUT\n");
@@ -856,6 +975,9 @@ VkFFTResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif			
 
 			//Allocate buffer for the input data.
@@ -876,6 +998,11 @@ VkFFTResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			res = hipMalloc((void**)&buffer, bufferSize);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
+			buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			configuration.buffer = &buffer;
 #endif
 
 			configuration.bufferSize = &bufferSize;
@@ -901,6 +1028,9 @@ VkFFTResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+			res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//free(buffer_input);
 
@@ -912,6 +1042,10 @@ VkFFTResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
+#elif(VKFFT_BACKEND==3)
+			cl_uint vendorID;
+			clGetDeviceInfo(vkGPU->device, CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
+			if (vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
 			float totTime = 0;
@@ -952,6 +1086,8 @@ VkFFTResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 			hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+			clReleaseMemObject(buffer);
 #endif
 			deleteVkFFT(&app);
 
@@ -980,6 +1116,8 @@ VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "2 - VkFFT FFT + iFFT C2C benchmark 1D batched in half precision\n");
@@ -1016,6 +1154,15 @@ VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 				else
 					configuration.coalescedMemory = 128;
 			}
+#elif(VKFFT_BACKEND==3)
+			cl_uint vendorID;
+			clGetDeviceInfo(vkGPU->device, CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
+			if (vendorID == 0x8086) {
+				if (n > 22)//128byte coalescing has a limit of 2^24 max size
+					configuration.coalescedMemory = 64;
+				else
+					configuration.coalescedMemory = 128;
+			}
 #endif
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 			configuration.device = &vkGPU->device;
@@ -1025,6 +1172,9 @@ VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif
 
 			//Allocate buffer for the input data.
@@ -1045,6 +1195,11 @@ VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			res = hipMalloc((void**)&buffer, bufferSize);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
+			buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			configuration.buffer = &buffer;
 #endif
 
 			configuration.bufferSize = &bufferSize;
@@ -1070,6 +1225,9 @@ VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+			res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//free(buffer_input);
 
@@ -1081,6 +1239,8 @@ VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
+#elif(VKFFT_BACKEND==3)
+			if (vendorID == 0x8086) num_iter /= 4;
 #endif
 			if (num_iter == 0) num_iter = 1;
 			float totTime = 0;
@@ -1121,6 +1281,8 @@ VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 			hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+			clReleaseMemObject(buffer);
 #endif
 			deleteVkFFT(&app);
 
@@ -1149,6 +1311,8 @@ VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "3 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
@@ -1192,6 +1356,9 @@ VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif
 			//Allocate buffer for the input data.
 			uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2];;
@@ -1211,6 +1378,11 @@ VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			res = hipMalloc((void**)&buffer, bufferSize);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
+			buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			configuration.buffer = &buffer;
 #endif
 
 			configuration.bufferSize = &bufferSize;
@@ -1236,6 +1408,9 @@ VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+			res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//free(buffer_input);
 
@@ -1247,6 +1422,10 @@ VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
+#elif(VKFFT_BACKEND==3)
+			cl_uint vendorID;
+			clGetDeviceInfo(vkGPU->device, CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
+			if (vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
 			float totTime = 0;
@@ -1287,6 +1466,8 @@ VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 			hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+			clReleaseMemObject(buffer);
 #endif
 			deleteVkFFT(&app);
 
@@ -1315,6 +1496,8 @@ VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "4 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
@@ -1369,6 +1552,9 @@ VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif
 			//Allocate buffer for the input data.
 			uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2];;
@@ -1388,6 +1574,11 @@ VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			res = hipMalloc((void**)&buffer, bufferSize);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
+			buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			configuration.buffer = &buffer;
 #endif
 
 			configuration.bufferSize = &bufferSize;
@@ -1413,6 +1604,9 @@ VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+			res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//free(buffer_input);
 
@@ -1424,6 +1618,10 @@ VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
+#elif(VKFFT_BACKEND==3)
+			cl_uint vendorID;
+			clGetDeviceInfo(vkGPU->device, CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
+			if (vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
 			float totTime = 0;
@@ -1463,6 +1661,8 @@ VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 			hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+			clReleaseMemObject(buffer);
 #endif
 			deleteVkFFT(&app);
 
@@ -1491,6 +1691,8 @@ VkFFTResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "5 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n");
@@ -1528,6 +1730,9 @@ VkFFTResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif
 			//Allocate buffer for the input data.
 			uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2];;
@@ -1547,6 +1752,11 @@ VkFFTResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			res = hipMalloc((void**)&buffer, bufferSize);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
+			buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			configuration.buffer = &buffer;
 #endif
 
 			configuration.bufferSize = &bufferSize;
@@ -1574,6 +1784,9 @@ VkFFTResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+			res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//free(buffer_input);
 
@@ -1585,6 +1798,10 @@ VkFFTResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
+#elif(VKFFT_BACKEND==3)
+			cl_uint vendorID;
+			clGetDeviceInfo(vkGPU->device, CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
+			if (vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
 			float totTime = 0;
@@ -1625,6 +1842,8 @@ VkFFTResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 			hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+			clReleaseMemObject(buffer);
 #endif
 			deleteVkFFT(&app);
 
@@ -1653,6 +1872,8 @@ VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "6 - VkFFT FFT + iFFT R2C/C2R benchmark\n");
@@ -1691,6 +1912,9 @@ VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif
 
 
@@ -1712,6 +1936,11 @@ VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			res = hipMalloc((void**)&buffer, bufferSize);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
+			buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			configuration.buffer = &buffer;
 #endif
 
 			configuration.bufferSize = &bufferSize;
@@ -1736,6 +1965,9 @@ VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+			res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 			resFFT = initializeVkFFT(&app, configuration);
@@ -1745,6 +1977,10 @@ VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			uint32_t num_iter = ((4096.0 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096.0 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
+#elif(VKFFT_BACKEND==3)
+			cl_uint vendorID;
+			clGetDeviceInfo(vkGPU->device, CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
+			if (vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
 
@@ -1801,6 +2037,8 @@ VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 			hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+			clReleaseMemObject(buffer);
 #endif
 			deleteVkFFT(&app);
 
@@ -1828,6 +2066,8 @@ VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "7 - VkFFT convolution example with identitiy kernel\n");
@@ -1860,6 +2100,9 @@ VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	configuration.commandPool = &vkGPU->commandPool;
 	configuration.physicalDevice = &vkGPU->physicalDevice;
 	configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+	configuration.platform = &vkGPU->platform;
+	configuration.context = &vkGPU->context;
 #endif
 	//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from configuration is passed to convolution_configuration as kernel object.
 	//1. Kernel forward FFT.
@@ -1881,6 +2124,11 @@ VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	res = hipMalloc((void**)&kernel, kernelSize);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = (void**)&kernel;
+#elif(VKFFT_BACKEND==3)
+	cl_mem kernel = 0;
+	kernel = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, kernelSize, 0, &res);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	configuration.buffer = &kernel;
 #endif
 
 	configuration.bufferSize = &kernelSize;
@@ -1921,6 +2169,9 @@ VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 	res = hipMemcpy(kernel, kernel_input, kernelSize, hipMemcpyHostToDevice);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+	res = clEnqueueWriteBuffer(vkGPU->commandQueue, kernel, CL_TRUE, 0, kernelSize, kernel_input, 0, NULL, NULL);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 	//Initialize application responsible for the kernel. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
@@ -1949,6 +2200,8 @@ VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	convolution_configuration.kernel = (void**)&kernel;
 #elif(VKFFT_BACKEND==2)
 	convolution_configuration.kernel = (void**)&kernel;
+#elif(VKFFT_BACKEND==3)
+	convolution_configuration.kernel = &kernel;
 #endif	
 
 	//Allocate separate buffer for the input data.
@@ -1969,6 +2222,11 @@ VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	res = hipMalloc((void**)&buffer, bufferSize);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	convolution_configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+	cl_mem buffer = 0;
+	buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	configuration.buffer = &buffer;
 #endif
 
 	convolution_configuration.bufferSize = &bufferSize;
@@ -2000,6 +2258,9 @@ VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 	res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+	res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 	//Initialize application responsible for the convolution.
@@ -2022,6 +2283,9 @@ VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 	res = hipMemcpy(buffer_output, buffer, bufferSize, hipMemcpyDeviceToHost);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+	res = clEnqueueReadBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_output, 0, NULL, NULL);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 	//Print data, if needed.
 	for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
@@ -2053,6 +2317,9 @@ VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 	hipFree(buffer);
 	hipFree(kernel);
+#elif(VKFFT_BACKEND==3)
+	clReleaseMemObject(buffer);
+	clReleaseMemObject(kernel);
 #endif	
 	deleteVkFFT(&app_kernel);
 	deleteVkFFT(&app_convolution);
@@ -2066,6 +2333,8 @@ VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "8 - VkFFT zeropadding convolution example with identitiy kernel\n");
@@ -2108,6 +2377,9 @@ VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	configuration.commandPool = &vkGPU->commandPool;
 	configuration.physicalDevice = &vkGPU->physicalDevice;
 	configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+	configuration.platform = &vkGPU->platform;
+	configuration.context = &vkGPU->context;
 #endif
 	//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from configuration is passed to convolution_configuration as kernel object.
 	//1. Kernel forward FFT.
@@ -2128,6 +2400,11 @@ VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	res = hipMalloc((void**)&kernel, kernelSize);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = (void**)&kernel;
+#elif(VKFFT_BACKEND==3)
+	cl_mem kernel = 0;
+	kernel = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, kernelSize, 0, &res);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	configuration.buffer = &kernel;
 #endif
 
 	configuration.bufferSize = &kernelSize;
@@ -2169,6 +2446,9 @@ VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 	res = hipMemcpy(kernel, kernel_input, kernelSize, hipMemcpyHostToDevice);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+	res = clEnqueueWriteBuffer(vkGPU->commandQueue, kernel, CL_TRUE, 0, kernelSize, kernel_input, 0, NULL, NULL);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 	//Initialize application responsible for the kernel. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 	resFFT = initializeVkFFT(&app_kernel, configuration);
@@ -2196,6 +2476,8 @@ VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	convolution_configuration.kernel = (void**)&kernel;
 #elif(VKFFT_BACKEND==2)
 	convolution_configuration.kernel = (void**)&kernel;
+#elif(VKFFT_BACKEND==3)
+	convolution_configuration.kernel = &kernel;
 #endif	
 
 	//Allocate separate buffer for the input data.
@@ -2217,6 +2499,11 @@ VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	res = hipMalloc((void**)&buffer, bufferSize);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	convolution_configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+	cl_mem buffer = 0;
+	buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	configuration.buffer = &buffer;
 #endif
 
 	convolution_configuration.bufferSize = &bufferSize;
@@ -2247,6 +2534,9 @@ VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 	res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+	res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 	//Initialize application responsible for the convolution.
 	resFFT = initializeVkFFT(&app_convolution, convolution_configuration);
@@ -2268,6 +2558,9 @@ VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 	res = hipMemcpy(buffer_output, buffer, bufferSize, hipMemcpyDeviceToHost);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+	res = clEnqueueReadBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_output, 0, NULL, NULL);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 	//Print data, if needed.
@@ -2300,6 +2593,9 @@ VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 	hipFree(buffer);
 	hipFree(kernel);
+#elif(VKFFT_BACKEND==3)
+	clReleaseMemObject(buffer);
+	clReleaseMemObject(kernel);
 #endif	
 	deleteVkFFT(&app_kernel);
 	deleteVkFFT(&app_convolution);
@@ -2313,6 +2609,8 @@ VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "9 - VkFFT batched convolution example with identitiy kernel\n");
@@ -2346,6 +2644,9 @@ VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	configuration.commandPool = &vkGPU->commandPool;
 	configuration.physicalDevice = &vkGPU->physicalDevice;
 	configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+	configuration.platform = &vkGPU->platform;
+	configuration.context = &vkGPU->context;
 #endif
 	//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from configuration is passed to convolution_configuration as kernel object.
 	//1. Kernel forward FFT.
@@ -2367,6 +2668,11 @@ VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	res = hipMalloc((void**)&kernel, kernelSize);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = (void**)&kernel;
+#elif(VKFFT_BACKEND==3)
+	cl_mem kernel = 0;
+	kernel = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, kernelSize, 0, &res);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	configuration.buffer = &kernel;
 #endif
 
 	configuration.bufferSize = &kernelSize;
@@ -2403,6 +2709,9 @@ VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 	res = hipMemcpy(kernel, kernel_input, kernelSize, hipMemcpyHostToDevice);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+	res = clEnqueueWriteBuffer(vkGPU->commandQueue, kernel, CL_TRUE, 0, kernelSize, kernel_input, 0, NULL, NULL);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 	//Initialize application responsible for the kernel. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 	resFFT = initializeVkFFT(&app_kernel, configuration);
@@ -2428,6 +2737,8 @@ VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	convolution_configuration.kernel = (void**)&kernel;
 #elif(VKFFT_BACKEND==2)
 	convolution_configuration.kernel = (void**)&kernel;
+#elif(VKFFT_BACKEND==3)
+	convolution_configuration.kernel = &kernel;
 #endif	
 
 	convolution_configuration.kernelSize = &kernelSize;
@@ -2467,6 +2778,15 @@ VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	convolution_configuration.inputBuffer = (void**)&inputBuffer;
 	convolution_configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+	cl_mem inputBuffer = 0;
+	cl_mem buffer = 0;
+	inputBuffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, inputBufferSize, 0, &res);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	convolution_configuration.inputBuffer = &inputBuffer;
+	convolution_configuration.buffer = &buffer;
 #endif
 
 	convolution_configuration.inputBufferSize = &inputBufferSize;
@@ -2498,6 +2818,9 @@ VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 	res = hipMemcpy(inputBuffer, buffer_input, inputBufferSize, hipMemcpyHostToDevice);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+	res = clEnqueueWriteBuffer(vkGPU->commandQueue, inputBuffer, CL_TRUE, 0, inputBufferSize, buffer_input, 0, NULL, NULL);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 	//Initialize application responsible for the convolution.
@@ -2520,6 +2843,9 @@ VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #elif(VKFFT_BACKEND==2)
 	res = hipMemcpy(buffer_output, buffer, bufferSize, hipMemcpyDeviceToHost);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+	res = clEnqueueReadBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_output, 0, NULL, NULL);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 	//Print data, if needed.
@@ -2562,6 +2888,10 @@ VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	hipFree(inputBuffer);
 	hipFree(buffer);
 	hipFree(kernel);
+#elif(VKFFT_BACKEND==3)
+	clReleaseMemObject(inputBuffer);
+	clReleaseMemObject(buffer);
+	clReleaseMemObject(kernel);
 #endif	
 	deleteVkFFT(&app_kernel);
 	deleteVkFFT(&app_convolution);
@@ -2576,6 +2906,8 @@ VkFFTResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "10 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision, multiple buffer split FFT\n");
@@ -2744,6 +3076,8 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "11 - VkFFT/FFTW C2C precision test in single precision\n");
@@ -2834,6 +3168,9 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif
 
 			uint32_t numBuf = 1;
@@ -2851,6 +3188,8 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			cuFloatComplex* buffer = 0;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
 #endif
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
@@ -2864,6 +3203,9 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				res = hipMalloc((void**)&buffer, bufferSize[i]);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+#elif(VKFFT_BACKEND==3)
+				buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize[i], 0, &res);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #endif
 			}
 
@@ -2891,6 +3233,9 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				res = hipMemcpy(buffer, inputC, bufferSize[i], hipMemcpyHostToDevice);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+				res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize[i], inputC, 0, NULL, NULL);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
@@ -2908,6 +3253,8 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			launchParams.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			launchParams.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			launchParams.buffer = &buffer;
 #endif
 			resFFT = performVulkanFFT(vkGPU, &app, &launchParams, -1, num_iter);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -2925,6 +3272,9 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				res = hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+				res = clEnqueueReadBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize[i], output_VkFFT, 0, NULL, NULL);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
@@ -2993,6 +3343,8 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 				cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 				hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+				clReleaseMemObject(buffer);
 #endif
 			}
 #if(VKFFT_BACKEND==0)
@@ -3020,6 +3372,8 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "12 - VkFFT/FFTW C2C precision test in double precision\n");
@@ -3109,6 +3463,9 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif
 			configuration.doublePrecision = true;
 
@@ -3127,6 +3484,8 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			cuFloatComplex* buffer = 0;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
 #endif
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
@@ -3140,6 +3499,9 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				res = hipMalloc((void**)&buffer, bufferSize[i]);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+#elif(VKFFT_BACKEND==3)
+				buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize[i], 0, &res);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #endif
 			}
 
@@ -3167,6 +3529,9 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				res = hipMemcpy(buffer, inputC, bufferSize[i], hipMemcpyHostToDevice);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+				res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize[i], inputC, 0, NULL, NULL);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
@@ -3183,6 +3548,8 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			launchParams.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			launchParams.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			launchParams.buffer = &buffer;
 #endif
 			resFFT = performVulkanFFT(vkGPU, &app, &launchParams, -1, num_iter);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -3200,6 +3567,9 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				res = hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+				res = clEnqueueReadBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize[i], output_VkFFT, 0, NULL, NULL);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
@@ -3269,6 +3639,8 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 				cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 				hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+				clReleaseMemObject(buffer);
 #endif
 
 			}
@@ -3297,6 +3669,8 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "13 - VkFFT/FFTW C2C precision test in half precision\n");
@@ -3385,6 +3759,9 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif
 
 			uint32_t numBuf = 1;
@@ -3402,6 +3779,8 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			cuFloatComplex* buffer = 0;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
 #endif			
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
@@ -3415,6 +3794,9 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				res = hipMalloc((void**)&buffer, bufferSize[i]);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+#elif(VKFFT_BACKEND==3)
+				buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize[i], 0, &res);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #endif
 			}
 
@@ -3442,6 +3824,9 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				res = hipMemcpy(buffer, inputC, bufferSize[i], hipMemcpyHostToDevice);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+				res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize[i], inputC, 0, NULL, NULL);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
@@ -3458,6 +3843,8 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			launchParams.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			launchParams.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			launchParams.buffer = &buffer;
 #endif
 			resFFT = performVulkanFFT(vkGPU, &app, &launchParams, -1, num_iter);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -3475,6 +3862,9 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				res = hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+				res = clEnqueueReadBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize[i], output_VkFFT, 0, NULL, NULL);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
@@ -3538,6 +3928,8 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 				cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 				hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+				clReleaseMemObject(buffer);
 #endif
 
 			}
@@ -3568,6 +3960,8 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "14 - VkFFT/FFTW C2C power 3/5/7/11/13 precision test in single precision\n");
@@ -3659,6 +4053,9 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif			
 
 			uint32_t numBuf = 1;
@@ -3676,6 +4073,8 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			cuFloatComplex* buffer = 0;
 #elif(VKFFT_BACKEND==2)
 			hipFloatComplex* buffer = 0;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
 #endif			
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
@@ -3689,6 +4088,9 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				res = hipMalloc((void**)&buffer, bufferSize[i]);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+#elif(VKFFT_BACKEND==3)
+				buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize[i], 0, &res);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #endif
 			}
 
@@ -3716,6 +4118,9 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				res = hipMemcpy(buffer, inputC, bufferSize[i], hipMemcpyHostToDevice);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+				res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize[i], inputC, 0, NULL, NULL);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
@@ -3732,6 +4137,8 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			launchParams.buffer = (void**)&buffer;
 #elif(VKFFT_BACKEND==2)
 			launchParams.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			launchParams.buffer = &buffer;
 #endif
 			resFFT = performVulkanFFT(vkGPU, &app, &launchParams, -1, num_iter);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -3749,6 +4156,9 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				res = hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+				res = clEnqueueReadBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize[i], output_VkFFT, 0, NULL, NULL);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += bufferSize[i];
 			}
@@ -3797,6 +4207,8 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 				cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 				hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+				clReleaseMemObject(buffer);
 #endif
 
 			}
@@ -3822,6 +4234,8 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "15 - VkFFT / FFTW R2C+C2R precision test in single precision\n");
@@ -3939,6 +4353,9 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif			
 
 			uint32_t numBuf = 1;
@@ -3964,6 +4381,9 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 			float* ibuffer = 0;
 			hipFloatComplex* buffer = 0;
+#elif(VKFFT_BACKEND==3)
+			cl_mem ibuffer = 0;
+			cl_mem buffer = 0;
 #endif
 			for (uint32_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
@@ -3985,6 +4405,11 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 				res = hipMalloc((void**)&buffer, bufferSize[i]);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+#elif(VKFFT_BACKEND==3)
+				ibuffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, inputBufferSize[i], 0, &res);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+				buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize[i], 0, &res);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #endif
 			}
 			configuration.inputBufferNum = numBuf;
@@ -4012,6 +4437,13 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			configuration.inputBufferStride[2] = configuration.size[0] * configuration.size[1] * configuration.size[2];
 			//configuration.inputBuffer = (void**)&ibuffer;
 			//configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			configuration.isInputFormatted = 1;
+			configuration.inputBufferStride[0] = configuration.size[0];
+			configuration.inputBufferStride[1] = configuration.size[0] * configuration.size[1];
+			configuration.inputBufferStride[2] = configuration.size[0] * configuration.size[1] * configuration.size[2];
+			//configuration.inputBuffer = (void**)&ibuffer;
+			//configuration.buffer = (void**)&buffer;
 #endif
 			configuration.inputBufferSize = inputBufferSize;
 
@@ -4028,6 +4460,9 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				res = hipMemcpy(ibuffer, inputC, inputBufferSize[i], hipMemcpyHostToDevice);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+				res = clEnqueueWriteBuffer(vkGPU->commandQueue, ibuffer, CL_TRUE, 0, inputBufferSize[i], inputC, 0, NULL, NULL);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += inputBufferSize[i];
 			}
@@ -4048,6 +4483,9 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 			launchParams.inputBuffer = (void**)&ibuffer;
 			launchParams.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			launchParams.inputBuffer = &ibuffer;
+			launchParams.buffer = &buffer;
 #endif
 			resFFT = performVulkanFFT(vkGPU, &app, &launchParams, -1, num_iter);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -4061,6 +4499,9 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 			launchParams2.inputBuffer = (void**)&ibuffer;
 			launchParams2.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			launchParams2.inputBuffer = &ibuffer;
+			launchParams2.buffer = &buffer;
 #endif
 			resFFT = performVulkanFFT(vkGPU, &app, &launchParams2, 1, num_iter);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -4082,6 +4523,9 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 				//res = hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
 				res = hipMemcpy(output_VkFFT, ibuffer, inputBufferSize[i], hipMemcpyDeviceToHost);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+				res = clEnqueueReadBuffer(vkGPU->commandQueue, ibuffer, CL_TRUE, 0, inputBufferSize[i], output_VkFFT, 0, NULL, NULL);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 				shift += inputBufferSize[i];
 			}
@@ -4155,6 +4599,9 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==2)
 				hipFree(ibuffer);
 				hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+				clReleaseMemObject(ibuffer);
+				clReleaseMemObject(buffer);
 #endif
 
 			}
@@ -4188,6 +4635,8 @@ VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "1000 - VkFFT FFT + iFFT C2C benchmark 1D batched in single precision: all supported systems from 2 to 4096\n");
@@ -4232,6 +4681,9 @@ VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif
 			//Allocate buffer for the input data.
 			uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2];;
@@ -4251,6 +4703,11 @@ VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			res = hipMalloc((void**)&buffer, bufferSize);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
+			buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			configuration.buffer = &buffer;
 #endif
 
 			configuration.bufferSize = &bufferSize;
@@ -4278,6 +4735,9 @@ VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 #elif(VKFFT_BACKEND==2)
 			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+			res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
@@ -4288,6 +4748,10 @@ VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
+#elif(VKFFT_BACKEND==3)
+			cl_uint vendorID;
+			clGetDeviceInfo(vkGPU->device, CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
+			if (vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
 			float totTime = 0;
@@ -4329,6 +4793,8 @@ VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 			hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+			clReleaseMemObject(buffer);
 #endif
 
 			deleteVkFFT(&app);
@@ -4358,6 +4824,8 @@ VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "1001 - VkFFT FFT + iFFT C2C benchmark 1D batched in double precision: all supported systems from 2 to 4096\n");
@@ -4405,6 +4873,9 @@ VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif			
 
 			//Allocate buffer for the input data.
@@ -4425,6 +4896,11 @@ VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			res = hipMalloc((void**)&buffer, bufferSize);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
+			buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			configuration.buffer = &buffer;
 #endif
 
 			configuration.bufferSize = &bufferSize;
@@ -4450,6 +4926,9 @@ VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 #elif(VKFFT_BACKEND==2)
 			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+			res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 			//free(buffer_input);
 
@@ -4461,6 +4940,10 @@ VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
+#elif(VKFFT_BACKEND==3)
+			cl_uint vendorID;
+			clGetDeviceInfo(vkGPU->device, CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
+			if (vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
 			float totTime = 0;
@@ -4502,6 +4985,8 @@ VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 			hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+			clReleaseMemObject(buffer);
 #endif
 			deleteVkFFT(&app);
 
@@ -4529,6 +5014,8 @@ VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 	cudaError_t res = cudaSuccess;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "1003 - VkFFT FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
@@ -4572,6 +5059,9 @@ VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			configuration.commandPool = &vkGPU->commandPool;
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+			configuration.platform = &vkGPU->platform;
+			configuration.context = &vkGPU->context;
 #endif
 			//Allocate buffer for the input data.
 			uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2];;
@@ -4591,6 +5081,11 @@ VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			res = hipMalloc((void**)&buffer, bufferSize);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+			cl_mem buffer = 0;
+			buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			configuration.buffer = &buffer;
 #endif
 
 			configuration.bufferSize = &bufferSize;
@@ -4618,6 +5113,9 @@ VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 #elif(VKFFT_BACKEND==2)
 			res = hipMemcpy(buffer, buffer_input, bufferSize, hipMemcpyHostToDevice);
 			if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==3)
+			res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
+			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
@@ -4628,6 +5126,10 @@ VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
+#elif(VKFFT_BACKEND==3)
+			cl_uint vendorID;
+			clGetDeviceInfo(vkGPU->device, CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
+			if (vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
 			float totTime = 0;
@@ -4669,6 +5171,8 @@ VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			cudaFree(buffer);
 #elif(VKFFT_BACKEND==2)
 			hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+			clReleaseMemObject(buffer);
 #endif
 
 			deleteVkFFT(&app);
@@ -4757,6 +5261,39 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
 	hipCtxCreate(&vkGPU->context, 0, vkGPU->device);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
+	cl_uint numPlatforms;
+	res = clGetPlatformIDs(0, 0, &numPlatforms);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	cl_platform_id* platforms = (cl_platform_id*)malloc(sizeof(cl_platform_id) * numPlatforms);
+	res = clGetPlatformIDs(numPlatforms, platforms, 0);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	uint32_t k = 0;
+	for (uint32_t j = 0; j < numPlatforms; j++) {
+		cl_uint numDevices;
+		res = clGetDeviceIDs(platforms[j], CL_DEVICE_TYPE_ALL, 0, 0, &numDevices);
+		cl_device_id* deviceList = (cl_device_id*)malloc(sizeof(cl_device_id) * numDevices);
+		res = clGetDeviceIDs(platforms[j], CL_DEVICE_TYPE_ALL, numDevices, deviceList, 0);
+		if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+		for (uint32_t i = 0; i < numDevices; i++) {
+			if (k == vkGPU->device_id) {
+				vkGPU->platform = platforms[j];
+				vkGPU->device = deviceList[i];
+				vkGPU->context = clCreateContext(NULL, 1, &vkGPU->device, NULL, NULL, &res);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
+				cl_command_queue commandQueue = clCreateCommandQueue(vkGPU->context, vkGPU->device, 0, &res);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
+				vkGPU->commandQueue = commandQueue;
+				k++;
+			}
+			else {
+				k++;
+			}
+		}
+		free(deviceList);
+	}
+	free(platforms);
 #endif
 
 	uint32_t isCompilerInitialized = 1;
@@ -4877,6 +5414,10 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 	cuCtxDestroy(vkGPU->context);
 #elif(VKFFT_BACKEND==2)
 	hipCtxDestroy(vkGPU->context);
+#elif(VKFFT_BACKEND==3)
+	res = clReleaseCommandQueue(vkGPU->commandQueue);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
+	clReleaseContext(vkGPU->context);
 #endif
 
 	return resFFT;
@@ -4903,19 +5444,19 @@ int main(int argc, char* argv[])
 	if (findFlag(argv, argv + argc, "-h"))
 	{
 		//print help
-		printf("VkFFT v1.1.13 (09-04-2021). Author: Tolmachev Dmitrii\n");
+		printf("VkFFT v1.2.0 (13-04-2021). Author: Tolmachev Dmitrii\n");
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
 		printf("CUDA backend\n");
 #elif (VKFFT_BACKEND==2)
 		printf("HIP backend\n");
+#elif (VKFFT_BACKEND==3)
+		printf("OpenCL backend\n");
 #endif
 		printf("	-h: print help\n");
-#if (VKFFT_BACKEND==0)
-		printf("	-devices: print the list of available GPU devices\n");
-#endif
-		printf("	-d X: select GPU device (default 0)\n");
+		printf("	-devices: print the list of available device ids, used as -d argument\n");
+		printf("	-d X: select device (default 0)\n");
 		printf("	-o NAME: specify output file path\n");
 		printf("	-vkfft X: launch VkFFT sample X (0-14):\n");
 		printf("		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n");
@@ -4991,14 +5532,12 @@ int main(int argc, char* argv[])
 #endif
 		return 0;
 	}
-#if(VKFFT_BACKEND==0)
 	if (findFlag(argv, argv + argc, "-devices"))
 	{
 		//print device list
-		uint32_t res = devices_list();
-		return res;
+		VkFFTResult resFFT = devices_list();
+		return resFFT;
 	}
-#endif
 	if (findFlag(argv, argv + argc, "-d"))
 	{
 		//select device_id
