@@ -1,5 +1,5 @@
 [![Build Status](https://travis-ci.com/DTolm/VkFFT.svg?token=nMgUQeqx7PXMeCFaXqsb&branch=master)](https://travis-ci.com/github/DTolm/VkFFT)
-# VkFFT - Vulkan/CUDA/HIP Fast Fourier Transform library
+# VkFFT - Vulkan/CUDA/HIP/OpenCL Fast Fourier Transform library
 VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan/CUDA/HIP/OpenCL projects. VkFFT aims to provide community with an open-source alternative to Nvidia's cuFFT library, while achieving better performance. VkFFT is written in C language and supports Vulkan, CUDA, HIP and OpenCL as backends.
 
 ## Join my panel at Nvidia's GTC 2021 in Higher Education and Research category on April 13th, 2021: https://gtc21.event.nvidia.com/
