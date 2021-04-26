@@ -6,6 +6,8 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 
 //ROCM parts
 #include "hip/hip_runtime.h"
@@ -33,7 +35,7 @@ void launch_benchmark_rocFFT_double(bool file_output, FILE* output)
 			hipfftHandle planZ2Z;
 			hipfftDoubleComplex* dataC;
 
-			uint32_t dims[3];
+			uint64_t dims[3];
 			dims[0] = 4 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 			if (n == 0) dims[0] = 2048;
 			dims[1] = 64 * 32 * pow(2, 15) / dims[0];
@@ -81,18 +83,18 @@ void launch_benchmark_rocFFT_double(bool file_output, FILE* output)
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t][0];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t][0] - avg_time) * (run_time[t][0] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
 					if (file_output)
-						fprintf(output, "rocFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d\n", (int)log2(dims[0]), dims[0], dims[1], rocBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)rocBufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time));
+						fprintf(output, "rocFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 "\n", (uint64_t)log2(dims[0]), dims[0], dims[1], rocBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)rocBufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time));
 
-					printf("rocFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d\n", (int)log2(dims[0]), dims[0], dims[1], rocBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)rocBufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time));
+					printf("rocFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 "\n", (uint64_t)log2(dims[0]), dims[0], dims[1], rocBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)rocBufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time));
 					benchmark_result[0] += ((double)rocBufferSize * sizeof(float)/sizeof(double)/ 1024) / avg_time;
 				}
 
@@ -110,7 +112,7 @@ void launch_benchmark_rocFFT_double(bool file_output, FILE* output)
 	free(inputC);
 	benchmark_result[0] /= (24 - 1);
 	if (file_output)
-		fprintf(output, "Benchmark score rocFFT: %d\n", (int)(benchmark_result[0]));
-	printf("Benchmark score rocFFT: %d\n", (int)(benchmark_result[0]));
+		fprintf(output, "Benchmark score rocFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result[0]));
+	printf("Benchmark score rocFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result[0]));
 
 }

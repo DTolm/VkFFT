@@ -16,6 +16,8 @@ extern "C" {
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #if(VKFFT_BACKEND==0)
 #include "vulkan/vulkan.h"
 #include "glslang_c_interface.h"
@@ -31,6 +33,7 @@ extern "C" {
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
 #elif(VKFFT_BACKEND==3)
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -42,8 +45,8 @@ extern "C" {
 		//WHDCN layout
 
 		//required parameters:
-		uint32_t FFTdim; //FFT dimensionality (1, 2 or 3)
-		uint32_t size[3]; // WHD -system dimensions 
+		uint64_t FFTdim; //FFT dimensionality (1, 2 or 3)
+		uint64_t size[3]; // WHD -system dimensions 
 
 #if(VKFFT_BACKEND==0)
 		VkPhysicalDevice* physicalDevice;//pointer to Vulkan physical device, obtained from vkEnumeratePhysicalDevices
@@ -51,17 +54,17 @@ extern "C" {
 		VkQueue* queue;//pointer to Vulkan queue, created with vkGetDeviceQueue
 		VkCommandPool* commandPool;//pointer to Vulkan command pool, created with vkCreateCommandPool
 		VkFence* fence;//pointer to Vulkan fence, created with vkCreateFence
-		uint32_t isCompilerInitialized;//specify if glslang compiler has been intialized before (0 - off, 1 - on). Default 0
+		uint64_t isCompilerInitialized;//specify if glslang compiler has been intialized before (0 - off, 1 - on). Default 0
 #elif(VKFFT_BACKEND==1)
 		CUdevice* device;//pointer to CUDA device, obtained from cuDeviceGet
 		//CUcontext* context;//pointer to CUDA context, obtained from cuDeviceGet
 		cudaStream_t* stream;//pointer to streams (can be more than 1), where to execute the kernels
-		uint32_t num_streams;//try to submit CUDA kernels in multiple streams for asynchronous execution. Default 1
+		uint64_t num_streams;//try to submit CUDA kernels in multiple streams for asynchronous execution. Default 1
 #elif(VKFFT_BACKEND==2)
 		hipDevice_t* device;//pointer to HIP device, obtained from hipDeviceGet
 		//hipCtx_t* context;//pointer to HIP context, obtained from hipDeviceGet
 		hipStream_t* stream;//pointer to streams (can be more than 1), where to execute the kernels
-		uint32_t num_streams;//try to submit HIP kernels in multiple streams for asynchronous execution. Default 1
+		uint64_t num_streams;//try to submit HIP kernels in multiple streams for asynchronous execution. Default 1
 #elif(VKFFT_BACKEND==3)
 		cl_platform_id* platform;
 		cl_device_id* device;
@@ -69,13 +72,13 @@ extern "C" {
 #endif
 
 		//data parameters:
-		uint32_t userTempBuffer; //buffer allocated by app automatically if needed to reorder Four step algorithm. Setting to non zero value enables manual user allocation (0 - off, 1 - on)
+		uint64_t userTempBuffer; //buffer allocated by app automatically if needed to reorder Four step algorithm. Setting to non zero value enables manual user allocation (0 - off, 1 - on)
 
-		uint32_t bufferNum;//multiple buffer sequence storage is Vulkan only. Default 1
-		uint32_t tempBufferNum;//multiple buffer sequence storage is Vulkan only. Default 1, buffer allocated by app automatically if needed to reorder Four step algorithm. Setting to non zero value enables manual user allocation
-		uint32_t inputBufferNum;//multiple buffer sequence storage is Vulkan only. Default 1, if isInputFormatted is enabled
-		uint32_t outputBufferNum;//multiple buffer sequence storage is Vulkan only. Default 1, if isOutputFormatted is enabled
-		uint32_t kernelNum;//multiple buffer sequence storage is Vulkan only. Default 1, if performConvolution is enabled
+		uint64_t bufferNum;//multiple buffer sequence storage is Vulkan only. Default 1
+		uint64_t tempBufferNum;//multiple buffer sequence storage is Vulkan only. Default 1, buffer allocated by app automatically if needed to reorder Four step algorithm. Setting to non zero value enables manual user allocation
+		uint64_t inputBufferNum;//multiple buffer sequence storage is Vulkan only. Default 1, if isInputFormatted is enabled
+		uint64_t outputBufferNum;//multiple buffer sequence storage is Vulkan only. Default 1, if isOutputFormatted is enabled
+		uint64_t kernelNum;//multiple buffer sequence storage is Vulkan only. Default 1, if performConvolution is enabled
 
 		uint64_t* bufferSize;//array of buffers sizes in bytes
 		uint64_t* tempBufferSize;//array of temp buffers sizes in bytes. Default set to bufferSize sum, buffer allocated by app automatically if needed to reorder Four step algorithm. Setting to non zero value enables manual user allocation
@@ -110,66 +113,67 @@ extern "C" {
 #endif
 
 		//optional: (default 0 if not stated otherwise)
-		uint32_t coalescedMemory;//in bits, for Nvidia and AMD is equal to 32, Intel is equal 64, scaled for half precision. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
-		uint32_t aimThreads;//aim at this many threads per block. Default 128
-		uint32_t numSharedBanks;//how many banks shared memory has. Default 32
-		uint32_t inverseReturnToInputBuffer;//return data to the input buffer in inverse transform (0 - off, 1 - on). isInputFormatted must be enabled
-		uint32_t numberBatches;// N - used to perform multiple batches of initial data. Default 1
+		uint64_t coalescedMemory;//in bits, for Nvidia and AMD is equal to 32, Intel is equal 64, scaled for half precision. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
+		uint64_t aimThreads;//aim at this many threads per block. Default 128
+		uint64_t numSharedBanks;//how many banks shared memory has. Default 32
+		uint64_t inverseReturnToInputBuffer;//return data to the input buffer in inverse transform (0 - off, 1 - on). isInputFormatted must be enabled
+		uint64_t numberBatches;// N - used to perform multiple batches of initial data. Default 1
+		uint64_t useUint64;//use 64-bit addressing mode in generated kernels
 
-		uint32_t doublePrecision; //perform calculations in double precision (0 - off, 1 - on).
-		uint32_t halfPrecision; //perform calculations in half precision (0 - off, 1 - on)
-		uint32_t halfPrecisionMemoryOnly; //use half precision only as input/output buffer. Input/Output have to be allocated as half, buffer/tempBuffer have to be allocated as float (out of place mode only). Specify isInputFormatted and isOutputFormatted to use (0 - off, 1 - on)
+		uint64_t doublePrecision; //perform calculations in double precision (0 - off, 1 - on).
+		uint64_t halfPrecision; //perform calculations in half precision (0 - off, 1 - on)
+		uint64_t halfPrecisionMemoryOnly; //use half precision only as input/output buffer. Input/Output have to be allocated as half, buffer/tempBuffer have to be allocated as float (out of place mode only). Specify isInputFormatted and isOutputFormatted to use (0 - off, 1 - on)
 
-		uint32_t performR2C; //perform R2C/C2R decomposition (0 - off, 1 - on)
-		uint32_t disableMergeSequencesR2C; //disable merging of two real sequences to reduce calculations (0 - off, 1 - on)
-		uint32_t normalize; //normalize inverse transform (0 - off, 1 - on)
-		uint32_t disableReorderFourStep; // disables unshuffling of Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on)
-		uint32_t useLUT; //switches from calculating sincos to using precomputed LUT tables (0 - off, 1 - on). Configured by initialization routine
-		uint32_t makeForwardPlanOnly; //generate code only for forward FFT (0 - off, 1 - on)
-		uint32_t makeInversePlanOnly; //generate code only for inverse FFT (0 - off, 1 - on)
+		uint64_t performR2C; //perform R2C/C2R decomposition (0 - off, 1 - on)
+		uint64_t disableMergeSequencesR2C; //disable merging of two real sequences to reduce calculations (0 - off, 1 - on)
+		uint64_t normalize; //normalize inverse transform (0 - off, 1 - on)
+		uint64_t disableReorderFourStep; // disables unshuffling of Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on)
+		uint64_t useLUT; //switches from calculating sincos to using precomputed LUT tables (0 - off, 1 - on). Configured by initialization routine
+		uint64_t makeForwardPlanOnly; //generate code only for forward FFT (0 - off, 1 - on)
+		uint64_t makeInversePlanOnly; //generate code only for inverse FFT (0 - off, 1 - on)
 
-		uint32_t bufferStride[3];//buffer strides - default set to x - x*y - x*y*z values
-		uint32_t isInputFormatted; //specify if input buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
-		uint32_t isOutputFormatted; //specify if output buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
-		uint32_t inputBufferStride[3];//input buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
-		uint32_t outputBufferStride[3];//output buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
+		uint64_t bufferStride[3];//buffer strides - default set to x - x*y - x*y*z values
+		uint64_t isInputFormatted; //specify if input buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
+		uint64_t isOutputFormatted; //specify if output buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
+		uint64_t inputBufferStride[3];//input buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
+		uint64_t outputBufferStride[3];//output buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
 
 		//optional zero padding control parameters: (default 0 if not stated otherwise)
-		uint32_t performZeropadding[3]; // don't read some data/perform computations if some input sequences are zeropadded for each axis (0 - off, 1 - on)
-		uint32_t fft_zeropad_left[3];//specify start boundary of zero block in the system for each axis
-		uint32_t fft_zeropad_right[3];//specify end boundary of zero block in the system for each axis
-		uint32_t frequencyZeroPadding; //set to 1 if zeropadding of frequency domain, default 0 - spatial zeropadding
+		uint64_t performZeropadding[3]; // don't read some data/perform computations if some input sequences are zeropadded for each axis (0 - off, 1 - on)
+		uint64_t fft_zeropad_left[3];//specify start boundary of zero block in the system for each axis
+		uint64_t fft_zeropad_right[3];//specify end boundary of zero block in the system for each axis
+		uint64_t frequencyZeroPadding; //set to 1 if zeropadding of frequency domain, default 0 - spatial zeropadding
 
 		//optional convolution control parameters: (default 0 if not stated otherwise)
-		uint32_t performConvolution; //perform convolution in this application (0 - off, 1 - on). Disables reorderFourStep parameter
-		uint32_t coordinateFeatures; // C - coordinate, or dimension of features vector. In matrix convolution - size of vector
-		uint32_t matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
-		uint32_t symmetricKernel; //specify if kernel in 2x2 or 3x3 matrix convolution is symmetric
-		uint32_t numberKernels;// N - only used in convolution step - specify how many kernels were initialized before. Expands one input to multiple (batched) output
-		uint32_t kernelConvolution;// specify if this application is used to create kernel for convolution, so it has the same properties. performConvolution has to be set to 0 for kernel creation
+		uint64_t performConvolution; //perform convolution in this application (0 - off, 1 - on). Disables reorderFourStep parameter
+		uint64_t coordinateFeatures; // C - coordinate, or dimension of features vector. In matrix convolution - size of vector
+		uint64_t matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
+		uint64_t symmetricKernel; //specify if kernel in 2x2 or 3x3 matrix convolution is symmetric
+		uint64_t numberKernels;// N - only used in convolution step - specify how many kernels were initialized before. Expands one input to multiple (batched) output
+		uint64_t kernelConvolution;// specify if this application is used to create kernel for convolution, so it has the same properties. performConvolution has to be set to 0 for kernel creation
 
 		//register overutilization (experimental): (default 0 if not stated otherwise)
-		uint32_t registerBoost; //specify if register file size is bigger than shared memory and can be used to extend it X times (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4 to emulate 128KB of shared memory). Default 1
-		uint32_t registerBoostNonPow2; //specify if register overutilization should be used on non power of 2 sequences (0 - off, 1 - on)
-		uint32_t registerBoost4Step; //specify if register file overutilization should be used in big sequences (>2^14), same definition as registerBoost. Default 1
+		uint64_t registerBoost; //specify if register file size is bigger than shared memory and can be used to extend it X times (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4 to emulate 128KB of shared memory). Default 1
+		uint64_t registerBoostNonPow2; //specify if register overutilization should be used on non power of 2 sequences (0 - off, 1 - on)
+		uint64_t registerBoost4Step; //specify if register file overutilization should be used in big sequences (>2^14), same definition as registerBoost. Default 1
 
 		//not used techniques:
-		uint32_t swapTo3Stage4Step; //specify at which power of 2 to switch from 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled. Must be at least 17
-		uint32_t performHalfBandwidthBoost;//try to reduce coalsesced number by a factor of 2 to get bigger sequence in one upload
-		uint32_t devicePageSize;//in KB, the size of a page on the GPU. Setting to 0 disables local buffer split in pages
-		uint32_t localPageSize;//in KB, the size to split page into if sequence spans multiple devicePageSize pages
+		uint64_t swapTo3Stage4Step; //specify at which power of 2 to switch from 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled. Must be at least 17
+		uint64_t performHalfBandwidthBoost;//try to reduce coalsesced number by a factor of 2 to get bigger sequence in one upload
+		uint64_t devicePageSize;//in KB, the size of a page on the GPU. Setting to 0 disables local buffer split in pages
+		uint64_t localPageSize;//in KB, the size to split page into if sequence spans multiple devicePageSize pages
 
 		//automatically filled based on device info (still can be reconfigured by user):
-		uint32_t maxComputeWorkGroupCount[3]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
-		uint32_t maxComputeWorkGroupSize[3]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
-		uint32_t maxThreadsNum; //max number of threads from VkPhysicalDeviceLimits
-		uint32_t sharedMemorySizeStatic; //available for static allocation shared memory size, in bytes
-		uint32_t sharedMemorySize; //available for allocation shared memory size, in bytes
-		uint32_t sharedMemorySizePow2; //power of 2 which is less or equal to sharedMemorySize, in bytes 
-		uint32_t warpSize; //number of threads per warp/wavefront.
-		uint32_t halfThreads;//Intel fix
-		uint32_t allocateTempBuffer; //buffer allocated by app automatically if needed to reorder Four step algorithm. Parameter to check if it has been allocated
-		uint32_t reorderFourStep; // unshuffle Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on). Default 1.
+		uint64_t maxComputeWorkGroupCount[3]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
+		uint64_t maxComputeWorkGroupSize[3]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
+		uint64_t maxThreadsNum; //max number of threads from VkPhysicalDeviceLimits
+		uint64_t sharedMemorySizeStatic; //available for static allocation shared memory size, in bytes
+		uint64_t sharedMemorySize; //available for allocation shared memory size, in bytes
+		uint64_t sharedMemorySizePow2; //power of 2 which is less or equal to sharedMemorySize, in bytes 
+		uint64_t warpSize; //number of threads per warp/wavefront.
+		uint64_t halfThreads;//Intel fix
+		uint64_t allocateTempBuffer; //buffer allocated by app automatically if needed to reorder Four step algorithm. Parameter to check if it has been allocated
+		uint64_t reorderFourStep; // unshuffle Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on). Default 1.
 
 #if(VKFFT_BACKEND==0)
 		VkDeviceMemory tempBufferDeviceMemory;//Filled at app creation
@@ -177,12 +181,12 @@ extern "C" {
 		VkMemoryBarrier* memory_barrier;//Filled at app creation
 #elif(VKFFT_BACKEND==1)
 		cudaEvent_t* stream_event;//Filled at app creation
-		uint32_t streamCounter;//Filled at app creation
-		uint32_t streamID;//Filled at app creation
+		uint64_t streamCounter;//Filled at app creation
+		uint64_t streamID;//Filled at app creation
 #elif(VKFFT_BACKEND==2)
 		hipEvent_t* stream_event;//Filled at app creation
-		uint32_t streamCounter;//Filled at app creation
-		uint32_t streamID;//Filled at app creation
+		uint64_t streamCounter;//Filled at app creation
+		uint64_t streamID;//Filled at app creation
 #elif(VKFFT_BACKEND==3)
 		cl_command_queue* commandQueue;
 #endif
@@ -297,75 +301,76 @@ extern "C" {
 		VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES = 4050
 	} VkFFTResult;
 	typedef struct {
-		uint32_t size[3];
-		uint32_t localSize[3];
-		uint32_t fftDim;
-		uint32_t inverse;
-		uint32_t zeropad[2];
-		uint32_t axis_id;
-		uint32_t axis_upload_id;
-		uint32_t registers_per_thread;
-		uint32_t registers_per_thread_per_radix[14];
-		uint32_t min_registers_per_thread;
-		uint32_t readToRegisters;
-		uint32_t writeFromRegisters;
-		uint32_t LUT;
-		uint32_t performR2C;
-		uint32_t performR2CmultiUpload;
-		uint32_t frequencyZeropadding;
-		uint32_t performZeropaddingFull[3]; // don't do read/write if full sequence is omitted
-		uint32_t performZeropaddingInput[3]; // don't read if input is zeropadded (0 - off, 1 - on)
-		uint32_t performZeropaddingOutput[3]; // don't write if output is zeropadded (0 - off, 1 - on)
-		uint32_t fft_zeropad_left_full[3];
-		uint32_t fft_zeropad_left_read[3];
-		uint32_t fft_zeropad_left_write[3];
-		uint32_t fft_zeropad_right_full[3];
-		uint32_t fft_zeropad_right_read[3];
-		uint32_t fft_zeropad_right_write[3];
-		uint32_t inputStride[5];
-		uint32_t outputStride[5];
-		uint32_t fft_dim_full;
-		uint32_t stageStartSize;
-		uint32_t firstStageStartSize;
-		uint32_t fft_dim_x;
-		uint32_t numStages;
-		uint32_t stageRadix[20];
-		uint32_t inputOffset;
-		uint32_t outputOffset;
-		uint32_t reorderFourStep;
-		uint32_t performWorkGroupShift[3];
-		uint32_t inputBufferBlockNum;
-		uint32_t inputBufferBlockSize;
-		uint32_t outputBufferBlockNum;
-		uint32_t outputBufferBlockSize;
-		uint32_t kernelBlockNum;
-		uint32_t kernelBlockSize;
-		uint32_t numCoordinates;
-		uint32_t matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
-		uint32_t numBatches;
-		uint32_t numKernels;
-		uint32_t usedSharedMemory;
-		uint32_t sharedMemSize;
-		uint32_t sharedMemSizePow2;
-		uint32_t normalize;
-		uint32_t complexSize;
-		uint32_t maxStageSumLUT;
-		uint32_t unroll;
-		uint32_t convolutionStep;
-		uint32_t symmetricKernel;
-		uint32_t supportAxis;
-		uint32_t cacheShuffle;
-		uint32_t registerBoost;
-		uint32_t warpSize;
-		uint32_t numSharedBanks;
-		uint32_t resolveBankConflictFirstStages;
-		uint32_t sharedStrideBankConflictFirstStages;
-		uint32_t sharedStrideReadWriteConflict;
-		uint32_t maxSharedStride;
-		uint32_t axisSwapped;
-		uint32_t mergeSequencesR2C;
-		uint32_t numBuffersBound[4];
-		uint32_t performBufferSetUpdate;
+		uint64_t size[3];
+		uint64_t localSize[3];
+		uint64_t fftDim;
+		uint64_t inverse;
+		uint64_t zeropad[2];
+		uint64_t axis_id;
+		uint64_t axis_upload_id;
+		uint64_t registers_per_thread;
+		uint64_t registers_per_thread_per_radix[14];
+		uint64_t min_registers_per_thread;
+		uint64_t readToRegisters;
+		uint64_t writeFromRegisters;
+		uint64_t LUT;
+		uint64_t performR2C;
+		uint64_t performR2CmultiUpload;
+		uint64_t frequencyZeropadding;
+		uint64_t performZeropaddingFull[3]; // don't do read/write if full sequence is omitted
+		uint64_t performZeropaddingInput[3]; // don't read if input is zeropadded (0 - off, 1 - on)
+		uint64_t performZeropaddingOutput[3]; // don't write if output is zeropadded (0 - off, 1 - on)
+		uint64_t fft_zeropad_left_full[3];
+		uint64_t fft_zeropad_left_read[3];
+		uint64_t fft_zeropad_left_write[3];
+		uint64_t fft_zeropad_right_full[3];
+		uint64_t fft_zeropad_right_read[3];
+		uint64_t fft_zeropad_right_write[3];
+		uint64_t inputStride[5];
+		uint64_t outputStride[5];
+		uint64_t fft_dim_full;
+		uint64_t stageStartSize;
+		uint64_t firstStageStartSize;
+		uint64_t fft_dim_x;
+		uint64_t numStages;
+		uint64_t stageRadix[20];
+		uint64_t inputOffset;
+		uint64_t outputOffset;
+		uint64_t reorderFourStep;
+		uint64_t performWorkGroupShift[3];
+		uint64_t inputBufferBlockNum;
+		uint64_t inputBufferBlockSize;
+		uint64_t outputBufferBlockNum;
+		uint64_t outputBufferBlockSize;
+		uint64_t kernelBlockNum;
+		uint64_t kernelBlockSize;
+		uint64_t numCoordinates;
+		uint64_t matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
+		uint64_t numBatches;
+		uint64_t numKernels;
+		uint64_t usedSharedMemory;
+		uint64_t sharedMemSize;
+		uint64_t sharedMemSizePow2;
+		uint64_t normalize;
+		uint64_t complexSize;
+		uint64_t maxStageSumLUT;
+		uint64_t unroll;
+		uint64_t convolutionStep;
+		uint64_t symmetricKernel;
+		uint64_t supportAxis;
+		uint64_t cacheShuffle;
+		uint64_t registerBoost;
+		uint64_t warpSize;
+		uint64_t numSharedBanks;
+		uint64_t resolveBankConflictFirstStages;
+		uint64_t sharedStrideBankConflictFirstStages;
+		uint64_t sharedStrideReadWriteConflict;
+		uint64_t maxSharedStride;
+		uint64_t axisSwapped;
+		uint64_t mergeSequencesR2C;
+		uint64_t numBuffersBound[4];
+		uint64_t performBufferSetUpdate;
+		uint64_t useUint64;
 		char** regIDs;
 		char* disableThreadsStart;
 		char* disableThreadsEnd;
@@ -395,19 +400,25 @@ extern "C" {
 		char iw[10];
 		char locID[13][40];
 		char* output;
-		uint32_t currentLen;
+		uint64_t currentLen;
 	} VkFFTSpecializationConstantsLayout;
 	typedef struct {
 		uint32_t coordinate;
 		uint32_t batch;
 		uint32_t workGroupShift[3];
-	} VkFFTPushConstantsLayout;
+	} VkFFTPushConstantsLayoutUint32;
 	typedef struct {
-		uint32_t numBindings;
-		uint32_t axisBlock[4];
-		uint32_t groupedBatch;
+		uint64_t coordinate;
+		uint64_t batch;
+		uint64_t workGroupShift[3];
+	} VkFFTPushConstantsLayoutUint64;
+	typedef struct {
+		uint64_t numBindings;
+		uint64_t axisBlock[4];
+		uint64_t groupedBatch;
 		VkFFTSpecializationConstantsLayout specializationConstants;
-		VkFFTPushConstantsLayout pushConstants;
+		VkFFTPushConstantsLayoutUint32 pushConstantsUint32;
+		VkFFTPushConstantsLayoutUint64 pushConstants;
 #if(VKFFT_BACKEND==0)
 		VkBuffer* inputBuffer;
 		VkBuffer* outputBuffer;
@@ -440,14 +451,14 @@ extern "C" {
 		cl_mem bufferLUT;
 #endif
 		uint64_t bufferLUTSize;
-		uint32_t referenceLUT;
+		uint64_t referenceLUT;
 	} VkFFTAxis;
 
 	typedef struct {
-		uint32_t numAxisUploads[3];
-		uint32_t axisSplit[3][4];
+		uint64_t numAxisUploads[3];
+		uint64_t axisSplit[3][4];
 		VkFFTAxis axes[3][4];
-		uint32_t multiUploadR2C;
+		uint64_t multiUploadR2C;
 		VkFFTAxis R2Cdecomposition;
 	} VkFFTPlan;
 	typedef struct {
@@ -629,18 +640,18 @@ extern "C" {
 	%s = %s / %s;\n", out, in_1, in_num);
 		VkAppendLine(sc, sc->tempStr);
 	};
-	static inline void VkPermute(VkFFTSpecializationConstantsLayout* sc, const uint32_t* permute, const uint32_t num_elem, const uint32_t type, char** regIDs) {
+	static inline void VkPermute(VkFFTSpecializationConstantsLayout* sc, const uint64_t* permute, const uint64_t num_elem, const uint64_t type, char** regIDs) {
 		char temp_ID[13][20];
 		if (type == 0) {
-			for (uint32_t i = 0; i < num_elem; i++)
+			for (uint64_t i = 0; i < num_elem; i++)
 				sprintf(temp_ID[i], "%s", sc->locID[i]);
-			for (uint32_t i = 0; i < num_elem; i++)
+			for (uint64_t i = 0; i < num_elem; i++)
 				sprintf(sc->locID[i], "%s", temp_ID[permute[i]]);
 		}
 		if (type == 1) {
-			for (uint32_t i = 0; i < num_elem; i++)
+			for (uint64_t i = 0; i < num_elem; i++)
 				sprintf(temp_ID[i], "%s", regIDs[i]);
-			for (uint32_t i = 0; i < num_elem; i++)
+			for (uint64_t i = 0; i < num_elem; i++)
 				sprintf(regIDs[i], "%s", temp_ID[permute[i]]);
 		}
 	};
@@ -652,7 +663,7 @@ extern "C" {
 	}
 	static inline void appendExtensions(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory) {
 #if(VKFFT_BACKEND==0)
-		if (!strcmp(floatType, "double"))
+		if ((!strcmp(floatType, "double")) || (sc->useUint64))
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 #extension GL_ARB_gpu_shader_fp64 : enable\n\
 #extension GL_ARB_gpu_shader_int64 : enable\n\n");
@@ -663,14 +674,15 @@ extern "C" {
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 #include <hip/hip_runtime.h>\n");
 #elif(VKFFT_BACKEND==3)
-		if (!strcmp(floatType, "double"))
+		if ((!strcmp(floatType, "double")) || (sc->useUint64))
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n\n");
+#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n\
+#pragma OPENCL EXTENSION cl_khr_int64 : enable\n\n");
 #endif
 	}
 	static inline void appendLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc) {
 #if(VKFFT_BACKEND==0)
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "layout (local_size_x = %d, local_size_y = %d, local_size_z = %d) in;\n", sc->localSize[0], sc->localSize[1], sc->localSize[2]);
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "layout (local_size_x = %" PRIu64 ", local_size_y = %" PRIu64 ", local_size_z = %" PRIu64 ") in;\n", sc->localSize[0], sc->localSize[1], sc->localSize[2]);
 #elif(VKFFT_BACKEND==1)
 #elif(VKFFT_BACKEND==2)
 #elif(VKFFT_BACKEND==3)
@@ -686,9 +698,9 @@ extern "C" {
 	static inline void appendPushConstant(VkFFTSpecializationConstantsLayout* sc, const char* type, const char* name) {
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s %s;\n", type, name);
 	}
-	static inline void appendBarrierVkFFT(VkFFTSpecializationConstantsLayout* sc, uint32_t numTab) {
+	static inline void appendBarrierVkFFT(VkFFTSpecializationConstantsLayout* sc, uint64_t numTab) {
 		char tabs[100];
-		for (uint32_t i = 0; i < numTab; i++)
+		for (uint64_t i = 0; i < numTab; i++)
 			sprintf(tabs, "	");
 #if(VKFFT_BACKEND==0)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "%sbarrier();\n\n", tabs);
@@ -812,7 +824,7 @@ extern "C" {
 	return cos_sin;\n\
 }\n\n", functionDefinitions, vecType, vecType);
 	}
-	static inline void appendInputLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc, uint32_t id, const char* floatTypeMemory, uint32_t inputType) {
+	static inline void appendInputLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc, uint64_t id, const char* floatTypeMemory, uint64_t inputType) {
 		char vecType[30];
 		switch (inputType) {
 		case 0: case 1: case 2: case 3: case 4: case 6: {
@@ -822,14 +834,14 @@ extern "C" {
 			if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "dvec2");
 			if (sc->inputBufferBlockNum == 1)
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-layout(std430, binding = %d) buffer DataIn{\n\
-	%s inputs[%d];\n\
+layout(std430, binding = %" PRIu64 ") buffer DataIn{\n\
+	%s inputs[%" PRIu64 "];\n\
 };\n\n", id, vecType, sc->inputBufferBlockSize);
 			else
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-layout(std430, binding = %d) buffer DataIn{\n\
-	%s inputs[%d];\n\
-} inputBlocks[%d];\n\n", id, vecType, sc->inputBufferBlockSize, sc->inputBufferBlockNum);
+layout(std430, binding = %" PRIu64 ") buffer DataIn{\n\
+	%s inputs[%" PRIu64 "];\n\
+} inputBlocks[%" PRIu64 "];\n\n", id, vecType, sc->inputBufferBlockSize, sc->inputBufferBlockNum);
 #elif(VKFFT_BACKEND==1)
 			if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
 			if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
@@ -853,14 +865,14 @@ layout(std430, binding = %d) buffer DataIn{\n\
 #if(VKFFT_BACKEND==0)
 			if (sc->inputBufferBlockNum == 1)
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-layout(std430, binding = %d) buffer DataIn{\n\
-	%s inputs[%d];\n\
+layout(std430, binding = %" PRIu64 ") buffer DataIn{\n\
+	%s inputs[%" PRIu64 "];\n\
 };\n\n", id, vecType, 2 * sc->inputBufferBlockSize);
 			else
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-layout(std430, binding = %d) buffer DataIn{\n\
-	%s inputs[%d];\n\
-} inputBlocks[%d];\n\n", id, vecType, 2 * sc->inputBufferBlockSize, sc->inputBufferBlockNum);
+layout(std430, binding = %" PRIu64 ") buffer DataIn{\n\
+	%s inputs[%" PRIu64 "];\n\
+} inputBlocks[%" PRIu64 "];\n\n", id, vecType, 2 * sc->inputBufferBlockSize, sc->inputBufferBlockNum);
 #endif
 			break;
 		}
@@ -868,7 +880,7 @@ layout(std430, binding = %d) buffer DataIn{\n\
 
 
 	}
-	static inline void appendOutputLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc, uint32_t id, const char* floatTypeMemory, uint32_t outputType) {
+	static inline void appendOutputLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc, uint64_t id, const char* floatTypeMemory, uint64_t outputType) {
 		char vecType[30];
 		switch (outputType) {
 		case 0: case 1: case 2: case 3: case 4: case 5: {
@@ -878,14 +890,14 @@ layout(std430, binding = %d) buffer DataIn{\n\
 			if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "dvec2");
 			if (sc->outputBufferBlockNum == 1)
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-layout(std430, binding = %d) buffer DataOut{\n\
-	%s outputs[%d];\n\
+layout(std430, binding = %" PRIu64 ") buffer DataOut{\n\
+	%s outputs[%" PRIu64 "];\n\
 };\n\n", id, vecType, sc->outputBufferBlockSize);
 			else
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-layout(std430, binding = %d) buffer DataOut{\n\
-	%s outputs[%d];\n\
-} outputBlocks[%d];\n\n", id, vecType, sc->outputBufferBlockSize, sc->outputBufferBlockNum);
+layout(std430, binding = %" PRIu64 ") buffer DataOut{\n\
+	%s outputs[%" PRIu64 "];\n\
+} outputBlocks[%" PRIu64 "];\n\n", id, vecType, sc->outputBufferBlockSize, sc->outputBufferBlockNum);
 #elif(VKFFT_BACKEND==1)
 			if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
 			if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
@@ -909,20 +921,20 @@ layout(std430, binding = %d) buffer DataOut{\n\
 #if(VKFFT_BACKEND==0)
 			if (sc->outputBufferBlockNum == 1)
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-layout(std430, binding = %d) buffer DataOut{\n\
-	%s outputs[%d];\n\
+layout(std430, binding = %" PRIu64 ") buffer DataOut{\n\
+	%s outputs[%" PRIu64 "];\n\
 };\n\n", id, vecType, 2 * sc->outputBufferBlockSize);
 			else
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-layout(std430, binding = %d) buffer DataOut{\n\
-	%s outputs[%d];\n\
-} outputBlocks[%d];\n\n", id, vecType, 2 * sc->outputBufferBlockSize, sc->outputBufferBlockNum);
+layout(std430, binding = %" PRIu64 ") buffer DataOut{\n\
+	%s outputs[%" PRIu64 "];\n\
+} outputBlocks[%" PRIu64 "];\n\n", id, vecType, 2 * sc->outputBufferBlockSize, sc->outputBufferBlockNum);
 #endif
 			break;
 		}
 		}
 	}
-	static inline void appendKernelLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc, uint32_t id, const char* floatTypeMemory) {
+	static inline void appendKernelLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc, uint64_t id, const char* floatTypeMemory) {
 		char vecType[30];
 #if(VKFFT_BACKEND==0)
 		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
@@ -930,14 +942,14 @@ layout(std430, binding = %d) buffer DataOut{\n\
 		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "dvec2");
 		if (sc->kernelBlockNum == 1)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-layout(std430, binding = %d) buffer Kernel_FFT{\n\
-	%s kernel_obj[%d];\n\
+layout(std430, binding = %" PRIu64 ") buffer Kernel_FFT{\n\
+	%s kernel_obj[%" PRIu64 "];\n\
 };\n\n", id, vecType, sc->kernelBlockSize);
 		else
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-layout(std430, binding = %d) buffer Kernel_FFT{\n\
-	%s kernel_obj[%d];\n\
-} kernelBlocks[%d];\n\n", id, vecType, sc->kernelBlockSize, sc->kernelBlockNum);
+layout(std430, binding = %" PRIu64 ") buffer Kernel_FFT{\n\
+	%s kernel_obj[%" PRIu64 "];\n\
+} kernelBlocks[%" PRIu64 "];\n\n", id, vecType, sc->kernelBlockSize, sc->kernelBlockNum);
 #elif(VKFFT_BACKEND==1)
 		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
 		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
@@ -954,13 +966,13 @@ layout(std430, binding = %d) buffer Kernel_FFT{\n\
 
 
 	}
-	static inline void appendLUTLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc, uint32_t id, const char* floatType) {
+	static inline void appendLUTLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc, uint64_t id, const char* floatType) {
 		char vecType[30];
 #if(VKFFT_BACKEND==0)
 		if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
 		if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-layout(std430, binding = %d) readonly buffer DataLUT {\n\
+layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 %s twiddleLUT[];\n\
 };\n", id, vecType);
 #elif(VKFFT_BACKEND==1)
@@ -975,66 +987,66 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 
 	}
-	static inline void indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* uintType, uint32_t inputType, const char* index_x, const char* index_y, const char* coordinate, const char* batchID) {
+	static inline void indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* uintType, uint64_t inputType, const char* index_x, const char* index_y, const char* coordinate, const char* batchID) {
 		switch (inputType) {
 		case 0: case 2: case 3: case 4:case 5: case 6: {//single_c2c + single_c2c_strided
 			char inputOffset[30] = "";
 			if (sc->inputOffset > 0)
-				sprintf(inputOffset, "%d + ", sc->inputOffset);
+				sprintf(inputOffset, "%" PRIu64 " + ", sc->inputOffset);
 			char shiftX[500] = "";
 			if (sc->inputStride[0] == 1)
 				sprintf(shiftX, "(%s)", index_x);
 			else
-				sprintf(shiftX, "(%s) * %d", index_x, sc->inputStride[0]);
+				sprintf(shiftX, "(%s) * %" PRIu64 "", index_x, sc->inputStride[0]);
 			char shiftY[500] = "";
-			uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+			uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			if (sc->size[1] > 1) {
 				if (sc->fftDim == sc->fft_dim_full) {
 					if (sc->axisSwapped) {
 						if (sc->performWorkGroupShift[1])
-							sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->inputStride[1]);
+							sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %" PRIu64 "", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->inputStride[1]);
 						else
-							sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->inputStride[1]);
+							sprintf(shiftY, " + %s * %" PRIu64 "", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->inputStride[1]);
 					}
 					else {
 						if (sc->performWorkGroupShift[1])
-							sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->inputStride[1]);
+							sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %" PRIu64 "", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->inputStride[1]);
 						else
-							sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->inputStride[1]);
+							sprintf(shiftY, " + %s * %" PRIu64 "", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->inputStride[1]);
 					}
 				}
 				else {
 					if (sc->performWorkGroupShift[1])
-						sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, sc->inputStride[1]);
+						sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %" PRIu64 "", sc->gl_WorkGroupID_y, sc->inputStride[1]);
 					else
-						sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, sc->inputStride[1]);
+						sprintf(shiftY, " + %s * %" PRIu64 "", sc->gl_WorkGroupID_y, sc->inputStride[1]);
 				}
 			}
 			char shiftZ[500] = "";
 			if (sc->size[2] > 1) {
 				if (sc->performWorkGroupShift[2])
-					sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->inputStride[2]);
+					sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->inputStride[2]);
 				else
-					sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->inputStride[2]);
+					sprintf(shiftZ, " + %s * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->inputStride[2]);
 			}
 			char shiftCoordinate[100] = "";
 			char requestCoordinate[100] = "";
 			if (sc->numCoordinates * sc->matrixConvolution > 1) {
-				sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->inputStride[3]);
+				sprintf(shiftCoordinate, " + consts.coordinate * %" PRIu64 "", sc->inputStride[3]);
 			}
 			if ((sc->matrixConvolution > 1) && (sc->convolutionStep)) {
-				sprintf(shiftCoordinate, " + %s * %d", coordinate, sc->inputStride[3]);
+				sprintf(shiftCoordinate, " + %s * %" PRIu64 "", coordinate, sc->inputStride[3]);
 				//sprintf(requestCoordinate, ", %s coordinate", uintType);
 			}
 			char shiftBatch[100] = "";
 			char requestBatch[100] = "";
 			if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
 				if (sc->convolutionStep) {
-					sprintf(shiftBatch, " + %s * %d", batchID, sc->inputStride[4]);
+					sprintf(shiftBatch, " + %s * %" PRIu64 "", batchID, sc->inputStride[4]);
 					//sprintf(requestBatch, ", %s batchID", uintType);
 				}
 				else
-					sprintf(shiftBatch, " + consts.batchID * %d", sc->inputStride[4]);
+					sprintf(shiftBatch, " + consts.batchID * %" PRIu64 "", sc->inputStride[4]);
 			}
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s%s%s%s%s%s", inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
 			break;
@@ -1042,107 +1054,107 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		case 1: {//grouped_c2c
 			char inputOffset[30] = "";
 			if (sc->inputOffset > 0)
-				sprintf(inputOffset, "%d + ", sc->inputOffset);
+				sprintf(inputOffset, "%" PRIu64 " + ", sc->inputOffset);
 			char shiftX[500] = "";
 			if (sc->inputStride[0] == 1)
 				sprintf(shiftX, "(%s)", index_x);
 			else
-				sprintf(shiftX, "(%s) * %d", index_x, sc->inputStride[0]);
+				sprintf(shiftX, "(%s) * %" PRIu64 "", index_x, sc->inputStride[0]);
 
 			char shiftY[500] = "";
-			sprintf(shiftY, " + (%s) * %d", index_y, sc->inputStride[1]);
+			sprintf(shiftY, " + (%s) * %" PRIu64 "", index_y, sc->inputStride[1]);
 
 			char shiftZ[500] = "";
 			if (sc->size[2] > 1) {
 				if (sc->performWorkGroupShift[2])
-					sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->inputStride[2]);
+					sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->inputStride[2]);
 				else
-					sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->inputStride[2]);
+					sprintf(shiftZ, " + %s * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->inputStride[2]);
 			}
 			char shiftCoordinate[100] = "";
 			char requestCoordinate[100] = "";
 			if (sc->numCoordinates * sc->matrixConvolution > 1) {
-				sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->outputStride[3]);
+				sprintf(shiftCoordinate, " + consts.coordinate * %" PRIu64 "", sc->outputStride[3]);
 			}
 			if ((sc->matrixConvolution > 1) && (sc->convolutionStep)) {
-				sprintf(shiftCoordinate, " + %s * %d", coordinate, sc->inputStride[3]);
+				sprintf(shiftCoordinate, " + %s * %" PRIu64 "", coordinate, sc->inputStride[3]);
 				//sprintf(requestCoordinate, ", %s coordinate", uintType);
 			}
 			char shiftBatch[100] = "";
 			char requestBatch[100] = "";
 			if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
 				if (sc->convolutionStep) {
-					sprintf(shiftBatch, " + %s * %d", batchID, sc->inputStride[4]);
+					sprintf(shiftBatch, " + %s * %" PRIu64 "", batchID, sc->inputStride[4]);
 					//sprintf(requestBatch, ", %s batchID", uintType);
 				}
 				else
-					sprintf(shiftBatch, " + consts.batchID * %d", sc->inputStride[4]);
+					sprintf(shiftBatch, " + consts.batchID * %" PRIu64 "", sc->inputStride[4]);
 			}
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s%s%s%s%s%s", inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
 			break;
 		}
 		}
 	}
-	static inline void indexOutputVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* uintType, uint32_t outputType, const char* index_x, const char* index_y, const char* coordinate, const char* batchID) {
+	static inline void indexOutputVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* uintType, uint64_t outputType, const char* index_x, const char* index_y, const char* coordinate, const char* batchID) {
 		switch (outputType) {//single_c2c + single_c2c_strided
 		case 0: case 2: case 3: case 4: case 5: case 6: {
 			char outputOffset[30] = "";
 			if (sc->outputOffset > 0)
-				sprintf(outputOffset, "%d + ", sc->outputOffset);
+				sprintf(outputOffset, "%" PRIu64 " + ", sc->outputOffset);
 			char shiftX[500] = "";
 			if (sc->fftDim == sc->fft_dim_full)
 				sprintf(shiftX, "(%s)", index_x);
 			else
-				sprintf(shiftX, "(%s) * %d", index_x, sc->outputStride[0]);
+				sprintf(shiftX, "(%s) * %" PRIu64 "", index_x, sc->outputStride[0]);
 			char shiftY[500] = "";
-			uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+			uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			if (sc->size[1] > 1) {
 				if (sc->fftDim == sc->fft_dim_full) {
 					if (sc->axisSwapped) {
 						if (sc->performWorkGroupShift[1])
-							sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->outputStride[1]);
+							sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %" PRIu64 "", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->outputStride[1]);
 						else
-							sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->outputStride[1]);
+							sprintf(shiftY, " + %s * %" PRIu64 "", sc->gl_WorkGroupID_y, mult * sc->localSize[0] * sc->outputStride[1]);
 					}
 					else {
 						if (sc->performWorkGroupShift[1])
-							sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->outputStride[1]);
+							sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %" PRIu64 "", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->outputStride[1]);
 						else
-							sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->outputStride[1]);
+							sprintf(shiftY, " + %s * %" PRIu64 "", sc->gl_WorkGroupID_y, mult * sc->localSize[1] * sc->outputStride[1]);
 					}
 				}
 				else {
 					if (sc->performWorkGroupShift[1])
-						sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %d", sc->gl_WorkGroupID_y, sc->outputStride[1]);
+						sprintf(shiftY, " + (%s + consts.workGroupShiftY) * %" PRIu64 "", sc->gl_WorkGroupID_y, sc->outputStride[1]);
 					else
-						sprintf(shiftY, " + %s * %d", sc->gl_WorkGroupID_y, sc->outputStride[1]);
+						sprintf(shiftY, " + %s * %" PRIu64 "", sc->gl_WorkGroupID_y, sc->outputStride[1]);
 				}
 			}
 			char shiftZ[500] = "";
 			if (sc->size[2] > 1) {
 				if (sc->performWorkGroupShift[2])
-					sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->outputStride[2]);
+					sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->outputStride[2]);
 				else
-					sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->outputStride[2]);
+					sprintf(shiftZ, " + %s * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->outputStride[2]);
 			}
 			char shiftCoordinate[100] = "";
 			char requestCoordinate[100] = "";
 			if (sc->numCoordinates * sc->matrixConvolution > 1) {
-				sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->outputStride[3]);
+				sprintf(shiftCoordinate, " + consts.coordinate * %" PRIu64 "", sc->outputStride[3]);
 			}
 			if ((sc->matrixConvolution > 1) && (sc->convolutionStep)) {
-				sprintf(shiftCoordinate, " + %s * %d", coordinate, sc->outputStride[3]);
+				sprintf(shiftCoordinate, " + %s * %" PRIu64 "", coordinate, sc->outputStride[3]);
 				//sprintf(requestCoordinate, ", %s coordinate", uintType);
 			}
 			char shiftBatch[100] = "";
 			char requestBatch[100] = "";
 			if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
 				if (sc->convolutionStep) {
-					sprintf(shiftBatch, " + %s * %d", batchID, sc->outputStride[4]);
+					sprintf(shiftBatch, " + %s * %" PRIu64 "", batchID, sc->outputStride[4]);
 					//sprintf(requestBatch, ", %s batchID", uintType);
 				}
 				else
-					sprintf(shiftBatch, " + consts.batchID * %d", sc->outputStride[4]);
+					sprintf(shiftBatch, " + consts.batchID * %" PRIu64 "", sc->outputStride[4]);
 			}
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s%s%s%s%s%s", outputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
 			break;
@@ -1150,39 +1162,39 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		case 1: {//grouped_c2c
 			char outputOffset[30] = "";
 			if (sc->outputOffset > 0)
-				sprintf(outputOffset, "%d + ", sc->outputOffset);
+				sprintf(outputOffset, "%" PRIu64 " + ", sc->outputOffset);
 			char shiftX[500] = "";
 			if (sc->fftDim == sc->fft_dim_full)
 				sprintf(shiftX, "(%s)", index_x);
 			else
-				sprintf(shiftX, "(%s) * %d", index_x, sc->outputStride[0]);
+				sprintf(shiftX, "(%s) * %" PRIu64 "", index_x, sc->outputStride[0]);
 			char shiftY[500] = "";
-			sprintf(shiftY, " + (%s) * %d", index_y, sc->outputStride[1]);
+			sprintf(shiftY, " + (%s) * %" PRIu64 "", index_y, sc->outputStride[1]);
 			char shiftZ[500] = "";
 			if (sc->size[2] > 1) {
 				if (sc->performWorkGroupShift[2])
-					sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %d", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->outputStride[2]);
+					sprintf(shiftZ, " + (%s + consts.workGroupShiftZ * %s) * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->outputStride[2]);
 				else
-					sprintf(shiftZ, " + %s * %d", sc->gl_GlobalInvocationID_z, sc->outputStride[2]);
+					sprintf(shiftZ, " + %s * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->outputStride[2]);
 			}
 			char shiftCoordinate[100] = "";
 			char requestCoordinate[100] = "";
 			if (sc->numCoordinates * sc->matrixConvolution > 1) {
-				sprintf(shiftCoordinate, " + consts.coordinate * %d", sc->outputStride[3]);
+				sprintf(shiftCoordinate, " + consts.coordinate * %" PRIu64 "", sc->outputStride[3]);
 			}
 			if ((sc->matrixConvolution > 1) && (sc->convolutionStep)) {
-				sprintf(shiftCoordinate, " + %s * %d", coordinate, sc->outputStride[3]);
+				sprintf(shiftCoordinate, " + %s * %" PRIu64 "", coordinate, sc->outputStride[3]);
 				//sprintf(requestCoordinate, ", %s coordinate", uintType);
 			}
 			char shiftBatch[100] = "";
 			char requestBatch[100] = "";
 			if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
 				if (sc->convolutionStep) {
-					sprintf(shiftBatch, " + %s * %d", batchID, sc->outputStride[4]);
+					sprintf(shiftBatch, " + %s * %" PRIu64 "", batchID, sc->outputStride[4]);
 					//sprintf(requestBatch, ", %s batchID", uintType);
 				}
 				else
-					sprintf(shiftBatch, " + consts.batchID * %d", sc->outputStride[4]);
+					sprintf(shiftBatch, " + consts.batchID * %" PRIu64 "", sc->outputStride[4]);
 			}
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s%s%s%s%s%s", outputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
 			break;
@@ -1191,7 +1203,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 	}
 
-	static inline void inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint32_t radix, uint32_t stageSize, double stageAngle, char** regID) {
+	static inline void inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t radix, uint64_t stageSize, double stageAngle, char** regID) {
 		char vecType[30];
 		char LFending[4] = "";
 		if (!strcmp(floatType, "float")) sprintf(LFending, "f");
@@ -1275,16 +1287,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}*/
 			char* tf[2];
 			//VkAppendLine(sc, "	{\n");
-			for (uint32_t i = 0; i < 2; i++) {
+			for (uint64_t i = 0; i < 2; i++) {
 				tf[i] = (char*)malloc(sizeof(char) * 50);
 			}
 
 			sprintf(tf[0], "-0.5%s", LFending);
 			sprintf(tf[1], "-0.8660254037844386467637231707529%s", LFending);
 
-			/*for (uint32_t i = 0; i < 3; i++) {
+			/*for (uint64_t i = 0; i < 3; i++) {
 				sc->locID[i] = (char*)malloc(sizeof(char) * 50);
-				sprintf(sc->locID[i], "loc_%d", i);
+				sprintf(sc->locID[i], "loc_%" PRIu64 "", i);
 				sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->locID[i]);
 				VkAppendLine(sc, sc->tempStr);
 			}*/
@@ -1307,7 +1319,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	loc_2.x = temp%s.x * w.x - temp%s.y * w.y;\n\
 	loc_2.y = temp%s.y * w.x + temp%s.x * w.y;\n", regID[2], regID[2], regID[2], regID[2]);
 			if (sc->LUT) {
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId+%d];\n", w, stageSize);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n", w, stageSize);
 				if (!sc->inverse)
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.y = -%s.y;\n", w, w);
 			}
@@ -1360,7 +1372,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 
 			//VkAppendLine(sc, "	}\n");
-			for (uint32_t i = 0; i < 2; i++) {
+			for (uint64_t i = 0; i < 2; i++) {
 				free(tf[i]);
 				//free(sc->locID[i]);
 			}
@@ -1406,7 +1418,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	temp%s = temp%s + temp;\n\n\
 	//DIF 2nd stage with angle\n", regID[2], regID[2], regID[2], regID[2], regID[2], regID[0], regID[0], regID[0], regID[3], regID[3], regID[3], regID[3], regID[3], regID[1], regID[1], regID[1]);
 			if (sc->LUT) {
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s=twiddleLUT[LUTId+%d];\n", w, stageSize);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s=twiddleLUT[LUTId+%" PRIu64 "];\n", w, stageSize);
 				if (!sc->inverse)
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.y = -%s.y;\n", w, w);
 			}
@@ -1465,7 +1477,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}*/
 			char* tf[5];
 			//VkAppendLine(sc, "	{\n");
-			for (uint32_t i = 0; i < 5; i++) {
+			for (uint64_t i = 0; i < 5; i++) {
 				tf[i] = (char*)malloc(sizeof(char) * 50);
 			}
 			sprintf(tf[0], "-0.5%s", LFending);
@@ -1474,15 +1486,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			sprintf(tf[3], "-0.809016994374947424102293417182819%s", LFending);
 			sprintf(tf[4], "-0.587785252292473129168705954639073%s", LFending);
 
-			/*for (uint32_t i = 0; i < 5; i++) {
+			/*for (uint64_t i = 0; i < 5; i++) {
 				sc->locID[i] = (char*)malloc(sizeof(char) * 50);
-				sprintf(sc->locID[i], "loc_%d", i);
+				sprintf(sc->locID[i], "loc_%" PRIu64 "", i);
 				sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->locID[i]);
 				VkAppendLine(sc, sc->tempStr);
 			}*/
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "	{\n\
 	%s loc_0;\n	%s loc_1;\n	%s loc_2;\n	%s loc_3;\n	%s loc_4;\n", vecType, vecType, vecType, vecType, vecType);
-			for (uint32_t i = radix - 1; i > 0; i--) {
+			for (uint64_t i = radix - 1; i > 0; i--) {
 				if (i == radix - 1) {
 					if (sc->LUT) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId];\n", w);
@@ -1501,7 +1513,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc->LUT) {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId+%d];\n", w, (radix - 1 - i) * stageSize);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n", w, (radix - 1 - i) * stageSize);
 						if (!sc->inverse)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.y = -%s.y;\n", w, w);
 					}
@@ -1517,8 +1529,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				VkMulComplex(sc, sc->locID[i], regID[i], w, 0);
 				//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	loc_%d.x = temp%s.x * w.x - temp%s.y * w.y;\n\
-	loc_%d.y = temp%s.y * w.x + temp%s.x * w.y;\n", i, regID[i], regID[i], i, regID[i], regID[i]);
+	loc_%" PRIu64 ".x = temp%s.x * w.x - temp%s.y * w.y;\n\
+	loc_%" PRIu64 ".y = temp%s.y * w.x + temp%s.x * w.y;\n", i, regID[i], regID[i], i, regID[i], regID[i]);
 			}
 			VkAddComplex(sc, regID[1], sc->locID[1], sc->locID[4]);
 			VkAddComplex(sc, regID[2], sc->locID[2], sc->locID[3]);
@@ -1594,7 +1606,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 
 			//VkAppendLine(sc, "	}\n");
-			for (uint32_t i = 0; i < 5; i++) {
+			for (uint64_t i = 0; i < 5; i++) {
 				free(tf[i]);
 				//free(sc->locID[i]);
 			}
@@ -1610,7 +1622,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char* tf[8];
 
 			//VkAppendLine(sc, "	{\n");
-			for (uint32_t i = 0; i < 8; i++) {
+			for (uint64_t i = 0; i < 8; i++) {
 				tf[i] = (char*)malloc(sizeof(char) * 50);
 
 			}
@@ -1630,13 +1642,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(tf[6], "0.53396936033772524066165487965918%s", LFending);
 				sprintf(tf[7], "-0.87484229096165666561546458979137%s", LFending);
 			}
-			/*for (uint32_t i = 0; i < 7; i++) {
+			/*for (uint64_t i = 0; i < 7; i++) {
 				sc->locID[i] = (char*)malloc(sizeof(char) * 50);
-				sprintf(sc->locID[i], "loc_%d", i);
+				sprintf(sc->locID[i], "loc_%" PRIu64 "", i);
 				sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->locID[i]);
 				VkAppendLine(sc, sc->tempStr);
 			}*/
-			for (uint32_t i = radix - 1; i > 0; i--) {
+			for (uint64_t i = radix - 1; i > 0; i--) {
 				if (i == radix - 1) {
 					if (sc->LUT) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId];\n", w);
@@ -1655,7 +1667,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc->LUT) {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId+%d];\n\n", w, (radix - 1 - i) * stageSize);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
 						if (!sc->inverse)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.y = -%s.y;\n", w, w);
 					}
@@ -1671,8 +1683,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				VkMulComplex(sc, sc->locID[i], regID[i], w, 0);
 				//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	loc_%d.x = temp%s.x * w.x - temp%s.y * w.y;\n\
-	loc_%d.y = temp%s.y * w.x + temp%s.x * w.y;\n", i, regID[i], regID[i], i, regID[i], regID[i]);
+	loc_%" PRIu64 ".x = temp%s.x * w.x - temp%s.y * w.y;\n\
+	loc_%" PRIu64 ".y = temp%s.y * w.x + temp%s.x * w.y;\n", i, regID[i], regID[i], i, regID[i], regID[i]);
 			}
 			VkMovComplex(sc, sc->locID[0], regID[0]);
 			VkAddComplex(sc, regID[0], sc->locID[1], sc->locID[6]);
@@ -1783,10 +1795,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	temp%s.x = loc_1.x - loc_4.y; \n\
 	temp%s.y = loc_1.y + loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID[3], regID[3], regID[4], regID[4], regID[5], regID[5], regID[6], regID[6]);
 			//VkAppendLine(sc, "	}\n");
-			/*for (uint32_t i = 0; i < 7; i++) {
+			/*for (uint64_t i = 0; i < 7; i++) {
 				free(sc->locID[i]);
 			}*/
-			for (uint32_t i = 0; i < 8; i++) {
+			for (uint64_t i = 0; i < 8; i++) {
 				free(tf[i]);
 			}
 			break;
@@ -1815,7 +1827,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (!strcmp(floatType, "double"))
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = sincos_20(angle);\n", w);
 			}
-			for (uint32_t i = 0; i < 4; i++) {
+			for (uint64_t i = 0; i < 4; i++) {
 				VkMulComplex(sc, temp, regID[i + 4], w, 0);
 				VkSubComplex(sc, regID[i + 4], regID[i], temp);
 				VkAddComplex(sc, regID[i], regID[i], temp);
@@ -1826,7 +1838,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	temp%s = temp%s + temp;\n\n", regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 0], regID[i + 0], regID[i + 0]);
 			}
 			if (sc->LUT) {
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s=twiddleLUT[LUTId+%d];\n\n", w, stageSize);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s=twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, stageSize);
 				if (!sc->inverse)
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.y = -%s.y;\n", w, w);
 			}
@@ -1838,7 +1850,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (!strcmp(floatType, "double"))
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
 			}
-			for (uint32_t i = 0; i < 2; i++) {
+			for (uint64_t i = 0; i < 2; i++) {
 				VkMulComplex(sc, temp, regID[i + 2], w, 0);
 				VkSubComplex(sc, regID[i + 2], regID[i], temp);
 				VkAddComplex(sc, regID[i], regID[i], temp);
@@ -1859,7 +1871,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				//sc->currentLen += sprintf(sc->output + sc->currentLen, "	iw = %s(-w.y, w.x);\n\n", vecType);
 			}
 
-			for (uint32_t i = 4; i < 6; i++) {
+			for (uint64_t i = 4; i < 6; i++) {
 				VkMulComplex(sc, temp, regID[i + 2], iw, 0);
 				VkSubComplex(sc, regID[i + 2], regID[i], temp);
 				VkAddComplex(sc, regID[i], regID[i], temp);
@@ -1871,7 +1883,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 
 			if (sc->LUT) {
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s=twiddleLUT[LUTId+%d];\n\n", w, 2 * stageSize);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s=twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, 2 * stageSize);
 				if (!sc->inverse)
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.y = -%s.y;\n", w, w);
 			}
@@ -1967,7 +1979,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//char* tf2[4];
 			//char* tf2inv[4];
 			//VkAppendLine(sc, "	{\n");
-			for (uint32_t i = 0; i < 20; i++) {
+			for (uint64_t i = 0; i < 20; i++) {
 				tf[i] = (char*)malloc(sizeof(char) * 50);
 				//tf2[i] = (char*)malloc(sizeof(char) * 50);
 				//tf2inv[i] = (char*)malloc(sizeof(char) * 50);
@@ -2008,7 +2020,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(tf[18], "-0.258908260614168%s", LFending);
 				sprintf(tf[19], "0.049929922194110%s", LFending);
 			}
-			for (uint32_t i = radix - 1; i > 0; i--) {
+			for (uint64_t i = radix - 1; i > 0; i--) {
 				if (i == radix - 1) {
 					if (sc->LUT) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId];\n", w);
@@ -2027,7 +2039,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc->LUT) {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId+%d];\n\n", w, (radix - 1 - i) * stageSize);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
 						if (!sc->inverse)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.y = -%s.y;\n", w, w);
 					}
@@ -2045,19 +2057,19 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			}
 			VkMovComplex(sc, sc->locID[0], regID[0]);
-			uint32_t permute[11] = { 0,1,9,4,3,5,10,2,7,8,6 };
+			uint64_t permute[11] = { 0,1,9,4,3,5,10,2,7,8,6 };
 			VkPermute(sc, permute, 11, 0, 0);
-			for (uint32_t i = 0; i < 5; i++) {
+			for (uint64_t i = 0; i < 5; i++) {
 				VkAddComplex(sc, regID[i + 1], sc->locID[i + 1], sc->locID[i + 6]);
 				VkSubComplex(sc, regID[i + 6], sc->locID[i + 1], sc->locID[i + 6]);
 			}
 			VkMovComplex(sc, sc->locID[1], regID[1]);
-			for (uint32_t i = 0; i < 4; i++) {
+			for (uint64_t i = 0; i < 4; i++) {
 				VkAddComplex(sc, sc->locID[1], sc->locID[1], regID[i + 2]);
 				VkSubComplex(sc, sc->locID[i + 3], regID[i + 1], regID[5]);
 			}
 			VkMovComplex(sc, sc->locID[2], regID[6]);
-			for (uint32_t i = 0; i < 4; i++) {
+			for (uint64_t i = 0; i < 4; i++) {
 				VkAddComplex(sc, sc->locID[2], sc->locID[2], regID[i + 7]);
 				VkSubComplex(sc, sc->locID[i + 7], regID[i + 6], regID[10]);
 			}
@@ -2065,7 +2077,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			VkAddComplex(sc, regID[0], sc->locID[0], sc->locID[1]);
 			VkMulComplexNumber(sc, regID[1], sc->locID[1], tf[0]);
 			VkMulComplexNumberImag(sc, regID[2], sc->locID[2], tf[1], sc->locID[0]);
-			for (uint32_t k = 0; k < 2; k++) {
+			for (uint64_t k = 0; k < 2; k++) {
 				VkAddComplex(sc, regID[k * 4 + 3], sc->locID[k * 4 + 3], sc->locID[k * 4 + 5]);
 				VkAddComplex(sc, regID[k * 4 + 4], sc->locID[k * 4 + 4], sc->locID[k * 4 + 6]);
 				VkAddComplex(sc, regID[k * 4 + 5], sc->locID[k * 4 + 3], sc->locID[k * 4 + 4]);
@@ -2114,23 +2126,23 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			VkAddComplex(sc, regID[1], regID[0], regID[1]);
 
 			VkMovComplex(sc, sc->locID[5], regID[1]);
-			for (uint32_t i = 0; i < 4; i++) {
+			for (uint64_t i = 0; i < 4; i++) {
 				VkAddComplex(sc, sc->locID[i + 1], regID[1], regID[i + 3]);
 				VkSubComplex(sc, sc->locID[5], sc->locID[5], regID[i + 3]);
 			}
 			VkMovComplex(sc, sc->locID[10], regID[2]);
-			for (uint32_t i = 0; i < 4; i++) {
+			for (uint64_t i = 0; i < 4; i++) {
 				VkAddComplex(sc, sc->locID[i + 6], regID[2], regID[i + 7]);
 				VkSubComplex(sc, sc->locID[10], sc->locID[10], regID[i + 7]);
 			}
-			for (uint32_t i = 0; i < 5; i++) {
+			for (uint64_t i = 0; i < 5; i++) {
 				VkAddComplex(sc, regID[i + 1], sc->locID[i + 1], sc->locID[i + 6]);
 				VkSubComplex(sc, regID[i + 6], sc->locID[i + 1], sc->locID[i + 6]);
 			}
-			uint32_t permute2[11] = { 0,10,1,8,7,9,4,2,3,6,5 };
+			uint64_t permute2[11] = { 0,10,1,8,7,9,4,2,3,6,5 };
 			VkPermute(sc, permute2, 11, 1, regID);
 
-			for (uint32_t i = 0; i < 20; i++) {
+			for (uint64_t i = 0; i < 20; i++) {
 				free(tf[i]);
 			}
 			break;
@@ -2141,7 +2153,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//char* tf2[4];
 			//char* tf2inv[4];
 			//VkAppendLine(sc, "	{\n");
-			for (uint32_t i = 0; i < 20; i++) {
+			for (uint64_t i = 0; i < 20; i++) {
 				tf[i] = (char*)malloc(sizeof(char) * 50);
 				//tf2[i] = (char*)malloc(sizeof(char) * 50);
 				//tf2inv[i] = (char*)malloc(sizeof(char) * 50);
@@ -2183,7 +2195,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(tf[18], "-1.399739414729183%s", LFending);
 				sprintf(tf[19], "1.109154843837551%s", LFending);
 			}
-			for (uint32_t i = radix - 1; i > 0; i--) {
+			for (uint64_t i = radix - 1; i > 0; i--) {
 				if (i == radix - 1) {
 					if (sc->LUT) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId];\n", w);
@@ -2202,7 +2214,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc->LUT) {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId+%d];\n\n", w, (radix - 1 - i) * stageSize);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
 						if (!sc->inverse)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.y = -%s.y;\n", w, w);
 					}
@@ -2220,17 +2232,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			}
 			VkMovComplex(sc, sc->locID[0], regID[0]);
-			uint32_t permute[13] = { 0,1,3,9,5,2,6,12,10,4,8,11,7 };
+			uint64_t permute[13] = { 0,1,3,9,5,2,6,12,10,4,8,11,7 };
 			VkPermute(sc, permute, 13, 0, 0);
-			for (uint32_t i = 0; i < 6; i++) {
+			for (uint64_t i = 0; i < 6; i++) {
 				VkSubComplex(sc, regID[i + 7], sc->locID[i + 1], sc->locID[i + 7]);
 				VkAddComplex(sc, sc->locID[i + 1], sc->locID[i + 1], sc->locID[i + 7]);
 			}
-			for (uint32_t i = 0; i < 3; i++) {
+			for (uint64_t i = 0; i < 3; i++) {
 				VkAddComplex(sc, regID[i + 1], sc->locID[i + 1], sc->locID[i + 4]);
 				VkSubComplex(sc, regID[i + 4], sc->locID[i + 1], sc->locID[i + 4]);
 			}
-			for (uint32_t i = 0; i < 4; i++) {
+			for (uint64_t i = 0; i < 4; i++) {
 				VkAddComplex(sc, sc->locID[i + 1], regID[i * 3 + 1], regID[i * 3 + 2]);
 				VkSubComplex(sc, sc->locID[i * 2 + 5], regID[i * 3 + 1], regID[i * 3 + 3]);
 				VkAddComplex(sc, sc->locID[i + 1], sc->locID[i + 1], regID[i * 3 + 3]);
@@ -2240,7 +2252,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			VkAddComplex(sc, regID[0], sc->locID[0], sc->locID[1]);
 			VkMulComplexNumber(sc, regID[1], sc->locID[1], tf[0]);
 			VkMulComplexNumber(sc, regID[2], sc->locID[2], tf[1]);
-			for (uint32_t k = 0; k < 3; k++) {
+			for (uint64_t k = 0; k < 3; k++) {
 				VkAddComplex(sc, regID[k * 2 + 4], sc->locID[k * 2 + 3], sc->locID[k * 2 + 4]);
 
 				if (k == 0) {
@@ -2288,37 +2300,37 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			VkAddComplex(sc, regID[1], regID[0], regID[1]);
 
-			for (uint32_t i = 0; i < 4; i++) {
+			for (uint64_t i = 0; i < 4; i++) {
 				VkAddComplex(sc, sc->locID[i * 3 + 1], regID[i + 1], regID[i * 2 + 5]);
 				VkSubComplex(sc, sc->locID[i * 3 + 3], regID[i + 1], regID[i * 2 + 5]);
 				VkAddComplex(sc, sc->locID[i * 3 + 2], regID[i + 1], regID[i * 2 + 6]);
 				VkSubComplex(sc, sc->locID[i * 3 + 3], sc->locID[i * 3 + 3], regID[i * 2 + 6]);
 			}
-			for (uint32_t i = 0; i < 3; i++) {
+			for (uint64_t i = 0; i < 3; i++) {
 				VkAddComplex(sc, regID[i + 1], sc->locID[i + 1], sc->locID[i + 4]);
 				VkSubComplex(sc, sc->locID[i + 4], sc->locID[i + 1], sc->locID[i + 4]);
 				VkMovComplex(sc, sc->locID[i + 1], regID[i + 1]);
 			}
-			for (uint32_t i = 0; i < 6; i++) {
+			for (uint64_t i = 0; i < 6; i++) {
 				VkAddComplex(sc, regID[i + 1], sc->locID[i + 1], sc->locID[i + 7]);
 				VkSubComplex(sc, regID[i + 7], sc->locID[i + 1], sc->locID[i + 7]);
 			}
-			uint32_t permute2[13] = { 0,12,1,10,5,3,2,8,9,11,4,7,6 };
+			uint64_t permute2[13] = { 0,12,1,10,5,3,2,8,9,11,4,7,6 };
 			VkPermute(sc, permute2, 13, 1, regID);
 
-			for (uint32_t i = 0; i < 20; i++) {
+			for (uint64_t i = 0; i < 20; i++) {
 				free(tf[i]);
 			}
 			break;
 		}
 		}
 	}
-	static inline void appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint32_t sharedType) {
+	static inline void appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t sharedType) {
 		char vecType[30];
 		char sharedDefinitions[20] = "";
-		uint32_t vecSize = 1;
-		uint32_t maxSequenceSharedMemory = 0;
-		uint32_t maxSequenceSharedMemoryPow2 = 0;
+		uint64_t vecSize = 1;
+		uint64_t maxSequenceSharedMemory = 0;
+		uint64_t maxSequenceSharedMemoryPow2 = 0;
 		if (!strcmp(floatType, "float"))
 		{
 #if(VKFFT_BACKEND==0)
@@ -2354,7 +2366,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		maxSequenceSharedMemory = sc->sharedMemSize / vecSize;
 		maxSequenceSharedMemoryPow2 = sc->sharedMemSizePow2 / vecSize;
-		uint32_t mergeR2C = (sc->mergeSequencesR2C && (sc->axis_id == 0)) ? 2 : 0;
+		uint64_t mergeR2C = (sc->mergeSequencesR2C && (sc->axis_id == 0)) ? 2 : 0;
 		switch (sharedType) {
 		case 0: case 5: case 6://single_c2c + single_r2c
 		{
@@ -2369,50 +2381,50 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			sc->sharedStrideBankConflictFirstStages = (sc->maxSharedStride == sc->fftDim / sc->registerBoost) ? sc->fftDim / sc->registerBoost : sc->sharedStrideBankConflictFirstStages;
 			sc->sharedStrideReadWriteConflict = (sc->maxSharedStride == sc->fftDim / sc->registerBoost) ? sc->fftDim / sc->registerBoost : sc->sharedStrideReadWriteConflict;
 			//sc->maxSharedStride += mergeR2C;
-			//printf("%d %d %d %d %d\n", sc->maxSharedStride, sc->sharedStrideBankConflictFirstStages, sc->sharedStrideReadWriteConflict, sc->localSize[1], sc->fftDim);
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s sharedStride = %d; //to avoid bank conflict if we transpose\n", uintType, sc->sharedStrideReadWriteConflict);
+			//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", sc->maxSharedStride, sc->sharedStrideBankConflictFirstStages, sc->sharedStrideReadWriteConflict, sc->localSize[1], sc->fftDim);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s sharedStride = %" PRIu64 "; //to avoid bank conflict if we transpose\n", uintType, sc->sharedStrideReadWriteConflict);
 #if(VKFFT_BACKEND==0)
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%d];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%" PRIu64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
 #elif(VKFFT_BACKEND==1)
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%d];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
+			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%" PRIu64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s* sdata = (%s*)shared;\n\n", vecType, vecType);
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType);
 #elif(VKFFT_BACKEND==2)
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%d];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
+			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%" PRIu64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s* sdata = (%s*)shared;\n\n", vecType, vecType);
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType);
 #elif(VKFFT_BACKEND==3)
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%d];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%" PRIu64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consequential ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
 #endif
 			sc->usedSharedMemory = vecSize * sc->localSize[1] * sc->maxSharedStride;
 			break;
 		}
 		case 1: case 2://grouped_c2c + single_c2c_strided
 		{
-			uint32_t shift = (sc->fftDim < (sc->numSharedBanks / 2)) ? (sc->numSharedBanks / 2) / sc->fftDim : 1;
+			uint64_t shift = (sc->fftDim < (sc->numSharedBanks / 2)) ? (sc->numSharedBanks / 2) / sc->fftDim : 1;
 			sc->sharedStrideReadWriteConflict = ((sc->axisSwapped) && ((sc->localSize[0] % 4) == 0)) ? sc->localSize[0] + shift : sc->localSize[0];
 			sc->maxSharedStride = ((maxSequenceSharedMemory < sc->sharedStrideReadWriteConflict * sc->fftDim / sc->registerBoost)) ? sc->localSize[0] : sc->sharedStrideReadWriteConflict;
 			sc->sharedStrideReadWriteConflict = (sc->maxSharedStride == sc->localSize[0]) ? sc->localSize[0] : sc->sharedStrideReadWriteConflict;
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s sharedStride = %d;\n", uintType, sc->maxSharedStride);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s sharedStride = %" PRIu64 ";\n", uintType, sc->maxSharedStride);
 #if(VKFFT_BACKEND==0)
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%d];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%" PRIu64 "];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
 #elif(VKFFT_BACKEND==1)
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%d];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
+			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%" PRIu64 "];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s* sdata = (%s*)shared;\n\n", vecType, vecType);
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[];\n\n", sharedDefinitions, vecType);
 #elif(VKFFT_BACKEND==2)
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%d];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
+			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%" PRIu64 "];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s* sdata = (%s*)shared;\n\n", vecType, vecType);
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[];\n\n", sharedDefinitions, vecType);
 #elif(VKFFT_BACKEND==3)
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%d];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "%s %s sdata[%" PRIu64 "];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
 #endif
 			sc->usedSharedMemory = vecSize * sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost;
 			break;
 		}
 		}
 	}
-	static inline void appendInitialization(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint32_t initType) {
+	static inline void appendInitialization(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t initType) {
 		char vecType[30];
 #if(VKFFT_BACKEND==0)
 		if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
@@ -2431,65 +2443,65 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		case 0: case 1: case 2: case 5: case 6:
 		{
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "	uint dum=gl_LocalInvocationID.x;\n");
-			uint32_t logicalStoragePerThread = sc->registers_per_thread * sc->registerBoost;
-			uint32_t logicalRegistersPerThread = sc->registers_per_thread;
+			uint64_t logicalStoragePerThread = sc->registers_per_thread * sc->registerBoost;
+			uint64_t logicalRegistersPerThread = sc->registers_per_thread;
 			if (sc->convolutionStep) {
-				for (uint32_t i = 0; i < sc->registers_per_thread; i++)
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s temp_%d;\n", vecType, i);
-				for (uint32_t j = 1; j < sc->matrixConvolution; j++) {
-					for (uint32_t i = 0; i < sc->min_registers_per_thread; i++)
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s temp_%d_%d;\n", vecType, i, j);
+				for (uint64_t i = 0; i < sc->registers_per_thread; i++)
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s temp_%" PRIu64 ";\n", vecType, i);
+				for (uint64_t j = 1; j < sc->matrixConvolution; j++) {
+					for (uint64_t i = 0; i < sc->min_registers_per_thread; i++)
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s temp_%" PRIu64 "_%" PRIu64 ";\n", vecType, i, j);
 				}
 			}
 			else {
-				for (uint32_t i = 0; i < sc->registers_per_thread; i++)
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s temp_%d;\n", vecType, i);
+				for (uint64_t i = 0; i < sc->registers_per_thread; i++)
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s temp_%" PRIu64 ";\n", vecType, i);
 			}
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "	uint dum=gl_LocalInvocationID.y;//gl_LocalInvocationID.x/gl_WorkGroupSize.x;\n");
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "	dum=dum/gl_LocalInvocationID.x-1;\n");
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "	dummy=dummy/gl_LocalInvocationID.x-1;\n");
 			sc->regIDs = (char**)malloc(sizeof(char*) * logicalStoragePerThread);
-			for (uint32_t i = 0; i < logicalStoragePerThread; i++) {
+			for (uint64_t i = 0; i < logicalStoragePerThread; i++) {
 				sc->regIDs[i] = (char*)malloc(sizeof(char) * 50);
 				if (i < logicalRegistersPerThread)
-					sprintf(sc->regIDs[i], "temp_%d", i);
+					sprintf(sc->regIDs[i], "temp_%" PRIu64 "", i);
 				else
-					sprintf(sc->regIDs[i], "temp_%d", i);
-				//sprintf(sc->regIDs[i], "%d[%d]", i / logicalRegistersPerThread, i % logicalRegistersPerThread);
-				//sprintf(sc->regIDs[i], "s[%d]", i - logicalRegistersPerThread);
+					sprintf(sc->regIDs[i], "temp_%" PRIu64 "", i);
+				//sprintf(sc->regIDs[i], "%" PRIu64 "[%" PRIu64 "]", i / logicalRegistersPerThread, i % logicalRegistersPerThread);
+				//sprintf(sc->regIDs[i], "s[%" PRIu64 "]", i - logicalRegistersPerThread);
 
 			}
 			if (sc->registerBoost > 1) {
 				//sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s sort0;\n", vecType);
-				//sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s temps[%d];\n", vecType, (sc->registerBoost -1)* logicalRegistersPerThread);
-				for (uint32_t i = 1; i < sc->registerBoost; i++) {
-					//sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s temp%d[%d];\n", vecType, i, logicalRegistersPerThread);
-					for (uint32_t j = 0; j < sc->registers_per_thread; j++)
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s temp_%d;\n", vecType, j + i * sc->registers_per_thread);
+				//sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s temps[%" PRIu64 "];\n", vecType, (sc->registerBoost -1)* logicalRegistersPerThread);
+				for (uint64_t i = 1; i < sc->registerBoost; i++) {
+					//sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s temp%" PRIu64 "[%" PRIu64 "];\n", vecType, i, logicalRegistersPerThread);
+					for (uint64_t j = 0; j < sc->registers_per_thread; j++)
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s temp_%" PRIu64 ";\n", vecType, j + i * sc->registers_per_thread);
 					/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	for(uint i=0; i<%d; i++)\n\
-		temp%d[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
+	for(uint i=0; i<%" PRIu64 "; i++)\n\
+		temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 				}
 			}
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s w;\n", vecType);
 			sprintf(sc->w, "w");
-			uint32_t maxNonPow2Radix = 1;
+			uint64_t maxNonPow2Radix = 1;
 			if (sc->fftDim % 3 == 0) maxNonPow2Radix = 3;
 			if (sc->fftDim % 5 == 0) maxNonPow2Radix = 5;
 			if (sc->fftDim % 7 == 0) maxNonPow2Radix = 7;
 			if (sc->fftDim % 11 == 0) maxNonPow2Radix = 11;
 			if (sc->fftDim % 13 == 0) maxNonPow2Radix = 13;
-			for (uint32_t i = 0; i < maxNonPow2Radix; i++) {
-				sprintf(sc->locID[i], "loc_%d", i);
+			for (uint64_t i = 0; i < maxNonPow2Radix; i++) {
+				sprintf(sc->locID[i], "loc_%" PRIu64 "", i);
 				sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->locID[i]);
 				VkAppendLine(sc, sc->tempStr);
 			}
 			sprintf(sc->temp, "%s", sc->locID[0]);
-			uint32_t useRadix8 = 0;
-			for (uint32_t i = 0; i < sc->numStages; i++)
+			uint64_t useRadix8 = 0;
+			for (uint64_t i = 0; i < sc->numStages; i++)
 				if (sc->stageRadix[i] == 8) useRadix8 = 1;
 			if (useRadix8 == 1) {
-				if (maxNonPow2Radix > 1) sprintf(sc->iw, sc->locID[1]);
+				if (maxNonPow2Radix > 1) sprintf(sc->iw, "%s", sc->locID[1]);
 				else {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s iw;\n", vecType);
 					sprintf(sc->iw, "iw");
@@ -2515,13 +2527,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		if (sc->cacheShuffle) {
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	%s tshuffle= ((%s>>1))%%(%d);\n\
-	%s shuffle[%d];\n", uintType, sc->gl_LocalInvocationID_x, sc->registers_per_thread, vecType, sc->registers_per_thread);
-			for (uint32_t i = 0; i < sc->registers_per_thread; i++) {
+	%s tshuffle= ((%s>>1))%%(%" PRIu64 ");\n\
+	%s shuffle[%" PRIu64 "];\n", uintType, sc->gl_LocalInvocationID_x, sc->registers_per_thread, vecType, sc->registers_per_thread);
+			for (uint64_t i = 0; i < sc->registers_per_thread; i++) {
 				//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	shuffle[%d];\n", i, vecType);
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "	shuffle[%d].x = 0;\n", i);
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "	shuffle[%d].y = 0;\n", i);
+	shuffle[%" PRIu64 "];\n", i, vecType);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "	shuffle[%" PRIu64 "].x = 0;\n", i);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "	shuffle[%" PRIu64 "].y = 0;\n", i);
 			}
 		}
 
@@ -2542,7 +2554,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						sprintf(idX, "%s", sc->gl_GlobalInvocationID_x);
 					if (sc->performZeropaddingFull[0])
 						if (sc->fft_zeropad_left_full[0] < sc->fft_zeropad_right_full[0])
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %d)&&(%s < %d))) {\n", idX, sc->fft_zeropad_left_full[0], idX, sc->fft_zeropad_right_full[0]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idX, sc->fft_zeropad_left_full[0], idX, sc->fft_zeropad_right_full[0]);
 
 				}
 				break;
@@ -2562,11 +2574,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						sprintf(idX, "%s", sc->gl_GlobalInvocationID_x);
 					if (sc->performZeropaddingFull[0])
 						if (sc->fft_zeropad_left_full[0] < sc->fft_zeropad_right_full[0])
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %d)&&(%s < %d))) {\n", idX, sc->fft_zeropad_left_full[0], idX, sc->fft_zeropad_right_full[0]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idX, sc->fft_zeropad_left_full[0], idX, sc->fft_zeropad_right_full[0]);
 
 					if (sc->performZeropaddingFull[1])
 						if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1])
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
 				}
 				else {
 					char idY[500] = "";
@@ -2576,7 +2588,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						sprintf(idY, "%s", sc->gl_GlobalInvocationID_x);
 					if (sc->performZeropaddingFull[1])
 						if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1])
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
 				}
 				break;
 			}
@@ -2602,10 +2614,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						sprintf(idZ, "%s", sc->gl_GlobalInvocationID_z);
 					if (sc->performZeropaddingFull[1])
 						if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1])
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
 					if (sc->performZeropaddingFull[2])
 						if (sc->fft_zeropad_left_full[2] < sc->fft_zeropad_right_full[2])
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %d)&&(%s < %d))) {\n", idZ, sc->fft_zeropad_left_full[2], idZ, sc->fft_zeropad_right_full[2]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idZ, sc->fft_zeropad_left_full[2], idZ, sc->fft_zeropad_right_full[2]);
 				}
 				break;
 			}
@@ -2617,7 +2629,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sprintf(idZ, "%s", sc->gl_GlobalInvocationID_z);
 				if (sc->performZeropaddingFull[2])
 					if (sc->fft_zeropad_left_full[2] < sc->fft_zeropad_right_full[2])
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %d)&&(%s < %d))) {\n", idZ, sc->fft_zeropad_left_full[2], idZ, sc->fft_zeropad_right_full[2]);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idZ, sc->fft_zeropad_left_full[2], idZ, sc->fft_zeropad_right_full[2]);
 
 				break;
 			}
@@ -2737,12 +2749,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			switch (sc->axis_id) {
 			case 0: {
 				char idY[500] = "";
-				uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+				uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 				if (sc->axisSwapped) {
 					if (sc->performWorkGroupShift[1])
-						sprintf(idY, "(%s/%d + %s*%s + consts.workGroupShiftY * %s)", sc->combinedID, sc->fftDim / mult, sc->gl_WorkGroupID_y, sc->gl_WorkGroupSize_x, sc->gl_WorkGroupSize_x);
+						sprintf(idY, "(%s/%" PRIu64 " + %s*%s + consts.workGroupShiftY * %s)", sc->combinedID, sc->fftDim / mult, sc->gl_WorkGroupID_y, sc->gl_WorkGroupSize_x, sc->gl_WorkGroupSize_x);
 					else
-						sprintf(idY, "(%s/%d + %s*%s)", sc->combinedID, sc->fftDim / mult, sc->gl_WorkGroupID_y, sc->gl_WorkGroupSize_x);
+						sprintf(idY, "(%s/%" PRIu64 " + %s*%s)", sc->combinedID, sc->fftDim / mult, sc->gl_WorkGroupID_y, sc->gl_WorkGroupSize_x);
 
 					char idZ[500] = "";
 					if (sc->performWorkGroupShift[2])
@@ -2751,10 +2763,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						sprintf(idZ, "%s", sc->gl_GlobalInvocationID_z);
 					if (sc->performZeropaddingFull[1])
 						if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1])
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %d)&&(%s < %d))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
 					if (sc->performZeropaddingFull[2])
 						if (sc->fft_zeropad_left_full[2] < sc->fft_zeropad_right_full[2])
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %d)&&(%s < %d))) {\n", idZ, sc->fft_zeropad_left_full[2], idZ, sc->fft_zeropad_right_full[2]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idZ, sc->fft_zeropad_left_full[2], idZ, sc->fft_zeropad_right_full[2]);
 				}
 				break;
 			}
@@ -2784,7 +2796,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 	}
 
-	static inline void appendReadDataVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint32_t readType) {
+	static inline void appendReadDataVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint64_t readType) {
 		char vecType[30];
 		char inputsStruct[20] = "";
 #if(VKFFT_BACKEND==0)
@@ -2816,13 +2828,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(convTypeRight, ")");
 #elif(VKFFT_BACKEND==1)
 				sprintf(convTypeLeft, "(float)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(float)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==3)
 				sprintf(convTypeLeft, "(float)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #endif
 			}
 			else {
@@ -2831,10 +2843,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(convTypeRight, ")");
 #elif(VKFFT_BACKEND==1)
 				sprintf(convTypeLeft, "(float2)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(float2)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==3)
 				sprintf(convTypeLeft, "convert_float2(");
 				sprintf(convTypeRight, ")");
@@ -2848,13 +2860,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(convTypeRight, ")");
 #elif(VKFFT_BACKEND==1)
 				sprintf(convTypeLeft, "(double)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(double)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==3)
 				sprintf(convTypeLeft, "(double)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #endif
 			}
 			else {
@@ -2863,10 +2875,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(convTypeRight, ")");
 #elif(VKFFT_BACKEND==1)
 				sprintf(convTypeLeft, "(double2)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(double2)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==3)
 				sprintf(convTypeLeft, "convert_double2(");
 				sprintf(convTypeRight, ")");
@@ -2874,8 +2886,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 		}
 		char tempNum[50] = "";
-		char index_x[500] = "";
-		char index_y[500] = "";
+		char index_x[2000] = "";
+		char index_y[2000] = "";
 		char requestCoordinate[100] = "";
 		if (sc->convolutionStep) {
 			if (sc->matrixConvolution > 1) {
@@ -2910,15 +2922,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(shiftY, " + consts.workGroupShiftY ");
 			if (sc->fftDim < sc->fft_dim_full) {
 				if (sc->axisSwapped) {
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s numActiveThreads = ((%s/%d)==%d) ? %d : %d;\n", uintType, sc->gl_WorkGroupID_x, sc->firstStageStartSize / sc->fftDim, ((uint32_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim), (sc->fft_dim_full - (sc->firstStageStartSize / sc->fftDim) * ((((uint32_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim)) * sc->localSize[0] * sc->fftDim)) / sc->min_registers_per_thread / (sc->firstStageStartSize / sc->fftDim), sc->localSize[0] * sc->localSize[1]);// sc->fft_dim_full, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full / (sc->localSize[0] * sc->fftDim));
-					//sc->currentLen += sprintf(sc->output + sc->currentLen, "		if (numActiveThreads>%d) numActiveThreads = %d;\n", sc->localSize[0]* sc->localSize[1], sc->localSize[0]* sc->localSize[1]);
-					//sprintf(sc->disableThreadsStart, "		if((%s+%d*%s)< numActiveThreads) {\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y);
-					sprintf(sc->disableThreadsStart, "		if(%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d) < %d) {\n", sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((%s+%d*%s)< numActiveThreads) {\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s numActiveThreads = ((%s/%" PRIu64 ")==%" PRIu64 ") ? %" PRIu64 " : %" PRIu64 ";\n", uintType, sc->gl_WorkGroupID_x, sc->firstStageStartSize / sc->fftDim, ((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim), (sc->fft_dim_full - (sc->firstStageStartSize / sc->fftDim) * ((((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim)) * sc->localSize[0] * sc->fftDim)) / sc->min_registers_per_thread / (sc->firstStageStartSize / sc->fftDim), sc->localSize[0] * sc->localSize[1]);// sc->fft_dim_full, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full / (sc->localSize[0] * sc->fftDim));
+					//sc->currentLen += sprintf(sc->output + sc->currentLen, "		if (numActiveThreads>%" PRIu64 ") numActiveThreads = %" PRIu64 ";\n", sc->localSize[0]* sc->localSize[1], sc->localSize[0]* sc->localSize[1]);
+					//sprintf(sc->disableThreadsStart, "		if((%s+%" PRIu64 "*%s)< numActiveThreads) {\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y);
+					sprintf(sc->disableThreadsStart, "		if(%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((%s+%" PRIu64 "*%s)< numActiveThreads) {\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y);
 					sprintf(sc->disableThreadsEnd, "}");
 				}
 				else {
-					sprintf(sc->disableThreadsStart, "		if(%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d) < %d) {\n", sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
+					sprintf(sc->disableThreadsStart, "		if(%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
 					VkAppendLine(sc, sc->disableThreadsStart);
 					sprintf(sc->disableThreadsEnd, "}");
 				}
@@ -2933,27 +2945,27 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sc->readToRegisters = 1;
 			if (sc->zeropad[0]) {
 				if (sc->fftDim == sc->fft_dim_full) {
-					for (uint32_t k = 0; k < sc->registerBoost; k++) {
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+					for (uint64_t k = 0; k < sc->registerBoost; k++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 
 							if (sc->localSize[1] == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
 							if (sc->inputStride[0] > 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim, sc->inputStride[0], sc->fftDim, sc->inputStride[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->inputStride[0], sc->fftDim, sc->inputStride[1]);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim, sc->fftDim, sc->inputStride[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->fftDim, sc->inputStride[1]);
 							if (sc->axisSwapped) {
 								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1]);
 							}
 							else {
 								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1]);
 							}
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->inputStride[1], sc->fft_zeropad_left_read[sc->axis_id], sc->inputStride[1], sc->fft_zeropad_right_read[sc->axis_id]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->inputStride[1], sc->fft_zeropad_left_read[sc->axis_id], sc->inputStride[1], sc->fft_zeropad_right_read[sc->axis_id]);
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
 							indexInputVkFFT(sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
 							sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
@@ -2962,20 +2974,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								if (sc->inputBufferBlockNum == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %s%s[%s]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 							}
 							else {
 								if (sc->axisSwapped) {
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")] = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")] = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 								}
 								else {
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride] = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride] = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 								}
 							}
 							appendZeropadEndAxisSwapped(sc);
@@ -2984,12 +2996,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x =0;%s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
 							else {
 								if (sc->axisSwapped) {
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = 0;\n", sc->fftDim, sc->fftDim);
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x = 0;\n", sc->fftDim, sc->fftDim);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].y = 0;\n", sc->fftDim, sc->fftDim);
 								}
 								else {
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = 0;\n", sc->fftDim, sc->fftDim);
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x = 0;\n", sc->fftDim, sc->fftDim);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
 								}
 							}
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
@@ -3006,27 +3018,27 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				else {
-					for (uint32_t k = 0; k < sc->registerBoost; k++) {
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+					for (uint64_t k = 0; k < sc->registerBoost; k++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 							/*
 							if (sc->localSize[1] == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d);\n", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ");\n", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
 							*/
 							if (sc->axisSwapped) {
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d*numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d);\n", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 "*numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ");\n", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize);
 							}
 							else {
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = %s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d);\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = %s+%" PRIu64 "+%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ");\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
 							}
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
 							indexInputVkFFT(sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
 							sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
@@ -3035,22 +3047,22 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								if (sc->inputBufferBlockNum == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = %s%s[%s]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 							}
 							else {
 								if (sc->axisSwapped) {
 
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID / %d) + sharedStride*(combinedID %% %d)] = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID / %" PRIu64 ") + sharedStride*(combinedID %% %" PRIu64 ")] = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID / %d) + sharedStride*(combinedID %% %d)] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID / %" PRIu64 ") + sharedStride*(combinedID %% %" PRIu64 ")] = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 
 								}
 								else {
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[sharedStride*%s + (%s + %d)] = %s%s[inoutID]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, inputsStruct, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[sharedStride*%s + (%s + %" PRIu64 ")] = %s%s[inoutID]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, inputsStruct, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[sharedStride*%s + (%s + %d)] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[sharedStride*%s + (%s + %" PRIu64 ")] = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 								}
 							}
 							appendZeropadEndAxisSwapped(sc);
@@ -3060,12 +3072,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = 0; %s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
 							else {
 								if (sc->axisSwapped) {
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID / %d) + sharedStride*(combinedID %% %d)].x = 0;\n", sc->fftDim, sc->fftDim);
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID / %d) + sharedStride*(combinedID %% %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID / %" PRIu64 ") + sharedStride*(combinedID %% %" PRIu64 ")].x = 0;\n", sc->fftDim, sc->fftDim);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID / %" PRIu64 ") + sharedStride*(combinedID %% %" PRIu64 ")].y = 0;\n", sc->fftDim, sc->fftDim);
 								}
 								else {
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[sharedStride*%s + (%s + %d)].x = 0;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[sharedStride*%s + (%s + %d)].y = 0;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[sharedStride*%s + (%s + %" PRIu64 ")].x = 0;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[sharedStride*%s + (%s + %" PRIu64 ")].y = 0;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								}
 							}
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
@@ -3075,55 +3087,55 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				if (sc->fftDim == sc->fft_dim_full) {
-					for (uint32_t k = 0; k < sc->registerBoost; k++) {
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+					for (uint64_t k = 0; k < sc->registerBoost; k++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 							if (sc->localSize[1] == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
 							if (sc->inputStride[0] > 1) {
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-								sprintf(index_x, "(combinedID %% %d) * %d + (combinedID / %d) * %d", sc->fftDim, sc->inputStride[0], sc->fftDim, sc->inputStride[1]);
+								sprintf(index_x, "(combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->inputStride[0], sc->fftDim, sc->inputStride[1]);
 								indexInputVkFFT(sc, uintType, readType, index_x, 0, requestCoordinate, requestBatch);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-								//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((combinedID %% %d) * %d + (combinedID / %d) * %d%s%s);\n", sc->fftDim, sc->inputStride[0], sc->fftDim, sc->inputStride[1], requestCoordinate, requestBatch);
+								//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 "%s%s);\n", sc->fftDim, sc->inputStride[0], sc->fftDim, sc->inputStride[1], requestCoordinate, requestBatch);
 							}
 							else {
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-								sprintf(index_x, "(combinedID %% %d) + (combinedID / %d) * %d", sc->fftDim, sc->fftDim, sc->inputStride[1]);
+								sprintf(index_x, "(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->fftDim, sc->inputStride[1]);
 								indexInputVkFFT(sc, uintType, readType, index_x, 0, requestCoordinate, requestBatch);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-								//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((combinedID %% %d) + (combinedID / %d) * %d%s%s);\n", sc->fftDim, sc->fftDim, sc->inputStride[1], requestCoordinate, requestBatch);
+								//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 "%s%s);\n", sc->fftDim, sc->fftDim, sc->inputStride[1], requestCoordinate, requestBatch);
 							}
 							if (sc->axisSwapped) {
 								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1]);
 							}
 							else {
 								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1]);
 							}
 							appendZeropadStartAxisSwapped(sc);
 							if (sc->readToRegisters) {
 								if (sc->inputBufferBlockNum == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %s%s[inoutID]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 							}
 							else {
 								if (sc->axisSwapped) {
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d) ] = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ") ] = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")] = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 
 								}
 								else {
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride] = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride] = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 
 								}
 							}
@@ -3141,43 +3153,43 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 				}
 				else {
-					for (uint32_t k = 0; k < sc->registerBoost; k++) {
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+					for (uint64_t k = 0; k < sc->registerBoost; k++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 							if (sc->axisSwapped) {
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d*numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d);\n", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 "*numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ");\n", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
 								indexInputVkFFT(sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
 							}
 							else {
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-								sprintf(index_x, "%s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
+								sprintf(index_x, "%s+%" PRIu64 "+%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ")", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
 								indexInputVkFFT(sc, uintType, readType, index_x, 0, requestCoordinate, requestBatch);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
 							}
-							//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput(%s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)%s%s);\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, requestCoordinate, requestBatch);
+							//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput(%s+%" PRIu64 "+%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ")%s%s);\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, requestCoordinate, requestBatch);
 							appendZeropadStartAxisSwapped(sc);
 							if (sc->readToRegisters) {
 								if (sc->inputBufferBlockNum == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %s%s[inoutID]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 							}
 							else {
 								if (sc->axisSwapped) {
 
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID / %d) + sharedStride*(combinedID %% %d)] = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID / %" PRIu64 ") + sharedStride*(combinedID %% %" PRIu64 ")] = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID / %d) + sharedStride*(combinedID %% %d)] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID / %" PRIu64 ") + sharedStride*(combinedID %% %" PRIu64 ")] = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 
 								}
 								else {
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[sharedStride*%s + (%s + %d)] = %s%s[inoutID]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, inputsStruct, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[sharedStride*%s + (%s + %" PRIu64 ")] = %s%s[inoutID]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, inputsStruct, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[sharedStride*%s + (%s + %d)] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[sharedStride*%s + (%s + %" PRIu64 ")] = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 								}
 							}
 							appendZeropadEndAxisSwapped(sc);
@@ -3198,64 +3210,64 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc->performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
 
-			sprintf(sc->disableThreadsStart, "		if (((%s%s) / %d) %% (%d)+((%s%s) / %d) * (%d) < %d) {\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize, sc->size[sc->axis_id]);
+			sprintf(sc->disableThreadsStart, "		if (((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize, sc->size[sc->axis_id]);
 			VkAppendLine(sc, sc->disableThreadsStart);
 			sprintf(sc->disableThreadsEnd, "}");
 
 			if (sc->zeropad[0]) {
-				for (uint32_t k = 0; k < sc->registerBoost; k++) {
-					for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%d * (%s + %d) + ((%s%s) / %d) %% (%d)+((%s%s) / %d) * (%d));\n", sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize);
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
+					for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 "));\n", sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize);
 
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-						sprintf(index_x, "(%s%s) %% (%d)", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
+						sprintf(index_x, "(%s%s) %% (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
 						indexInputVkFFT(sc, uintType, readType, index_x, sc->inoutID, requestCoordinate, requestBatch);
 						sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
 						if (sc->readToRegisters) {
 							if (sc->inputBufferBlockNum == 1)
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s=%s%s[%s]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s=%sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s=%sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 						}
 						else {
 							if (sc->inputBufferBlockNum == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%d)+%s]=%s%s[%s]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%" PRIu64 ")+%s]=%s%s[%s]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%d)+%s]=%sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%" PRIu64 ")+%s]=%sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 						}
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "		else{\n");
 						if (sc->readToRegisters)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = 0; %s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
 						else {
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%d)+%s].x=0;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%d)+%s].y=0;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%" PRIu64 ")+%s].x=0;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%" PRIu64 ")+%s].y=0;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
 						}
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
 					}
 				}
 			}
 			else {
-				for (uint32_t k = 0; k < sc->registerBoost; k++) {
-					for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
+					for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-						sprintf(index_x, "(%s%s) %% (%d)", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
-						sprintf(index_y, "%d * (%s + %d) + ((%s%s) / %d) %% (%d)+((%s%s) / %d) * (%d)", sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize);
+						sprintf(index_x, "(%s%s) %% (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
+						sprintf(index_y, "%" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ")", sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize);
 						indexInputVkFFT(sc, uintType, readType, index_x, index_y, requestCoordinate, requestBatch);
 						sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-						//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((%s%s) %% (%d), %d * (%s + %d) + ((%s%s) / %d) %% (%d)+((%s%s) / %d) * (%d)%s%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize, requestCoordinate, requestBatch);
+						//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((%s%s) %% (%" PRIu64 "), %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ")%s%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize, requestCoordinate, requestBatch);
 						if (sc->readToRegisters) {
 							if (sc->inputBufferBlockNum == 1)
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %s%s[inoutID]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, convTypeRight);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 						}
 						else {
 							if (sc->inputBufferBlockNum == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[%s*(%s+%d)+%s] = %s%s[inoutID]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[%s*(%s+%" PRIu64 ")+%s] = %s%s[inoutID]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, convTypeRight);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[%s*(%s+%d)+%s] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[%s*(%s+%" PRIu64 ")+%s] = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 						}
 					}
 				}
@@ -3273,15 +3285,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc->performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
 
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(gl_GlobalInvolcationID.x%s >= %d) return; \n", shiftX, sc->size[0] / axis->specializationConstants.fftDim);
-			sprintf(sc->disableThreadsStart, "		if (((%s%s) / %d) * (%d) < %d) {\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim, sc->fft_dim_full);
+			//sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(gl_GlobalInvolcationID.x%s >= %" PRIu64 ") return; \n", shiftX, sc->size[0] / axis->specializationConstants.fftDim);
+			sprintf(sc->disableThreadsStart, "		if (((%s%s) / %" PRIu64 ") * (%" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim, sc->fft_dim_full);
 			VkAppendLine(sc, sc->disableThreadsStart);
 			sprintf(sc->disableThreadsEnd, "}");
 			if (sc->zeropad[0]) {
-				for (uint32_t k = 0; k < sc->registerBoost; k++) {
-					for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%s%s) %% (%d) + %d * (%s + %d) + ((%s%s) / %d) * (%d);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
+					for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%s%s) %% (%" PRIu64 ") + %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") * (%" PRIu64 ");\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
 						indexInputVkFFT(sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
 						sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
@@ -3289,45 +3301,45 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							if (sc->inputBufferBlockNum == 1)
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s=%s%s[%s]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s=%sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s=%sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 						}
 						else {
 							if (sc->inputBufferBlockNum == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%d)+%s]=%s%s[%s]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%" PRIu64 ")+%s]=%s%s[%s]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%d)+%s]=%sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%" PRIu64 ")+%s]=%sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 						}
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "		}else{\n");
 						if (sc->readToRegisters)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = 0; %s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
 						else {
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%d)+%s].x=0;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%d)+%s].y=0;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%" PRIu64 ")+%s].x=0;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[%s*(%s+%" PRIu64 ")+%s].y=0;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
 						}
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
 					}
 				}
 			}
 			else {
-				for (uint32_t k = 0; k < sc->registerBoost; k++) {
-					for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
+					for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-						sprintf(index_x, "(%s%s) %% (%d) + %d * (%s + %d) + ((%s%s) / %d) * (%d)", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
+						sprintf(index_x, "(%s%s) %% (%" PRIu64 ") + %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") * (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
 						indexInputVkFFT(sc, uintType, readType, index_x, 0, requestCoordinate, requestBatch);
 						sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-						//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((%s%s) %% (%d) + %d * (%s + %d) + ((%s%s) / %d) * (%d));\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
+						//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((%s%s) %% (%" PRIu64 ") + %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") * (%" PRIu64 "));\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
 
 						if (sc->readToRegisters) {
 							if (sc->inputBufferBlockNum == 1)
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %s%s[inoutID]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, convTypeRight);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 						}
 						else {
 							if (sc->inputBufferBlockNum == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[%s*(%s+%d)+%s] = %s%s[inoutID]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[%s*(%s+%" PRIu64 ")+%s] = %s%s[inoutID]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, inputsStruct, convTypeRight);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[%s*(%s+%d)+%s] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[%s*(%s+%" PRIu64 ")+%s] = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 						}
 					}
 				}
@@ -3347,30 +3359,30 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftY[500] = "";
 			if (sc->performWorkGroupShift[1])
 				sprintf(shiftY, " + consts.workGroupShiftY ");
-			uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+			uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			if (sc->zeropad[0]) {
 				if (sc->fftDim == sc->fft_dim_full) {
-					for (uint32_t k = 0; k < sc->registerBoost; k++) {
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+					for (uint64_t k = 0; k < sc->registerBoost; k++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 
 							if (sc->localSize[1] == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
 							if (sc->inputStride[0] > 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim, sc->inputStride[0], sc->fftDim, mult * sc->inputStride[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->inputStride[0], sc->fftDim, mult * sc->inputStride[1]);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim, sc->fftDim, mult * sc->inputStride[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->fftDim, mult * sc->inputStride[1]);
 							if (sc->axisSwapped) {
-								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint32_t)ceil(sc->size[1] / (double)mult));
+								if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint64_t)ceil(sc->size[1] / (double)mult));
 							}
 							else {
-								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint32_t)ceil(sc->size[1] / (double)mult));
+								if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint64_t)ceil(sc->size[1] / (double)mult));
 							}
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->inputStride[1], sc->fft_zeropad_left_read[sc->axis_id], sc->inputStride[1], sc->fft_zeropad_right_read[sc->axis_id]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->inputStride[1], sc->fft_zeropad_left_read[sc->axis_id], sc->inputStride[1], sc->fft_zeropad_right_read[sc->axis_id]);
 
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
 							indexInputVkFFT(sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
@@ -3380,12 +3392,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								if (sc->inputBufferBlockNum == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = %s%s[%s]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 								if (sc->mergeSequencesR2C) {
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = %s%s[(%s + %d)]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, sc->inputStride[1], convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = %s%s[(%s + %" PRIu64 ")]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, sc->inputStride[1], convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = %sinputBlocks[(%s + %d)/ %d]%s[(%s + %d) %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputStride[1], sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputStride[1], sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = %sinputBlocks[(%s + %" PRIu64 ")/ %" PRIu64 "]%s[(%s + %" PRIu64 ") %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputStride[1], sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputStride[1], sc->inputBufferBlockSize, convTypeRight);
 								}
 								else {
 									if (sc->inputBufferBlockNum == 1)
@@ -3398,41 +3410,41 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								if (sc->axisSwapped) {
 
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 
 									if (sc->mergeSequencesR2C) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %d;\n", sc->inputStride[1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %" PRIu64 ";\n", sc->inputStride[1]);
 										if (sc->inputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 									}
 									else {
 										if (sc->inputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride+ (combinedID / %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride+ (combinedID / %" PRIu64 ")].y = 0;\n", sc->fftDim, sc->fftDim);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].y = 0;\n", sc->fftDim, sc->fftDim);
 									}
 								}
 								else {
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 									if (sc->mergeSequencesR2C) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %d;\n", sc->inputStride[1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %" PRIu64 ";\n", sc->inputStride[1]);
 										if (sc->inputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 									}
 									else {
 										if (sc->inputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
 									}
 								}
 
@@ -3443,23 +3455,23 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0; %s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
 							else {
 								if (sc->axisSwapped) {
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = 0;\n", sc->fftDim, sc->fftDim);
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x = 0;\n", sc->fftDim, sc->fftDim);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].y = 0;\n", sc->fftDim, sc->fftDim);
 								}
 								else {
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = 0;\n", sc->fftDim, sc->fftDim);
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x = 0;\n", sc->fftDim, sc->fftDim);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
 
 								}
 
 							}
 							VkAppendLine(sc, "	}\n");
 							if (sc->axisSwapped) {
-								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+								if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		}");
 							}
 							else {
-								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+								if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		}");
 							}
 						}
@@ -3471,48 +3483,48 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				if (sc->fftDim == sc->fft_dim_full) {
-					for (uint32_t k = 0; k < sc->registerBoost; k++) {
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+					for (uint64_t k = 0; k < sc->registerBoost; k++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 
 							if (sc->localSize[1] == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
 							if (sc->inputStride[0] > 1) {
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-								sprintf(index_x, "(combinedID %% %d) * %d + (combinedID / %d) * %d", sc->fftDim, sc->inputStride[0], sc->fftDim, mult * sc->inputStride[1]);
+								sprintf(index_x, "(combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->inputStride[0], sc->fftDim, mult * sc->inputStride[1]);
 								indexInputVkFFT(sc, uintType, readType, index_x, 0, requestCoordinate, requestBatch);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-								//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((combinedID %% %d) * %d + (combinedID / %d) * %d);\n", sc->fftDim, sc->inputStride[0], sc->fftDim, 2 * sc->inputStride[1]);
+								//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 ");\n", sc->fftDim, sc->inputStride[0], sc->fftDim, 2 * sc->inputStride[1]);
 							}
 							else {
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-								sprintf(index_x, "(combinedID %% %d) + (combinedID / %d) * %d", sc->fftDim, sc->fftDim, mult * sc->inputStride[1]);
+								sprintf(index_x, "(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->fftDim, mult * sc->inputStride[1]);
 								indexInputVkFFT(sc, uintType, readType, index_x, 0, requestCoordinate, requestBatch);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-								//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((combinedID %% %d) + (combinedID / %d) * %d);\n", sc->fftDim, sc->fftDim, 2 * sc->inputStride[1]);
+								//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 ");\n", sc->fftDim, sc->fftDim, 2 * sc->inputStride[1]);
 							}
 							if (sc->axisSwapped) {
-								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint32_t)ceil(sc->size[1] / (double)mult));
+								if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint64_t)ceil(sc->size[1] / (double)mult));
 							}
 							else {
-								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint32_t)ceil(sc->size[1] / (double)mult));
+								if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint64_t)ceil(sc->size[1] / (double)mult));
 							}
 							appendZeropadStartAxisSwapped(sc);
 							if (sc->readToRegisters) {
 								if (sc->inputBufferBlockNum == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = %s%s[inoutID]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 								if (sc->mergeSequencesR2C) {
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %d;\n", sc->inputStride[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %" PRIu64 ";\n", sc->inputStride[1]);
 									if (sc->inputBufferBlockNum == 1)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = %s%s[inoutID]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 								}
 								else {
 									if (sc->inputBufferBlockNum == 1)
@@ -3525,41 +3537,41 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								if (sc->axisSwapped) {
 
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x = %s%s[%s]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 
 									if (sc->mergeSequencesR2C) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %d;\n", sc->inputStride[1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %" PRIu64 ";\n", sc->inputStride[1]);
 										if (sc->inputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 									}
 									else {
 										if (sc->inputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride+ (combinedID / %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride+ (combinedID / %" PRIu64 ")].y = 0;\n", sc->fftDim, sc->fftDim);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y = 0;\n", sc->fftDim, sc->fftDim);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].y = 0;\n", sc->fftDim, sc->fftDim);
 									}
 								}
 								else {
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 									if (sc->mergeSequencesR2C) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %d;\n", sc->inputStride[1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %" PRIu64 ";\n", sc->inputStride[1]);
 										if (sc->inputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y = %s%s[inoutID]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, inputsStruct, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->fftDim, sc->fftDim, convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 									}
 									else {
 										if (sc->inputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y = 0;\n", sc->fftDim, sc->fftDim);
 									}
 								}
 
@@ -3567,11 +3579,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							}
 							appendZeropadEndAxisSwapped(sc);
 							if (sc->axisSwapped) {
-								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+								if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		}");
 							}
 							else {
-								if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+								if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		}");
 							}
 						}
@@ -3596,9 +3608,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(shiftY, " + consts.workGroupShiftY ");
 			if (sc->fftDim < sc->fft_dim_full) {
 				if (sc->axisSwapped)
-					sprintf(sc->disableThreadsStart, "		if(%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d) < %d) {\n", sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
+					sprintf(sc->disableThreadsStart, "		if(%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
 				else
-					sprintf(sc->disableThreadsStart, "		if(%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d) < %d) {\n", sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
+					sprintf(sc->disableThreadsStart, "		if(%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
 
 				VkAppendLine(sc, sc->disableThreadsStart);
 				sprintf(sc->disableThreadsEnd, "}");
@@ -3608,35 +3620,35 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 
 			sc->readToRegisters = 0;
-			uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+			uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			if (sc->zeropad[0]) {
 				if (sc->fftDim == sc->fft_dim_full) {
-					for (uint32_t k = 0; k < sc->registerBoost; k++) {
-						uint32_t num_in = (sc->axisSwapped) ? (int)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (int)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
-						//num_in =(uint32_t)ceil(num_in / (double)sc->min_registers_per_thread);
-						for (uint32_t i = 0; i < num_in; i++) {
+					for (uint64_t k = 0; k < sc->registerBoost; k++) {
+						uint64_t num_in = (sc->axisSwapped) ? (uint64_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (uint64_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
+						//num_in =(uint64_t)ceil(num_in / (double)sc->min_registers_per_thread);
+						for (uint64_t i = 0; i < num_in; i++) {
 							if (sc->localSize[1] == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * num_in) * sc->localSize[0]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * num_in) * sc->localSize[0]);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * num_in) * sc->localSize[0] * sc->localSize[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * num_in) * sc->localSize[0] * sc->localSize[1]);
 
 							if (sc->inputStride[0] > 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim / 2 + 1, sc->inputStride[0], sc->fftDim / 2 + 1, sc->inputStride[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim / 2 + 1, sc->inputStride[0], sc->fftDim / 2 + 1, sc->inputStride[1]);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->inputStride[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->inputStride[1]);
 							if (sc->axisSwapped) {
 								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[0], sc->size[sc->axis_id + 1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[0], sc->size[sc->axis_id + 1]);
 								if ((1 + i + k * num_in) * sc->localSize[0] * sc->localSize[1] >= mult * (sc->fftDim / 2 + 1) * sc->localSize[0])
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %d){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %" PRIu64 "){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[0]);
 							}
 							else {
 								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[1], sc->size[sc->axis_id + 1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[1], sc->size[sc->axis_id + 1]);
 								if ((1 + i + k * num_in) * sc->localSize[0] * sc->localSize[1] >= mult * (sc->fftDim / 2 + 1) * sc->localSize[1])
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %d){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %" PRIu64 "){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[1]);
 							}
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->inputStride[1], sc->fft_zeropad_left_read[sc->axis_id], sc->inputStride[1], sc->fft_zeropad_right_read[sc->axis_id]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->inputStride[1], sc->fft_zeropad_left_read[sc->axis_id], sc->inputStride[1], sc->fft_zeropad_right_read[sc->axis_id]);
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
 							indexInputVkFFT(sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
 							sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
@@ -3645,20 +3657,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								if (sc->inputBufferBlockNum == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %s%s[%s]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 							}
 							else {
 								if (!sc->axisSwapped) {
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %s%s[%s]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride] = %s%s[%s]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride] = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 								}
 								else {
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %s%s[%s]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")] = %s%s[%s]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %sinputBlocks[%s / %d]%s[%s %% %d]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")] = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 								}
 							}
 							appendZeropadEndAxisSwapped(sc);
@@ -3667,12 +3679,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x =0;%s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
 							else {
 								if (!sc->axisSwapped) {
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x = 0;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1));
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y = 0;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1));
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x = 0;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1));
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y = 0;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1));
 								}
 								else {
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x = 0;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1));
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y = 0;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1));
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x = 0;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1));
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].y = 0;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1));
 								}
 							}
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
@@ -3695,46 +3707,46 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 						}
 						appendBarrierVkFFT(sc, 1);
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 							if (sc->mergeSequencesR2C) {
 								if (sc->axisSwapped) {
 									if (i < (sc->min_registers_per_thread / 2)) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%s+%d) * sharedStride].x - sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s + (%s+%d) * sharedStride].y + sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%s+%" PRIu64 ") * sharedStride].x - sdata[%s + (%s+%" PRIu64 ") * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s + (%s+%" PRIu64 ") * sharedStride].y + sdata[%s + (%s+%" PRIu64 ") * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
 									}
 									else {
-										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%d-%s) * sharedStride].x + sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s + (%d-%s) * sharedStride].y + sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
+										if (i >= (uint64_t)ceil(sc->min_registers_per_thread / 2.0)) {
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%" PRIu64 "-%s) * sharedStride].x + sdata[%s + (%" PRIu64 "-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s + (%" PRIu64 "-%s) * sharedStride].y + sdata[%s + (%" PRIu64 "-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
 										}
 										else {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %d){;\n", sc->gl_LocalInvocationID_y, (sc->fftDim / 2) % sc->localSize[1] + 1);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%s+%d) * sharedStride].x - sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s + (%s+%d) * sharedStride].y + sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_y, (sc->fftDim / 2) % sc->localSize[1] + 1);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%s+%" PRIu64 ") * sharedStride].x - sdata[%s + (%s+%" PRIu64 ") * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s + (%s+%" PRIu64 ") * sharedStride].y + sdata[%s + (%s+%" PRIu64 ") * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}else{\n");
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%d-%s) * sharedStride].x + sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s + (%d-%s) * sharedStride].y + sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%" PRIu64 "-%s) * sharedStride].x + sdata[%s + (%" PRIu64 "-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s + (%" PRIu64 "-%s) * sharedStride].y + sdata[%s + (%" PRIu64 "-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
 										}
 									}
 								}
 								else {
 									if (i < (sc->min_registers_per_thread / 2)) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%s+%d)].x - sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s * sharedStride + (%s+%d)].y + sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%s+%" PRIu64 ")].x - sdata[%s * sharedStride + (%s+%" PRIu64 ")].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s * sharedStride + (%s+%" PRIu64 ")].y + sdata[%s * sharedStride + (%s+%" PRIu64 ")].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
 									}
 									else {
-										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%d-%s)].x + sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s * sharedStride + (%d-%s)].y + sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
+										if (i >= (uint64_t)ceil(sc->min_registers_per_thread / 2.0)) {
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%" PRIu64 "-%s)].x + sdata[%s * sharedStride + (%" PRIu64 "-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s * sharedStride + (%" PRIu64 "-%s)].y + sdata[%s * sharedStride + (%" PRIu64 "-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
 										}
 										else {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %d){;\n", sc->gl_LocalInvocationID_x, (sc->fftDim / 2) % sc->localSize[0] + 1);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%s+%d)].x - sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s * sharedStride + (%s+%d)].y + sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_x, (sc->fftDim / 2) % sc->localSize[0] + 1);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%s+%" PRIu64 ")].x - sdata[%s * sharedStride + (%s+%" PRIu64 ")].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s * sharedStride + (%s+%" PRIu64 ")].y + sdata[%s * sharedStride + (%s+%" PRIu64 ")].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}else{\n");
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%d-%s)].x + sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s * sharedStride + (%d-%s)].y + sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%" PRIu64 "-%s)].x + sdata[%s * sharedStride + (%" PRIu64 "-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s * sharedStride + (%" PRIu64 "-%s)].y + sdata[%s * sharedStride + (%" PRIu64 "-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
 										}
 									}
@@ -3743,42 +3755,42 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							else {
 								if (sc->axisSwapped) {
 									if (i < (sc->min_registers_per_thread / 2)) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%s+%" PRIu64 ") * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s + (%s+%" PRIu64 ") * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
 									}
 									else {
-										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
+										if (i >= (uint64_t)ceil(sc->min_registers_per_thread / 2.0)) {
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%" PRIu64 "-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s + (%" PRIu64 "-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
 										}
 										else {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %d){;\n", sc->gl_LocalInvocationID_y, (sc->fftDim / 2) % sc->localSize[1] + 1);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_y, (sc->fftDim / 2) % sc->localSize[1] + 1);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%s+%" PRIu64 ") * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s + (%s+%" PRIu64 ") * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}else{\n");
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%" PRIu64 "-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s + (%" PRIu64 "-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
 										}
 									}
 								}
 								else {
 									if (i < (sc->min_registers_per_thread / 2)) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%s+%" PRIu64 ")].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s * sharedStride + (%s+%" PRIu64 ")].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
 									}
 									else {
-										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
+										if (i >= (uint64_t)ceil(sc->min_registers_per_thread / 2.0)) {
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%" PRIu64 "-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s * sharedStride + (%" PRIu64 "-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
 										}
 										else {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %d){;\n", sc->gl_LocalInvocationID_x, (sc->fftDim / 2) % sc->localSize[0] + 1);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_x, (sc->fftDim / 2) % sc->localSize[0] + 1);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%s+%" PRIu64 ")].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s * sharedStride + (%s+%" PRIu64 ")].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}else{\n");
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%" PRIu64 "-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s * sharedStride + (%" PRIu64 "-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
 
 										}
@@ -3795,31 +3807,31 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				if (sc->fftDim == sc->fft_dim_full) {
-					for (uint32_t k = 0; k < sc->registerBoost; k++) {
-						uint32_t num_in = (sc->axisSwapped) ? (int)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (int)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
-						//num_in = (uint32_t)ceil(num_in / (double)sc->min_registers_per_thread);
-						for (uint32_t i = 0; i < num_in; i++) {
+					for (uint64_t k = 0; k < sc->registerBoost; k++) {
+						uint64_t num_in = (sc->axisSwapped) ? (int64_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (int64_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
+						//num_in = (uint64_t)ceil(num_in / (double)sc->min_registers_per_thread);
+						for (uint64_t i = 0; i < num_in; i++) {
 
 							if (sc->localSize[1] == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
 							if (sc->inputStride[0] > 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim / 2 + 1, sc->inputStride[0], sc->fftDim / 2 + 1, sc->inputStride[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim / 2 + 1, sc->inputStride[0], sc->fftDim / 2 + 1, sc->inputStride[1]);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->inputStride[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->inputStride[1]);
 							if (sc->axisSwapped) {
 								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[0], sc->size[sc->axis_id + 1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[0], sc->size[sc->axis_id + 1]);
 								if ((1 + i + k * num_in) * sc->localSize[0] * sc->localSize[1] >= mult * (sc->fftDim / 2 + 1) * sc->localSize[0])
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %d){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %" PRIu64 "){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[0]);
 							}
 							else {
 								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[1], sc->size[sc->axis_id + 1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[1], sc->size[sc->axis_id + 1]);
 								if ((1 + i + k * num_in) * sc->localSize[0] * sc->localSize[1] >= mult * (sc->fftDim / 2 + 1) * sc->localSize[1])
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %d){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %" PRIu64 "){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[1]);
 							}
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
 							indexInputVkFFT(sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
@@ -3829,21 +3841,21 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								if (sc->inputBufferBlockNum == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %s%s[inoutID]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 							}
 							else {
 								if (!sc->axisSwapped) {
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %s%s[inoutID]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, inputsStruct, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride] = %s%s[inoutID]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, inputsStruct, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride] = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 
 								}
 								else {
 									if (sc->inputBufferBlockNum == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %s%s[inoutID]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, inputsStruct, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")] = %s%s[inoutID]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, inputsStruct, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %d) * sharedStride + (combinedID / %d)] = %sinputBlocks[inoutID / %d]%s[inoutID %% %d]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")] = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", mult * (sc->fftDim / 2 + 1), mult * (sc->fftDim / 2 + 1), convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
 								}
 							}
 							appendZeropadEndAxisSwapped(sc);
@@ -3866,83 +3878,83 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 
 						appendBarrierVkFFT(sc, 1);
-						/*for (uint32_t i = 0; i < (uint32_t)ceil(sc->min_registers_per_thread / 2.0); i++) {
+						/*for (uint64_t i = 0; i < (uint64_t)ceil(sc->min_registers_per_thread / 2.0); i++) {
 
 							if (sc->localSize[1] == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 							if (sc->axisSwapped) {
-								if ((i == ((uint32_t)ceil(sc->min_registers_per_thread / 2.0) - 1)))
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "if (combinedID / %d < %d){\n", (uint32_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[0]);
+								if ((i == ((uint64_t)ceil(sc->min_registers_per_thread / 2.0) - 1)))
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "if (combinedID / %" PRIu64 " < %" PRIu64 "){\n", (uint64_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[0]);
 							}
 							else {
-								if ((i == ((uint32_t)ceil(sc->min_registers_per_thread / 2.0) - 1)))
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "if (combinedID / %d < %d){\n", (uint32_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[1]);
+								if ((i == ((uint64_t)ceil(sc->min_registers_per_thread / 2.0) - 1)))
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "if (combinedID / %" PRIu64 " < %" PRIu64 "){\n", (uint64_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[1]);
 							}
 							if (!sc->axisSwapped) {
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(%d - (combinedID %% %d) + (combinedID / %d) * sharedStride)].x = sdata[((combinedID %% %d) + (combinedID / %d) * sharedStride)+1].x;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(%d - (combinedID %% %d) + (combinedID / %d) * sharedStride)].y = -sdata[((combinedID %% %d) + (combinedID / %d) * sharedStride)+1].y;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(%" PRIu64 " - (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride)].x = sdata[((combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride)+1].x;\n", sc->fftDim - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[(%" PRIu64 " - (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride)].y = -sdata[((combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride)+1].y;\n", sc->fftDim - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1);
 							}
 							else {
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[((%d - (combinedID %% %d)) * sharedStride + (combinedID / %d))].x = sdata[(((combinedID %% %d) + 1) * sharedStride + (combinedID / %d))].x;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[((%d - (combinedID %% %d)) * sharedStride + (combinedID / %d))].y = -sdata[(((combinedID %% %d) + 1) * sharedStride + (combinedID / %d))].y;\n", sc->fftDim - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1, (uint32_t)ceil(sc->fftDim / 2.0) - 1);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[((%" PRIu64 " - (combinedID %% %" PRIu64 ")) * sharedStride + (combinedID / %" PRIu64 "))].x = sdata[(((combinedID %% %" PRIu64 ") + 1) * sharedStride + (combinedID / %" PRIu64 "))].x;\n", sc->fftDim - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		sdata[((%" PRIu64 " - (combinedID %% %" PRIu64 ")) * sharedStride + (combinedID / %" PRIu64 "))].y = -sdata[(((combinedID %% %" PRIu64 ") + 1) * sharedStride + (combinedID / %" PRIu64 "))].y;\n", sc->fftDim - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1, (uint64_t)ceil(sc->fftDim / 2.0) - 1);
 							}
-							if ((i == ((uint32_t)ceil(sc->min_registers_per_thread / 2.0) - 1)))
+							if ((i == ((uint64_t)ceil(sc->min_registers_per_thread / 2.0) - 1)))
 								VkAppendLine(sc, "	}");
 						}*/
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 
 							/*if (sc->localSize[1] == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
-							if ((i == ((uint32_t)ceil(sc->min_registers_per_thread / 2.0) - 1)))
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+							if ((i == ((uint64_t)ceil(sc->min_registers_per_thread / 2.0) - 1)))
 							{
 								if (sc->axisSwapped)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "if (combinedID / %d < %d){\n", (uint32_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "if (combinedID / %" PRIu64 " < %" PRIu64 "){\n", (uint64_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[0]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "if (combinedID / %d < %d){\n", (uint32_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "if (combinedID / %" PRIu64 " < %" PRIu64 "){\n", (uint64_t)ceil(sc->fftDim / 2.0) - 1, sc->localSize[1]);
 							}*/
 							if (sc->mergeSequencesR2C) {
 								if (sc->axisSwapped) {
 									if (i < (sc->min_registers_per_thread / 2)) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%s+%d) * sharedStride].x - sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s + (%s+%d) * sharedStride].y + sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%s+%" PRIu64 ") * sharedStride].x - sdata[%s + (%s+%" PRIu64 ") * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s + (%s+%" PRIu64 ") * sharedStride].y + sdata[%s + (%s+%" PRIu64 ") * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
 									}
 									else {
-										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%d-%s) * sharedStride].x + sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s + (%d-%s) * sharedStride].y + sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
+										if (i >= (uint64_t)ceil(sc->min_registers_per_thread / 2.0)) {
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%" PRIu64 "-%s) * sharedStride].x + sdata[%s + (%" PRIu64 "-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s + (%" PRIu64 "-%s) * sharedStride].y + sdata[%s + (%" PRIu64 "-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
 										}
 										else {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %d){;\n", sc->gl_LocalInvocationID_y, (sc->fftDim / 2) % sc->localSize[1] + 1);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%s+%d) * sharedStride].x - sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s + (%s+%d) * sharedStride].y + sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_y, (sc->fftDim / 2) % sc->localSize[1] + 1);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%s+%" PRIu64 ") * sharedStride].x - sdata[%s + (%s+%" PRIu64 ") * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s + (%s+%" PRIu64 ") * sharedStride].y + sdata[%s + (%s+%" PRIu64 ") * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}else{\n");
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%d-%s) * sharedStride].x + sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s + (%d-%s) * sharedStride].y + sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%" PRIu64 "-%s) * sharedStride].x + sdata[%s + (%" PRIu64 "-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s + (%" PRIu64 "-%s) * sharedStride].y + sdata[%s + (%" PRIu64 "-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1] + (sc->min_registers_per_thread / 2 * sc->localSize[1]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_y);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
 										}
 									}
 								}
 								else {
 									if (i < (sc->min_registers_per_thread / 2)) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%s+%d)].x - sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s * sharedStride + (%s+%d)].y + sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%s+%" PRIu64 ")].x - sdata[%s * sharedStride + (%s+%" PRIu64 ")].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s * sharedStride + (%s+%" PRIu64 ")].y + sdata[%s * sharedStride + (%s+%" PRIu64 ")].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
 									}
 									else {
-										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%d-%s)].x + sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s * sharedStride + (%d-%s)].y + sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
+										if (i >= (uint64_t)ceil(sc->min_registers_per_thread / 2.0)) {
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%" PRIu64 "-%s)].x + sdata[%s * sharedStride + (%" PRIu64 "-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s * sharedStride + (%" PRIu64 "-%s)].y + sdata[%s * sharedStride + (%" PRIu64 "-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
 										}
 										else {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %d){;\n", sc->gl_LocalInvocationID_x, (sc->fftDim / 2) % sc->localSize[0] + 1);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%s+%d)].x - sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s * sharedStride + (%s+%d)].y + sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_x, (sc->fftDim / 2) % sc->localSize[0] + 1);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%s+%" PRIu64 ")].x - sdata[%s * sharedStride + (%s+%" PRIu64 ")].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s * sharedStride + (%s+%" PRIu64 ")].y + sdata[%s * sharedStride + (%s+%" PRIu64 ")].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0] + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2));
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}else{\n");
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%d-%s)].x + sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s * sharedStride + (%d-%s)].y + sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%" PRIu64 "-%s)].x + sdata[%s * sharedStride + (%" PRIu64 "-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s * sharedStride + (%" PRIu64 "-%s)].y + sdata[%s * sharedStride + (%" PRIu64 "-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, -(i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0] + (sc->min_registers_per_thread / 2 * sc->localSize[0]) + (int64_t)ceil(sc->fftDim / 2.0) + (1 - sc->fftDim % 2), sc->gl_LocalInvocationID_x);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
 										}
 									}
@@ -3951,42 +3963,42 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							else {
 								if (sc->axisSwapped) {
 									if (i < (sc->min_registers_per_thread / 2)) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%s+%" PRIu64 ") * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s + (%s+%" PRIu64 ") * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
 									}
 									else {
-										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
+										if (i >= (uint64_t)ceil(sc->min_registers_per_thread / 2.0)) {
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s + (%" PRIu64 "-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s + (%" PRIu64 "-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
 										}
 										else {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %d){;\n", sc->gl_LocalInvocationID_y, (sc->fftDim / 2) % sc->localSize[1] + 1);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%s+%d) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s + (%s+%d) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_y, (sc->fftDim / 2) % sc->localSize[1] + 1);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%s+%" PRIu64 ") * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s + (%s+%" PRIu64 ") * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}else{\n");
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%d-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s + (%d-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s + (%" PRIu64 "-%s) * sharedStride].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s + (%" PRIu64 "-%s) * sharedStride].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->min_registers_per_thread / 2 * sc->localSize[1] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[1], sc->gl_LocalInvocationID_y);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
 										}
 									}
 								}
 								else {
 									if (i < (sc->min_registers_per_thread / 2)) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%s+%" PRIu64 ")].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = sdata[%s * sharedStride + (%s+%" PRIu64 ")].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
 									}
 									else {
-										if (i >= (uint32_t)ceil(sc->min_registers_per_thread / 2.0)) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
+										if (i >= (uint64_t)ceil(sc->min_registers_per_thread / 2.0)) {
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = sdata[%s * sharedStride + (%" PRIu64 "-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = -sdata[%s * sharedStride + (%" PRIu64 "-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
 										}
 										else {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %d){;\n", sc->gl_LocalInvocationID_x, (sc->fftDim / 2) % sc->localSize[0] + 1);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%s+%d)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s * sharedStride + (%s+%d)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_x, (sc->fftDim / 2) % sc->localSize[0] + 1);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%s+%" PRIu64 ")].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = sdata[%s * sharedStride + (%s+%" PRIu64 ")].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}else{\n");
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%d-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s * sharedStride + (%d-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.x = sdata[%s * sharedStride + (%" PRIu64 "-%s)].x;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s.y = -sdata[%s * sharedStride + (%" PRIu64 "-%s)].y;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_y, sc->min_registers_per_thread / 2 * sc->localSize[0] - (i - (int64_t)ceil(sc->min_registers_per_thread / 2.0)) * sc->localSize[0], sc->gl_LocalInvocationID_x);
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		}\n");
 
 										}
@@ -4009,7 +4021,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		appendZeropadEnd(sc);
 	}
 
-	static inline void appendReorder4StepRead(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint32_t reorderType) {
+	static inline void appendReorder4StepRead(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t reorderType) {
 		char vecType[30];
 		char LFending[4] = "";
 		if (!strcmp(floatType, "float")) sprintf(LFending, "f");
@@ -4039,7 +4051,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #endif
 
-		uint32_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[sc->stageRadix[0]];// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		uint64_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[sc->stageRadix[0]];// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 		switch (reorderType) {
 		case 1: {//grouped_c2c
 			char shiftX[500] = "";
@@ -4054,15 +4066,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sc->readToRegisters = 1;
 				appendZeropadStart(sc);
 				VkAppendLine(sc, sc->disableThreadsStart);
-				for (uint32_t i = 0; i < sc->fftDim / sc->localSize[1]; i++) {
-					uint32_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
+				for (uint64_t i = 0; i < sc->fftDim / sc->localSize[1]; i++) {
+					uint64_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
 					if (sc->LUT) {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		mult = twiddleLUT[%d+(((%s%s)/%d) %% (%d))+%d*(%s+%d)];\n", sc->maxStageSumLUT, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		mult = twiddleLUT[%" PRIu64 "+(((%s%s)/%" PRIu64 ") %% (%" PRIu64 "))+%" PRIu64 "*(%s+%" PRIu64 ")];\n", sc->maxStageSumLUT, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
 						if (!sc->inverse)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "	mult.y = -mult.y;\n");
 					}
 					else {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		angle = 2 * loc_PI * ((((%s%s) / %d) %% (%d)) * (%s + %d)) / %f%s;\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		angle = 2 * loc_PI * ((((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")) * (%s + %" PRIu64 ")) / %f%s;\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
 						if (!strcmp(floatType, "float")) {
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "		mult.x = %s(angle);\n", cosDef);
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "		mult.y = %s(angle);\n", sinDef);
@@ -4081,7 +4093,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s = %s*(%d+%s) + %s;\n", sc->inoutID, sc->sharedStride, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
+		%s = %s*(%" PRIu64 "+%s) + %s;\n", sc->inoutID, sc->sharedStride, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
 
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 		w.x = sdata[%s].x * mult.x - sdata[%s].y * mult.y;\n", sc->inoutID, sc->inoutID);
@@ -4111,15 +4123,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sc->readToRegisters = 1;
 				appendZeropadStart(sc);
 				VkAppendLine(sc, sc->disableThreadsStart);
-				for (uint32_t i = 0; i < sc->fftDim / sc->localSize[1]; i++) {
-					uint32_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
+				for (uint64_t i = 0; i < sc->fftDim / sc->localSize[1]; i++) {
+					uint64_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
 					if (sc->LUT) {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		mult = twiddleLUT[%d + ((%s%s) %% (%d)) + (%s + %d) * %d];\n", sc->maxStageSumLUT, sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->stageStartSize);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		mult = twiddleLUT[%" PRIu64 " + ((%s%s) %% (%" PRIu64 ")) + (%s + %" PRIu64 ") * %" PRIu64 "];\n", sc->maxStageSumLUT, sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->stageStartSize);
 						if (!sc->inverse)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "	mult.y = -mult.y;\n");
 					}
 					else {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		angle = 2 * loc_PI * ((((%s%s) %% (%d)) * (%s + %d)) / %f%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		angle = 2 * loc_PI * ((((%s%s) %% (%" PRIu64 ")) * (%s + %" PRIu64 ")) / %f%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
 
 						if (!strcmp(floatType, "float")) {
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "		mult.x = %s(angle);\n", cosDef);
@@ -4139,7 +4151,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s = %s*(%d+%s) + %s;\n", sc->inoutID, sc->sharedStride, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
+		%s = %s*(%" PRIu64 "+%s) + %s;\n", sc->inoutID, sc->sharedStride, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
 
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 		w.x = sdata[%s].x * mult.x - sdata[%s].y * mult.y;\n", sc->inoutID, sc->inoutID);
@@ -4159,7 +4171,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 
 	}
-	static inline void appendReorder4StepWrite(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint32_t reorderType) {
+	static inline void appendReorder4StepWrite(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t reorderType) {
 		char vecType[30];
 		char LFending[4] = "";
 		if (!strcmp(floatType, "float")) sprintf(LFending, "f");
@@ -4189,7 +4201,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #endif
 
-		uint32_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]];// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		uint64_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]];// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 		switch (reorderType) {
 		case 1: {//grouped_c2c
 			char shiftX[500] = "";
@@ -4204,15 +4216,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sc->writeFromRegisters = 1;
 				appendZeropadStart(sc);
 				VkAppendLine(sc, sc->disableThreadsStart);
-				for (uint32_t i = 0; i < sc->fftDim / sc->localSize[1]; i++) {
-					uint32_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
+				for (uint64_t i = 0; i < sc->fftDim / sc->localSize[1]; i++) {
+					uint64_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
 					if (sc->LUT) {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		mult = twiddleLUT[%d+(((%s%s)/%d) %% (%d))+%d*(%s+%d)];\n", sc->maxStageSumLUT, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		mult = twiddleLUT[%" PRIu64 "+(((%s%s)/%" PRIu64 ") %% (%" PRIu64 "))+%" PRIu64 "*(%s+%" PRIu64 ")];\n", sc->maxStageSumLUT, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
 						if (!sc->inverse)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "	mult.y = -mult.y;\n");
 					}
 					else {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		angle = 2 * loc_PI * ((((%s%s) / %d) %% (%d)) * (%s + %d)) / %f%s;\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		angle = 2 * loc_PI * ((((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")) * (%s + %" PRIu64 ")) / %f%s;\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
 						if (sc->inverse) {
 							if (!strcmp(floatType, "float")) {
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		mult.x = %s(angle);\n", cosDef);
@@ -4242,7 +4254,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s = %s*(%d+%s) + %s;\n", sc->inoutID, sc->sharedStride, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
+		%s = %s*(%" PRIu64 "+%s) + %s;\n", sc->inoutID, sc->sharedStride, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
 
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 		w.x = sdata[%s].x * mult.x - sdata[%s].y * mult.y;\n", sc->inoutID, sc->inoutID);
@@ -4271,15 +4283,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					sc->writeFromRegisters = 1;
 				appendZeropadStart(sc);
 				VkAppendLine(sc, sc->disableThreadsStart);
-				for (uint32_t i = 0; i < sc->fftDim / sc->localSize[1]; i++) {
-					uint32_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
+				for (uint64_t i = 0; i < sc->fftDim / sc->localSize[1]; i++) {
+					uint64_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
 					if (sc->LUT) {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		mult = twiddleLUT[%d + ((%s%s) %% (%d)) + (%s + %d) * %d];\n", sc->maxStageSumLUT, sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->stageStartSize);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		mult = twiddleLUT[%" PRIu64 " + ((%s%s) %% (%" PRIu64 ")) + (%s + %" PRIu64 ") * %" PRIu64 "];\n", sc->maxStageSumLUT, sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->stageStartSize);
 						if (!sc->inverse)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "	mult.y = -mult.y;\n");
 					}
 					else {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		angle = 2 * loc_PI * ((((%s%s) %% (%d)) * (%s + %d)) / %f%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		angle = 2 * loc_PI * ((((%s%s) %% (%" PRIu64 ")) * (%s + %" PRIu64 ")) / %f%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
 						if (sc->inverse) {
 							if (!strcmp(floatType, "float")) {
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		mult.x = %s(angle);\n", cosDef);
@@ -4309,7 +4321,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					else {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s = %s*(%d+%s) + %s;\n", sc->inoutID, sc->sharedStride, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
+		%s = %s*(%" PRIu64 "+%s) + %s;\n", sc->inoutID, sc->sharedStride, i * sc->localSize[1], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
 
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 		w.x = sdata[%s].x * mult.x - sdata[%s].y * mult.y;\n", sc->inoutID, sc->inoutID);
@@ -4330,7 +4342,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 	}
 
-	static inline void appendRadixStageNonStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix) {
+	static inline void appendRadixStageNonStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix) {
 		char vecType[30];
 		char LFending[4] = "";
 		if (!strcmp(floatType, "float")) sprintf(LFending, "f");
@@ -4359,9 +4371,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else
 				sprintf(convolutionInverse, ", 1");
 		}
-		uint32_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		uint32_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
-		uint32_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
+		uint64_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		uint64_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		uint64_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
 		if ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->localSize[1] > 1) && (!(sc->performR2C && (stageAngle > 0)))) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)))
 			appendBarrierVkFFT(sc, 1);
 		appendZeropadStart(sc);
@@ -4369,26 +4381,26 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		if (sc->localSize[0] * logicalStoragePerThread > sc->fftDim)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		if (%s * %d < %d) {\n", sc->gl_LocalInvocationID_x, logicalStoragePerThread, sc->fftDim);
-		for (uint32_t k = 0; k < sc->registerBoost; k++) {
-			for (uint32_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
+		if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_x, logicalStoragePerThread, sc->fftDim);
+		for (uint64_t k = 0; k < sc->registerBoost; k++) {
+			for (uint64_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s = (%s+ %d) %% (%d);\n", sc->stageInvocationID, sc->gl_LocalInvocationID_x, (j + k * logicalRegistersPerThread / stageRadix) * logicalGroupSize, stageSize);
+		%s = (%s+ %" PRIu64 ") %% (%" PRIu64 ");\n", sc->stageInvocationID, sc->gl_LocalInvocationID_x, (j + k * logicalRegistersPerThread / stageRadix) * logicalGroupSize, stageSize);
 				if (sc->LUT)
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		LUTId = stageInvocationID + %d;\n", stageSizeSum);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		LUTId = stageInvocationID + %" PRIu64 ";\n", stageSizeSum);
 				else
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "		angle = stageInvocationID * %.17f%s;\n", stageAngle, LFending);
 				if ((sc->registerBoost == 1) && ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->localSize[1] > 1) && (!(sc->performR2C && (stageAngle > 0)))) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)))) {
-					for (uint32_t i = 0; i < stageRadix; i++) {
-						uint32_t id = j + i * logicalRegistersPerThread / stageRadix;
+					for (uint64_t i = 0; i < stageRadix; i++) {
+						uint64_t id = j + i * logicalRegistersPerThread / stageRadix;
 						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s = %s + %d;\n", sc->sdataID, sc->gl_LocalInvocationID_x, j * logicalGroupSize + i * sc->fftDim / stageRadix);
+		%s = %s + %" PRIu64 ";\n", sc->sdataID, sc->gl_LocalInvocationID_x, j * logicalGroupSize + i * sc->fftDim / stageRadix);
 
 						if (sc->resolveBankConflictFirstStages == 1) {
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	%s = (%s / %d) * %d + %s %% %d;", sc->sdataID, sc->sdataID, sc->numSharedBanks / 2, sc->numSharedBanks / 2 + 1, sc->sdataID, sc->numSharedBanks / 2);
+	%s = (%s / %" PRIu64 ") * %" PRIu64 " + %s %% %" PRIu64 ";", sc->sdataID, sc->sdataID, sc->numSharedBanks / 2, sc->numSharedBanks / 2 + 1, sc->sdataID, sc->numSharedBanks / 2);
 						}
 
 						if (sc->localSize[1] > 1)
@@ -4400,39 +4412,39 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				char** regID = (char**)malloc(sizeof(char*) * stageRadix);
-				for (uint32_t i = 0; i < stageRadix; i++) {
+				for (uint64_t i = 0; i < stageRadix; i++) {
 					regID[i] = (char*)malloc(sizeof(char) * 50);
-					uint32_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
+					uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
 					id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 					sprintf(regID[i], "%s", sc->regIDs[id]);
 					/*if(j + i * logicalStoragePerThread / stageRadix < logicalRegistersPerThread)
 						sprintf(regID[i], "%s", sc->regIDs[j + i * logicalStoragePerThread / stageRadix]);
 					else
-						sprintf(regID[i], "%d[%d]", (j + i * logicalStoragePerThread / stageRadix)/ logicalRegistersPerThread, (j + i * logicalStoragePerThread / stageRadix) % logicalRegistersPerThread);*/
+						sprintf(regID[i], "%" PRIu64 "[%" PRIu64 "]", (j + i * logicalStoragePerThread / stageRadix)/ logicalRegistersPerThread, (j + i * logicalStoragePerThread / stageRadix) % logicalRegistersPerThread);*/
 
 				}
 				inlineRadixKernelVkFFT(sc, floatType, uintType, stageRadix, stageSize, stageAngle, regID);
-				for (uint32_t i = 0; i < stageRadix; i++) {
-					uint32_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
+				for (uint64_t i = 0; i < stageRadix; i++) {
+					uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
 					id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 					sprintf(sc->regIDs[id], "%s", regID[i]);
 				}
-				for (uint32_t i = 0; i < stageRadix; i++)
+				for (uint64_t i = 0; i < stageRadix; i++)
 					free(regID[i]);
 				free(regID);
 			}
 			if ((stageSize == 1) && (sc->cacheShuffle)) {
-				for (uint32_t i = 0; i < logicalRegistersPerThread; i++) {
-					uint32_t id = i + k * logicalRegistersPerThread;
+				for (uint64_t i = 0; i < logicalRegistersPerThread; i++) {
+					uint64_t id = i + k * logicalRegistersPerThread;
 					id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		shuffle[%d]=%s;\n", i, sc->regIDs[id]);
+		shuffle[%" PRIu64 "]=%s;\n", i, sc->regIDs[id]);
 				}
-				for (uint32_t i = 0; i < logicalRegistersPerThread; i++) {
-					uint32_t id = i + k * logicalRegistersPerThread;
+				for (uint64_t i = 0; i < logicalRegistersPerThread; i++) {
+					uint64_t id = i + k * logicalRegistersPerThread;
 					id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s=shuffle[(%d+tshuffle)%%(%d)];\n", sc->regIDs[id], i, logicalRegistersPerThread);
+		%s=shuffle[(%" PRIu64 "+tshuffle)%%(%" PRIu64 ")];\n", sc->regIDs[id], i, logicalRegistersPerThread);
 				}
 			}
 		}
@@ -4442,7 +4454,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		appendZeropadEnd(sc);
 
 	}
-	static inline void appendRadixStageStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix) {
+	static inline void appendRadixStageStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix) {
 		char vecType[30];
 		char LFending[4] = "";
 		if (!strcmp(floatType, "float")) sprintf(LFending, "f");
@@ -4471,52 +4483,52 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else
 				sprintf(convolutionInverse, ", 1");
 		}
-		uint32_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		uint32_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
-		uint32_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
+		uint64_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		uint64_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		uint64_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
 		if (((sc->axis_id == 0) && (sc->axis_upload_id == 0) && (!(sc->performR2C && (stageAngle > 0)))) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)))
 			appendBarrierVkFFT(sc, 1);
 		appendZeropadStart(sc);
 		VkAppendLine(sc, sc->disableThreadsStart);
 		if (sc->localSize[1] * logicalStoragePerThread > sc->fftDim)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		if (%s * %d < %d) {\n", sc->gl_LocalInvocationID_y, logicalStoragePerThread, sc->fftDim);
-		for (uint32_t k = 0; k < sc->registerBoost; k++) {
-			for (uint32_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
+		if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_y, logicalStoragePerThread, sc->fftDim);
+		for (uint64_t k = 0; k < sc->registerBoost; k++) {
+			for (uint64_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s = (%s+ %d) %% (%d);\n", sc->stageInvocationID, sc->gl_LocalInvocationID_y, (j + k * logicalRegistersPerThread / stageRadix) * logicalGroupSize, stageSize);
+		%s = (%s+ %" PRIu64 ") %% (%" PRIu64 ");\n", sc->stageInvocationID, sc->gl_LocalInvocationID_y, (j + k * logicalRegistersPerThread / stageRadix) * logicalGroupSize, stageSize);
 				if (sc->LUT)
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		LUTId = stageInvocationID + %d;\n", stageSizeSum);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		LUTId = stageInvocationID + %" PRIu64 ";\n", stageSizeSum);
 				else
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "		angle = stageInvocationID * %.17f%s;\n", stageAngle, LFending);
 				if ((sc->registerBoost == 1) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0) && (!(sc->performR2C && (stageAngle > 0)))) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)))) {
-					for (uint32_t i = 0; i < stageRadix; i++) {
-						uint32_t id = j + i * logicalRegistersPerThread / stageRadix;
+					for (uint64_t i = 0; i < stageRadix; i++) {
+						uint64_t id = j + i * logicalRegistersPerThread / stageRadix;
 						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s = sdata[%s*(%s+%d)+%s];\n", sc->regIDs[id], sc->sharedStride, sc->gl_LocalInvocationID_y, j * logicalGroupSize + i * sc->fftDim / stageRadix, sc->gl_LocalInvocationID_x);
+		%s = sdata[%s*(%s+%" PRIu64 ")+%s];\n", sc->regIDs[id], sc->sharedStride, sc->gl_LocalInvocationID_y, j * logicalGroupSize + i * sc->fftDim / stageRadix, sc->gl_LocalInvocationID_x);
 					}
 				}
 
 				char** regID = (char**)malloc(sizeof(char*) * stageRadix);
-				for (uint32_t i = 0; i < stageRadix; i++) {
+				for (uint64_t i = 0; i < stageRadix; i++) {
 					regID[i] = (char*)malloc(sizeof(char) * 50);
-					uint32_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
+					uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
 					id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 					sprintf(regID[i], "%s", sc->regIDs[id]);
 					/*if (j + i * logicalStoragePerThread / stageRadix < logicalRegistersPerThread)
-						sprintf(regID[i], "_%d", j + i * logicalStoragePerThread / stageRadix);
+						sprintf(regID[i], "_%" PRIu64 "", j + i * logicalStoragePerThread / stageRadix);
 					else
-						sprintf(regID[i], "%d[%d]", (j + i * logicalStoragePerThread / stageRadix) / logicalRegistersPerThread, (j + i * logicalStoragePerThread / stageRadix) % logicalRegistersPerThread);*/
+						sprintf(regID[i], "%" PRIu64 "[%" PRIu64 "]", (j + i * logicalStoragePerThread / stageRadix) / logicalRegistersPerThread, (j + i * logicalStoragePerThread / stageRadix) % logicalRegistersPerThread);*/
 
 				}
 				inlineRadixKernelVkFFT(sc, floatType, uintType, stageRadix, stageSize, stageAngle, regID);
-				for (uint32_t i = 0; i < stageRadix; i++) {
-					uint32_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
+				for (uint64_t i = 0; i < stageRadix; i++) {
+					uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
 					id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 					sprintf(sc->regIDs[id], "%s", regID[i]);
 				}
-				for (uint32_t i = 0; i < stageRadix; i++)
+				for (uint64_t i = 0; i < stageRadix; i++)
 					free(regID[i]);
 				free(regID);
 			}
@@ -4526,9 +4538,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		VkAppendLine(sc, sc->disableThreadsEnd);
 		appendZeropadEnd(sc);
 		if (stageSize == 1)
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %d;\n", sc->sharedStride, sc->localSize[0]);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %" PRIu64 ";\n", sc->sharedStride, sc->localSize[0]);
 	}
-	static inline void appendRadixStage(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix, uint32_t shuffleType) {
+	static inline void appendRadixStage(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t shuffleType) {
 		switch (shuffleType) {
 		case 0: case 5: case 6: {
 			appendRadixStageNonStrided(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, stageRadix);
@@ -4543,21 +4555,21 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 	}
 
-	static inline void appendRegisterBoostShuffle(VkFFTSpecializationConstantsLayout* sc, const char* floatType, uint32_t stageSize, uint32_t stageRadixPrev, uint32_t stageRadix, uint32_t stageAngle) {
+	static inline void appendRegisterBoostShuffle(VkFFTSpecializationConstantsLayout* sc, const char* floatType, uint64_t stageSize, uint64_t stageRadixPrev, uint64_t stageRadix, uint64_t stageAngle) {
 
 		if (((sc->inverse) && (sc->normalize)) || ((sc->convolutionStep) && (stageAngle > 0))) {
 			char stageNormalization[10] = "";
-			sprintf(stageNormalization, "%d", stageRadixPrev * stageRadix);
-			uint32_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
-			for (uint32_t k = 0; k < sc->registerBoost; ++k) {
-				for (uint32_t i = 0; i < logicalRegistersPerThread; i++) {
+			sprintf(stageNormalization, "%" PRIu64 "", stageRadixPrev * stageRadix);
+			uint64_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+			for (uint64_t k = 0; k < sc->registerBoost; ++k) {
+				for (uint64_t i = 0; i < logicalRegistersPerThread; i++) {
 					VkDivComplexNumber(sc, sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], stageNormalization);
 				}
 			}
 		}
 	}
 
-	static inline void appendRadixShuffleNonStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix, uint32_t stageRadixNext) {
+	static inline void appendRadixShuffleNonStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageRadixNext) {
 		char vecType[30];
 #if(VKFFT_BACKEND==0)
 		if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
@@ -4574,16 +4586,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 		char stageNormalization[10] = "";
 		if (((sc->inverse) && (sc->normalize)) || ((sc->convolutionStep) && (stageAngle > 0)))
-			sprintf(stageNormalization, "%d", stageRadix);
+			sprintf(stageNormalization, "%" PRIu64 "", stageRadix);
 		char tempNum[50] = "";
 
-		uint32_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		uint32_t logicalStoragePerThreadNext = sc->registers_per_thread_per_radix[stageRadixNext] * sc->registerBoost;// (sc->registers_per_thread % stageRadixNext == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		uint32_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
-		uint32_t logicalRegistersPerThreadNext = sc->registers_per_thread_per_radix[stageRadixNext];// (sc->registers_per_thread % stageRadixNext == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		uint64_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		uint64_t logicalStoragePerThreadNext = sc->registers_per_thread_per_radix[stageRadixNext] * sc->registerBoost;// (sc->registers_per_thread % stageRadixNext == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		uint64_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		uint64_t logicalRegistersPerThreadNext = sc->registers_per_thread_per_radix[stageRadixNext];// (sc->registers_per_thread % stageRadixNext == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 
-		uint32_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
-		uint32_t logicalGroupSizeNext = sc->fftDim / logicalStoragePerThreadNext;
+		uint64_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
+		uint64_t logicalGroupSizeNext = sc->fftDim / logicalStoragePerThreadNext;
 		if ((sc->registerBoost == 1) && ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->reorderFourStep) && (sc->fftDim < sc->fft_dim_full) && (sc->localSize[1] > 1)) || (sc->localSize[1] > 1) || ((sc->performR2C) && (!sc->inverse) && (sc->axis_id == 0)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0))))
 			appendBarrierVkFFT(sc, 1);
 		if ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->reorderFourStep) && (sc->fftDim < sc->fft_dim_full) && (sc->localSize[1] > 1)) || (sc->localSize[1] > 1) || ((sc->performR2C) && (!sc->inverse) && (sc->axis_id == 0)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)) || (sc->registerBoost > 1)) {
@@ -4591,49 +4603,49 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (!((sc->registerBoost > 1) && (stageSize * stageRadix == sc->fftDim / sc->stageRadix[sc->numStages - 1]) && (sc->stageRadix[sc->numStages - 1] == sc->registerBoost))) {
 				char** tempID;
 				tempID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
-				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					tempID[i] = (char*)malloc(sizeof(char) * 50);
 				}
 				appendZeropadStart(sc);
 				VkAppendLine(sc, sc->disableThreadsStart);
 				if (sc->localSize[0] * logicalStoragePerThread > sc->fftDim)
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	if (%s * %d < %d) {\n", sc->gl_GlobalInvocationID_x, logicalStoragePerThread, sc->fftDim);
-				for (uint32_t k = 0; k < sc->registerBoost; ++k) {
-					uint32_t t = 0;
+	if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, logicalStoragePerThread, sc->fftDim);
+				for (uint64_t k = 0; k < sc->registerBoost; ++k) {
+					uint64_t t = 0;
 					if (k > 0) {
 						appendBarrierVkFFT(sc, 2);
 						appendZeropadStart(sc);
 						VkAppendLine(sc, sc->disableThreadsStart);
 						if (sc->localSize[0] * logicalStoragePerThread > sc->fftDim)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	if (%s * %d < %d) {\n", sc->gl_GlobalInvocationID_x, logicalStoragePerThread, sc->fftDim);
+	if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, logicalStoragePerThread, sc->fftDim);
 					}
-					for (uint32_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
-						sprintf(tempNum, "%d", j * logicalGroupSize);
+					for (uint64_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
+						sprintf(tempNum, "%" PRIu64 "", j * logicalGroupSize);
 						VkAddReal(sc, sc->stageInvocationID, sc->gl_LocalInvocationID_x, tempNum);
 						VkMovReal(sc, sc->blockInvocationID, sc->stageInvocationID);
-						sprintf(tempNum, "%d", stageSize);
+						sprintf(tempNum, "%" PRIu64 "", stageSize);
 						VkModReal(sc, sc->stageInvocationID, sc->stageInvocationID, tempNum);
 						VkSubReal(sc, sc->blockInvocationID, sc->blockInvocationID, sc->stageInvocationID);
-						sprintf(tempNum, "%d", stageRadix);
+						sprintf(tempNum, "%" PRIu64 "", stageRadix);
 						VkMulReal(sc, sc->inoutID, sc->blockInvocationID, tempNum);
 						VkAddReal(sc, sc->inoutID, sc->inoutID, sc->stageInvocationID);
 						//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		stageInvocationID = (gl_LocalInvocationID.x + %d) %% (%d);\n\
-		blockInvocationID = (gl_LocalInvocationID.x + %d) - stageInvocationID;\n\
-		inoutID = stageInvocationID + blockInvocationID * %d;\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);
+		stageInvocationID = (gl_LocalInvocationID.x + %" PRIu64 ") %% (%" PRIu64 ");\n\
+		blockInvocationID = (gl_LocalInvocationID.x + %" PRIu64 ") - stageInvocationID;\n\
+		inoutID = stageInvocationID + blockInvocationID * %" PRIu64 ";\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);
 						if ((stageSize == 1) && (sc->cacheShuffle)) {
-							for (uint32_t i = 0; i < stageRadix; i++) {
-								uint32_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
+							for (uint64_t i = 0; i < stageRadix; i++) {
+								uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
 								id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 								sprintf(tempID[t + k * sc->registers_per_thread], "%s", sc->regIDs[id]);
 								t++;
-								sprintf(tempNum, "%d", i);
+								sprintf(tempNum, "%" PRIu64 "", i);
 								VkAddReal(sc, sc->sdataID, tempNum, sc->tshuffle);
-								sprintf(tempNum, "%d", logicalRegistersPerThread);
+								sprintf(tempNum, "%" PRIu64 "", logicalRegistersPerThread);
 								VkModReal(sc, sc->sdataID, sc->sdataID, tempNum);
-								sprintf(tempNum, "%d", stageSize);
+								sprintf(tempNum, "%" PRIu64 "", stageSize);
 								VkMulReal(sc, sc->sdataID, sc->sdataID, tempNum);
 								if (sc->localSize[1] > 1) {
 									VkMulReal(sc, sc->combinedID, sc->gl_LocalInvocationID_y, sc->sharedStride);
@@ -4641,53 +4653,53 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								}
 								VkAddReal(sc, sc->sdataID, sc->sdataID, sc->inoutID);
 
-								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + inoutID + ((%d+tshuffle) %% (%d))*%d", i, logicalRegistersPerThread, stageSize);
+								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + inoutID + ((%" PRIu64 "+tshuffle) %% (%" PRIu64 "))*%" PRIu64 "", i, logicalRegistersPerThread, stageSize);
 								if (strcmp(stageNormalization, ""))
 									VkDivComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], stageNormalization);
 								VkSharedStore(sc, sc->sdataID, sc->regIDs[id]);
 								//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	sdata[sharedStride * gl_LocalInvocationID.y + inoutID + ((%d+tshuffle) %% (%d))*%d] = temp%s%s;\n", i, logicalRegistersPerThread, stageSize, sc->regIDs[id], stageNormalization);
+	sdata[sharedStride * gl_LocalInvocationID.y + inoutID + ((%" PRIu64 "+tshuffle) %% (%" PRIu64 "))*%" PRIu64 "] = temp%s%s;\n", i, logicalRegistersPerThread, stageSize, sc->regIDs[id], stageNormalization);
 							}
 						}
 						else {
-							for (uint32_t i = 0; i < stageRadix; i++) {
-								uint32_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
+							for (uint64_t i = 0; i < stageRadix; i++) {
+								uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
 								id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 								sprintf(tempID[t + k * sc->registers_per_thread], "%s", sc->regIDs[id]);
 								t++;
-								sprintf(tempNum, "%d", i * stageSize);
+								sprintf(tempNum, "%" PRIu64 "", i * stageSize);
 								VkAddReal(sc, sc->sdataID, sc->inoutID, tempNum);
 								if ((stageSize <= sc->numSharedBanks / 2) && (sc->fftDim > sc->numSharedBanks / 2) && (sc->sharedStrideBankConflictFirstStages != sc->fftDim / sc->registerBoost) && ((sc->fftDim & (sc->fftDim - 1)) == 0) && (stageSize * stageRadix != sc->fftDim)) {
 									if (sc->resolveBankConflictFirstStages == 0) {
 										sc->resolveBankConflictFirstStages = 1;
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	%s = %d;", sc->sharedStride, sc->sharedStrideBankConflictFirstStages);
+	%s = %" PRIu64 ";", sc->sharedStride, sc->sharedStrideBankConflictFirstStages);
 									}
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	%s = (%s / %d) * %d + %s %% %d;", sc->sdataID, sc->sdataID, sc->numSharedBanks / 2, sc->numSharedBanks / 2 + 1, sc->sdataID, sc->numSharedBanks / 2);
+	%s = (%s / %" PRIu64 ") * %" PRIu64 " + %s %% %" PRIu64 ";", sc->sdataID, sc->sdataID, sc->numSharedBanks / 2, sc->numSharedBanks / 2 + 1, sc->sdataID, sc->numSharedBanks / 2);
 
 								}
 								else {
 									if (sc->resolveBankConflictFirstStages == 1) {
 										sc->resolveBankConflictFirstStages = 0;
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	%s = %d;", sc->sharedStride, sc->sharedStrideReadWriteConflict);
+	%s = %" PRIu64 ";", sc->sharedStride, sc->sharedStrideReadWriteConflict);
 									}
 								}
 								if (sc->localSize[1] > 1) {
 									VkMulReal(sc, sc->combinedID, sc->gl_LocalInvocationID_y, sc->sharedStride);
 									VkAddReal(sc, sc->sdataID, sc->sdataID, sc->combinedID);
 								}
-								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + inoutID + %d", i * stageSize);
+								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "", i * stageSize);
 								if (strcmp(stageNormalization, ""))
 									VkDivComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], stageNormalization);
 								VkSharedStore(sc, sc->sdataID, sc->regIDs[id]);
 								//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %d] = temp%s%s;\n", i * stageSize, sc->regIDs[id], stageNormalization);
+	sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;\n", i * stageSize, sc->regIDs[id], stageNormalization);
 							}
 						}
 					}
-					for (uint32_t j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
+					for (uint64_t j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
 						sprintf(tempID[t + k * sc->registers_per_thread], "%s", sc->regIDs[t + k * sc->registers_per_thread]);
 						t++;
 					}
@@ -4702,22 +4714,22 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						VkAppendLine(sc, sc->disableThreadsStart);
 						if (sc->localSize[0] * logicalStoragePerThreadNext > sc->fftDim)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	if (%s * %d < %d) {\n", sc->gl_GlobalInvocationID_x, logicalStoragePerThreadNext, sc->fftDim);
-						for (uint32_t j = 0; j < logicalRegistersPerThreadNext / stageRadixNext; j++) {
-							for (uint32_t i = 0; i < stageRadixNext; i++) {
-								uint32_t id = j + k * logicalRegistersPerThreadNext / stageRadixNext + i * logicalStoragePerThreadNext / stageRadixNext;
+	if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, logicalStoragePerThreadNext, sc->fftDim);
+						for (uint64_t j = 0; j < logicalRegistersPerThreadNext / stageRadixNext; j++) {
+							for (uint64_t i = 0; i < stageRadixNext; i++) {
+								uint64_t id = j + k * logicalRegistersPerThreadNext / stageRadixNext + i * logicalStoragePerThreadNext / stageRadixNext;
 								id = (id / logicalRegistersPerThreadNext) * sc->registers_per_thread + id % logicalRegistersPerThreadNext;
 								//resID[t + k * sc->registers_per_thread] = sc->regIDs[id];
-								sprintf(tempNum, "%d", t * logicalGroupSizeNext);
+								sprintf(tempNum, "%" PRIu64 "", t * logicalGroupSizeNext);
 								VkAddReal(sc, sc->sdataID, sc->gl_LocalInvocationID_x, tempNum);
 								if (sc->localSize[1] > 1) {
 									VkMulReal(sc, sc->combinedID, sc->gl_LocalInvocationID_y, sc->sharedStride);
 									VkAddReal(sc, sc->sdataID, sc->sdataID, sc->combinedID);
 								}
-								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %d", t * logicalGroupSizeNext);
+								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %" PRIu64 "", t * logicalGroupSizeNext);
 								VkSharedLoad(sc, tempID[t + k * sc->registers_per_thread], sc->sdataID);
 								//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		temp%s = sdata[sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %d];\n", tempID[t + k * sc->registers_per_thread], t * logicalGroupSizeNext);
+		temp%s = sdata[sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %" PRIu64 "];\n", tempID[t + k * sc->registers_per_thread], t * logicalGroupSizeNext);
 								t++;
 							}
 
@@ -4734,13 +4746,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						appendZeropadEnd(sc);
 					}
 				}
-				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					//printf("0 - %s\n", resID[i]);
 					sprintf(sc->regIDs[i], "%s", tempID[i]);
 					//sprintf(resID[i], "%s", tempID[i]);
 					//printf("1 - %s\n", resID[i]);
 				}
-				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++)
+				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++)
 					free(tempID[i]);
 				free(tempID);
 			}
@@ -4748,25 +4760,25 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				char** tempID;
 				tempID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
 				//resID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
-				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					tempID[i] = (char*)malloc(sizeof(char) * 50);
 				}
-				for (uint32_t k = 0; k < sc->registerBoost; ++k) {
-					for (uint32_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
-						for (uint32_t i = 0; i < stageRadix; i++) {
-							uint32_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
+				for (uint64_t k = 0; k < sc->registerBoost; ++k) {
+					for (uint64_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
+						for (uint64_t i = 0; i < stageRadix; i++) {
+							uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
 							id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 							sprintf(tempID[j + i * logicalRegistersPerThread / stageRadix + k * sc->registers_per_thread], "%s", sc->regIDs[id]);
 						}
 					}
-					for (uint32_t j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
+					for (uint64_t j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
 						sprintf(tempID[j + k * sc->registers_per_thread], "%s", sc->regIDs[j + k * sc->registers_per_thread]);
 					}
 				}
-				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					sprintf(sc->regIDs[i], "%s", tempID[i]);
 				}
-				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++)
+				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++)
 					free(tempID[i]);
 				free(tempID);
 			}
@@ -4776,9 +4788,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			VkAppendLine(sc, sc->disableThreadsStart);
 			if (sc->localSize[0] * logicalStoragePerThread > sc->fftDim)
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	if (%s * %d < %d) {\n", sc->gl_GlobalInvocationID_x, logicalStoragePerThread, sc->fftDim);
+	if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, logicalStoragePerThread, sc->fftDim);
 			if (((sc->inverse) && (sc->normalize)) || ((sc->convolutionStep) && (stageAngle > 0))) {
-				for (uint32_t i = 0; i < logicalStoragePerThread; i++) {
+				for (uint64_t i = 0; i < logicalStoragePerThread; i++) {
 					VkDivComplexNumber(sc, sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], stageNormalization);
 					//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 		temp%s = temp%s%s;\n", sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], stageNormalization);
@@ -4791,7 +4803,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 
 	}
-	static inline void appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix, uint32_t stageRadixNext) {
+	static inline void appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageRadixNext) {
 		char vecType[30];
 #if(VKFFT_BACKEND==0)
 		if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
@@ -4810,74 +4822,74 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		char stageNormalization[10] = "";
 		char tempNum[50] = "";
 
-		uint32_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		uint32_t logicalStoragePerThreadNext = sc->registers_per_thread_per_radix[stageRadixNext] * sc->registerBoost;//(sc->registers_per_thread % stageRadixNext == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		uint32_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];//(sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
-		uint32_t logicalRegistersPerThreadNext = sc->registers_per_thread_per_radix[stageRadixNext];//(sc->registers_per_thread % stageRadixNext == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		uint64_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		uint64_t logicalStoragePerThreadNext = sc->registers_per_thread_per_radix[stageRadixNext] * sc->registerBoost;//(sc->registers_per_thread % stageRadixNext == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		uint64_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];//(sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		uint64_t logicalRegistersPerThreadNext = sc->registers_per_thread_per_radix[stageRadixNext];//(sc->registers_per_thread % stageRadixNext == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 
-		uint32_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
-		uint32_t logicalGroupSizeNext = sc->fftDim / logicalStoragePerThreadNext;
+		uint64_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
+		uint64_t logicalGroupSizeNext = sc->fftDim / logicalStoragePerThreadNext;
 		if (((sc->inverse) && (sc->normalize)) || ((sc->convolutionStep) && (stageAngle > 0)))
-			sprintf(stageNormalization, "%d", stageRadix);
+			sprintf(stageNormalization, "%" PRIu64 "", stageRadix);
 		if (((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)))
 			appendBarrierVkFFT(sc, 2);
 		if (stageSize == sc->fftDim / stageRadix)
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %d;\n", sc->sharedStride, sc->sharedStrideReadWriteConflict);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s = %" PRIu64 ";\n", sc->sharedStride, sc->sharedStrideReadWriteConflict);
 		if (((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0))) {
 			//appendBarrierVkFFT(sc, 2);
 			if (!((sc->registerBoost > 1) && (stageSize * stageRadix == sc->fftDim / sc->stageRadix[sc->numStages - 1]) && (sc->stageRadix[sc->numStages - 1] == sc->registerBoost))) {
 				char** tempID;
 				tempID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
-				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					tempID[i] = (char*)malloc(sizeof(char) * 50);
 				}
 				appendZeropadStart(sc);
 				VkAppendLine(sc, sc->disableThreadsStart);
 				if (sc->localSize[1] * logicalStoragePerThread > sc->fftDim)
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	if (%s * %d < %d) {\n", sc->gl_LocalInvocationID_y, logicalStoragePerThread, sc->fftDim);
-				for (uint32_t k = 0; k < sc->registerBoost; ++k) {
-					uint32_t t = 0;
+	if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_y, logicalStoragePerThread, sc->fftDim);
+				for (uint64_t k = 0; k < sc->registerBoost; ++k) {
+					uint64_t t = 0;
 					if (k > 0) {
 						appendBarrierVkFFT(sc, 2);
 						appendZeropadStart(sc);
 						VkAppendLine(sc, sc->disableThreadsStart);
 						if (sc->localSize[1] * logicalStoragePerThread > sc->fftDim)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	if (%s * %d < %d) {\n", sc->gl_LocalInvocationID_y, logicalStoragePerThread, sc->fftDim);
+	if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_y, logicalStoragePerThread, sc->fftDim);
 					}
-					for (uint32_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
-						sprintf(tempNum, "%d", j * logicalGroupSize);
+					for (uint64_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
+						sprintf(tempNum, "%" PRIu64 "", j * logicalGroupSize);
 						VkAddReal(sc, sc->stageInvocationID, sc->gl_LocalInvocationID_y, tempNum);
 						VkMovReal(sc, sc->blockInvocationID, sc->stageInvocationID);
-						sprintf(tempNum, "%d", stageSize);
+						sprintf(tempNum, "%" PRIu64 "", stageSize);
 						VkModReal(sc, sc->stageInvocationID, sc->stageInvocationID, tempNum);
 						VkSubReal(sc, sc->blockInvocationID, sc->blockInvocationID, sc->stageInvocationID);
-						sprintf(tempNum, "%d", stageRadix);
+						sprintf(tempNum, "%" PRIu64 "", stageRadix);
 						VkMulReal(sc, sc->inoutID, sc->blockInvocationID, tempNum);
 						VkAddReal(sc, sc->inoutID, sc->inoutID, sc->stageInvocationID);
 						//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		stageInvocationID = (gl_LocalInvocationID.y + %d) %% (%d);\n\
-		blockInvocationID = (gl_LocalInvocationID.y + %d) - stageInvocationID;\n\
-		inoutID = stageInvocationID + blockInvocationID * %d;\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);
-						for (uint32_t i = 0; i < stageRadix; i++) {
-							uint32_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
+		stageInvocationID = (gl_LocalInvocationID.y + %" PRIu64 ") %% (%" PRIu64 ");\n\
+		blockInvocationID = (gl_LocalInvocationID.y + %" PRIu64 ") - stageInvocationID;\n\
+		inoutID = stageInvocationID + blockInvocationID * %" PRIu64 ";\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);
+						for (uint64_t i = 0; i < stageRadix; i++) {
+							uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
 							id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 							sprintf(tempID[t + k * sc->registers_per_thread], "%s", sc->regIDs[id]);
 							t++;
-							sprintf(tempNum, "%d", i * stageSize);
+							sprintf(tempNum, "%" PRIu64 "", i * stageSize);
 							VkAddReal(sc, sc->sdataID, sc->inoutID, tempNum);
 							VkMulReal(sc, sc->sdataID, sc->sharedStride, sc->sdataID);
 							VkAddReal(sc, sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
-							//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + inoutID + %d", i * stageSize);
+							//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "", i * stageSize);
 							if (strcmp(stageNormalization, ""))
 								VkDivComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], stageNormalization);
 							VkSharedStore(sc, sc->sdataID, sc->regIDs[id]);
 							//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		sdata[gl_WorkGroupSize.x*(inoutID+%d)+gl_LocalInvocationID.x] = temp%s%s;\n", i * stageSize, sc->regIDs[id], stageNormalization);
+		sdata[gl_WorkGroupSize.x*(inoutID+%" PRIu64 ")+gl_LocalInvocationID.x] = temp%s%s;\n", i * stageSize, sc->regIDs[id], stageNormalization);
 						}
 					}
-					for (uint32_t j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
+					for (uint64_t j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
 						sprintf(tempID[t + k * sc->registers_per_thread], "%s", sc->regIDs[t + k * sc->registers_per_thread]);
 						t++;
 					}
@@ -4892,19 +4904,19 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						VkAppendLine(sc, sc->disableThreadsStart);
 						if (sc->localSize[1] * logicalStoragePerThreadNext > sc->fftDim)
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	if (%s * %d < %d) {\n", sc->gl_LocalInvocationID_y, logicalStoragePerThreadNext, sc->fftDim);
-						for (uint32_t j = 0; j < logicalRegistersPerThreadNext / stageRadixNext; j++) {
-							for (uint32_t i = 0; i < stageRadixNext; i++) {
-								uint32_t id = j + k * logicalRegistersPerThreadNext / stageRadixNext + i * logicalRegistersPerThreadNext / stageRadixNext;
+	if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_y, logicalStoragePerThreadNext, sc->fftDim);
+						for (uint64_t j = 0; j < logicalRegistersPerThreadNext / stageRadixNext; j++) {
+							for (uint64_t i = 0; i < stageRadixNext; i++) {
+								uint64_t id = j + k * logicalRegistersPerThreadNext / stageRadixNext + i * logicalRegistersPerThreadNext / stageRadixNext;
 								id = (id / logicalRegistersPerThreadNext) * sc->registers_per_thread + id % logicalRegistersPerThreadNext;
-								sprintf(tempNum, "%d", t * logicalGroupSizeNext);
+								sprintf(tempNum, "%" PRIu64 "", t * logicalGroupSizeNext);
 								VkAddReal(sc, sc->sdataID, sc->gl_LocalInvocationID_y, tempNum);
 								VkMulReal(sc, sc->sdataID, sc->sharedStride, sc->sdataID);
 								VkAddReal(sc, sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
-								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %d", t * logicalGroupSizeNext);
+								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %" PRIu64 "", t * logicalGroupSizeNext);
 								VkSharedLoad(sc, tempID[t + k * sc->registers_per_thread], sc->sdataID);
 								//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		temp%s = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%d)+gl_LocalInvocationID.x];\n", tempID[t + k * sc->registers_per_thread], t * logicalGroupSizeNext);
+		temp%s = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%" PRIu64 ")+gl_LocalInvocationID.x];\n", tempID[t + k * sc->registers_per_thread], t * logicalGroupSizeNext);
 								t++;
 							}
 						}
@@ -4920,10 +4932,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						appendZeropadEnd(sc);
 					}
 				}
-				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					sprintf(sc->regIDs[i], "%s", tempID[i]);
 				}
-				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++)
+				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++)
 					free(tempID[i]);
 				free(tempID);
 			}
@@ -4931,25 +4943,25 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				char** tempID;
 				tempID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
 				//resID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
-				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					tempID[i] = (char*)malloc(sizeof(char) * 50);
 				}
-				for (uint32_t k = 0; k < sc->registerBoost; ++k) {
-					for (uint32_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
-						for (uint32_t i = 0; i < stageRadix; i++) {
-							uint32_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
+				for (uint64_t k = 0; k < sc->registerBoost; ++k) {
+					for (uint64_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
+						for (uint64_t i = 0; i < stageRadix; i++) {
+							uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
 							id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 							sprintf(tempID[j + i * logicalRegistersPerThread / stageRadix + k * sc->registers_per_thread], "%s", sc->regIDs[id]);
 						}
 					}
-					for (uint32_t j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
+					for (uint64_t j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
 						sprintf(tempID[j + k * sc->registers_per_thread], "%s", sc->regIDs[j + k * sc->registers_per_thread]);
 					}
 				}
-				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					sprintf(sc->regIDs[i], "%s", tempID[i]);
 				}
-				for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++)
+				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++)
 					free(tempID[i]);
 				free(tempID);
 			}
@@ -4959,9 +4971,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			VkAppendLine(sc, sc->disableThreadsStart);
 			if (sc->localSize[1] * logicalStoragePerThread > sc->fftDim)
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	if (%s * %d < %d) {\n", sc->gl_LocalInvocationID_y, logicalStoragePerThread, sc->fftDim);
+	if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_y, logicalStoragePerThread, sc->fftDim);
 			if (((sc->inverse) && (sc->normalize)) || ((sc->convolutionStep) && (stageAngle > 0))) {
-				for (uint32_t i = 0; i < logicalRegistersPerThread; i++) {
+				for (uint64_t i = 0; i < logicalRegistersPerThread; i++) {
 					VkDivComplexNumber(sc, sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], stageNormalization);
 				}
 			}
@@ -4971,7 +4983,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			appendZeropadEnd(sc);
 		}
 	}
-	static inline void appendRadixShuffle(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint32_t stageSize, uint32_t stageSizeSum, double stageAngle, uint32_t stageRadix, uint32_t stageRadixNext, uint32_t shuffleType) {
+	static inline void appendRadixShuffle(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageRadixNext, uint64_t shuffleType) {
 		switch (shuffleType) {
 		case 0: case 5: case 6: {
 			appendRadixShuffleNonStrided(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, stageRadix, stageRadixNext);
@@ -4986,37 +4998,37 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 	}
 
-	static inline void appendBoostThreadDataReorder(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint32_t shuffleType, uint32_t start) {
+	static inline void appendBoostThreadDataReorder(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t shuffleType, uint64_t start) {
 		switch (shuffleType) {
 		case 0: case 5: case 6: {
-			uint32_t logicalStoragePerThread;
+			uint64_t logicalStoragePerThread;
 			if (start == 1) {
 				logicalStoragePerThread = sc->registers_per_thread_per_radix[sc->stageRadix[0]] * sc->registerBoost;// (sc->registers_per_thread % sc->stageRadix[0] == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
 			}
 			else {
 				logicalStoragePerThread = sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] * sc->registerBoost;// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
 			}
-			uint32_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
+			uint64_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
 			if ((sc->registerBoost > 1) && (logicalStoragePerThread != sc->min_registers_per_thread * sc->registerBoost)) {
-				for (uint32_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
 					if (k > 0)
 						appendBarrierVkFFT(sc, 2);
 					appendZeropadStart(sc);
 					VkAppendLine(sc, sc->disableThreadsStart);
 					if (start == 0) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	if (%s * %d < %d) {\n", sc->gl_GlobalInvocationID_x, logicalStoragePerThread, sc->fftDim);
-						for (uint32_t i = 0; i < logicalStoragePerThread / sc->registerBoost; i++) {
+	if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, logicalStoragePerThread, sc->fftDim);
+						for (uint64_t i = 0; i < logicalStoragePerThread / sc->registerBoost; i++) {
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	sdata[%s + %d] = %s;\n", sc->gl_LocalInvocationID_x, i * logicalGroupSize, sc->regIDs[i + k * sc->registers_per_thread]);
+	sdata[%s + %" PRIu64 "] = %s;\n", sc->gl_LocalInvocationID_x, i * logicalGroupSize, sc->regIDs[i + k * sc->registers_per_thread]);
 						}
 						VkAppendLine(sc, "	}\n");
 					}
 					else
 					{
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	sdata[%s + %d] = %s;\n", sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->regIDs[i + k * sc->registers_per_thread]);
+	sdata[%s + %" PRIu64 "] = %s;\n", sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->regIDs[i + k * sc->registers_per_thread]);
 						}
 					}
 					VkAppendLine(sc, sc->disableThreadsEnd);
@@ -5026,17 +5038,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					VkAppendLine(sc, sc->disableThreadsStart);
 					if (start == 1) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	if (%s * %d < %d) {\n", sc->gl_GlobalInvocationID_x, logicalStoragePerThread, sc->fftDim);
-						for (uint32_t i = 0; i < logicalStoragePerThread / sc->registerBoost; i++) {
+	if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, logicalStoragePerThread, sc->fftDim);
+						for (uint64_t i = 0; i < logicalStoragePerThread / sc->registerBoost; i++) {
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	%s = sdata[%s + %d];\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, i * logicalGroupSize);
+	%s = sdata[%s + %" PRIu64 "];\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, i * logicalGroupSize);
 						}
 						VkAppendLine(sc, "	}\n");
 					}
 					else {
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	%s = sdata[%s + %d];\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+	%s = sdata[%s + %" PRIu64 "];\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
 						}
 					}
 					VkAppendLine(sc, sc->disableThreadsEnd);
@@ -5047,34 +5059,34 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			break;
 		}
 		case 1: case 2: {
-			uint32_t logicalStoragePerThread;
+			uint64_t logicalStoragePerThread;
 			if (start == 1) {
 				logicalStoragePerThread = sc->registers_per_thread_per_radix[sc->stageRadix[0]] * sc->registerBoost;// (sc->registers_per_thread % sc->stageRadix[0] == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
 			}
 			else {
 				logicalStoragePerThread = sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] * sc->registerBoost;// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
 			}
-			uint32_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
+			uint64_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
 			if ((sc->registerBoost > 1) && (logicalStoragePerThread != sc->min_registers_per_thread * sc->registerBoost)) {
-				for (uint32_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
 					if (k > 0)
 						appendBarrierVkFFT(sc, 2);
 					appendZeropadStart(sc);
 					VkAppendLine(sc, sc->disableThreadsStart);
 					if (start == 0) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	if (%s * %d < %d) {\n", sc->gl_GlobalInvocationID_y, logicalStoragePerThread, sc->fftDim);
-						for (uint32_t i = 0; i < logicalStoragePerThread / sc->registerBoost; i++) {
+	if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_y, logicalStoragePerThread, sc->fftDim);
+						for (uint64_t i = 0; i < logicalStoragePerThread / sc->registerBoost; i++) {
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	sdata[%s + %s * (%s + %d)] = %s;\n", sc->gl_LocalInvocationID_x, sc->sharedStride, sc->gl_LocalInvocationID_y, i * logicalGroupSize, sc->regIDs[i + k * sc->registers_per_thread]);
+	sdata[%s + %s * (%s + %" PRIu64 ")] = %s;\n", sc->gl_LocalInvocationID_x, sc->sharedStride, sc->gl_LocalInvocationID_y, i * logicalGroupSize, sc->regIDs[i + k * sc->registers_per_thread]);
 						}
 						VkAppendLine(sc, "	}\n");
 					}
 					else
 					{
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	sdata[%s + %s * (%s + %d)] = %s;\n", sc->gl_LocalInvocationID_x, sc->sharedStride, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->regIDs[i + k * sc->registers_per_thread]);
+	sdata[%s + %s * (%s + %" PRIu64 ")] = %s;\n", sc->gl_LocalInvocationID_x, sc->sharedStride, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->regIDs[i + k * sc->registers_per_thread]);
 						}
 					}
 					VkAppendLine(sc, sc->disableThreadsEnd);
@@ -5084,17 +5096,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					VkAppendLine(sc, sc->disableThreadsStart);
 					if (start == 1) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	if (%s * %d < %d) {\n", sc->gl_GlobalInvocationID_y, logicalStoragePerThread, sc->fftDim);
-						for (uint32_t i = 0; i < logicalStoragePerThread / sc->registerBoost; i++) {
+	if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_y, logicalStoragePerThread, sc->fftDim);
+						for (uint64_t i = 0; i < logicalStoragePerThread / sc->registerBoost; i++) {
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	%s = sdata[%s + %s * (%s + %d)];\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->sharedStride, sc->gl_LocalInvocationID_y, i * logicalGroupSize);
+	%s = sdata[%s + %s * (%s + %" PRIu64 ")];\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->sharedStride, sc->gl_LocalInvocationID_y, i * logicalGroupSize);
 						}
 						VkAppendLine(sc, "	}\n");
 					}
 					else {
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	%s = sdata[%s + %s * (%s + %d)];\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->sharedStride, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
+	%s = sdata[%s + %s * (%s + %" PRIu64 ")];\n", sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x, sc->sharedStride, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
 						}
 					}
 					VkAppendLine(sc, sc->disableThreadsEnd);
@@ -5107,7 +5119,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 	}
 
-	static inline void appendCoordinateRegisterStore(VkFFTSpecializationConstantsLayout* sc, uint32_t readType) {
+	static inline void appendCoordinateRegisterStore(VkFFTSpecializationConstantsLayout* sc, uint64_t readType) {
 		switch (readType) {
 		case 0://single_c2c
 		{
@@ -5117,9 +5129,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc->matrixConvolution == 1) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 		%s = sdata[sharedStride * %s + %s];\n", sc->regIDs[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
-				for (uint32_t i = 1; i < sc->min_registers_per_thread; i++) {
+				for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s = sdata[sharedStride * %s + %s + %d * %s];\n", sc->regIDs[i], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x);
+		%s = sdata[sharedStride * %s + %s + %" PRIu64 " * %s];\n", sc->regIDs[i], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x);
 				}
 				//appendBarrierVkFFT(sc, 3);
 			}
@@ -5129,20 +5141,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	case 0:\n");
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 		%s = sdata[sharedStride * %s + %s];\n", sc->regIDs[0], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
-				for (uint32_t i = 1; i < sc->min_registers_per_thread; i++) {
+				for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s = sdata[sharedStride * %s + %s + %d * %s];\n", sc->regIDs[i], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x);
+		%s = sdata[sharedStride * %s + %s + %" PRIu64 " * %s];\n", sc->regIDs[i], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x);
 				}
 				//appendBarrierVkFFT(sc, 3);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "			break;\n");
-				for (uint32_t i = 1; i < sc->matrixConvolution; i++) {
+				for (uint64_t i = 1; i < sc->matrixConvolution; i++) {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	case %d:\n", i);
+	case %" PRIu64 ":\n", i);
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s_%d = sdata[sharedStride * %s + %s];\n", sc->regIDs[0], i, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
-					for (uint32_t j = 1; j < sc->min_registers_per_thread; j++) {
+		%s_%" PRIu64 " = sdata[sharedStride * %s + %s];\n", sc->regIDs[0], i, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
+					for (uint64_t j = 1; j < sc->min_registers_per_thread; j++) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s_%d = sdata[sharedStride * %s + %s + %d * %s];\n", sc->regIDs[j], i, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, j, sc->gl_WorkGroupSize_x);
+		%s_%" PRIu64 " = sdata[sharedStride * %s + %s + %" PRIu64 " * %s];\n", sc->regIDs[j], i, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, j, sc->gl_WorkGroupSize_x);
 					}
 					//appendBarrierVkFFT(sc, 3);
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "			break;\n");
@@ -5161,9 +5173,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc->matrixConvolution == 1) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 		%s = sdata[%s*(%s)+%s];\n", sc->regIDs[0], sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
-				for (uint32_t i = 1; i < sc->min_registers_per_thread; i++) {
+				for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s = sdata[%s*(%s+%d*%s)+%s];\n", sc->regIDs[i], sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x);
+		%s = sdata[%s*(%s+%" PRIu64 "*%s)+%s];\n", sc->regIDs[i], sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x);
 				}
 				//appendBarrierVkFFT(sc, 3);
 			}
@@ -5173,20 +5185,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	case 0:\n");
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 		%s = sdata[%s*(%s)+%s];\n", sc->regIDs[0], sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
-				for (uint32_t i = 1; i < sc->min_registers_per_thread; i++) {
+				for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s = sdata[%s*(%s+%d*%s)+%s];\n", sc->regIDs[i], sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x);
+		%s = sdata[%s*(%s+%" PRIu64 "*%s)+%s];\n", sc->regIDs[i], sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x);
 				}
 				//appendBarrierVkFFT(sc, 3);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "			break;\n");
-				for (uint32_t i = 1; i < sc->matrixConvolution; i++) {
+				for (uint64_t i = 1; i < sc->matrixConvolution; i++) {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	case %d:\n", i);
+	case %" PRIu64 ":\n", i);
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s_%d = sdata[%s*(%s)+%s];\n", sc->regIDs[0], i, sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
-					for (uint32_t j = 1; j < sc->min_registers_per_thread; j++) {
+		%s_%" PRIu64 " = sdata[%s*(%s)+%s];\n", sc->regIDs[0], i, sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x);
+					for (uint64_t j = 1; j < sc->min_registers_per_thread; j++) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		%s_%d = sdata[%s*(%s+%d*%s)+%s];\n", sc->regIDs[j], i, sc->sharedStride, sc->gl_LocalInvocationID_y, j, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x);
+		%s_%" PRIu64 " = sdata[%s*(%s+%" PRIu64 "*%s)+%s];\n", sc->regIDs[j], i, sc->sharedStride, sc->gl_LocalInvocationID_y, j, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x);
 					}
 					//appendBarrierVkFFT(sc, 3);
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "			break;\n");
@@ -5199,7 +5211,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		}
 	}
-	static inline void appendCoordinateRegisterPull(VkFFTSpecializationConstantsLayout* sc, uint32_t readType) {
+	static inline void appendCoordinateRegisterPull(VkFFTSpecializationConstantsLayout* sc, uint64_t readType) {
 		switch (readType) {
 		case 0://single_c2c
 		{
@@ -5209,9 +5221,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc->matrixConvolution == 1) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 			sdata[sharedStride * %s + %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
-				for (uint32_t i = 1; i < sc->min_registers_per_thread; i++) {
+				for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-			sdata[sharedStride * %s + %s + %d * %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x, sc->regIDs[i]);
+			sdata[sharedStride * %s + %s + %" PRIu64 " * %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x, sc->regIDs[i]);
 				}
 				//appendBarrierVkFFT(sc, 3);
 			}
@@ -5221,20 +5233,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		case 0:\n");
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 			sdata[sharedStride * %s + %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
-				for (uint32_t i = 1; i < sc->min_registers_per_thread; i++) {
+				for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-			sdata[sharedStride * %s + %s + %d * %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x, sc->regIDs[i]);
+			sdata[sharedStride * %s + %s + %" PRIu64 " * %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x, sc->regIDs[i]);
 				}
 				//appendBarrierVkFFT(sc, 3);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "			break;\n");
-				for (uint32_t i = 1; i < sc->matrixConvolution; i++) {
+				for (uint64_t i = 1; i < sc->matrixConvolution; i++) {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		case %d:\n", i);
+		case %" PRIu64 ":\n", i);
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-			sdata[sharedStride * %s + %s] = %s_%d;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0], i);
-					for (uint32_t j = 1; j < sc->min_registers_per_thread; j++) {
+			sdata[sharedStride * %s + %s] = %s_%" PRIu64 ";\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0], i);
+					for (uint64_t j = 1; j < sc->min_registers_per_thread; j++) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-			sdata[sharedStride * %s + %s + %d * %s] = %s_%d;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, j, sc->gl_WorkGroupSize_x, sc->regIDs[j], i);
+			sdata[sharedStride * %s + %s + %" PRIu64 " * %s] = %s_%" PRIu64 ";\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, j, sc->gl_WorkGroupSize_x, sc->regIDs[j], i);
 					}
 					//appendBarrierVkFFT(sc, 3);
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "			break;\n");
@@ -5253,9 +5265,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc->matrixConvolution == 1) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 		sdata[%s*(%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
-				for (uint32_t i = 1; i < sc->min_registers_per_thread; i++) {
+				for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		sdata[%s*(%s+%d*%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[i]);
+		sdata[%s*(%s+%" PRIu64 "*%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[i]);
 				}
 				//appendBarrierVkFFT(sc, 3);
 			}
@@ -5265,20 +5277,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	case 0:\n");
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 		sdata[%s*(%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
-				for (uint32_t i = 1; i < sc->min_registers_per_thread; i++) {
+				for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		sdata[%s*(%s+%d*%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[i]);
+		sdata[%s*(%s+%" PRIu64 "*%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[i]);
 				}
 				//appendBarrierVkFFT(sc, 3);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "			break;\n");
-				for (uint32_t i = 1; i < sc->matrixConvolution; i++) {
+				for (uint64_t i = 1; i < sc->matrixConvolution; i++) {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	case %d:\n", i);
+	case %" PRIu64 ":\n", i);
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		sdata[%s*(%s)+%s] = %s_%d;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0], i);
-					for (uint32_t j = 1; j < sc->min_registers_per_thread; j++) {
+		sdata[%s*(%s)+%s] = %s_%" PRIu64 ";\n", sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0], i);
+					for (uint64_t j = 1; j < sc->min_registers_per_thread; j++) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		sdata[%s*(%s+%d*%s)+%s] = %s_%d;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, j, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[j], i);
+		sdata[%s*(%s+%" PRIu64 "*%s)+%s] = %s_%" PRIu64 ";\n", sc->sharedStride, sc->gl_LocalInvocationID_y, j, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[j], i);
 					}
 					//appendBarrierVkFFT(sc, 3);
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "			break;\n");
@@ -5291,7 +5303,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		}
 	}
-	static inline void appendPreparationBatchedKernelConvolution(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint32_t dataType) {
+	static inline void appendPreparationBatchedKernelConvolution(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint64_t dataType) {
 		char vecType[30];
 #if(VKFFT_BACKEND==0)
 		if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
@@ -5308,22 +5320,22 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 		char separateRegisterStore[100] = "_store";
 
-		for (uint32_t i = 0; i < sc->registers_per_thread; i++) {
+		for (uint64_t i = 0; i < sc->registers_per_thread; i++) {
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s %s%s;\n", vecType, sc->regIDs[i], separateRegisterStore);
-			for (uint32_t j = 1; j < sc->matrixConvolution; j++) {
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s %s_%d%s;\n", vecType, sc->regIDs[i], j, separateRegisterStore);
+			for (uint64_t j = 1; j < sc->matrixConvolution; j++) {
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s %s_%" PRIu64 "%s;\n", vecType, sc->regIDs[i], j, separateRegisterStore);
 			}
 		}
-		for (uint32_t i = 0; i < sc->registers_per_thread; i++) {
+		for (uint64_t i = 0; i < sc->registers_per_thread; i++) {
 			//sc->currentLen += sprintf(sc->output + sc->currentLen, "			temp%s[i]=temp[i];\n", separateRegisterStore);
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s%s=%s;\n", sc->regIDs[i], separateRegisterStore, sc->regIDs[i]);
-			for (uint32_t j = 1; j < sc->matrixConvolution; j++) {
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s_%d%s=%s_%d;\n", sc->regIDs[i], j, separateRegisterStore, sc->regIDs[i], j);
+			for (uint64_t j = 1; j < sc->matrixConvolution; j++) {
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s_%" PRIu64 "%s=%s_%" PRIu64 ";\n", sc->regIDs[i], j, separateRegisterStore, sc->regIDs[i], j);
 			}
 		}
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "	for (%s batchID=0;  batchID < %d; batchID++){\n", uintType, sc->numKernels);
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "	for (%s batchID=0;  batchID < %" PRIu64 "; batchID++){\n", uintType, sc->numKernels);
 	}
-	static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint32_t dataType) {
+	static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint64_t dataType) {
 		char shiftX[500] = "";
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
@@ -5333,8 +5345,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(requestCoordinate, "0");
 			}
 		}
-		char index_x[500] = "";
-		char index_y[500] = "";
+		char index_x[2000] = "";
+		char index_y[2000] = "";
 		char requestBatch[100] = "";
 		char separateRegisterStore[100] = "";
 		if (sc->convolutionStep) {
@@ -5345,15 +5357,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		appendZeropadStart(sc);
 		VkAppendLine(sc, sc->disableThreadsStart);
-		for (uint32_t j = 0; j < sc->matrixConvolution; j++) {
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s temp_real%d = 0;\n", floatType, j);
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s temp_imag%d = 0;\n", floatType, j);
+		for (uint64_t j = 0; j < sc->matrixConvolution; j++) {
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s temp_real%" PRIu64 " = 0;\n", floatType, j);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s temp_imag%" PRIu64 " = 0;\n", floatType, j);
 		}
-		for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+		for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 			if (i > 0) {
-				for (uint32_t j = 0; j < sc->matrixConvolution; j++) {
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%d = 0;\n", j);
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%d = 0;\n", j);
+				for (uint64_t j = 0; j < sc->matrixConvolution; j++) {
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%" PRIu64 " = 0;\n", j);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%" PRIu64 " = 0;\n", j);
 				}
 			}
 			switch (dataType) {
@@ -5361,50 +5373,50 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			{
 				if (sc->fftDim == sc->fft_dim_full) {
 					if (sc->localSize[1] == 1)
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
 					else
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, i * sc->localSize[0] * sc->localSize[1]);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, i * sc->localSize[0] * sc->localSize[1]);
 
 					if (sc->inputStride[0] > 1) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-						sprintf(index_x, "(combinedID %% %d) * %d + (combinedID / %d) * %d", sc->fftDim, sc->inputStride[0], sc->fftDim, sc->inputStride[1]);
+						sprintf(index_x, "(combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->inputStride[0], sc->fftDim, sc->inputStride[1]);
 						indexInputVkFFT(sc, uintType, dataType, index_x, 0, requestCoordinate, requestBatch);
 						sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-						//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((combinedID %% %d) * %d + (combinedID / %d) * %d%s%s);\n", sc->fftDim, sc->inputStride[0], sc->fftDim, sc->inputStride[1], requestCoordinate, requestBatch);
+						//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 "%s%s);\n", sc->fftDim, sc->inputStride[0], sc->fftDim, sc->inputStride[1], requestCoordinate, requestBatch);
 					}
 					else {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-						sprintf(index_x, "(combinedID %% %d) + (combinedID / %d) * %d", sc->fftDim, sc->fftDim, sc->inputStride[1]);
+						sprintf(index_x, "(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->fftDim, sc->inputStride[1]);
 						indexInputVkFFT(sc, uintType, dataType, index_x, 0, requestCoordinate, requestBatch);
 						sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-						//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((combinedID %% %d) + (combinedID / %d) * %d%s%s);\n", sc->fftDim, sc->fftDim, sc->inputStride[1], requestCoordinate, requestBatch);
+						//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 "%s%s);\n", sc->fftDim, sc->fftDim, sc->inputStride[1], requestCoordinate, requestBatch);
 					}
 				}
 				else {
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-					sprintf(index_x, "%s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)", sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
+					sprintf(index_x, "%s+%" PRIu64 "+%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ")", sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
 					indexInputVkFFT(sc, uintType, dataType, index_x, 0, requestCoordinate, requestBatch);
 					sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-					//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput(%s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)%s%s);\n", sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, requestCoordinate, requestBatch);
+					//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput(%s+%" PRIu64 "+%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ")%s%s);\n", sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, requestCoordinate, requestBatch);
 				}
 				break;
 			}
 			case 1:
 			{
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-				sprintf(index_x, "(%s%s) %% (%d)", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
-				sprintf(index_y, "(%s+%d)+((%s%s)/%d)%%(%d)+((%s%s)/%d)*(%d)", sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim);
+				sprintf(index_x, "(%s%s) %% (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
+				sprintf(index_y, "(%s+%" PRIu64 ")+((%s%s)/%" PRIu64 ")%%(%" PRIu64 ")+((%s%s)/%" PRIu64 ")*(%" PRIu64 ")", sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim);
 				indexInputVkFFT(sc, uintType, dataType, index_x, index_y, requestCoordinate, requestBatch);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-				//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((%s%s) %% (%d), (%s+%d)+((%s%s)/%d)%%(%d)+((%s%s)/%d)*(%d)%s%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim, requestCoordinate, requestBatch);
+				//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput((%s%s) %% (%" PRIu64 "), (%s+%" PRIu64 ")+((%s%s)/%" PRIu64 ")%%(%" PRIu64 ")+((%s%s)/%" PRIu64 ")*(%" PRIu64 ")%s%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim, requestCoordinate, requestBatch);
 				break;
 			}
 			}
 			if (sc->kernelBlockNum == 1) {
 
-				for (uint32_t j = 0; j < sc->matrixConvolution; j++) {
-					for (uint32_t l = 0; l < sc->matrixConvolution; l++) {
-						uint32_t k = 0;
+				for (uint64_t j = 0; j < sc->matrixConvolution; j++) {
+					for (uint64_t l = 0; l < sc->matrixConvolution; l++) {
+						uint64_t k = 0;
 						if (sc->symmetricKernel) {
 							k = (l < j) ? (l * sc->matrixConvolution - l * l + j) : (j * sc->matrixConvolution - j * j + l);
 						}
@@ -5412,12 +5424,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							k = (j * sc->matrixConvolution + l);
 						}
 						if (l == 0)
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%d += kernel_obj[inoutID+%d].x * %s%s.x - kernel_obj[inoutID+%d].y * %s%s.y;\n", j, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%" PRIu64 " += kernel_obj[inoutID+%" PRIu64 "].x * %s%s.x - kernel_obj[inoutID+%" PRIu64 "].y * %s%s.y;\n", j, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
 						else
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%d += kernel_obj[inoutID+%d].x * %s_%d%s.x - kernel_obj[inoutID+%d].y * %s_%d%s.y;\n", j, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%" PRIu64 " += kernel_obj[inoutID+%" PRIu64 "].x * %s_%" PRIu64 "%s.x - kernel_obj[inoutID+%" PRIu64 "].y * %s_%" PRIu64 "%s.y;\n", j, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
 					}
-					for (uint32_t l = 0; l < sc->matrixConvolution; l++) {
-						uint32_t k = 0;
+					for (uint64_t l = 0; l < sc->matrixConvolution; l++) {
+						uint64_t k = 0;
 						if (sc->symmetricKernel) {
 							k = (l < j) ? (l * sc->matrixConvolution - l * l + j) : (j * sc->matrixConvolution - j * j + l);
 						}
@@ -5425,25 +5437,25 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							k = (j * sc->matrixConvolution + l);
 						}
 						if (l == 0)
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%d += kernel_obj[inoutID+%d].x * %s%s.y + kernel_obj[inoutID+%d].y * %s%s.x;\n", j, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%" PRIu64 " += kernel_obj[inoutID+%" PRIu64 "].x * %s%s.y + kernel_obj[inoutID+%" PRIu64 "].y * %s%s.x;\n", j, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
 						else
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%d += kernel_obj[inoutID+%d].x * %s_%d%s.y + kernel_obj[inoutID+%d].y * %s_%d%s.x;\n", j, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%" PRIu64 " += kernel_obj[inoutID+%" PRIu64 "].x * %s_%" PRIu64 "%s.y + kernel_obj[inoutID+%" PRIu64 "].y * %s_%" PRIu64 "%s.x;\n", j, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
 
 					}
 				}
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = temp_real0;", sc->regIDs[i]);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = temp_imag0;", sc->regIDs[i]);
-				for (uint32_t l = 1; l < sc->matrixConvolution; l++) {
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s_%d.x = temp_real%d;", sc->regIDs[i], l, l);
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s_%d.y = temp_imag%d;", sc->regIDs[i], l, l);
+				for (uint64_t l = 1; l < sc->matrixConvolution; l++) {
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s_%" PRIu64 ".x = temp_real%" PRIu64 ";", sc->regIDs[i], l, l);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s_%" PRIu64 ".y = temp_imag%" PRIu64 ";", sc->regIDs[i], l, l);
 				}
 			}
 			else {
-				for (uint32_t j = 0; j < sc->matrixConvolution; j++) {
+				for (uint64_t j = 0; j < sc->matrixConvolution; j++) {
 
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s temp_real%d = 0;\n", floatType, j);
-					for (uint32_t l = 0; l < sc->matrixConvolution; l++) {
-						uint32_t k = 0;
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s temp_real%" PRIu64 " = 0;\n", floatType, j);
+					for (uint64_t l = 0; l < sc->matrixConvolution; l++) {
+						uint64_t k = 0;
 						if (sc->symmetricKernel) {
 							k = (l < j) ? (l * sc->matrixConvolution - l * l + j) : (j * sc->matrixConvolution - j * j + l);
 						}
@@ -5451,15 +5463,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							k = (j * sc->matrixConvolution + l);
 						}
 						if (l == 0)
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%d += kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].x * %s%s.x - kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].y * %s%s.y;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%" PRIu64 " += kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].kernel_obj[(inoutID+%" PRIu64 ") %% %" PRIu64 "].x * %s%s.x - kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].kernel_obj[(inoutID+%" PRIu64 ") %% %" PRIu64 "].y * %s%s.y;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore);
 						else
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%d += kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].x * %s_%d%s.x - kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].y * %s_%d%s.y;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_real%" PRIu64 " += kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].kernel_obj[(inoutID+%" PRIu64 ") %% %" PRIu64 "].x * %s_%" PRIu64 "%s.x - kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].kernel_obj[(inoutID+%" PRIu64 ") %% %" PRIu64 "].y * %s_%" PRIu64 "%s.y;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore);
 
 					}
 
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s temp_imag%d = 0;\n", floatType, j);
-					for (uint32_t l = 0; l < sc->matrixConvolution; l++) {
-						uint32_t k = 0;
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s temp_imag%" PRIu64 " = 0;\n", floatType, j);
+					for (uint64_t l = 0; l < sc->matrixConvolution; l++) {
+						uint64_t k = 0;
 						if (sc->symmetricKernel) {
 							k = (l < j) ? (l * sc->matrixConvolution - l * l + j) : (j * sc->matrixConvolution - j * j + l);
 						}
@@ -5467,23 +5479,23 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							k = (j * sc->matrixConvolution + l);
 						}
 						if (l == 0)
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%d += kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].x * %s%s.y + kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].y * %s%s.x;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%" PRIu64 " += kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].kernel_obj[(inoutID+%" PRIu64 ") %% %" PRIu64 "].x * %s%s.y + kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].kernel_obj[(inoutID+%" PRIu64 ") %% %" PRIu64 "].y * %s%s.x;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore);
 						else
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%d += kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].x * %s_%d%s.y + kernelBlocks[(inoutID+%d)/%d].kernel_obj[(inoutID+%d) %% %d].y * %s_%d%s.x;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		temp_imag%" PRIu64 " += kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].kernel_obj[(inoutID+%" PRIu64 ") %% %" PRIu64 "].x * %s_%" PRIu64 "%s.y + kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].kernel_obj[(inoutID+%" PRIu64 ") %% %" PRIu64 "].y * %s_%" PRIu64 "%s.x;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore);
 					}
 				}
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = temp_real0;", sc->regIDs[i]);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = temp_imag0;", sc->regIDs[i]);
-				for (uint32_t l = 1; l < sc->matrixConvolution; l++) {
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s_%d.x = temp_real%d;", sc->regIDs[i], l, l);
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s_%d.y = temp_imag%d;", sc->regIDs[i], l, l);
+				for (uint64_t l = 1; l < sc->matrixConvolution; l++) {
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s_%" PRIu64 ".x = temp_real%" PRIu64 ";", sc->regIDs[i], l, l);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s_%" PRIu64 ".y = temp_imag%" PRIu64 ";", sc->regIDs[i], l, l);
 				}
 			}
 		}
 		VkAppendLine(sc, sc->disableThreadsEnd);
 		appendZeropadEnd(sc);
 	}
-	static inline void appendWriteDataVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint32_t writeType) {
+	static inline void appendWriteDataVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint64_t writeType) {
 		char vecType[30];
 		char outputsStruct[20] = "";
 		char LFending[4] = "";
@@ -5531,13 +5543,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(convTypeRight, ")");
 #elif(VKFFT_BACKEND==1)
 				sprintf(convTypeLeft, "(float)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(float)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==3)
 				sprintf(convTypeLeft, "(float)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #endif
 			}
 			else {
@@ -5546,10 +5558,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(convTypeRight, ")");
 #elif(VKFFT_BACKEND==1)
 				sprintf(convTypeLeft, "(float2)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(float2)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==3)
 				sprintf(convTypeLeft, "convert_float2(");
 				sprintf(convTypeRight, ")");
@@ -5563,13 +5575,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(convTypeRight, ")");
 #elif(VKFFT_BACKEND==1)
 				sprintf(convTypeLeft, "(double)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(double)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==3)
 				sprintf(convTypeLeft, "(double)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #endif
 			}
 			else {
@@ -5578,10 +5590,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				sprintf(convTypeRight, ")");
 #elif(VKFFT_BACKEND==1)
 				sprintf(convTypeLeft, "(double2)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==2)
 				sprintf(convTypeLeft, "(double2)");
-				sprintf(convTypeRight, "");
+				//sprintf(convTypeRight, "");
 #elif(VKFFT_BACKEND==3)
 				sprintf(convTypeLeft, "convert_double2(");
 				sprintf(convTypeRight, ")");
@@ -5589,8 +5601,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 		}
 
-		char index_x[500] = "";
-		char index_y[500] = "";
+		char index_x[2000] = "";
+		char index_y[2000] = "";
 		char requestCoordinate[100] = "";
 		if (sc->convolutionStep) {
 			if (sc->matrixConvolution > 1) {
@@ -5632,14 +5644,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc->fftDim < sc->fft_dim_full) {
 				if (sc->axisSwapped) {
 					if (!sc->reorderFourStep) {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((%s+%d*%s)< numActiveThreads) {\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((%s+%" PRIu64 "*%s)< numActiveThreads) {\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y);
 					}
 					else {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		if (((%s + %d * %s) %% %d + ((%s%s) / %d)*%d < %d)){\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, sc->localSize[0], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0], sc->fft_dim_full / sc->firstStageStartSize);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		if (((%s + %" PRIu64 " * %s) %% %" PRIu64 " + ((%s%s) / %" PRIu64 ")*%" PRIu64 " < %" PRIu64 ")){\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, sc->localSize[0], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0], sc->fft_dim_full / sc->firstStageStartSize);
 					}
 				}
 				else {
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		if (((%s + %d * %s) %% %d + ((%s%s) / %d)*%d < %d)){\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->fft_dim_full / sc->firstStageStartSize);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		if (((%s + %" PRIu64 " * %s) %% %" PRIu64 " + ((%s%s) / %" PRIu64 ")*%" PRIu64 " < %" PRIu64 ")){\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->fft_dim_full / sc->firstStageStartSize);
 				}
 			}
 			else {
@@ -5648,26 +5660,26 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc->reorderFourStep) {
 				if (sc->zeropad[1]) {
 					if (sc->fftDim == sc->fft_dim_full) {
-						for (uint32_t k = 0; k < sc->registerBoost; k++) {
-							for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t k = 0; k < sc->registerBoost; k++) {
+							for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
 								if (sc->outputStride[0] > 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim, sc->fftDim, sc->outputStride[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->fftDim, sc->outputStride[1]);
 								if (sc->axisSwapped) {
 									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1]);
 								}
 								else {
 									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1]);
 								}
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
 
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
 								indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
@@ -5677,20 +5689,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									if (sc->outputBufferBlockNum == 1)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
 									if (sc->axisSwapped) {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", outputsStruct, convTypeLeft, sc->inoutID, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")]%s;\n", outputsStruct, convTypeLeft, sc->inoutID, sc->fftDim, sc->fftDim, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 									}
 									else {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->inoutID, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->inoutID, sc->fftDim, sc->fftDim, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 									}
 								}
 								appendZeropadEndAxisSwapped(sc);
@@ -5707,22 +5719,22 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 					}
 					else {
-						for (uint32_t k = 0; k < sc->registerBoost; k++) {
-							for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t k = 0; k < sc->registerBoost; k++) {
+							for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 								if (sc->axisSwapped) {
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d;\n", sc->localSize[0], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0], sc->localSize[0], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = combinedID %% %" PRIu64 " + ((%s%s) / %" PRIu64 ")*%" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ")+ ((%s%s) %% %" PRIu64 ") * %" PRIu64 ";\n", sc->localSize[0], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0], sc->localSize[0], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
 								}
 								else {
 									if (sc->localSize[1] == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d;\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%s%s)/%" PRIu64 "+ (combinedID * %" PRIu64 ")+ ((%s%s) %% %" PRIu64 ") * %" PRIu64 ";\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d;\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = combinedID %% %" PRIu64 " + ((%s%s) / %" PRIu64 ")*%" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ")+ ((%s%s) %% %" PRIu64 ") * %" PRIu64 ";\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
 								}
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
 								indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
@@ -5731,34 +5743,34 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									if (sc->outputBufferBlockNum == 1)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
 									if (sc->axisSwapped) {
 										if (sc->outputBufferBlockNum == 1)
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[%s] = %ssdata[(combinedID %% %s)+(combinedID/%s)*sharedStride]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_WorkGroupSize_x, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %s)+(combinedID/%s)*sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_WorkGroupSize_x, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %s)+(combinedID/%s)*sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_WorkGroupSize_x, convTypeRight);
 									}
 									else {
 										if (sc->outputBufferBlockNum == 1)
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[%s] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
 									}
 								}
 								appendZeropadEndAxisSwapped(sc);
 								/*
 								if (sc->outputBufferBlockNum == 1)
 									if (sc->localSize[1] == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[indexOutput(inoutID%s%s)] = %stemp_%d%s;\n", requestCoordinate, requestBatch, convTypeLeft, i, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[indexOutput(inoutID%s%s)] = %stemp_%" PRIu64 "%s;\n", requestCoordinate, requestBatch, convTypeLeft, i, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[indexOutput(inoutID%s%s)] = %stemp_%d%s;\n", requestCoordinate, requestBatch, convTypeLeft, i, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[indexOutput(inoutID%s%s)] = %stemp_%" PRIu64 "%s;\n", requestCoordinate, requestBatch, convTypeLeft, i, convTypeRight);
 								else
 									if (sc->localSize[1] == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[indexOutput(inoutID%s%s) / %d]%s[indexOutput(inoutID%s%s) %% %d] = %stemp_%d%s;\n", requestCoordinate, requestBatch, sc->outputBufferBlockSize, outputsStruct, requestCoordinate, requestBatch, sc->outputBufferBlockSize, convTypeLeft, i, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[indexOutput(inoutID%s%s) / %" PRIu64 "]%s[indexOutput(inoutID%s%s) %% %" PRIu64 "] = %stemp_%" PRIu64 "%s;\n", requestCoordinate, requestBatch, sc->outputBufferBlockSize, outputsStruct, requestCoordinate, requestBatch, sc->outputBufferBlockSize, convTypeLeft, i, convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[indexOutput(inoutID%s%s) / %d]%s[indexOutput(inoutID%s%s) %% %d] = %stemp_%d%s;\n", requestCoordinate, requestBatch, sc->outputBufferBlockSize, outputsStruct, requestCoordinate, requestBatch, sc->outputBufferBlockSize, convTypeLeft, i, convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[indexOutput(inoutID%s%s) / %" PRIu64 "]%s[indexOutput(inoutID%s%s) %% %" PRIu64 "] = %stemp_%" PRIu64 "%s;\n", requestCoordinate, requestBatch, sc->outputBufferBlockSize, outputsStruct, requestCoordinate, requestBatch, sc->outputBufferBlockSize, convTypeLeft, i, convTypeRight);
 								*/
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "	}");
 							}
@@ -5767,54 +5779,54 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc->fftDim == sc->fft_dim_full) {
-						for (uint32_t k = 0; k < sc->registerBoost; k++) {
-							for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t k = 0; k < sc->registerBoost; k++) {
+							for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
 								if (sc->outputStride[0] > 1) {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-									sprintf(index_x, "(combinedID %% %d) * %d + (combinedID / %d) * %d", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1]);
+									sprintf(index_x, "(combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1]);
 									indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((combinedID %% %d) * %d + (combinedID / %d) * %d%s%s);\n", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1], requestCoordinate, requestBatch);
+									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 "%s%s);\n", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1], requestCoordinate, requestBatch);
 								}
 								else {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-									sprintf(index_x, "(combinedID %% %d) + (combinedID / %d) * %d", sc->fftDim, sc->fftDim, sc->outputStride[1]);
+									sprintf(index_x, "(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->fftDim, sc->outputStride[1]);
 									indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((combinedID %% %d) + (combinedID / %d) * %d%s%s);\n", sc->fftDim, sc->fftDim, sc->outputStride[1], requestCoordinate, requestBatch);
+									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 "%s%s);\n", sc->fftDim, sc->fftDim, sc->outputStride[1], requestCoordinate, requestBatch);
 								}
 								if (sc->axisSwapped) {
 									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + %s*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
 								}
 								else {
 									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + %s*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
 								}
 								appendZeropadStartAxisSwapped(sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
 									if (sc->axisSwapped) {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 									}
 									else {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 									}
 								}
 								appendZeropadEndAxisSwapped(sc);
@@ -5824,32 +5836,32 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 					}
 					else {
-						for (uint32_t k = 0; k < sc->registerBoost; k++) {
-							for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t k = 0; k < sc->registerBoost; k++) {
+							for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 								if (sc->axisSwapped) {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-									sprintf(index_x, "combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d", sc->localSize[0], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0], sc->localSize[0], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+									sprintf(index_x, "combinedID %% %" PRIu64 " + ((%s%s) / %" PRIu64 ")*%" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ")+ ((%s%s) %% %" PRIu64 ") * %" PRIu64 "", sc->localSize[0], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0], sc->localSize[0], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
 									indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
 								}
 								else {
 									if (sc->localSize[1] == 1) {
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-										sprintf(index_x, "(%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+										sprintf(index_x, "(%s%s)/%" PRIu64 "+ (combinedID * %" PRIu64 ")+ ((%s%s) %% %" PRIu64 ") * %" PRIu64 "", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
 										indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 										sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-										//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d%s%s);\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
+										//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((%s%s)/%" PRIu64 "+ (combinedID * %" PRIu64 ")+ ((%s%s) %% %" PRIu64 ") * %" PRIu64 "%s%s);\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
 									}
 									else {
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-										sprintf(index_x, "combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+										sprintf(index_x, "combinedID %% %" PRIu64 " + ((%s%s) / %" PRIu64 ")*%" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ")+ ((%s%s) %% %" PRIu64 ") * %" PRIu64 "", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
 										indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 										sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-										//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput(combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d%s%s);\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
+										//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput(combinedID %% %" PRIu64 " + ((%s%s) / %" PRIu64 ")*%" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ")+ ((%s%s) %% %" PRIu64 ") * %" PRIu64 "%s%s);\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
 									}
 								}
 								appendZeropadStartAxisSwapped(sc);
@@ -5857,34 +5869,34 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									if (sc->outputBufferBlockNum == 1)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
 									if (sc->axisSwapped) {
 										if (sc->outputBufferBlockNum == 1)
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[%s] = %ssdata[(combinedID %% %s)+(combinedID/%s)*sharedStride]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_WorkGroupSize_x, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %s)+(combinedID/%s)*sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_WorkGroupSize_x, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %s)+(combinedID/%s)*sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_x, sc->gl_WorkGroupSize_x, convTypeRight);
 									}
 									else {
 										if (sc->outputBufferBlockNum == 1)
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[%s] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %s)*sharedStride+combinedID/%s]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->gl_WorkGroupSize_y, sc->gl_WorkGroupSize_y, convTypeRight);
 									}
 								}
 								appendZeropadEndAxisSwapped(sc);
 							}
 							/*if (sc->outputBufferBlockNum == 1)
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %stemp_%" PRIu64 "%s;\n", convTypeLeft, i, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %stemp_%d%s;\n", convTypeLeft, i, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %stemp_%" PRIu64 "%s;\n", convTypeLeft, i, convTypeRight);
 							else
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %stemp_%d%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, i, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %stemp_%" PRIu64 "%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, i, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %stemp_%d%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, i, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %stemp_%" PRIu64 "%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, i, convTypeRight);
 							*/
 						}
 					}
@@ -5893,26 +5905,26 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else {
 				if (sc->zeropad[1]) {
 					if (sc->fftDim == sc->fft_dim_full) {
-						for (uint32_t k = 0; k < sc->registerBoost; k++) {
-							for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t k = 0; k < sc->registerBoost; k++) {
+							for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
 								if (sc->outputStride[0] > 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim, sc->fftDim, sc->outputStride[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->fftDim, sc->outputStride[1]);
 								if (sc->axisSwapped) {
 									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + %s*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
 								}
 								else {
 									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + %s*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
 								}
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
 								indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
@@ -5921,20 +5933,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									if (sc->outputBufferBlockNum == 1)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
 									if (sc->axisSwapped) {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 									}
 									else {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 									}
 								}
 								appendZeropadEndAxisSwapped(sc);
@@ -5951,47 +5963,47 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 					}
 					else {
-						for (uint32_t k = 0; k < sc->registerBoost; k++) {
-							for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t k = 0; k < sc->registerBoost; k++) {
+							for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d * numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 " * numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
 								if (sc->axisSwapped) {
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d;\n", sc->localSize[0], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0], sc->localSize[0], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = combinedID %% %" PRIu64 " + ((%s%s) / %" PRIu64 ")*%" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ")+ ((%s%s) %% %" PRIu64 ") * %" PRIu64 ";\n", sc->localSize[0], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0], sc->localSize[0], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
 								}
 								else {
 									if (sc->localSize[1] == 1)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d;\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%s%s)/%" PRIu64 "+ (combinedID * %" PRIu64 ")+ ((%s%s) %% %" PRIu64 ") * %" PRIu64 ";\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d;\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = combinedID %% %" PRIu64 " + ((%s%s) / %" PRIu64 ")*%" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ")+ ((%s%s) %% %" PRIu64 ") * %" PRIu64 ";\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize);
 								}
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
 
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-								sprintf(index_x, "%s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)", sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
+								sprintf(index_x, "%s+%" PRIu64 "+%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ")", sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
 								indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-								//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput(%s+i*%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)%s%s);\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, requestCoordinate, requestBatch);
+								//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput(%s+i*%" PRIu64 "+%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ")%s%s);\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, requestCoordinate, requestBatch);
 								appendZeropadStartAxisSwapped(sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID]=%s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
 									if (sc->axisSwapped) {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID]=%ssdata[%s + sharedStride*(%s + %d)]%s;\n", outputsStruct, convTypeLeft, sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID]=%ssdata[%s + sharedStride*(%s + %" PRIu64 ")]%s;\n", outputsStruct, convTypeLeft, sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[%s + sharedStride*(%s + %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[%s + sharedStride*(%s + %" PRIu64 ")]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], convTypeRight);
 									}
 									else {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID]=%ssdata[sharedStride*%s + (%s + %d)]%s;\n", outputsStruct, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID]=%ssdata[sharedStride*%s + (%s + %" PRIu64 ")]%s;\n", outputsStruct, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[sharedStride*%s + (%s + %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[sharedStride*%s + (%s + %" PRIu64 ")]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
 									}
 								}
 								appendZeropadEndAxisSwapped(sc);
@@ -6002,53 +6014,53 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc->fftDim == sc->fft_dim_full) {
-						for (uint32_t k = 0; k < sc->registerBoost; k++) {
-							for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t k = 0; k < sc->registerBoost; k++) {
+							for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 								if (sc->outputStride[0] > 1) {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-									sprintf(index_x, "(combinedID %% %d) * %d + (combinedID / %d) * %d", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1]);
+									sprintf(index_x, "(combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1]);
 									indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((combinedID %% %d) * %d + (combinedID / %d) * %d%s%s);\n", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1], requestCoordinate, requestBatch);
+									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 "%s%s);\n", sc->fftDim, sc->outputStride[0], sc->fftDim, sc->outputStride[1], requestCoordinate, requestBatch);
 								}
 								else {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-									sprintf(index_x, "(combinedID %% %d) + (combinedID / %d) * %d", sc->fftDim, sc->fftDim, sc->outputStride[1]);
+									sprintf(index_x, "(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->fftDim, sc->outputStride[1]);
 									indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((combinedID %% %d) + (combinedID / %d) * %d%s%s);\n", sc->fftDim, sc->fftDim, sc->outputStride[1], requestCoordinate, requestBatch);
+									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 "%s%s);\n", sc->fftDim, sc->fftDim, sc->outputStride[1], requestCoordinate, requestBatch);
 								}
 								if (sc->axisSwapped) {
 									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + %s*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
 								}
 								else {
 									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + %s*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
 								}
 								appendZeropadStartAxisSwapped(sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
 									if (sc->axisSwapped) {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 									}
 									else {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 									}
 								}
 								appendZeropadEndAxisSwapped(sc);
@@ -6064,38 +6076,38 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 					}
 					else {
-						for (uint32_t k = 0; k < sc->registerBoost; k++) {
-							for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t k = 0; k < sc->registerBoost; k++) {
+							for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
 								if (sc->axisSwapped) {
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d* numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
-									sprintf(index_x, "(combinedID %% %d)+(combinedID / %d) * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 "* numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
+									sprintf(index_x, "(combinedID %% %" PRIu64 ")+(combinedID / %" PRIu64 ") * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ")", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize);
 								}
 								else {
-									sprintf(index_x, "%s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
+									sprintf(index_x, "%s+%" PRIu64 "+%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ")", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
 								}
 								indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-								//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput(%s+%d+%s * %d + (((%s%s) %% %d) * %d + ((%s%s) / %d) * %d)%s%s);\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, requestCoordinate, requestBatch);
+								//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput(%s+%" PRIu64 "+%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ")%s%s);\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, requestCoordinate, requestBatch);
 								appendZeropadStartAxisSwapped(sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID]=%s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
 									if (sc->axisSwapped) {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID]=%ssdata[(combinedID / %d) + sharedStride*(combinedID %% %d)]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID]=%ssdata[(combinedID / %" PRIu64 ") + sharedStride*(combinedID %% %" PRIu64 ")]%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID / %d) + sharedStride*(combinedID %% %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[(combinedID / %" PRIu64 ") + sharedStride*(combinedID %% %" PRIu64 ")]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 									}
 									else {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID]=%ssdata[sharedStride*%s + (%s + %d)]%s;\n", outputsStruct, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID]=%ssdata[sharedStride*%s + (%s + %" PRIu64 ")]%s;\n", outputsStruct, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[sharedStride*%s + (%s + %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[sharedStride*%s + (%s + %" PRIu64 ")]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], convTypeRight);
 									}
 								}
 								appendZeropadEndAxisSwapped(sc);
@@ -6118,29 +6130,29 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftX[500] = "";
 			if (sc->performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		if (((%s%s) / %d) %% (%d)+((%s%s) / %d) * (%d) < %d) {\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize, sc->size[sc->axis_id]);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		if (((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize, sc->size[sc->axis_id]);
 			if ((sc->reorderFourStep) && (sc->stageStartSize == 1)) {
 				if (sc->zeropad[1]) {
-					for (uint32_t k = 0; k < sc->registerBoost; k++) {
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%s + %d) * (%d) + (((%s%s) / %d) %% (%d)) * (%d) + ((%s%s) / %d);\n", sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * (sc->firstStageStartSize / sc->fftDim));
+					for (uint64_t k = 0; k < sc->registerBoost; k++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%s + %" PRIu64 ") * (%" PRIu64 ") + (((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")) * (%" PRIu64 ") + ((%s%s) / %" PRIu64 ");\n", sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * (sc->firstStageStartSize / sc->fftDim));
 
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-							sprintf(index_x, "(%s%s) %% (%d)", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
+							sprintf(index_x, "(%s%s) %% (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
 							indexOutputVkFFT(sc, uintType, writeType, index_x, sc->inoutID, requestCoordinate, requestBatch);
 							sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
 							if (sc->writeFromRegisters) {
 								if (sc->outputBufferBlockNum == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 							}
 							else {
 								if (sc->outputBufferBlockNum == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[%s] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[%s] = %ssdata[%s*(%s+%" PRIu64 ") + %s]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[%s*(%s+%d) + %s]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[%s*(%s+%" PRIu64 ") + %s]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 
 							}
 							VkAppendLine(sc, "	}\n");
@@ -6148,25 +6160,25 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				else {
-					for (uint32_t k = 0; k < sc->registerBoost; k++) {
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+					for (uint64_t k = 0; k < sc->registerBoost; k++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-							sprintf(index_x, "(%s%s) %% (%d)", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
-							sprintf(index_y, "(%s + %d) * %d + (((%s%s) / %d) %% (%d)) * (%d) + ((%s%s) / %d )", sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * (sc->firstStageStartSize / sc->fftDim));
+							sprintf(index_x, "(%s%s) %% (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
+							sprintf(index_y, "(%s + %" PRIu64 ") * %" PRIu64 " + (((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")) * (%" PRIu64 ") + ((%s%s) / %" PRIu64 " )", sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * (sc->firstStageStartSize / sc->fftDim));
 							indexOutputVkFFT(sc, uintType, writeType, index_x, index_y, requestCoordinate, requestBatch);
 							sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-							//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((%s%s) %% (%d), (%s + %d) * %d + (((%s%s) / %d) %% (%d)) * (%d) + ((%s%s) / %d )%s%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * (sc->firstStageStartSize / sc->fftDim), requestCoordinate, requestBatch);
+							//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((%s%s) %% (%" PRIu64 "), (%s + %" PRIu64 ") * %" PRIu64 " + (((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")) * (%" PRIu64 ") + ((%s%s) / %" PRIu64 " )%s%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * (sc->firstStageStartSize / sc->fftDim), requestCoordinate, requestBatch);
 							if (sc->writeFromRegisters) {
 								if (sc->outputBufferBlockNum == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 							}
 							else {
 								if (sc->outputBufferBlockNum == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[%s*(%s+%" PRIu64 ") + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[%s*(%s+%" PRIu64 ") + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 							}
 						}
 					}
@@ -6174,54 +6186,54 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				if (sc->zeropad[1]) {
-					for (uint32_t k = 0; k < sc->registerBoost; k++) {
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%s + %d) * %d + ((%s%s) / %d) %% (%d)+((%s%s) / %d) * (%d);\n", sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->stageStartSize * sc->fftDim);
+					for (uint64_t k = 0; k < sc->registerBoost; k++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%s + %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ");\n", sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->stageStartSize * sc->fftDim);
 
-							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
+							sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
 
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-							sprintf(index_x, "(%s%s) %% (%d)", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
-							sprintf(index_y, "%d * (%s + %d) + ((%s%s) / %d) %% (%d)+((%s%s) / %d) * (%d)", sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->stageStartSize * sc->fftDim);
+							sprintf(index_x, "(%s%s) %% (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
+							sprintf(index_y, "%" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ")", sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->stageStartSize * sc->fftDim);
 							indexOutputVkFFT(sc, uintType, writeType, index_x, index_y, requestCoordinate, requestBatch);
 							sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-							//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((%s%s) %% (%d), %d * (%s + %d) + ((%s%s) / %d) %% (%d)+((%s%s) / %d) * (%d)%s%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->stageStartSize * sc->fftDim, requestCoordinate, requestBatch);
+							//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((%s%s) %% (%" PRIu64 "), %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ")%s%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->stageStartSize * sc->fftDim, requestCoordinate, requestBatch);
 							if (sc->writeFromRegisters) {
 								if (sc->outputBufferBlockNum == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[inoutID / %d]%s[inoutID %% %d] =  %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] =  %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 							}
 							else {
 								if (sc->outputBufferBlockNum == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[inoutID] = %ssdata[%s*(%s+%" PRIu64 ") + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[inoutID / %d]%s[inoutID %% %d] =  %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] =  %ssdata[%s*(%s+%" PRIu64 ") + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 							}
 							VkAppendLine(sc, "	}\n");
 						}
 					}
 				}
 				else {
-					for (uint32_t k = 0; k < sc->registerBoost; k++) {
-						for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+					for (uint64_t k = 0; k < sc->registerBoost; k++) {
+						for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 							sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-							sprintf(index_x, "(%s%s) %% (%d)", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
-							sprintf(index_y, "%d * (%s + %d) + ((%s%s) / %d) %% (%d)+((%s%s) / %d) * (%d)", sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->stageStartSize * sc->fftDim);
+							sprintf(index_x, "(%s%s) %% (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
+							sprintf(index_y, "%" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ")", sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->stageStartSize * sc->fftDim);
 							indexOutputVkFFT(sc, uintType, writeType, index_x, index_y, requestCoordinate, requestBatch);
 							sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-							//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((%s%s) %% (%d), %d * (%s + %d) + ((%s%s) / %d) %% (%d)+((%s%s) / %d) * (%d)%s%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->stageStartSize * sc->fftDim, requestCoordinate, requestBatch);
+							//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((%s%s) %% (%" PRIu64 "), %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ")%s%s);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->stageStartSize * sc->fftDim, requestCoordinate, requestBatch);
 							if (sc->writeFromRegisters) {
 								if (sc->outputBufferBlockNum == 1)
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] =  %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] =  %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 							}
 							else {
 								if (sc->outputBufferBlockNum == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[%s*(%s+%" PRIu64 ") + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] =  %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] =  %ssdata[%s*(%s+%" PRIu64 ") + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 							}
 						}
 					}
@@ -6242,47 +6254,47 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftX[500] = "";
 			if (sc->performWorkGroupShift[0])
 				sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		if (((%s%s) / %d) * (%d) < %d) {\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim, sc->fft_dim_full);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		if (((%s%s) / %" PRIu64 ") * (%" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim, sc->fft_dim_full);
 			if (sc->zeropad[1]) {
-				for (uint32_t k = 0; k < sc->registerBoost; k++) {
-					for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%s%s) %% (%d) + %d * (%s + %d) + ((%s%s) / %d) * (%d);\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
-						sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
+					for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (%s%s) %% (%" PRIu64 ") + %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") * (%" PRIu64 ");\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
+						sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->fft_dim_full, sc->fft_zeropad_left_write[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_write[sc->axis_id]);
 						if (sc->writeFromRegisters) {
 							if (sc->outputBufferBlockNum == 1)
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 						}
 						else {
 							if (sc->outputBufferBlockNum == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s[inoutID] = %ssdata[%s*(%s+%" PRIu64 ") + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "			outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[%s*(%s+%" PRIu64 ") + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 						}
 						VkAppendLine(sc, "	}\n");
 					}
 				}
 			}
 			else {
-				for (uint32_t k = 0; k < sc->registerBoost; k++) {
-					for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
+					for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 						sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-						sprintf(index_x, "(%s%s) %% (%d) + %d * (%s + %d) + ((%s%s) / %d) * (%d)", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
+						sprintf(index_x, "(%s%s) %% (%" PRIu64 ") + %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") * (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
 						indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 						sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-						//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((%s%s) %% (%d) + %d * (%s + %d) + ((%s%s) / %d) * (%d));\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
+						//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((%s%s) %% (%" PRIu64 ") + %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") * (%" PRIu64 "));\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
 						if (sc->writeFromRegisters) {
 							if (sc->outputBufferBlockNum == 1)
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 						}
 						else {
 							if (sc->outputBufferBlockNum == 1)
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[%s*(%s+%d) + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[%s*(%s+%" PRIu64 ") + %s]%s;\n", outputsStruct, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 							else
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[%s*(%s+%d) + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[%s*(%s+%" PRIu64 ") + %s]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x, convTypeRight);
 						}
 					}
 				}
@@ -6305,7 +6317,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			char shiftY2[100] = "";
 			if (sc->performWorkGroupShift[1])
 				sprintf(shiftY, " + consts.workGroupShiftY ");
-			uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+			uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			if (sc->reorderFourStep) {
 				//Not implemented
 			}
@@ -6314,13 +6326,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				//appendZeropadStart(sc);
 				if (sc->zeropad[1]) {
 					if (sc->fftDim == sc->fft_dim_full) {
-						for (uint32_t k = 0; k < sc->registerBoost; k++) {
+						for (uint64_t k = 0; k < sc->registerBoost; k++) {
 							if (sc->mergeSequencesR2C) {
 								if (sc->axisSwapped) {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	if (%s==0)\n\
 	{\n\
-		sdata[%s + %d* sharedStride] = sdata[%s];\n\
+		sdata[%s + %" PRIu64 "* sharedStride] = sdata[%s];\n\
 	}\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->fftDim, sc->gl_LocalInvocationID_x);
 									appendZeropadEnd(sc);
 									appendBarrierVkFFT(sc, 1);
@@ -6337,39 +6349,39 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									appendZeropadStart(sc);
 								}
 							}
-							uint32_t num_out = (sc->axisSwapped) ? (uint32_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (uint32_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
-							//num_out = (uint32_t)ceil(num_out / (double)sc->min_registers_per_thread);
-							for (uint32_t i = 0; i < num_out; i++) {
+							uint64_t num_out = (sc->axisSwapped) ? (uint64_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (uint64_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
+							//num_out = (uint64_t)ceil(num_out / (double)sc->min_registers_per_thread);
+							for (uint64_t i = 0; i < num_out; i++) {
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * num_out) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * num_out) * sc->localSize[0]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * num_out) * sc->localSize[0] * sc->localSize[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * num_out) * sc->localSize[0] * sc->localSize[1]);
 
 								if (!sc->axisSwapped) {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-									sprintf(index_x, "combinedID %% %d + ((combinedID/%d) * %d)", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
+									sprintf(index_x, "combinedID %% %" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ")", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
 									indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
 								}
 								else {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-									sprintf(index_x, "combinedID %% %d + ((combinedID/%d) * %d)", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
+									sprintf(index_x, "combinedID %% %" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ")", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
 									indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
 								}
 								if (sc->axisSwapped) {
 									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + %s*%d< %d){", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
 									if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= mult * (sc->fftDim / 2 + 1) * sc->localSize[0])
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %d){", mult * (sc->fftDim / 2 + 1) * sc->localSize[0]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %" PRIu64 "){", mult * (sc->fftDim / 2 + 1) * sc->localSize[0]);
 								}
 								else {
 									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + %s*%d< %d){", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
 									if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= mult * (sc->fftDim / 2 + 1) * sc->localSize[1])
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %d){", mult * (sc->fftDim / 2 + 1) * sc->localSize[1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %" PRIu64 "){", mult * (sc->fftDim / 2 + 1) * sc->localSize[1]);
 								}
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
 								indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
 								sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
@@ -6378,50 +6390,50 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									if (sc->outputBufferBlockNum == 1)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
 									if (sc->mergeSequencesR2C) {
 										if (sc->axisSwapped) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "if ( (combinedID / %d) %% 2 == 0){\n", sc->fftDim / 2 + 1);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].x+sdata[%d-(combinedID %% %d)* sharedStride + (combinedID / %d)].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y-sdata[%d-(combinedID %% %d)* sharedStride + (combinedID / %d)].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim / 2 + 1);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x+sdata[%" PRIu64 "-(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y-sdata[%" PRIu64 "-(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "}else{\n");
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y+sdata[%d-(combinedID %% %d)* sharedStride + (combinedID / %d)].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(-sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].x+sdata[%d-(combinedID %% %d)* sharedStride + (combinedID / %d)].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y+sdata[%" PRIu64 "-(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(-sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x+sdata[%" PRIu64 "-(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "}\n");
 											if (sc->outputBufferBlockNum == 1)
 												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], convTypeRight);
 											else
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
 										}
 										else {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "if ( (combinedID / %d) %% 2 == 0){\n", sc->fftDim / 2 + 1);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x+sdata[%d-(combinedID %% %d) + (combinedID / %d) * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y-sdata[%d-(combinedID %% %d) + (combinedID / %d) * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim / 2 + 1);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[%" PRIu64 "-(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y-sdata[%" PRIu64 "-(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "}else{\n");
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y+sdata[%d-(combinedID %% %d) + (combinedID / %d) * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(-sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x+sdata[%d-(combinedID %% %d) + (combinedID / %d) * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y+sdata[%" PRIu64 "-(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(-sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[%" PRIu64 "-(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "}\n");
 											if (sc->outputBufferBlockNum == 1)
 												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], convTypeRight);
 											else
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
 										}
 									}
 									else {
 										if (!sc->axisSwapped) {
 
 											if (sc->outputBufferBlockNum == 1)
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
 											else
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
 										}
 										else {
 											if (sc->outputBufferBlockNum == 1)
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride]%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
 											else
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride]%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
 										}
 									}
 								}
@@ -6453,13 +6465,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc->fftDim == sc->fft_dim_full) {
-						for (uint32_t k = 0; k < sc->registerBoost; k++) {
+						for (uint64_t k = 0; k < sc->registerBoost; k++) {
 							if (sc->mergeSequencesR2C) {
 								if (sc->axisSwapped) {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	if (%s==0)\n\
 	{\n\
-		sdata[%s + %d* sharedStride] = sdata[%s];\n\
+		sdata[%s + %" PRIu64 "* sharedStride] = sdata[%s];\n\
 	}\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->fftDim, sc->gl_LocalInvocationID_x);
 									appendZeropadEnd(sc);
 									appendBarrierVkFFT(sc, 1);
@@ -6469,94 +6481,94 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	if (%s==0)\n\
 	{\n\
-		sdata[%s * sharedStride + %d] = sdata[%s * sharedStride];\n\
+		sdata[%s * sharedStride + %" PRIu64 "] = sdata[%s * sharedStride];\n\
 	}\n", sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim, sc->gl_LocalInvocationID_y);
 									appendZeropadEnd(sc);
 									appendBarrierVkFFT(sc, 1);
 									appendZeropadStart(sc);
 								}
 							}
-							uint32_t num_out = (sc->axisSwapped) ? (uint32_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (uint32_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
-							//num_out = (uint32_t)ceil(num_out / (double)sc->min_registers_per_thread);
-							for (uint32_t i = 0; i < num_out; i++) {
+							uint64_t num_out = (sc->axisSwapped) ? (uint64_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (uint64_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
+							//num_out = (uint64_t)ceil(num_out / (double)sc->min_registers_per_thread);
+							for (uint64_t i = 0; i < num_out; i++) {
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * num_out) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * num_out) * sc->localSize[0]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * num_out) * sc->localSize[0] * sc->localSize[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * num_out) * sc->localSize[0] * sc->localSize[1]);
 								if (!sc->axisSwapped) {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-									sprintf(index_x, "combinedID %% %d + ((combinedID/%d) * %d)", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
+									sprintf(index_x, "combinedID %% %" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ")", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
 									indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((%s%s)/%d+ (combinedID * %d)+ ((%s%s) %% %d) * %d%s%s);\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
+									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((%s%s)/%" PRIu64 "+ (combinedID * %" PRIu64 ")+ ((%s%s) %% %" PRIu64 ") * %" PRIu64 "%s%s);\n", sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
 								}
 								else {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-									sprintf(index_x, "combinedID %% %d + ((combinedID/%d) * %d)", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
+									sprintf(index_x, "combinedID %% %" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ")", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
 									indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput(combinedID %% %d + ((%s%s) / %d)*%d + ((combinedID/%d) * %d)+ ((%s%s) %% %d) * %d%s%s);\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
+									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput(combinedID %% %" PRIu64 " + ((%s%s) / %" PRIu64 ")*%" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ")+ ((%s%s) %% %" PRIu64 ") * %" PRIu64 "%s%s);\n", sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->localSize[1], sc->fft_dim_full / sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fft_dim_full / sc->firstStageStartSize, requestCoordinate, requestBatch);
 								}
 								if (sc->axisSwapped) {
 									if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + %s*%d< %d){", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
 									if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= mult * (sc->fftDim / 2 + 1) * sc->localSize[0])
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %d){", mult * (sc->fftDim / 2 + 1) * sc->localSize[0]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %" PRIu64 "){", mult * (sc->fftDim / 2 + 1) * sc->localSize[0]);
 								}
 								else {
 									if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + %s*%d< %d){", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
 									if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= mult * (sc->fftDim / 2 + 1) * sc->localSize[1])
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %d){", mult * (sc->fftDim / 2 + 1) * sc->localSize[1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID < %" PRIu64 "){", mult * (sc->fftDim / 2 + 1) * sc->localSize[1]);
 								}
 								appendZeropadStartAxisSwapped(sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
 								}
 								else {
 									if (sc->mergeSequencesR2C) {
 										if (sc->axisSwapped) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "if ( (combinedID / %d) %% 2 == 0){\n", sc->fftDim / 2 + 1);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].x+sdata[(%d-combinedID %% %d)* sharedStride + (combinedID / %d)].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y-sdata[(%d-combinedID %% %d)* sharedStride + (combinedID / %d)].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim / 2 + 1);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y-sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "}else{\n");
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y+sdata[(%d-combinedID %% %d)* sharedStride + (combinedID / %d)].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(-sdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].x+sdata[(%d-combinedID %% %d)* sharedStride + (combinedID / %d)].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(-sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "}\n");
 											if (sc->outputBufferBlockNum == 1)
 												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], convTypeRight);
 											else
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
 										}
 										else {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "if ( (combinedID / %d) %% 2 == 0){\n", sc->fftDim / 2 + 1);
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x+sdata[(%d-combinedID %% %d) + (combinedID / %d) * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y-sdata[(%d-combinedID %% %d) + (combinedID / %d) * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim / 2 + 1);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y-sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "}else{\n");
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y+sdata[(%d-combinedID %% %d) + (combinedID / %d) * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(-sdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x+sdata[(%d-combinedID %% %d) + (combinedID / %d) * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s.y = 0.5%s*(-sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "}\n");
 											if (sc->outputBufferBlockNum == 1)
 												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %s%s%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], convTypeRight);
 											else
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s%s%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
 										}
 									}
 									else {
 										if (!sc->axisSwapped) {
 											if (sc->outputBufferBlockNum == 1)
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride]%s;\n", outputsStruct, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
 											else
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
 										}
 										else {
 											if (sc->outputBufferBlockNum == 1)
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", outputsStruct, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")]%s;\n", outputsStruct, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
 											else
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, convTypeRight);
 										}
 									}
 								}
@@ -6585,18 +6597,18 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	if (%s==%d) \n\
+	if (%s==%" PRIu64 ") \n\
 	{\n", sc->gl_LocalInvocationID_x, sc->localSize[0] - 1);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-				sprintf(index_x, "%d", sc->fftDim / 2);
+				sprintf(index_x, "%" PRIu64 "", sc->fftDim / 2);
 				sprintf(index_y, "%s%s", sc->gl_GlobalInvocationID_y, shiftY);
 				indexInputVkFFT(sc, uintType, writeType, index_x, index_y, requestCoordinate, requestBatch);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
-				//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput(2 * (%s%s), %d);\n", sc->gl_GlobalInvocationID_y, shiftY, sc->inputStride[2] / (sc->inputStride[1] + 2));
+				//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexInput(2 * (%s%s), %" PRIu64 ");\n", sc->gl_GlobalInvocationID_y, shiftY, sc->inputStride[2] / (sc->inputStride[1] + 2));
 				if (sc->outputBufferBlockNum == 1)
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID]=%ssdata[(%d + %s * sharedStride)]%s;\n", outputsStruct, convTypeLeft,sc->fftDim / 2, sc->gl_LocalInvocationID_y, convTypeRight);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID]=%ssdata[(%" PRIu64 " + %s * sharedStride)]%s;\n", outputsStruct, convTypeLeft,sc->fftDim / 2, sc->gl_LocalInvocationID_y, convTypeRight);
 				else
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d]=%ssdata[(%d + %s * sharedStride)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2, sc->gl_LocalInvocationID_y, convTypeRight);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]=%ssdata[(%" PRIu64 " + %s * sharedStride)]%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim / 2, sc->gl_LocalInvocationID_y, convTypeRight);
 
 				VkAppendLine(sc, "	}\n");*/
 			}
@@ -6605,14 +6617,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		case 6: {//single_c2r
 			char shiftY[500] = "";
 			if (sc->performWorkGroupShift[1])
-				sprintf(shiftY, " + consts.workGroupShiftY * %d", sc->localSize[1]);
+				sprintf(shiftY, " + consts.workGroupShiftY * %" PRIu64 "", sc->localSize[1]);
 			if ((sc->axisSwapped) || (sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim)) {
 				sc->writeFromRegisters = 0;
 				appendBarrierVkFFT(sc, 1);
 			}
 			else
 				sc->writeFromRegisters = 1;
-			uint32_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+			uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			appendZeropadStart(sc);
 			if (sc->reorderFourStep) {
 				//Not implemented
@@ -6620,27 +6632,27 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else {
 				if (sc->zeropad[1]) {
 					if (sc->fftDim == sc->fft_dim_full) {
-						for (uint32_t k = 0; k < sc->registerBoost; k++) {
-							for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t k = 0; k < sc->registerBoost; k++) {
+							for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
 								if (sc->outputStride[0] > 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) * %d + (combinedID / %d) * %d;\n", sc->fftDim, sc->outputStride[0], sc->fftDim, mult * sc->outputStride[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->outputStride[0], sc->fftDim, mult * sc->outputStride[1]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %d) + (combinedID / %d) * %d;\n", sc->fftDim, sc->fftDim, mult * sc->outputStride[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->fftDim, mult * sc->outputStride[1]);
 
 								if (sc->axisSwapped) {
-									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint32_t)ceil(sc->size[1] / (double)mult));
+									if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint64_t)ceil(sc->size[1] / (double)mult));
 								}
 								else {
-									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint32_t)ceil(sc->size[1] / (double)mult));
+									if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint64_t)ceil(sc->size[1] / (double)mult));
 								}
-								sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %d < %d)||(inoutID %% %d >= %d)){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
+								sc->currentLen += sprintf(sc->output + sc->currentLen, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
 								appendZeropadStartAxisSwapped(sc);
 								if (sc->writeFromRegisters) {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
@@ -6649,14 +6661,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									if (sc->outputBufferBlockNum == 1)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %s%s.x%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i], convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s.x%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s%s.x%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
 									if (sc->mergeSequencesR2C) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = %s + %d;", sc->inoutID, sc->inoutID, sc->outputStride[1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = %s + %" PRIu64 ";", sc->inoutID, sc->inoutID, sc->outputStride[1]);
 
 										if (sc->outputBufferBlockNum == 1)
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %s%s.y%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i], convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %s%s.y%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s%s.y%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
 									}
 								}
 								else {
@@ -6665,39 +6677,39 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 									sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
 									if (sc->axisSwapped) {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										if (sc->mergeSequencesR2C) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = %s + %d;", sc->inoutID, sc->inoutID, sc->outputStride[1]);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = %s + %" PRIu64 ";", sc->inoutID, sc->inoutID, sc->outputStride[1]);
 											if (sc->outputBufferBlockNum == 1)
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %d)* sharedStride + (combinedID / %d)].y%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 											else
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) * sharedStride+ (combinedID / %d)].y%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride+ (combinedID / %" PRIu64 ")].y%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										}
 									}
 									else {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										if (sc->mergeSequencesR2C) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = %s + %d;", sc->inoutID, sc->inoutID, sc->outputStride[1]);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = %s + %" PRIu64 ";", sc->inoutID, sc->inoutID, sc->outputStride[1]);
 											if (sc->outputBufferBlockNum == 1)
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 											else
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										}
 									}
 								}
 								appendZeropadEndAxisSwapped(sc);
 								VkAppendLine(sc, "	}\n");
 								if (sc->axisSwapped) {
-									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+									if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		}");
 								}
 								else {
-									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+									if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		}");
 								}
 							}
@@ -6709,86 +6721,86 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					if (sc->fftDim == sc->fft_dim_full) {
-						for (uint32_t k = 0; k < sc->registerBoost; k++) {
-							for (uint32_t i = 0; i < sc->min_registers_per_thread; i++) {
+						for (uint64_t k = 0; k < sc->registerBoost; k++) {
+							for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 								if (sc->localSize[1] == 1)
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %d;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 								else
-									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %d * %s) + %d;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+									sc->currentLen += sprintf(sc->output + sc->currentLen, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
 
 								if (sc->outputStride[0] > 1) {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-									sprintf(index_x, "(combinedID %% %d) * %d + (combinedID / %d) * %d", sc->fftDim, sc->outputStride[0], sc->fftDim, mult * sc->outputStride[1]);
+									sprintf(index_x, "(combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->outputStride[0], sc->fftDim, mult * sc->outputStride[1]);
 									indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
 
-									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((combinedID %% %d) * %d + (combinedID / %d) * %d);\n", sc->fftDim, sc->outputStride[0], sc->fftDim, 2 * sc->outputStride[1]);
+									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 ");\n", sc->fftDim, sc->outputStride[0], sc->fftDim, 2 * sc->outputStride[1]);
 								}
 								else {
 									sc->currentLen += sprintf(sc->output + sc->currentLen, "			%s = ", sc->inoutID);
-									sprintf(index_x, "(combinedID %% %d) + (combinedID / %d) * %d", sc->fftDim, sc->fftDim, mult * sc->outputStride[1]);
+									sprintf(index_x, "(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->fftDim, mult * sc->outputStride[1]);
 									indexOutputVkFFT(sc, uintType, writeType, index_x, 0, requestCoordinate, requestBatch);
 									sc->currentLen += sprintf(sc->output + sc->currentLen, ";\n");
 
-									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((combinedID %% %d) + (combinedID / %d) * %d);\n", sc->fftDim, sc->fftDim, 2 * sc->outputStride[1]);
+									//sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID = indexOutput((combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 ");\n", sc->fftDim, sc->fftDim, 2 * sc->outputStride[1]);
 								}
 								if (sc->axisSwapped) {
-									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint32_t)ceil(sc->size[1] / (double)mult));
+									if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint64_t)ceil(sc->size[1] / (double)mult));
 								}
 								else {
-									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %d + (%s%s)*%d< %d){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint32_t)ceil(sc->size[1] / (double)mult));
+									if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint64_t)ceil(sc->size[1] / (double)mult));
 								}
 								appendZeropadStartAxisSwapped(sc);
 								if (sc->writeFromRegisters) {
 									if (sc->outputBufferBlockNum == 1)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %s%s.x%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i], convTypeRight);
 									else
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s.x%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s.x%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
 									if (sc->mergeSequencesR2C) {
-										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %d;\n", sc->outputStride[1]);
+										sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %" PRIu64 ";\n", sc->outputStride[1]);
 										if (sc->outputBufferBlockNum == 1)
 											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %s%s.y%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i], convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %s%s.y%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s.y%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i], convTypeRight);
 									}
 								}
 								else {
 									if (sc->axisSwapped) {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[%s] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %d]%s[%s %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].x%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										if (sc->mergeSequencesR2C) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %d;\n", sc->outputStride[1]);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %" PRIu64 ";\n", sc->outputStride[1]);
 											if (sc->outputBufferBlockNum == 1)
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].y%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 											else
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) * sharedStride + (combinedID / %d)].y%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].y%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										}
 									}
 									else {
 										if (sc->outputBufferBlockNum == 1)
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										else
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].x%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										if (sc->mergeSequencesR2C) {
-											sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %d;\n", sc->outputStride[1]);
+											sc->currentLen += sprintf(sc->output + sc->currentLen, "		inoutID += %" PRIu64 ";\n", sc->outputStride[1]);
 											if (sc->outputBufferBlockNum == 1)
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y%s;\n", outputsStruct, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 											else
-												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = %ssdata[(combinedID %% %d) + (combinedID / %d) * sharedStride].y%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
+												sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %ssdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->fftDim, sc->fftDim, convTypeRight);
 										}
 									}
 								}
 								appendZeropadEndAxisSwapped(sc);
 								if (sc->axisSwapped) {
-									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
+									if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		}");
 								}
 								else {
-									if ((uint32_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
+									if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0)
 										sc->currentLen += sprintf(sc->output + sc->currentLen, "		}");
 								}
 							}
@@ -6806,7 +6818,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		appendZeropadEnd(sc);
 	}
-	static inline void shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint32_t type) {
+	static inline void shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint64_t type) {
 		//appendLicense(output);
 		sc->output = output;
 		sc->currentLen = 0;
@@ -6947,7 +6959,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if ((!sc->LUT) && (!strcmp(floatType, "double")))
 			appendSinCos20(sc, floatType, uintType);
 		appendPushConstantsVkFFT(sc, floatType, uintType);
-		uint32_t id = 0;
+		uint64_t id = 0;
 		appendInputLayoutVkFFT(sc, id, floatTypeInputMemory, 0);
 		id++;
 		appendOutputLayoutVkFFT(sc, id, floatTypeOutputMemory, 0);
@@ -6962,19 +6974,19 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		//appendIndexInputVkFFT(sc, uintType, type);
 		//appendIndexOutputVkFFT(sc, uintType, type);
-		/*uint32_t appendedRadix[10] = { 0,0,0,0,0,0,0,0,0,0 };
-		for (uint32_t i = 0; i < sc->numStages; i++) {
+		/*uint64_t appendedRadix[10] = { 0,0,0,0,0,0,0,0,0,0 };
+		for (uint64_t i = 0; i < sc->numStages; i++) {
 			if (appendedRadix[sc->stageRadix[i]] == 0) {
 				appendedRadix[sc->stageRadix[i]] = 1;
 				appendRadixKernelVkFFT(sc, floatType, uintType, sc->stageRadix[i]);
 			}
 		}*/
-		uint32_t locType = (((type == 0) || (type == 5) || (type == 6)) && (sc->axisSwapped)) ? 1 : type;
+		uint64_t locType = (((type == 0) || (type == 5) || (type == 6)) && (sc->axisSwapped)) ? 1 : type;
 #if(VKFFT_BACKEND==0)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "void main() {\n");
 #elif(VKFFT_BACKEND==1)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern __shared__ float shared[];\n");
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern \"C\" __global__ __launch_bounds__(%d) void VkFFT_main_R2C ", sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern \"C\" __global__ __launch_bounds__(%" PRIu64 ") void VkFFT_main_R2C ", sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
 		if (type == 5)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "(%s* inputs, %s* outputs", vecTypeInput, vecTypeOutput);
 		else {
@@ -6993,7 +7005,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
 #elif(VKFFT_BACKEND==2)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern __shared__ float shared[];\n");
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern \"C\" __launch_bounds__(%d) __global__ void VkFFT_main_R2C ", sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern \"C\" __launch_bounds__(%" PRIu64 ") __global__ void VkFFT_main_R2C ", sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
 		if (type == 5)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "(%s* inputs, %s* outputs", vecTypeInput, vecTypeOutput);
 		else {
@@ -7011,7 +7023,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		sc->currentLen += sprintf(sc->output + sc->currentLen, ") {\n");
 		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
 #elif(VKFFT_BACKEND==3)
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "__kernel __attribute__((reqd_work_group_size(%d, %d, %d))) void VkFFT_main_R2C ", sc->localSize[0], sc->localSize[1], sc->localSize[2]);
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "__kernel __attribute__((reqd_work_group_size(%" PRIu64 ", %" PRIu64 ", %" PRIu64 "))) void VkFFT_main_R2C ", sc->localSize[0], sc->localSize[1], sc->localSize[2]);
 		if (type == 5)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "(__global %s* inputs, __global %s* outputs", vecTypeInput, vecTypeOutput);
 		else {
@@ -7036,38 +7048,38 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		else
 			sprintf(idX, "%s", sc->gl_GlobalInvocationID_x);
 		appendZeropadStart(sc);
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s id_x = %s %% %d;\n", uintType, idX, (sc->size[0] / 4));
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s id_y = (%s / %d) %% %d;\n", uintType, idX, (sc->size[0] / 4), sc->size[1]);
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s id_z = (%s / %d) / %d;\n", uintType, idX, (sc->size[0] / 4), sc->size[1]);
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "if (%s < %d){\n", idX, (sc->size[0] / 4) * sc->size[1] * sc->size[2]);
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s inoutID = id_x + id_y*%d +id_z*%d;\n", uintType, sc->inputStride[1], sc->inputStride[2]);
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s id_x = %s %% %" PRIu64 ";\n", uintType, idX, (sc->size[0] / 4));
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s id_y = (%s / %" PRIu64 ") %% %" PRIu64 ";\n", uintType, idX, (sc->size[0] / 4), sc->size[1]);
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s id_z = (%s / %" PRIu64 ") / %" PRIu64 ";\n", uintType, idX, (sc->size[0] / 4), sc->size[1]);
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "if (%s < %" PRIu64 "){\n", idX, (sc->size[0] / 4) * sc->size[1] * sc->size[2]);
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s inoutID = id_x + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", uintType, sc->inputStride[1], sc->inputStride[2]);
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s inoutID2;\n", uintType);
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s inoutID3;\n", uintType);
 		if (sc->inputBufferBlockNum == 1)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t0 = %s[inoutID];\n", vecType, inputsStruct);
 		else
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t0 = inputBlocks[inoutID / %d]%s[inoutID %% %d];\n", vecType, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t0 = inputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "];\n", vecType, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize);
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s tf;\n", vecType);
 		if (sc->size[0] % 4 == 0) {
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "if (id_x == 0)  {\n");
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "	inoutID2 = %d + id_y*%d +id_z*%d;\n", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "	inoutID3 = %d + id_y*%d +id_z*%d;\n", (sc->size[0] / 4), sc->inputStride[1], sc->inputStride[2]);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "	inoutID2 = %" PRIu64 " + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "	inoutID3 = %" PRIu64 " + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", (sc->size[0] / 4), sc->inputStride[1], sc->inputStride[2]);
 			if (sc->inputBufferBlockNum == 1)
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "		tf = %s[inoutID3];\n", inputsStruct);
 			else
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "		tf = inputBlocks[inoutID3 / %d]%s[inoutID3 %% %d];\n", sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "		tf = inputBlocks[inoutID3 / %" PRIu64 "]%s[inoutID3 %% %" PRIu64 "];\n", sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize);
 
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "} else {\n");
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "	inoutID2 = (%d-id_x) + id_y*%d +id_z*%d;\n", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "	inoutID2 = (%" PRIu64 "-id_x) + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "}");
 		}
 		else {
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "inoutID2 = (%d-id_x) + id_y*%d +id_z*%d;\n", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "inoutID2 = (%" PRIu64 "-id_x) + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
 		}
 		if (sc->inputBufferBlockNum == 1)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t1 = %s[inoutID2];\n", vecType, inputsStruct);
 		else
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t1 = inputBlocks[inoutID2 / %d]%s[inoutID2 %% %d];\n", vecType, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t1 = inputBlocks[inoutID2 / %" PRIu64 "]%s[inoutID2 %% %" PRIu64 "];\n", vecType, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize);
 
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t2;\n", vecType);
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t3;\n", vecType);
@@ -7088,17 +7100,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc->outputBufferBlockNum == 1)
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = t2;\n", outputsStruct);
 			else
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = t2;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = t2;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
 			if (!sc->inverse) {
 				if (sc->outputBufferBlockNum == 1)
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID2] = t3;\n", outputsStruct);
 				else
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID2 / %d]%s[inoutID2 %% %d] = t3;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID2 / %" PRIu64 "]%s[inoutID2 %% %" PRIu64 "] = t3;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
 			}
 			if (sc->outputBufferBlockNum == 1)
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID3] = tf;\n", outputsStruct);
 			else
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID3 / %d]%s[inoutID3 %% %d] = tf;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID3 / %" PRIu64 "]%s[inoutID3 %% %" PRIu64 "] = tf;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
 
 		}
 		else {
@@ -7115,12 +7127,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (sc->outputBufferBlockNum == 1)
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = t2;\n", outputsStruct);
 			else
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = t2;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = t2;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
 			if (!sc->inverse) {
 				if (sc->outputBufferBlockNum == 1)
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID2] = t3;\n", outputsStruct);
 				else
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID2 / %d]%s[inoutID2 %% %d] = t3;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID2 / %" PRIu64 "]%s[inoutID2 %% %" PRIu64 "] = t3;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
 			}
 		}
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "} else {\n");
@@ -7134,7 +7146,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "		tf = twiddleLUT[id_x];\n");
 		}
 		else {
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s angle = (loc_PI*id_x)/%d;\n", floatType, sc->size[0] / 2);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s angle = (loc_PI*id_x)/%" PRIu64 ";\n", floatType, sc->size[0] / 2);
 			if (!strcmp(floatType, "float")) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "		tf.x = %s(angle);\n", cosDef);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "		tf.y = %s(angle);\n", sinDef);
@@ -7166,12 +7178,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (sc->outputBufferBlockNum == 1)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = t0;\n", outputsStruct);
 		else
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %d]%s[inoutID %% %d] = t0;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = t0;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
 
 		if (sc->outputBufferBlockNum == 1)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID2] = t1;\n", outputsStruct);
 		else
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID2 / %d]%s[inoutID2 %% %d] = t1;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID2 / %" PRIu64 "]%s[inoutID2 %% %" PRIu64 "] = t1;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
 
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "}\n");
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "}\n");
@@ -7181,7 +7193,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		//printf("%s", output);
 	}
 
-	static inline void shaderGenVkFFT(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint32_t type) {
+	static inline void shaderGenVkFFT(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint64_t type) {
 		//appendLicense(output);
 		sc->output = output;
 		sc->currentLen = 0;
@@ -7287,8 +7299,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		//sprintf(sc->tempReg, "temp");
 		sc->disableThreadsStart = (char*)malloc(sizeof(char) * 500);
 		sc->disableThreadsEnd = (char*)malloc(sizeof(char) * 2);
-		sprintf(sc->disableThreadsStart, "");
-		sprintf(sc->disableThreadsEnd, "");
+		sc->disableThreadsStart[0] = 0;
+		sc->disableThreadsEnd[0] = 0;
 		appendVersion(sc);
 		appendExtensions(sc, floatType, floatTypeInputMemory, floatTypeOutputMemory, floatTypeKernelMemory);
 		appendLayoutVkFFT(sc);
@@ -7296,7 +7308,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if ((!sc->LUT) && (!strcmp(floatType, "double")))
 			appendSinCos20(sc, floatType, uintType);
 		appendPushConstantsVkFFT(sc, floatType, uintType);
-		uint32_t id = 0;
+		uint64_t id = 0;
 		appendInputLayoutVkFFT(sc, id, floatTypeInputMemory, type);
 		id++;
 		appendOutputLayoutVkFFT(sc, id, floatTypeOutputMemory, type);
@@ -7311,20 +7323,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		//appendIndexInputVkFFT(sc, uintType, type);
 		//appendIndexOutputVkFFT(sc, uintType, type);
-		/*uint32_t appendedRadix[10] = { 0,0,0,0,0,0,0,0,0,0 };
-		for (uint32_t i = 0; i < sc->numStages; i++) {
+		/*uint64_t appendedRadix[10] = { 0,0,0,0,0,0,0,0,0,0 };
+		for (uint64_t i = 0; i < sc->numStages; i++) {
 			if (appendedRadix[sc->stageRadix[i]] == 0) {
 				appendedRadix[sc->stageRadix[i]] = 1;
 				appendRadixKernelVkFFT(sc, floatType, uintType, sc->stageRadix[i]);
 			}
 		}*/
-		uint32_t locType = (((type == 0) || (type == 5) || (type == 6)) && (sc->axisSwapped)) ? 1 : type;
+		uint64_t locType = (((type == 0) || (type == 5) || (type == 6)) && (sc->axisSwapped)) ? 1 : type;
 #if(VKFFT_BACKEND==0)
 		appendSharedMemoryVkFFT(sc, floatType, uintType, locType);
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "void main() {\n");
 #elif(VKFFT_BACKEND==1)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern __shared__ float shared[];\n");
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern \"C\" __global__ void __launch_bounds__(%d) VkFFT_main ", sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern \"C\" __global__ void __launch_bounds__(%" PRIu64 ") VkFFT_main ", sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
 		if (type == 5)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "(%s* inputs, %s* outputs", floatTypeInputMemory, vecTypeOutput);
 		else {
@@ -7344,7 +7356,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		appendSharedMemoryVkFFT(sc, floatType, uintType, locType);
 #elif(VKFFT_BACKEND==2)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern __shared__ float shared[];\n");
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern \"C\" __launch_bounds__(%d) __global__ void VkFFT_main ", sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern \"C\" __launch_bounds__(%" PRIu64 ") __global__ void VkFFT_main ", sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
 		if (type == 5)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "(%s* inputs, %s* outputs", floatTypeInputMemory, vecTypeOutput);
 		else {
@@ -7363,7 +7375,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
 		appendSharedMemoryVkFFT(sc, floatType, uintType, locType);
 #elif(VKFFT_BACKEND==3)
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "__kernel __attribute__((reqd_work_group_size(%d, %d, %d))) void VkFFT_main ", sc->localSize[0], sc->localSize[1], sc->localSize[2]);
+		sc->currentLen += sprintf(sc->output + sc->currentLen, "__kernel __attribute__((reqd_work_group_size(%" PRIu64 ", %" PRIu64 ", %" PRIu64 "))) void VkFFT_main ", sc->localSize[0], sc->localSize[1], sc->localSize[2]);
 		if (type == 5)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "(__global %s* inputs, __global %s* outputs", floatTypeInputMemory, vecTypeOutput);
 		else {
@@ -7386,17 +7398,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		//if (type==0) sc->currentLen += sprintf(sc->output + sc->currentLen, "return;\n");
 		appendInitialization(sc, floatType, uintType, type);
 		if ((sc->convolutionStep) && (sc->matrixConvolution > 1))
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "	for (%s coordinate=%d; coordinate > 0; coordinate--){\n\
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "	for (%s coordinate=%" PRIu64 "; coordinate > 0; coordinate--){\n\
 	coordinate--;\n", uintType, sc->matrixConvolution);
 		appendReadDataVkFFT(sc, floatType, floatTypeInputMemory, uintType, type);
 		//appendBarrierVkFFT(sc, 1);
 		appendReorder4StepRead(sc, floatType, uintType, locType);
 		appendBoostThreadDataReorder(sc, floatType, uintType, locType, 1);
-		uint32_t stageSize = 1;
-		uint32_t stageSizeSum = 0;
+		uint64_t stageSize = 1;
+		uint64_t stageSizeSum = 0;
 		double PI_const = 3.1415926535897932384626433832795;
 		double stageAngle = (sc->inverse) ? PI_const : -PI_const;
-		for (uint32_t i = 0; i < sc->numStages; i++) {
+		for (uint64_t i = 0; i < sc->numStages; i++) {
 			if ((i == sc->numStages - 1) && (sc->registerBoost > 1)) {
 				appendRadixStage(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], locType);
 				appendRegisterBoostShuffle(sc, floatType, stageSize, sc->stageRadix[i - 1], sc->stageRadix[i], stageAngle);
@@ -7451,14 +7463,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			appendKernelConvolution(sc, floatType, floatTypeKernelMemory, uintType, locType);
 
 			if (sc->matrixConvolution > 1)
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "	for (%s coordinate=0; coordinate < %d; coordinate++){\n", uintType, sc->matrixConvolution);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "	for (%s coordinate=0; coordinate < %" PRIu64 "; coordinate++){\n", uintType, sc->matrixConvolution);
 
 			appendCoordinateRegisterPull(sc, locType);
 
 			stageSize = 1;
 			stageSizeSum = 0;
 			stageAngle = PI_const;
-			for (uint32_t i = 0; i < sc->numStages; i++) {
+			for (uint64_t i = 0; i < sc->numStages; i++) {
 				appendRadixStage(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], locType);
 				switch (sc->stageRadix[i]) {
 				case 2:
@@ -7506,18 +7518,18 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "}\n");
 		free(sc->disableThreadsStart);
 		free(sc->disableThreadsEnd);
-		for (uint32_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++)
+		for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++)
 			free(sc->regIDs[i]);
 		free(sc->regIDs);
 		//printf("%s", output);
 	}
 #if(VKFFT_BACKEND==0)
-	static inline VkFFTResult findMemoryType(VkFFTApplication* app, uint32_t memoryTypeBits, uint32_t memorySize, VkMemoryPropertyFlags properties, uint32_t* memoryTypeIndex) {
+	static inline VkFFTResult findMemoryType(VkFFTApplication* app, uint64_t memoryTypeBits, uint64_t memorySize, VkMemoryPropertyFlags properties, uint32_t* memoryTypeIndex) {
 		VkPhysicalDeviceMemoryProperties memoryProperties = { 0 };
 
 		vkGetPhysicalDeviceMemoryProperties(app->configuration.physicalDevice[0], &memoryProperties);
 
-		for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
+		for (uint64_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
 			if ((memoryTypeBits & (1 << i)) && ((memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) && (memoryProperties.memoryHeaps[memoryProperties.memoryTypes[i].heapIndex].size >= memorySize))
 			{
 				memoryTypeIndex[0] = i;
@@ -7660,7 +7672,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 	static inline void deleteVkFFT(VkFFTApplication* app) {
 #if(VKFFT_BACKEND==1)
 		if (app->configuration.num_streams > 1) {
-			for (uint32_t i = 0; i < app->configuration.num_streams; i++) {
+			for (uint64_t i = 0; i < app->configuration.num_streams; i++) {
 				if (app->configuration.stream_event[i] != 0) {
 					cudaEventDestroy(app->configuration.stream_event[i]);
 					app->configuration.stream_event[i] = 0;
@@ -7673,7 +7685,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 #elif(VKFFT_BACKEND==2)
 		if (app->configuration.num_streams > 1) {
-			for (uint32_t i = 0; i < app->configuration.num_streams; i++) {
+			for (uint64_t i = 0; i < app->configuration.num_streams; i++) {
 				if (app->configuration.stream_event[i] != 0) {
 					hipEventDestroy(app->configuration.stream_event[i]);
 					app->configuration.stream_event[i] = 0;
@@ -7725,10 +7737,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		if (!app->configuration.makeInversePlanOnly) {
 			if (app->localFFTPlan != 0) {
-				for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
+				for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 					if (app->localFFTPlan->numAxisUploads != 0) {
 						if (app->localFFTPlan->numAxisUploads[i] > 0) {
-							for (uint32_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
+							for (uint64_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
 								deleteAxis(app, &app->localFFTPlan->axes[i][j]);
 						}
 					}
@@ -7744,10 +7756,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		if (!app->configuration.makeForwardPlanOnly) {
 			if (app->localFFTPlan_inverse != 0) {
-				for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
+				for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 					if (app->localFFTPlan_inverse->numAxisUploads != 0) {
 						if (app->localFFTPlan_inverse->numAxisUploads[i] > 0) {
-							for (uint32_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
+							for (uint64_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
 								deleteAxis(app, &app->localFFTPlan_inverse->axes[i][j]);
 						}
 					}
@@ -7762,8 +7774,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 		}
 	}
-	static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t supportAxis) {
-		uint32_t complexSize;
+	static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t axis_id, uint64_t supportAxis) {
+		uint64_t complexSize;
 		if (app->configuration.doublePrecision)
 			complexSize = (2 * sizeof(double));
 		else
@@ -7771,10 +7783,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				complexSize = (2 * sizeof(float));
 			else
 				complexSize = (2 * sizeof(float));
-		uint32_t multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };//split the sequence
-		uint32_t isPowOf2 = (pow(2, (uint32_t)log2(app->configuration.size[axis_id])) == app->configuration.size[axis_id]) ? 1 : 0;
-		uint32_t tempSequence = app->configuration.size[axis_id];
-		for (uint32_t i = 2; i < 14; i++) {
+		uint64_t multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };//split the sequence
+		uint64_t isPowOf2 = (pow(2, (uint64_t)log2(app->configuration.size[axis_id])) == app->configuration.size[axis_id]) ? 1 : 0;
+		uint64_t tempSequence = app->configuration.size[axis_id];
+		for (uint64_t i = 2; i < 14; i++) {
 			if (tempSequence % i == 0) {
 				tempSequence /= i;
 				multipliers[i]++;
@@ -7782,28 +7794,28 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 		}
 		if (tempSequence != 1) return VKFFT_ERROR_UNSUPPORTED_RADIX;
-		uint32_t nonStridedAxisId = (supportAxis) ? 1 : 0;
-		uint32_t registerBoost = 1;
-		for (uint32_t i = 1; i <= app->configuration.registerBoost; i++) {
+		uint64_t nonStridedAxisId = (supportAxis) ? 1 : 0;
+		uint64_t registerBoost = 1;
+		for (uint64_t i = 1; i <= app->configuration.registerBoost; i++) {
 			if (app->configuration.size[axis_id] % (i * i) == 0)
 				registerBoost = i;
 		}
-		uint32_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
-		uint32_t maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
+		uint64_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
+		uint64_t maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
 		if ((axis_id == nonStridedAxisId) && (app->configuration.performR2C) && (app->configuration.size[axis_id] > maxSingleSizeNonStrided)) {
 			app->configuration.size[axis_id] /= 2;
 			app->configuration.performR2C = 0;
 			FFTPlan->multiUploadR2C = 1;
 		}
 		if ((axis_id == nonStridedAxisId) && (!app->configuration.performConvolution)) maxSingleSizeNonStrided *= registerBoost;
-		uint32_t maxSequenceLengthSharedMemoryStrided = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
-		uint32_t maxSingleSizeStrided = (!app->configuration.performConvolution) ? maxSequenceLengthSharedMemoryStrided * registerBoost : maxSequenceLengthSharedMemoryStrided;
-		uint32_t numPasses = 1;
-		uint32_t numPassesHalfBandwidth = 1;
-		uint32_t temp;
-		temp = (axis_id == nonStridedAxisId) ? (uint32_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : (uint32_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStrided);
+		uint64_t maxSequenceLengthSharedMemoryStrided = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
+		uint64_t maxSingleSizeStrided = (!app->configuration.performConvolution) ? maxSequenceLengthSharedMemoryStrided * registerBoost : maxSequenceLengthSharedMemoryStrided;
+		uint64_t numPasses = 1;
+		uint64_t numPassesHalfBandwidth = 1;
+		uint64_t temp;
+		temp = (axis_id == nonStridedAxisId) ? (uint64_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : (uint64_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStrided);
 		if (temp > 1) {//more passes than one
-			for (uint32_t i = 1; i <= app->configuration.registerBoost4Step; i++) {
+			for (uint64_t i = 1; i <= app->configuration.registerBoost4Step; i++) {
 				if (app->configuration.size[axis_id] % (i * i) == 0) {
 					registerBoost = i;
 				}
@@ -7812,13 +7824,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if ((!app->configuration.performConvolution)) maxSingleSizeStrided = maxSequenceLengthSharedMemoryStrided * registerBoost;
 			temp = ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStrided;
 			if (app->configuration.reorderFourStep)
-				numPasses = (uint32_t)ceil(log2(app->configuration.size[axis_id]) / log2(maxSingleSizeStrided));
+				numPasses = (uint64_t)ceil(log2(app->configuration.size[axis_id]) / log2(maxSingleSizeStrided));
 			else
-				numPasses += (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStrided));
+				numPasses += (uint64_t)ceil(log2(temp) / log2(maxSingleSizeStrided));
 		}
-		registerBoost = ((axis_id == nonStridedAxisId) && ((!app->configuration.reorderFourStep) || (numPasses == 1))) ? (uint32_t)ceil(app->configuration.size[axis_id] / (float)(pow(maxSequenceLengthSharedMemoryStrided, numPasses - 1) * maxSequenceLengthSharedMemory)) : (uint32_t)ceil(app->configuration.size[axis_id] / (float)pow(maxSequenceLengthSharedMemoryStrided, numPasses));
-		uint32_t canBoost = 0;
-		for (uint32_t i = registerBoost; i <= app->configuration.registerBoost; i++) {
+		registerBoost = ((axis_id == nonStridedAxisId) && ((!app->configuration.reorderFourStep) || (numPasses == 1))) ? (uint64_t)ceil(app->configuration.size[axis_id] / (double)(pow(maxSequenceLengthSharedMemoryStrided, numPasses - 1) * maxSequenceLengthSharedMemory)) : (uint64_t)ceil(app->configuration.size[axis_id] / (double)pow(maxSequenceLengthSharedMemoryStrided, numPasses));
+		uint64_t canBoost = 0;
+		for (uint64_t i = registerBoost; i <= app->configuration.registerBoost; i++) {
 			if (app->configuration.size[axis_id] % (i * i) == 0) {
 				registerBoost = i;
 				i = app->configuration.registerBoost + 1;
@@ -7831,15 +7843,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		maxSingleSizeNonStrided = maxSequenceLengthSharedMemory * registerBoost;
 		maxSingleSizeStrided = maxSequenceLengthSharedMemoryStrided * registerBoost;
-		uint32_t maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
+		uint64_t maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
 		if ((app->configuration.performHalfBandwidthBoost)) {
 			maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / 2 > complexSize) ? app->configuration.sharedMemorySizePow2 / (app->configuration.coalescedMemory / 2) : app->configuration.sharedMemorySizePow2 / complexSize;
-			temp = (axis_id == nonStridedAxisId) ? (uint32_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : (uint32_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
+			temp = (axis_id == nonStridedAxisId) ? (uint64_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : (uint64_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
 			//temp = app->configuration.size[axis_id] / maxSingleSizeNonStrided;
 			if (temp > 1) {//more passes than two
-				temp = (!app->configuration.reorderFourStep) ? (uint32_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : (uint32_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
-				for (uint32_t i = 0; i < 5; i++) {
-					temp = (uint32_t)ceil(temp / (double)maxSingleSizeStrided);
+				temp = (!app->configuration.reorderFourStep) ? (uint64_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeNonStrided) : (uint64_t)ceil(app->configuration.size[axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
+				for (uint64_t i = 0; i < 5; i++) {
+					temp = (uint64_t)ceil(temp / (double)maxSingleSizeStrided);
 					numPassesHalfBandwidth++;
 					if (temp == 1) i = 5;
 				}
@@ -7847,24 +7859,24 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				temp = ((axis_id == 0) && (!app->configuration.reorderFourStep)) ? app->configuration.size[axis_id] / maxSingleSizeNonStrided : app->configuration.size[axis_id] / maxSingleSizeStridedHalfBandwidth;
 
 				if (app->configuration.reorderFourStep)
-					numPassesHalfBandwidth = (uint32_t)ceil(log2(app->configuration.size[axis_id]) / log2(maxSingleSizeStridedHalfBandwidth));
+					numPassesHalfBandwidth = (uint64_t)ceil(log2(app->configuration.size[axis_id]) / log2(maxSingleSizeStridedHalfBandwidth));
 				else
-					numPassesHalfBandwidth = 1 + (uint32_t)ceil(log2(temp) / log2(maxSingleSizeStridedHalfBandwidth));
+					numPassesHalfBandwidth = 1 + (uint64_t)ceil(log2(temp) / log2(maxSingleSizeStridedHalfBandwidth));
 				if ((numPassesHalfBandwidth == 2)&& (!app->configuration.reorderFourStep)&&(registerBoost>1)) //switch back for two step and don't do half bandwidth on strided accesses if register boost and no 4-step reordering
 				*/
 			}
 			if (numPassesHalfBandwidth < numPasses) numPasses = numPassesHalfBandwidth;
 			else maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
 		}
-		if (((uint32_t)log2(app->configuration.size[axis_id]) >= app->configuration.swapTo3Stage4Step) && (app->configuration.swapTo3Stage4Step >= 17)) numPasses = 3;//Force set to 3 stage 4 step algorithm
-		uint32_t* locAxisSplit = FFTPlan->axisSplit[axis_id];
+		if (((uint64_t)log2(app->configuration.size[axis_id]) >= app->configuration.swapTo3Stage4Step) && (app->configuration.swapTo3Stage4Step >= 17)) numPasses = 3;//Force set to 3 stage 4 step algorithm
+		uint64_t* locAxisSplit = FFTPlan->axisSplit[axis_id];
 		if (numPasses == 1) {
 			locAxisSplit[0] = app->configuration.size[axis_id];
 		}
 		if (numPasses == 2) {
 			if (isPowOf2) {
 				if ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) {
-					uint32_t maxPow8SharedMemory = (uint32_t)pow(8, ((uint32_t)log2(maxSequenceLengthSharedMemory)) / 3);
+					uint64_t maxPow8SharedMemory = (uint64_t)pow(8, ((uint64_t)log2(maxSequenceLengthSharedMemory)) / 3);
 					//unit stride
 					if (app->configuration.size[axis_id] / maxPow8SharedMemory <= maxSingleSizeStrided) {
 						locAxisSplit[0] = maxPow8SharedMemory;
@@ -7875,10 +7887,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 						else {
 							if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * registerBoost) < maxSingleSizeStridedHalfBandwidth) {
-								for (uint32_t i = 1; i <= (uint32_t)log2(registerBoost); i++) {
-									if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i)) <= maxSingleSizeStrided) {
-										locAxisSplit[0] = (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i));
-										i = (uint32_t)log2(registerBoost) + 1;
+								for (uint64_t i = 1; i <= (uint64_t)log2(registerBoost); i++) {
+									if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * (uint64_t)pow(2, i)) <= maxSingleSizeStrided) {
+										locAxisSplit[0] = (maxSequenceLengthSharedMemory * (uint64_t)pow(2, i));
+										i = (uint64_t)log2(registerBoost) + 1;
 									}
 								}
 							}
@@ -7889,7 +7901,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				else {
-					uint32_t maxPow8Strided = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided)) / 3);
+					uint64_t maxPow8Strided = (uint64_t)pow(8, ((uint64_t)log2(maxSingleSizeStrided)) / 3);
 					//all FFTs are considered as non-unit stride
 					if (app->configuration.size[axis_id] / maxPow8Strided <= maxSingleSizeStrided) {
 						locAxisSplit[0] = maxPow8Strided;
@@ -7909,15 +7921,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					locAxisSplit[1] = 64;
 				}
 				if (locAxisSplit[1] > locAxisSplit[0]) {
-					uint32_t swap = locAxisSplit[0];
+					uint64_t swap = locAxisSplit[0];
 					locAxisSplit[0] = locAxisSplit[1];
 					locAxisSplit[1] = swap;
 				}
 			}
 			else {
-				uint32_t successSplit = 0;
+				uint64_t successSplit = 0;
 				if ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) {
-					for (uint32_t i = 0; i < maxSequenceLengthSharedMemory; i++) {
+					for (uint64_t i = 0; i < maxSequenceLengthSharedMemory; i++) {
 						if (app->configuration.size[axis_id] % (maxSequenceLengthSharedMemory - i) == 0) {
 							if (((maxSequenceLengthSharedMemory - i) <= maxSequenceLengthSharedMemory) && (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i) <= maxSingleSizeStrided)) {
 								locAxisSplit[0] = (maxSequenceLengthSharedMemory - i);
@@ -7929,8 +7941,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				else {
-					uint32_t sqrtSequence = (uint32_t)ceil(sqrt(app->configuration.size[axis_id]));
-					for (uint32_t i = 0; i < sqrtSequence; i++) {
+					uint64_t sqrtSequence = (uint64_t)ceil(sqrt(app->configuration.size[axis_id]));
+					for (uint64_t i = 0; i < sqrtSequence; i++) {
 						if (app->configuration.size[axis_id] % (sqrtSequence - i) == 0) {
 							if ((sqrtSequence - i <= maxSingleSizeStrided) && (app->configuration.size[axis_id] / (sqrtSequence - i) <= maxSingleSizeStridedHalfBandwidth)) {
 								locAxisSplit[0] = app->configuration.size[axis_id] / (sqrtSequence - i);
@@ -7947,10 +7959,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		if (numPasses == 3) {
 			if (isPowOf2) {
-				uint32_t maxPow8Strided = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided)) / 3);
+				uint64_t maxPow8Strided = (uint64_t)pow(8, ((uint64_t)log2(maxSingleSizeStrided)) / 3);
 				if ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) {
 					//unit stride
-					uint32_t maxPow8SharedMemory = (uint32_t)pow(8, ((uint32_t)log2(maxSequenceLengthSharedMemory)) / 3);
+					uint64_t maxPow8SharedMemory = (uint64_t)pow(8, ((uint64_t)log2(maxSequenceLengthSharedMemory)) / 3);
 					if (app->configuration.size[axis_id] / maxPow8SharedMemory <= maxPow8Strided * maxPow8Strided)
 						locAxisSplit[0] = maxPow8SharedMemory;
 					else {
@@ -7958,10 +7970,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							locAxisSplit[0] = maxSequenceLengthSharedMemory;
 						else {
 							if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * registerBoost) <= maxSingleSizeStrided * maxSingleSizeStrided) {
-								for (uint32_t i = 0; i <= (uint32_t)log2(registerBoost); i++) {
-									if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i)) <= maxSingleSizeStrided * maxSingleSizeStrided) {
-										locAxisSplit[0] = (maxSequenceLengthSharedMemory * (uint32_t)pow(2, i));
-										i = (uint32_t)log2(registerBoost) + 1;
+								for (uint64_t i = 0; i <= (uint64_t)log2(registerBoost); i++) {
+									if (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory * (uint64_t)pow(2, i)) <= maxSingleSizeStrided * maxSingleSizeStrided) {
+										locAxisSplit[0] = (maxSequenceLengthSharedMemory * (uint64_t)pow(2, i));
+										i = (uint64_t)log2(registerBoost) + 1;
 									}
 								}
 							}
@@ -7973,14 +7985,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					//to account for TLB misses, it is best to coalesce the unit-strided stage to 128 bytes
-					/*uint32_t log2axis = (uint32_t)log2(app->configuration.size[axis_id]);
-					locAxisSplit[0] = (uint32_t)pow(2, (uint32_t)log2axis / 3);
+					/*uint64_t log2axis = (uint64_t)log2(app->configuration.size[axis_id]);
+					locAxisSplit[0] = (uint64_t)pow(2, (uint64_t)log2axis / 3);
 					if (log2axis % 3 > 0) locAxisSplit[0] *= 2;
-					locAxisSplit[1] = (uint32_t)pow(2, (uint32_t)log2axis / 3);
+					locAxisSplit[1] = (uint64_t)pow(2, (uint64_t)log2axis / 3);
 					if (log2axis % 3 > 1) locAxisSplit[1] *= 2;
 					locAxisSplit[2] = app->configuration.size[axis_id] / locAxisSplit[0] / locAxisSplit[1];*/
-					uint32_t maxSingleSizeStrided128 = app->configuration.sharedMemorySize / (128);
-					uint32_t maxPow8_128 = (uint32_t)pow(8, ((uint32_t)log2(maxSingleSizeStrided128)) / 3);
+					uint64_t maxSingleSizeStrided128 = app->configuration.sharedMemorySize / (128);
+					uint64_t maxPow8_128 = (uint64_t)pow(8, ((uint64_t)log2(maxSingleSizeStrided128)) / 3);
 					//unit stride
 					if (app->configuration.size[axis_id] / maxPow8_128 <= maxPow8Strided * maxSingleSizeStrided)
 						locAxisSplit[0] = maxPow8_128;
@@ -7996,10 +8008,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							}
 							else {
 								if (app->configuration.size[axis_id] / maxSingleSizeStrided <= maxSingleSizeStrided * maxSingleSizeStrided) {
-									for (uint32_t i = 0; i <= (uint32_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128); i++) {
-										if (app->configuration.size[axis_id] / (maxSingleSizeStrided128 * (uint32_t)pow(2, i)) <= maxSingleSizeStrided * maxSingleSizeStrided) {
-											locAxisSplit[0] = (maxSingleSizeStrided128 * (uint32_t)pow(2, i));
-											i = (uint32_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128) + 1;
+									for (uint64_t i = 0; i <= (uint64_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128); i++) {
+										if (app->configuration.size[axis_id] / (maxSingleSizeStrided128 * (uint64_t)pow(2, i)) <= maxSingleSizeStrided * maxSingleSizeStrided) {
+											locAxisSplit[0] = (maxSingleSizeStrided128 * (uint64_t)pow(2, i));
+											i = (uint64_t)log2(maxSingleSizeStrided / maxSingleSizeStrided128) + 1;
 										}
 									}
 								}
@@ -8028,18 +8040,18 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					locAxisSplit[2] = 64;
 				}
 				if (locAxisSplit[2] > locAxisSplit[1]) {
-					uint32_t swap = locAxisSplit[1];
+					uint64_t swap = locAxisSplit[1];
 					locAxisSplit[1] = locAxisSplit[2];
 					locAxisSplit[2] = swap;
 				}
 			}
 			else {
-				uint32_t successSplit = 0;
+				uint64_t successSplit = 0;
 				if ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) {
-					for (uint32_t i = 0; i < maxSequenceLengthSharedMemory; i++) {
+					for (uint64_t i = 0; i < maxSequenceLengthSharedMemory; i++) {
 						if (app->configuration.size[axis_id] % (maxSequenceLengthSharedMemory - i) == 0) {
-							uint32_t sqrt3Sequence = (uint32_t)ceil(sqrt(app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i)));
-							for (uint32_t j = 0; j < sqrt3Sequence; j++) {
+							uint64_t sqrt3Sequence = (uint64_t)ceil(sqrt(app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i)));
+							for (uint64_t j = 0; j < sqrt3Sequence; j++) {
 								if ((app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i)) % (sqrt3Sequence - j) == 0) {
 									if (((maxSequenceLengthSharedMemory - i) <= maxSequenceLengthSharedMemory) && (sqrt3Sequence - j <= maxSingleSizeStrided) && (app->configuration.size[axis_id] / (maxSequenceLengthSharedMemory - i) / (sqrt3Sequence - j) <= maxSingleSizeStrided)) {
 										locAxisSplit[0] = (maxSequenceLengthSharedMemory - i);
@@ -8055,11 +8067,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				else {
-					uint32_t sqrt3Sequence = (uint32_t)ceil(pow(app->configuration.size[axis_id], 1.0 / 3.0));
-					for (uint32_t i = 0; i < sqrt3Sequence; i++) {
+					uint64_t sqrt3Sequence = (uint64_t)ceil(pow(app->configuration.size[axis_id], 1.0 / 3.0));
+					for (uint64_t i = 0; i < sqrt3Sequence; i++) {
 						if (app->configuration.size[axis_id] % (sqrt3Sequence - i) == 0) {
-							uint32_t sqrt2Sequence = (uint32_t)ceil(sqrt(app->configuration.size[axis_id] / (sqrt3Sequence - i)));
-							for (uint32_t j = 0; j < sqrt2Sequence; j++) {
+							uint64_t sqrt2Sequence = (uint64_t)ceil(sqrt(app->configuration.size[axis_id] / (sqrt3Sequence - i)));
+							for (uint64_t j = 0; j < sqrt2Sequence; j++) {
 								if ((app->configuration.size[axis_id] / (sqrt3Sequence - i)) % (sqrt2Sequence - j) == 0) {
 									if ((sqrt3Sequence - i <= maxSingleSizeStrided) && (sqrt2Sequence - j <= maxSingleSizeStrided) && (app->configuration.size[axis_id] / (sqrt3Sequence - i) / (sqrt2Sequence - j) <= maxSingleSizeStridedHalfBandwidth)) {
 										locAxisSplit[0] = app->configuration.size[axis_id] / (sqrt3Sequence - i) / (sqrt2Sequence - j);
@@ -8082,41 +8094,41 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//printf("sequence length exceeds boundaries\n");
 			return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH;
 		}
-		for (uint32_t i = 0; i < numPasses; i++) {
+		for (uint64_t i = 0; i < numPasses; i++) {
 			if ((locAxisSplit[0] % 2 != 0) && (locAxisSplit[i] % 2 == 0)) {
-				uint32_t swap = locAxisSplit[0];
+				uint64_t swap = locAxisSplit[0];
 				locAxisSplit[0] = locAxisSplit[i];
 				locAxisSplit[i] = swap;
 			}
 		}
-		for (uint32_t i = 0; i < numPasses; i++) {
+		for (uint64_t i = 0; i < numPasses; i++) {
 			if ((locAxisSplit[0] % 4 != 0) && (locAxisSplit[i] % 4 == 0)) {
-				uint32_t swap = locAxisSplit[0];
+				uint64_t swap = locAxisSplit[0];
 				locAxisSplit[0] = locAxisSplit[i];
 				locAxisSplit[i] = swap;
 			}
 		}
-		for (uint32_t i = 0; i < numPasses; i++) {
+		for (uint64_t i = 0; i < numPasses; i++) {
 			if ((locAxisSplit[0] % 8 != 0) && (locAxisSplit[i] % 8 == 0)) {
-				uint32_t swap = locAxisSplit[0];
+				uint64_t swap = locAxisSplit[0];
 				locAxisSplit[0] = locAxisSplit[i];
 				locAxisSplit[i] = swap;
 			}
 		}
 		FFTPlan->numAxisUploads[axis_id] = numPasses;
-		for (uint32_t k = 0; k < numPasses; k++) {
+		for (uint64_t k = 0; k < numPasses; k++) {
 			tempSequence = locAxisSplit[k];
-			uint32_t loc_multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };//split the smaller sequence
-			for (uint32_t i = 2; i < 14; i++) {
+			uint64_t loc_multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };//split the smaller sequence
+			for (uint64_t i = 2; i < 14; i++) {
 				if (tempSequence % i == 0) {
 					tempSequence /= i;
 					loc_multipliers[i]++;
 					i--;
 				}
 			}
-			uint32_t registers_per_thread = 8;
-			uint32_t registers_per_thread_per_radix[14] = { 0 };
-			uint32_t min_registers_per_thread = 8;
+			uint64_t registers_per_thread = 8;
+			uint64_t registers_per_thread_per_radix[14] = { 0 };
+			uint64_t min_registers_per_thread = 8;
 			if (loc_multipliers[2] > 0) {
 				if (loc_multipliers[3] > 0) {
 					if (loc_multipliers[5] > 0) {
@@ -9748,7 +9760,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			registers_per_thread_per_radix[4] = registers_per_thread_per_radix[2];
 			if ((registerBoost == 4) && (registers_per_thread % 4 != 0)) {
 				registers_per_thread *= 2;
-				for (uint32_t i = 2; i < 14; i++) {
+				for (uint64_t i = 2; i < 14; i++) {
 					registers_per_thread_per_radix[i] *= 2;
 				}
 				min_registers_per_thread *= 2;
@@ -9777,12 +9789,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				loc_multipliers[4]++;
 				loc_multipliers[2]++;
 			}
-			uint32_t maxBatchCoalesced = ((axis_id == 0) && (((k == 0) && (!app->configuration.reorderFourStep)) || (numPasses == 1))) ? 1 : app->configuration.coalescedMemory / complexSize;
+			uint64_t maxBatchCoalesced = ((axis_id == 0) && (((k == 0) && (!app->configuration.reorderFourStep)) || (numPasses == 1))) ? 1 : app->configuration.coalescedMemory / complexSize;
 			if (maxBatchCoalesced * locAxisSplit[k] / (min_registers_per_thread * registerBoost) > app->configuration.maxThreadsNum)
 			{
-				uint32_t scaleRegistersNum = 1;
+				uint64_t scaleRegistersNum = 1;
 				while ((maxBatchCoalesced * locAxisSplit[k] / (min_registers_per_thread * registerBoost * scaleRegistersNum)) > app->configuration.maxThreadsNum) {
-					for (uint32_t i = 2; i < 14; i++) {
+					for (uint64_t i = 2; i < 14; i++) {
 						if (locAxisSplit[k] / (min_registers_per_thread * registerBoost * scaleRegistersNum) % i == 0) {
 							scaleRegistersNum *= i;
 							i = 14;
@@ -9790,10 +9802,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				min_registers_per_thread *= scaleRegistersNum;
-				uint32_t temp_scaleRegistersNum = scaleRegistersNum;
+				uint64_t temp_scaleRegistersNum = scaleRegistersNum;
 				while ((maxBatchCoalesced * locAxisSplit[k] / (registers_per_thread * registerBoost)) % temp_scaleRegistersNum != 0) temp_scaleRegistersNum++;
 				registers_per_thread *= temp_scaleRegistersNum;
-				for (uint32_t i = 2; i < 14; i++) {
+				for (uint64_t i = 2; i < 14; i++) {
 					if (registers_per_thread_per_radix[i] != 0) {
 						temp_scaleRegistersNum = scaleRegistersNum;
 						while ((maxBatchCoalesced * locAxisSplit[k] / (registers_per_thread_per_radix[i] * registerBoost)) % temp_scaleRegistersNum != 0) temp_scaleRegistersNum++;
@@ -9802,11 +9814,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 
 				if (min_registers_per_thread > registers_per_thread) {
-					uint32_t temp = min_registers_per_thread;
+					uint64_t temp = min_registers_per_thread;
 					min_registers_per_thread = registers_per_thread;
 					registers_per_thread = temp;
 				}
-				for (uint32_t i = 2; i < 14; i++) {
+				for (uint64_t i = 2; i < 14; i++) {
 					if (registers_per_thread_per_radix[i] > registers_per_thread) {
 						registers_per_thread = registers_per_thread_per_radix[i];
 					}
@@ -9815,25 +9827,25 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 			}
-			uint32_t j = 0;
+			uint64_t j = 0;
 			VkFFTAxis* axes = FFTPlan->axes[axis_id];
 			axes[k].specializationConstants.registerBoost = registerBoost;
 			axes[k].specializationConstants.registers_per_thread = registers_per_thread;
 			axes[k].specializationConstants.min_registers_per_thread = min_registers_per_thread;
-			for (uint32_t i = 2; i < 14; i++) {
+			for (uint64_t i = 2; i < 14; i++) {
 				axes[k].specializationConstants.registers_per_thread_per_radix[i] = registers_per_thread_per_radix[i];
 			}
 			axes[k].specializationConstants.numStages = 0;
 			axes[k].specializationConstants.fftDim = locAxisSplit[k];
-			uint32_t tempRegisterBoost = registerBoost;// ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) ? (uint32_t)ceil(axes[k].specializationConstants.fftDim / (float)maxSingleSizeNonStrided) : (uint32_t)ceil(axes[k].specializationConstants.fftDim / (float)maxSingleSizeStrided);
-			uint32_t switchRegisterBoost = 0;
+			uint64_t tempRegisterBoost = registerBoost;// ((axis_id == nonStridedAxisId) && (!app->configuration.reorderFourStep)) ? (uint64_t)ceil(axes[k].specializationConstants.fftDim / (double)maxSingleSizeNonStrided) : (uint64_t)ceil(axes[k].specializationConstants.fftDim / (double)maxSingleSizeStrided);
+			uint64_t switchRegisterBoost = 0;
 			if (tempRegisterBoost > 1) {
 				if (loc_multipliers[tempRegisterBoost] > 0) {
 					loc_multipliers[tempRegisterBoost]--;
 					switchRegisterBoost = tempRegisterBoost;
 				}
 				else {
-					for (uint32_t i = 14; i > 1; i--) {
+					for (uint64_t i = 14; i > 1; i--) {
 						if (loc_multipliers[i] > 0) {
 							loc_multipliers[i]--;
 							switchRegisterBoost = i;
@@ -9842,7 +9854,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 			}
-			for (uint32_t i = 14; i > 1; i--) {
+			for (uint64_t i = 14; i > 1; i--) {
 				if (loc_multipliers[i] > 0) {
 					axes[k].specializationConstants.stageRadix[j] = i;
 					loc_multipliers[i]--;
@@ -9857,7 +9869,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			else {
 				if (min_registers_per_thread != registers_per_thread) {
-					for (uint32_t i = 0; i < axes[k].specializationConstants.numStages; i++) {
+					for (uint64_t i = 0; i < axes[k].specializationConstants.numStages; i++) {
 						if (axes[k].specializationConstants.registers_per_thread_per_radix[axes[k].specializationConstants.stageRadix[i]] == min_registers_per_thread) {
 							j = axes[k].specializationConstants.stageRadix[i];
 							axes[k].specializationConstants.stageRadix[i] = axes[k].specializationConstants.stageRadix[0];
@@ -9870,8 +9882,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		return VKFFT_SUCCESS;
 	}
-	static inline VkFFTResult VkFFTCheckUpdateBufferSet(VkFFTApplication* app, VkFFTAxis* axis, uint32_t planStage, VkFFTLaunchParams* launchParams) {
-		uint32_t performUpdate = planStage;
+	static inline VkFFTResult VkFFTCheckUpdateBufferSet(VkFFTApplication* app, VkFFTAxis* axis, uint64_t planStage, VkFFTLaunchParams* launchParams) {
+		uint64_t performUpdate = planStage;
 		if (!planStage) {
 			if (launchParams != 0) {
 				if ((launchParams->buffer != 0) && (app->configuration.buffer != launchParams->buffer)) {
@@ -9936,8 +9948,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (planStage) axis->specializationConstants.performBufferSetUpdate = 1;
 			else {
 				if (!app->configuration.makeInversePlanOnly) {
-					for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
-						for (uint32_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
+					for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
+						for (uint64_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
 							app->localFFTPlan->axes[i][j].specializationConstants.performBufferSetUpdate = 1;
 					}
 					if (app->localFFTPlan->multiUploadR2C) {
@@ -9945,8 +9957,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 				if (!app->configuration.makeForwardPlanOnly) {
-					for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
-						for (uint32_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
+					for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
+						for (uint64_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
 							app->localFFTPlan_inverse->axes[i][j].specializationConstants.performBufferSetUpdate = 1;
 					}
 					if (app->localFFTPlan_inverse->multiUploadR2C) {
@@ -9957,12 +9969,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		return VKFFT_SUCCESS;
 	}
-	static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan* FFTPlan, VkFFTAxis* axis, uint32_t axis_id, uint32_t axis_upload_id, uint32_t inverse) {
+	static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan* FFTPlan, VkFFTAxis* axis, uint64_t axis_id, uint64_t axis_upload_id, uint64_t inverse) {
 		if (axis->specializationConstants.performBufferSetUpdate) {
 #if(VKFFT_BACKEND==0)
 			const VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 #endif
-			uint32_t storageComplexSize;
+			uint64_t storageComplexSize;
 			if (app->configuration.doublePrecision)
 				storageComplexSize = (2 * sizeof(double));
 			else
@@ -9970,8 +9982,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					storageComplexSize = (2 * 2);
 				else
 					storageComplexSize = (2 * sizeof(float));
-			for (uint32_t i = 0; i < axis->numBindings; ++i) {
-				for (uint32_t j = 0; j < axis->specializationConstants.numBuffersBound[i]; ++j) {
+			for (uint64_t i = 0; i < axis->numBindings; ++i) {
+				for (uint64_t j = 0; j < axis->specializationConstants.numBuffersBound[i]; ++j) {
 #if(VKFFT_BACKEND==0)
 					VkDescriptorBufferInfo descriptorBufferInfo = { 0 };
 #endif
@@ -9980,12 +9992,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							((axis_id == 0) && (!inverse))
 							|| ((axis_id == app->configuration.FFTdim - 1) && (inverse) && (!app->configuration.performConvolution) && (!app->configuration.inverseReturnToInputBuffer)))
 							) {
-							uint32_t bufferId = 0;
-							uint32_t offset = j;
-							for (uint32_t l = 0; l < app->configuration.inputBufferNum; ++l) {
-								if (offset >= (uint32_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+							uint64_t bufferId = 0;
+							uint64_t offset = j;
+							for (uint64_t l = 0; l < app->configuration.inputBufferNum; ++l) {
+								if (offset >= (uint64_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
 									bufferId++;
-									offset -= (uint32_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+									offset -= (uint64_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 								}
 								else {
 									l = app->configuration.inputBufferNum;
@@ -10002,12 +10014,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 						else {
 							if ((axis_upload_id == 0) && (app->configuration.numberKernels > 1) && (inverse) && (!app->configuration.performConvolution)) {
-								uint32_t bufferId = 0;
-								uint32_t offset = j;
-								for (uint32_t l = 0; l < app->configuration.outputBufferNum; ++l) {
-									if (offset >= (uint32_t)ceil(app->configuration.outputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+								uint64_t bufferId = 0;
+								uint64_t offset = j;
+								for (uint64_t l = 0; l < app->configuration.outputBufferNum; ++l) {
+									if (offset >= (uint64_t)ceil(app->configuration.outputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
 										bufferId++;
-										offset -= (uint32_t)ceil(app->configuration.outputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+										offset -= (uint64_t)ceil(app->configuration.outputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 									}
 									else {
 										l = app->configuration.outputBufferNum;
@@ -10022,14 +10034,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 							}
 							else {
-								uint32_t bufferId = 0;
-								uint32_t offset = j;
+								uint64_t bufferId = 0;
+								uint64_t offset = j;
 								if ((FFTPlan->axes[axis_id]->specializationConstants.reorderFourStep == 1) && (FFTPlan->numAxisUploads[axis_id] > 1))
 									if (axis_upload_id > 0) {
-										for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
-											if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+										for (uint64_t l = 0; l < app->configuration.bufferNum; ++l) {
+											if (offset >= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
 												bufferId++;
-												offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+												offset -= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 											}
 											else {
 												l = app->configuration.bufferNum;
@@ -10042,10 +10054,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 									}
 									else {
-										for (uint32_t l = 0; l < app->configuration.tempBufferNum; ++l) {
-											if (offset >= (uint32_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+										for (uint64_t l = 0; l < app->configuration.tempBufferNum; ++l) {
+											if (offset >= (uint64_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
 												bufferId++;
-												offset -= (uint32_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+												offset -= (uint64_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 											}
 											else {
 												l = app->configuration.tempBufferNum;
@@ -10058,10 +10070,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 									}
 								else {
-									for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
-										if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+									for (uint64_t l = 0; l < app->configuration.bufferNum; ++l) {
+										if (offset >= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
 											bufferId++;
-											offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+											offset -= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 										}
 										else {
 											l = app->configuration.bufferNum;
@@ -10091,13 +10103,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							(inverse)
 								|| (axis_id == app->configuration.FFTdim - 1)))
 							) {
-							uint32_t bufferId = 0;
-							uint32_t offset = j;
+							uint64_t bufferId = 0;
+							uint64_t offset = j;
 
-							for (uint32_t l = 0; l < app->configuration.outputBufferNum; ++l) {
-								if (offset >= (uint32_t)ceil(app->configuration.outputBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+							for (uint64_t l = 0; l < app->configuration.outputBufferNum; ++l) {
+								if (offset >= (uint64_t)ceil(app->configuration.outputBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
 									bufferId++;
-									offset -= (uint32_t)ceil(app->configuration.outputBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+									offset -= (uint64_t)ceil(app->configuration.outputBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 								}
 								else {
 									l = app->configuration.outputBufferNum;
@@ -10112,15 +10124,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 						}
 						else {
-							uint32_t bufferId = 0;
-							uint32_t offset = j;
+							uint64_t bufferId = 0;
+							uint64_t offset = j;
 
 							if ((FFTPlan->axes[axis_id]->specializationConstants.reorderFourStep == 1) && (FFTPlan->numAxisUploads[axis_id] > 1)) {
 								if ((inverse) && (axis_id == 0) && (axis_upload_id == 0) && (app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer)) {
-									for (uint32_t l = 0; l < app->configuration.inputBufferNum; ++l) {
-										if (offset >= (uint32_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+									for (uint64_t l = 0; l < app->configuration.inputBufferNum; ++l) {
+										if (offset >= (uint64_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
 											bufferId++;
-											offset -= (uint32_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+											offset -= (uint64_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 										}
 										else {
 											l = app->configuration.inputBufferNum;
@@ -10134,10 +10146,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								}
 								else {
 									if (axis_upload_id == 1) {
-										for (uint32_t l = 0; l < app->configuration.tempBufferNum; ++l) {
-											if (offset >= (uint32_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+										for (uint64_t l = 0; l < app->configuration.tempBufferNum; ++l) {
+											if (offset >= (uint64_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
 												bufferId++;
-												offset -= (uint32_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+												offset -= (uint64_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 											}
 											else {
 												l = app->configuration.tempBufferNum;
@@ -10150,10 +10162,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 									}
 									else {
-										for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
-											if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+										for (uint64_t l = 0; l < app->configuration.bufferNum; ++l) {
+											if (offset >= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
 												bufferId++;
-												offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+												offset -= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 											}
 											else {
 												l = app->configuration.bufferNum;
@@ -10169,10 +10181,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							}
 							else {
 								if ((inverse) && (axis_id == 0) && (axis_upload_id == 0) && (app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer)) {
-									for (uint32_t l = 0; l < app->configuration.inputBufferNum; ++l) {
-										if (offset >= (uint32_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+									for (uint64_t l = 0; l < app->configuration.inputBufferNum; ++l) {
+										if (offset >= (uint64_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
 											bufferId++;
-											offset -= (uint32_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+											offset -= (uint64_t)ceil(app->configuration.inputBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 										}
 										else {
 											l = app->configuration.inputBufferNum;
@@ -10185,10 +10197,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 								}
 								else {
-									for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
-										if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+									for (uint64_t l = 0; l < app->configuration.bufferNum; ++l) {
+										if (offset >= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
 											bufferId++;
-											offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+											offset -= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 										}
 										else {
 											l = app->configuration.bufferNum;
@@ -10209,12 +10221,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						//descriptorBufferInfo.offset = 0;
 					}
 					if ((i == 2) && (app->configuration.performConvolution)) {
-						uint32_t bufferId = 0;
-						uint32_t offset = j;
-						for (uint32_t l = 0; l < app->configuration.kernelNum; ++l) {
-							if (offset >= (uint32_t)ceil(app->configuration.kernelSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+						uint64_t bufferId = 0;
+						uint64_t offset = j;
+						for (uint64_t l = 0; l < app->configuration.kernelNum; ++l) {
+							if (offset >= (uint64_t)ceil(app->configuration.kernelSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
 								bufferId++;
-								offset -= (uint32_t)ceil(app->configuration.kernelSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+								offset -= (uint64_t)ceil(app->configuration.kernelSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 							}
 							else {
 								l = app->configuration.kernelNum;
@@ -10250,12 +10262,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		return VKFFT_SUCCESS;
 	}
-	static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTApplication* app, VkFFTPlan* FFTPlan, VkFFTAxis* axis, uint32_t axis_id, uint32_t axis_upload_id, uint32_t inverse) {
+	static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTApplication* app, VkFFTPlan* FFTPlan, VkFFTAxis* axis, uint64_t axis_id, uint64_t axis_upload_id, uint64_t inverse) {
 		if (axis->specializationConstants.performBufferSetUpdate) {
 #if(VKFFT_BACKEND==0)
 			const VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 #endif
-			uint32_t storageComplexSize;
+			uint64_t storageComplexSize;
 			if (app->configuration.doublePrecision)
 				storageComplexSize = (2 * sizeof(double));
 			else
@@ -10263,18 +10275,18 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					storageComplexSize = (2 * 2);
 				else
 					storageComplexSize = (2 * sizeof(float));
-			for (uint32_t i = 0; i < axis->numBindings; ++i) {
-				for (uint32_t j = 0; j < axis->specializationConstants.numBuffersBound[i]; ++j) {
+			for (uint64_t i = 0; i < axis->numBindings; ++i) {
+				for (uint64_t j = 0; j < axis->specializationConstants.numBuffersBound[i]; ++j) {
 #if(VKFFT_BACKEND==0)
 					VkDescriptorBufferInfo descriptorBufferInfo = { 0 };
 #endif
 					if (i == 0) {
-						uint32_t bufferId = 0;
-						uint32_t offset = j;
-						for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
-							if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
+						uint64_t bufferId = 0;
+						uint64_t offset = j;
+						for (uint64_t l = 0; l < app->configuration.bufferNum; ++l) {
+							if (offset >= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
 								bufferId++;
-								offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+								offset -= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 							}
 							else {
 								l = app->configuration.bufferNum;
@@ -10292,12 +10304,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						//descriptorBufferInfo.offset = 0;
 					}
 					if (i == 1) {
-						uint32_t bufferId = 0;
-						uint32_t offset = j;
-						for (uint32_t l = 0; l < app->configuration.bufferNum; ++l) {
-							if (offset >= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+						uint64_t bufferId = 0;
+						uint64_t offset = j;
+						for (uint64_t l = 0; l < app->configuration.bufferNum; ++l) {
+							if (offset >= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
 								bufferId++;
-								offset -= (uint32_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+								offset -= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 							}
 							else {
 								l = app->configuration.bufferNum;
@@ -10315,12 +10327,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						//descriptorBufferInfo.offset = 0;
 					}
 					if ((i == 2) && (app->configuration.performConvolution)) {
-						uint32_t bufferId = 0;
-						uint32_t offset = j;
-						for (uint32_t l = 0; l < app->configuration.kernelNum; ++l) {
-							if (offset >= (uint32_t)ceil(app->configuration.kernelSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+						uint64_t bufferId = 0;
+						uint64_t offset = j;
+						for (uint64_t l = 0; l < app->configuration.kernelNum; ++l) {
+							if (offset >= (uint64_t)ceil(app->configuration.kernelSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
 								bufferId++;
-								offset -= (uint32_t)ceil(app->configuration.kernelSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+								offset -= (uint64_t)ceil(app->configuration.kernelSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 							}
 							else {
 								l = app->configuration.kernelNum;
@@ -10356,7 +10368,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		return VKFFT_SUCCESS;
 	}
-	static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t inverse) {
+	static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t inverse) {
 		//get radix stages
 		VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
@@ -10371,7 +10383,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		VkFFTAxis* axis = &FFTPlan->R2Cdecomposition;
 		axis->specializationConstants.warpSize = app->configuration.warpSize;
 		axis->specializationConstants.numSharedBanks = app->configuration.numSharedBanks;
-		uint32_t complexSize;
+		axis->specializationConstants.useUint64 = app->configuration.useUint64;
+		uint64_t complexSize;
 		if (app->configuration.doublePrecision)
 			complexSize = (2 * sizeof(double));
 		else
@@ -10382,10 +10395,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		axis->specializationConstants.complexSize = complexSize;
 		axis->specializationConstants.supportAxis = 0;
 		axis->specializationConstants.symmetricKernel = app->configuration.symmetricKernel;
-		uint32_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
-		uint32_t maxSequenceLengthSharedMemoryPow2 = app->configuration.sharedMemorySizePow2 / complexSize;
-		uint32_t maxSingleSizeStrided = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
-		uint32_t maxSingleSizeStridedPow2 = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySizePow2 / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySizePow2 / complexSize;
+		uint64_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
+		uint64_t maxSequenceLengthSharedMemoryPow2 = app->configuration.sharedMemorySizePow2 / complexSize;
+		uint64_t maxSingleSizeStrided = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
+		uint64_t maxSingleSizeStridedPow2 = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySizePow2 / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySizePow2 / complexSize;
 
 		axis->specializationConstants.fft_dim_full = app->configuration.size[0];
 
@@ -10396,7 +10409,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				axis->bufferLUTSize = (app->configuration.size[0] / 2) * 2 * sizeof(double);
 				double* tempLUT = (double*)malloc(axis->bufferLUTSize);
 
-				for (uint32_t i = 0; i < app->configuration.size[0] / 2; i++) {
+				for (uint64_t i = 0; i < app->configuration.size[0] / 2; i++) {
 					double angle = double_PI * i / app->configuration.size[0];
 					tempLUT[2 * i] = (double)cos(angle);
 					tempLUT[2 * i + 1] = (double)sin(angle);
@@ -10473,7 +10486,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				axis->bufferLUTSize = (app->configuration.size[0] / 2) * 2 * sizeof(float);
 				float* tempLUT = (float*)malloc(axis->bufferLUTSize);
 
-				for (uint32_t i = 0; i < app->configuration.size[0] / 2; i++) {
+				for (uint64_t i = 0; i < app->configuration.size[0] / 2; i++) {
 					double angle = double_PI * i / (app->configuration.size[0] / 2);
 					tempLUT[2 * i] = (float)cos(angle);
 					tempLUT[2 * i + 1] = (float)sin(angle);
@@ -10548,8 +10561,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 		}
 		//configure strides
-		uint32_t* axisStride = axis->specializationConstants.inputStride;
-		uint32_t* usedStride = (inverse) ? FFTPlan->axes[0][FFTPlan->numAxisUploads[0] - 1].specializationConstants.inputStride : FFTPlan->axes[0][0].specializationConstants.outputStride;
+		uint64_t* axisStride = axis->specializationConstants.inputStride;
+		uint64_t* usedStride = (inverse) ? FFTPlan->axes[0][FFTPlan->numAxisUploads[0] - 1].specializationConstants.inputStride : FFTPlan->axes[0][0].specializationConstants.outputStride;
 
 		axisStride[0] = usedStride[0];
 		axisStride[1] = usedStride[1];
@@ -10572,7 +10585,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		axis->specializationConstants.inputOffset = 0;
 		axis->specializationConstants.outputOffset = 0;
 
-		uint32_t storageComplexSize;
+		uint64_t storageComplexSize;
 		if (app->configuration.doublePrecision)
 			storageComplexSize = (2 * sizeof(double));
 		else
@@ -10581,13 +10594,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else
 				storageComplexSize = (2 * sizeof(float));
 
-		uint32_t initPageSize = 0;
-		for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+		uint64_t initPageSize = 0;
+		for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
 			initPageSize += app->configuration.bufferSize[i];
 		}
 		if (app->configuration.performConvolution) {
-			uint32_t initPageSizeKernel = 0;
-			for (uint32_t i = 0; i < app->configuration.kernelNum; i++) {
+			uint64_t initPageSizeKernel = 0;
+			for (uint64_t i = 0; i < app->configuration.kernelNum; i++) {
 				initPageSizeKernel += app->configuration.kernelSize[i];
 			}
 			if (initPageSizeKernel > initPageSize) initPageSize = initPageSizeKernel;
@@ -10595,34 +10608,34 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if ((!((!app->configuration.reorderFourStep))) && (axis->specializationConstants.inputStride[1] * storageComplexSize > app->configuration.devicePageSize * 1024) && (app->configuration.devicePageSize > 0)) {
 			initPageSize = app->configuration.localPageSize * 1024;
 		}
-		uint32_t axis_id = 0;
-		uint32_t axis_upload_id = 0;
+		uint64_t axis_id = 0;
+		uint64_t axis_upload_id = 0;
 
 		{
 			uint64_t totalSize = 0;
-			uint32_t locPageSize = initPageSize;
+			uint64_t locPageSize = initPageSize;
 
-			for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+			for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
 				totalSize += app->configuration.bufferSize[i];
 				if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
 
 			}
 
-			axis->specializationConstants.inputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
-			axis->specializationConstants.inputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+			axis->specializationConstants.inputBufferBlockSize = (uint64_t)ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.inputBufferBlockNum = (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 		}
 
 		{
 			uint64_t totalSize = 0;
-			uint32_t locPageSize = initPageSize;
+			uint64_t locPageSize = initPageSize;
 
-			for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+			for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
 				totalSize += app->configuration.bufferSize[i];
 				if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
 			}
 
-			axis->specializationConstants.outputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
-			axis->specializationConstants.outputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+			axis->specializationConstants.outputBufferBlockSize = (uint64_t)ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.outputBufferBlockNum = (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
 		}
@@ -10631,13 +10644,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (axis->specializationConstants.outputBufferBlockNum == 0) axis->specializationConstants.outputBufferBlockNum = 1;
 		if (app->configuration.performConvolution) {
 			uint64_t totalSize = 0;
-			uint32_t locPageSize = initPageSize;
-			for (uint32_t i = 0; i < app->configuration.kernelNum; i++) {
+			uint64_t locPageSize = initPageSize;
+			for (uint64_t i = 0; i < app->configuration.kernelNum; i++) {
 				totalSize += app->configuration.kernelSize[i];
 				if (app->configuration.kernelSize[i] < locPageSize) locPageSize = app->configuration.kernelSize[i];
 			}
-			axis->specializationConstants.kernelBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
-			axis->specializationConstants.kernelBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.kernelBlockSize * storageComplexSize));
+			axis->specializationConstants.kernelBlockSize = (uint64_t)ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.kernelBlockNum = (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.kernelBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.kernelBlockNum == 1) axis->specializationConstants.inputBufferBlockSize = totalSize / storageComplexSize;
 			if (axis->specializationConstants.kernelBlockNum == 0) axis->specializationConstants.kernelBlockNum = 1;
 		}
@@ -10683,7 +10696,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		const VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		VkDescriptorSetLayoutBinding* descriptorSetLayoutBindings;
 		descriptorSetLayoutBindings = (VkDescriptorSetLayoutBinding*)malloc(axis->numBindings * sizeof(VkDescriptorSetLayoutBinding));
-		for (uint32_t i = 0; i < axis->numBindings; ++i) {
+		for (uint64_t i = 0; i < axis->numBindings; ++i) {
 			descriptorSetLayoutBindings[i].binding = i;
 			descriptorSetLayoutBindings[i].descriptorType = descriptorType;
 			descriptorSetLayoutBindings[i].descriptorCount = axis->specializationConstants.numBuffersBound[i];
@@ -10729,7 +10742,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			VkPushConstantRange pushConstantRange = { VK_SHADER_STAGE_COMPUTE_BIT };
 			pushConstantRange.offset = 0;
-			pushConstantRange.size = sizeof(VkFFTPushConstantsLayout);
+			pushConstantRange.size = (app->configuration.useUint64) ? sizeof(VkFFTPushConstantsLayoutUint64) : sizeof(VkFFTPushConstantsLayoutUint32);
 			// Push constant ranges are part of the pipeline layout
 			pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
 			pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
@@ -10745,7 +10758,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->axisBlock[1] = 1;
 			axis->axisBlock[2] = 1;
 
-			uint32_t tempSize[3] = { (uint32_t)ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0])), 1, 1 };
+			uint64_t tempSize[3] = { (uint64_t)ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0])), 1, 1 };
 
 
 			if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
@@ -10776,7 +10789,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->specializationConstants.axis_id = 0;
 			axis->specializationConstants.axis_upload_id = 0;
 
-			for (uint32_t i = 0; i < 3; i++) {
+			for (uint64_t i = 0; i < 3; i++) {
 				axis->specializationConstants.frequencyZeropadding = app->configuration.frequencyZeroPadding;
 				axis->specializationConstants.performZeropaddingFull[i] = app->configuration.performZeropadding[i]; // don't read if input is zeropadded (0 - off, 1 - on)
 				axis->specializationConstants.fft_zeropad_left_full[i] = app->configuration.fft_zeropad_left[i];
@@ -10863,17 +10876,30 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 			}
 			char uintType[20] = "";
+			if (!app->configuration.useUint64) {
 #if(VKFFT_BACKEND==0)
-			sprintf(uintType, "uint");
+				sprintf(uintType, "uint");
 #elif(VKFFT_BACKEND==1)
-			sprintf(uintType, "unsigned int");
+				sprintf(uintType, "unsigned int");
 #elif(VKFFT_BACKEND==2)
-			sprintf(uintType, "unsigned int");
+				sprintf(uintType, "unsigned int");
 #elif(VKFFT_BACKEND==3)
-			sprintf(uintType, "unsigned int");
+				sprintf(uintType, "unsigned int");
 #endif
-			//uint32_t LUT = app->configuration.useLUT;
-			uint32_t type = 0;
+			}
+			else {
+#if(VKFFT_BACKEND==0)
+				sprintf(uintType, "uint64_t");
+#elif(VKFFT_BACKEND==1)
+				sprintf(uintType, "unsigned long long");
+#elif(VKFFT_BACKEND==2)
+				sprintf(uintType, "unsigned long long");
+#elif(VKFFT_BACKEND==3)
+				sprintf(uintType, "unsigned long");
+#endif
+			}
+			//uint64_t LUT = app->configuration.useLUT;
+			uint64_t type = 0;
 			if ((axis_id == 0) && (!axis->specializationConstants.inverse) && (app->configuration.performR2C)) type = 5;
 			if ((axis_id == 0) && (axis->specializationConstants.inverse) && (app->configuration.performR2C)) type = 6;
 
@@ -11011,7 +11037,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			{
 				err = glslang_shader_get_info_log(shader);
 				printf("%s\n", code0);
-				printf("%s\nVkFFT shader type: %d\n", err, type);
+				printf("%s\nVkFFT shader type: %" PRIu64 "\n", err, type);
 				glslang_shader_delete(shader);
 				free(code0);
 				deleteVkFFT(app);
@@ -11023,7 +11049,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			{
 				err = glslang_shader_get_info_log(shader);
 				printf("%s\n", code0);
-				printf("%s\nVkFFT shader type: %d\n", err, type);
+				printf("%s\nVkFFT shader type: %" PRIu64 "\n", err, type);
 				glslang_shader_delete(shader);
 				free(code0);
 				deleteVkFFT(app);
@@ -11036,7 +11062,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			{
 				err = glslang_program_get_info_log(program);
 				printf("%s\n", code0);
-				printf("%s\nVkFFT shader type: %d\n", err, type);
+				printf("%s\nVkFFT shader type: %" PRIu64 "\n", err, type);
 				glslang_shader_delete(shader);
 				glslang_program_delete(program);
 				free(code0);
@@ -11168,7 +11194,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					return VKFFT_ERROR_FAILED_TO_SET_DYNAMIC_SHARED_MEMORY;
 				}
 			}
-			size_t size = sizeof(VkFFTPushConstantsLayout);
+			size_t size = (app->configuration.useUint64) ? sizeof(VkFFTPushConstantsLayoutUint64) : sizeof(VkFFTPushConstantsLayoutUint32);
 			result2 = cuModuleGetGlobal(&axis->consts_addr, &size, axis->VkFFTModule, "consts");
 			if (result2 != CUDA_SUCCESS) {
 				printf("cuModuleGetGlobal error: %d\n", result2);
@@ -11274,7 +11300,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					return VKFFT_ERROR_FAILED_TO_SET_DYNAMIC_SHARED_MEMORY;
 				}
 			}
-			size_t size = sizeof(VkFFTPushConstantsLayout);
+			size_t size = (app->configuration.useUint64) ? sizeof(VkFFTPushConstantsLayoutUint64) : sizeof(VkFFTPushConstantsLayoutUint32);
 			result2 = hipModuleGetGlobal(&axis->consts_addr, &size, axis->VkFFTModule, "consts");
 			if (result2 != hipSuccess) {
 				printf("hipModuleGetGlobal error: %d\n", result2);
@@ -11311,7 +11337,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		return resFFT;
 	}
-	static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint32_t axis_id, uint32_t axis_upload_id, uint32_t inverse) {
+	static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t axis_id, uint64_t axis_upload_id, uint64_t inverse) {
 		//get radix stages
 		VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
@@ -11326,7 +11352,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		VkFFTAxis* axis = &FFTPlan->axes[axis_id][axis_upload_id];
 		axis->specializationConstants.warpSize = app->configuration.warpSize;
 		axis->specializationConstants.numSharedBanks = app->configuration.numSharedBanks;
-		uint32_t complexSize;
+		axis->specializationConstants.useUint64 = app->configuration.useUint64;
+		uint64_t complexSize;
 		if (app->configuration.doublePrecision)
 			complexSize = (2 * sizeof(double));
 		else
@@ -11337,13 +11364,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		axis->specializationConstants.complexSize = complexSize;
 		axis->specializationConstants.supportAxis = 0;
 		axis->specializationConstants.symmetricKernel = app->configuration.symmetricKernel;
-		uint32_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
-		uint32_t maxSequenceLengthSharedMemoryPow2 = app->configuration.sharedMemorySizePow2 / complexSize;
-		uint32_t maxSingleSizeStrided = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
-		uint32_t maxSingleSizeStridedPow2 = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySizePow2 / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySizePow2 / complexSize;
+		uint64_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
+		uint64_t maxSequenceLengthSharedMemoryPow2 = app->configuration.sharedMemorySizePow2 / complexSize;
+		uint64_t maxSingleSizeStrided = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
+		uint64_t maxSingleSizeStridedPow2 = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySizePow2 / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySizePow2 / complexSize;
 
 		axis->specializationConstants.stageStartSize = 1;
-		for (uint32_t i = 0; i < axis_upload_id; i++)
+		for (uint64_t i = 0; i < axis_upload_id; i++)
 			axis->specializationConstants.stageStartSize *= FFTPlan->axisSplit[axis_id][i];
 
 
@@ -11363,17 +11390,17 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		if ((axis_id == 0) && ((FFTPlan->numAxisUploads[axis_id] == 1) || ((axis_upload_id == 0) && (!app->configuration.reorderFourStep)))) {
 			maxSequenceLengthSharedMemory *= axis->specializationConstants.registerBoost;
-			maxSequenceLengthSharedMemoryPow2 = pow(2, (uint32_t)log2(maxSequenceLengthSharedMemory));
+			maxSequenceLengthSharedMemoryPow2 = pow(2, (uint64_t)log2(maxSequenceLengthSharedMemory));
 		}
 		else {
 			maxSingleSizeStrided *= axis->specializationConstants.registerBoost;
-			maxSingleSizeStridedPow2 = pow(2, (uint32_t)log2(maxSingleSizeStrided));
+			maxSingleSizeStridedPow2 = pow(2, (uint64_t)log2(maxSingleSizeStrided));
 		}
 		axis->specializationConstants.performR2C = app->configuration.performR2C;
 		if ((axis->specializationConstants.performR2CmultiUpload) && (app->configuration.size[0] % 2 != 0)) return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
 		axis->specializationConstants.mergeSequencesR2C = ((axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory) && ((app->configuration.size[1] % 2) == 0) && (app->configuration.performR2C)) ? (1 - app->configuration.disableMergeSequencesR2C) : 0;
 		axis->specializationConstants.reorderFourStep = (FFTPlan->numAxisUploads[axis_id] > 1) ? app->configuration.reorderFourStep : 0;
-		//uint32_t passID = FFTPlan->numAxisUploads[axis_id] - 1 - axis_upload_id;
+		//uint64_t passID = FFTPlan->numAxisUploads[axis_id] - 1 - axis_upload_id;
 		axis->specializationConstants.fft_dim_full = app->configuration.size[axis_id];
 		if ((FFTPlan->numAxisUploads[axis_id] > 1) && (app->configuration.reorderFourStep) && (!app->configuration.userTempBuffer) && (app->configuration.allocateTempBuffer == 0)) {
 			app->configuration.allocateTempBuffer = 1;
@@ -11411,9 +11438,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		//allocate LUT 
 		if (app->configuration.useLUT) {
 			double double_PI = 3.1415926535897932384626433832795;
-			uint32_t dimMult = 1;
-			uint32_t maxStageSum = 0;
-			for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+			uint64_t dimMult = 1;
+			uint64_t maxStageSum = 0;
+			for (uint64_t i = 0; i < axis->specializationConstants.numStages; i++) {
 				switch (axis->specializationConstants.stageRadix[i]) {
 				case 2:
 					maxStageSum += dimMult;
@@ -11450,12 +11477,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				else
 					axis->bufferLUTSize = (maxStageSum) * 2 * sizeof(double);
 				double* tempLUT = (double*)malloc(axis->bufferLUTSize);
-				uint32_t localStageSize = 1;
-				uint32_t localStageSum = 0;
-				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				uint64_t localStageSize = 1;
+				uint64_t localStageSum = 0;
+				for (uint64_t i = 0; i < axis->specializationConstants.numStages; i++) {
 					if ((axis->specializationConstants.stageRadix[i] & (axis->specializationConstants.stageRadix[i] - 1)) == 0) {
-						for (uint32_t k = 0; k < log2(axis->specializationConstants.stageRadix[i]); k++) {
-							for (uint32_t j = 0; j < localStageSize; j++) {
+						for (uint64_t k = 0; k < log2(axis->specializationConstants.stageRadix[i]); k++) {
+							for (uint64_t j = 0; j < localStageSize; j++) {
 								tempLUT[2 * (j + localStageSum)] = cos(j * double_PI / localStageSize / pow(2, k));
 								tempLUT[2 * (j + localStageSum) + 1] = sin(j * double_PI / localStageSize / pow(2, k));
 							}
@@ -11464,8 +11491,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						localStageSize *= axis->specializationConstants.stageRadix[i];
 					}
 					else {
-						for (uint32_t k = (axis->specializationConstants.stageRadix[i] - 1); k > 0; k--) {
-							for (uint32_t j = 0; j < localStageSize; j++) {
+						for (uint64_t k = (axis->specializationConstants.stageRadix[i] - 1); k > 0; k--) {
+							for (uint64_t j = 0; j < localStageSize; j++) {
 								tempLUT[2 * (j + localStageSum)] = cos(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
 								tempLUT[2 * (j + localStageSum) + 1] = sin(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
 							}
@@ -11476,8 +11503,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 
 				if (axis_upload_id > 0)
-					for (uint32_t i = 0; i < axis->specializationConstants.stageStartSize; i++) {
-						for (uint32_t j = 0; j < axis->specializationConstants.fftDim; j++) {
+					for (uint64_t i = 0; i < axis->specializationConstants.stageStartSize; i++) {
+						for (uint64_t j = 0; j < axis->specializationConstants.fftDim; j++) {
 							double angle = 2 * double_PI * ((i * j) / (double)(axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim));
 							tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = cos(angle);
 							tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = sin(angle);
@@ -11577,12 +11604,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				else
 					axis->bufferLUTSize = (maxStageSum) * 2 * sizeof(float);
 				float* tempLUT = (float*)malloc(axis->bufferLUTSize);
-				uint32_t localStageSize = 1;
-				uint32_t localStageSum = 0;
-				for (uint32_t i = 0; i < axis->specializationConstants.numStages; i++) {
+				uint64_t localStageSize = 1;
+				uint64_t localStageSum = 0;
+				for (uint64_t i = 0; i < axis->specializationConstants.numStages; i++) {
 					if ((axis->specializationConstants.stageRadix[i] & (axis->specializationConstants.stageRadix[i] - 1)) == 0) {
-						for (uint32_t k = 0; k < log2(axis->specializationConstants.stageRadix[i]); k++) {
-							for (uint32_t j = 0; j < localStageSize; j++) {
+						for (uint64_t k = 0; k < log2(axis->specializationConstants.stageRadix[i]); k++) {
+							for (uint64_t j = 0; j < localStageSize; j++) {
 								tempLUT[2 * (j + localStageSum)] = (float)cos(j * double_PI / localStageSize / pow(2, k));
 								tempLUT[2 * (j + localStageSum) + 1] = (float)sin(j * double_PI / localStageSize / pow(2, k));
 							}
@@ -11591,8 +11618,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						localStageSize *= axis->specializationConstants.stageRadix[i];
 					}
 					else {
-						for (uint32_t k = (axis->specializationConstants.stageRadix[i] - 1); k > 0; k--) {
-							for (uint32_t j = 0; j < localStageSize; j++) {
+						for (uint64_t k = (axis->specializationConstants.stageRadix[i] - 1); k > 0; k--) {
+							for (uint64_t j = 0; j < localStageSize; j++) {
 								tempLUT[2 * (j + localStageSum)] = (float)cos(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
 								tempLUT[2 * (j + localStageSum) + 1] = (float)sin(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
 							}
@@ -11603,8 +11630,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 
 				if (axis_upload_id > 0)
-					for (uint32_t i = 0; i < axis->specializationConstants.stageStartSize; i++) {
-						for (uint32_t j = 0; j < axis->specializationConstants.fftDim; j++) {
+					for (uint64_t i = 0; i < axis->specializationConstants.stageStartSize; i++) {
+						for (uint64_t j = 0; j < axis->specializationConstants.fftDim; j++) {
 							double angle = 2 * double_PI * ((i * j) / (double)(axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim));
 							tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = (float)cos(angle);
 							tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = (float)sin(angle);
@@ -11702,8 +11729,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		//configure strides
 
-		uint32_t* axisStride = axis->specializationConstants.inputStride;
-		uint32_t* usedStride = app->configuration.bufferStride;
+		uint64_t* axisStride = axis->specializationConstants.inputStride;
+		uint64_t* usedStride = app->configuration.bufferStride;
 		if ((!inverse) && (axis_id == 0) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted)) usedStride = app->configuration.inputBufferStride;
 		if ((inverse) && (axis_id == app->configuration.FFTdim - 1) && (((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.reorderFourStep)) || ((axis_upload_id == 0) && (!app->configuration.reorderFourStep))) && (app->configuration.isInputFormatted) && (!app->configuration.inverseReturnToInputBuffer)) usedStride = app->configuration.inputBufferStride;
 
@@ -11728,7 +11755,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		axisStride[4] = axisStride[3] * app->configuration.coordinateFeatures;
 		if ((FFTPlan->multiUploadR2C) && (!inverse) && (axis_id == 0) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) {
-			for (uint32_t i = 1; i < 5; i++) {
+			for (uint64_t i = 1; i < 5; i++) {
 				axisStride[i] /= 2;
 			}
 		}
@@ -11765,7 +11792,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		axisStride[4] = axisStride[3] * app->configuration.coordinateFeatures;
 		if ((FFTPlan->multiUploadR2C) && (inverse) && (axis_id == 0) && (axis_upload_id == 0)) {
-			for (uint32_t i = 1; i < 5; i++) {
+			for (uint64_t i = 1; i < 5; i++) {
 				axisStride[i] /= 2;
 			}
 		}
@@ -11787,7 +11814,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		axis->specializationConstants.inputOffset = 0;
 		axis->specializationConstants.outputOffset = 0;
 
-		uint32_t storageComplexSize;
+		uint64_t storageComplexSize;
 		if (app->configuration.doublePrecision)
 			storageComplexSize = (2 * sizeof(double));
 		else
@@ -11796,13 +11823,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else
 				storageComplexSize = (2 * sizeof(float));
 
-		uint32_t initPageSize = 0;
-		for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+		uint64_t initPageSize = 0;
+		for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
 			initPageSize += app->configuration.bufferSize[i];
 		}
 		if (app->configuration.performConvolution) {
-			uint32_t initPageSizeKernel = 0;
-			for (uint32_t i = 0; i < app->configuration.kernelNum; i++) {
+			uint64_t initPageSizeKernel = 0;
+			for (uint64_t i = 0; i < app->configuration.kernelNum; i++) {
 				initPageSizeKernel += app->configuration.kernelSize[i];
 			}
 			if (initPageSizeKernel > initPageSize) initPageSize = initPageSizeKernel;
@@ -11828,58 +11855,58 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			|| ((axis_id == app->configuration.FFTdim - 1) && (inverse) && (!app->configuration.performConvolution) && (!app->configuration.inverseReturnToInputBuffer)))
 			) {
 			uint64_t totalSize = 0;
-			uint32_t locPageSize = initPageSize;
-			for (uint32_t i = 0; i < app->configuration.inputBufferNum; i++) {
+			uint64_t locPageSize = initPageSize;
+			for (uint64_t i = 0; i < app->configuration.inputBufferNum; i++) {
 				totalSize += app->configuration.inputBufferSize[i];
 				if (app->configuration.inputBufferSize[i] < locPageSize) locPageSize = app->configuration.inputBufferSize[i];
 			}
-			axis->specializationConstants.inputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
-			axis->specializationConstants.inputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+			axis->specializationConstants.inputBufferBlockSize = (uint64_t)ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.inputBufferBlockNum = (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.inputBufferBlockNum == 1) axis->specializationConstants.inputBufferBlockSize = totalSize / storageComplexSize;
 
 		}
 		else {
 			if ((axis_upload_id == 0) && (app->configuration.numberKernels > 1) && (inverse) && (!app->configuration.performConvolution)) {
 				uint64_t totalSize = 0;
-				uint32_t locPageSize = initPageSize;
-				for (uint32_t i = 0; i < app->configuration.outputBufferNum; i++) {
+				uint64_t locPageSize = initPageSize;
+				for (uint64_t i = 0; i < app->configuration.outputBufferNum; i++) {
 					totalSize += app->configuration.outputBufferSize[i];
 					if (app->configuration.outputBufferSize[i] < locPageSize) locPageSize = app->configuration.outputBufferSize[i];
 				}
 
-				axis->specializationConstants.inputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
-				axis->specializationConstants.inputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+				axis->specializationConstants.inputBufferBlockSize = (uint64_t)ceil(locPageSize / (double)storageComplexSize);
+				axis->specializationConstants.inputBufferBlockNum = (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 				//if (axis->specializationConstants.inputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
 			}
 			else {
 				uint64_t totalSize = 0;
-				uint32_t locPageSize = initPageSize;
+				uint64_t locPageSize = initPageSize;
 				if ((FFTPlan->axes[axis_id]->specializationConstants.reorderFourStep == 1) && (FFTPlan->numAxisUploads[axis_id] > 1))
 					if (axis_upload_id > 0) {
-						for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+						for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
 							totalSize += app->configuration.bufferSize[i];
 							if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
 
 						}
 					}
 					else {
-						for (uint32_t i = 0; i < app->configuration.tempBufferNum; i++) {
+						for (uint64_t i = 0; i < app->configuration.tempBufferNum; i++) {
 							totalSize += app->configuration.tempBufferSize[i];
 							if (app->configuration.tempBufferSize[i] < locPageSize) locPageSize = app->configuration.tempBufferSize[i];
 
 						}
 					}
 				else {
-					for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+					for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
 						totalSize += app->configuration.bufferSize[i];
 						if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
 
 					}
 				}
 
-				axis->specializationConstants.inputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
-				axis->specializationConstants.inputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+				axis->specializationConstants.inputBufferBlockSize = (uint64_t)ceil(locPageSize / (double)storageComplexSize);
+				axis->specializationConstants.inputBufferBlockNum = (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 				//if (axis->specializationConstants.inputBufferBlockNum == 1) axis->specializationConstants.inputBufferBlockSize = totalSize / storageComplexSize;
 
 			}
@@ -11895,41 +11922,41 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				|| (axis_id == app->configuration.FFTdim - 1)))
 			) {
 			uint64_t totalSize = 0;
-			uint32_t locPageSize = initPageSize;
-			for (uint32_t i = 0; i < app->configuration.outputBufferNum; i++) {
+			uint64_t locPageSize = initPageSize;
+			for (uint64_t i = 0; i < app->configuration.outputBufferNum; i++) {
 				totalSize += app->configuration.outputBufferSize[i];
 				if (app->configuration.outputBufferSize[i] < locPageSize) locPageSize = app->configuration.outputBufferSize[i];
 			}
 
-			axis->specializationConstants.outputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
-			axis->specializationConstants.outputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+			axis->specializationConstants.outputBufferBlockSize = (uint64_t)ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.outputBufferBlockNum = (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
 		}
 		else {
 			uint64_t totalSize = 0;
-			uint32_t locPageSize = initPageSize;
+			uint64_t locPageSize = initPageSize;
 			if ((FFTPlan->axes[axis_id]->specializationConstants.reorderFourStep == 1) && (FFTPlan->numAxisUploads[axis_id] > 1))
 				if (axis_upload_id == 1) {
-					for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+					for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
 						totalSize += app->configuration.bufferSize[i];
 						if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
 					}
 				}
 				else {
-					for (uint32_t i = 0; i < app->configuration.tempBufferNum; i++) {
+					for (uint64_t i = 0; i < app->configuration.tempBufferNum; i++) {
 						totalSize += app->configuration.tempBufferSize[i];
 						if (app->configuration.tempBufferSize[i] < locPageSize) locPageSize = app->configuration.tempBufferSize[i];
 					}
 				}
 			else {
-				for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+				for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
 					totalSize += app->configuration.bufferSize[i];
 					if (app->configuration.bufferSize[i] < locPageSize) locPageSize = app->configuration.bufferSize[i];
 				}
 			}
-			axis->specializationConstants.outputBufferBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
-			axis->specializationConstants.outputBufferBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+			axis->specializationConstants.outputBufferBlockSize = (uint64_t)ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.outputBufferBlockNum = (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
 		}
@@ -11937,13 +11964,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (axis->specializationConstants.outputBufferBlockNum == 0) axis->specializationConstants.outputBufferBlockNum = 1;
 		if (app->configuration.performConvolution) {
 			uint64_t totalSize = 0;
-			uint32_t locPageSize = initPageSize;
-			for (uint32_t i = 0; i < app->configuration.kernelNum; i++) {
+			uint64_t locPageSize = initPageSize;
+			for (uint64_t i = 0; i < app->configuration.kernelNum; i++) {
 				totalSize += app->configuration.kernelSize[i];
 				if (app->configuration.kernelSize[i] < locPageSize) locPageSize = app->configuration.kernelSize[i];
 			}
-			axis->specializationConstants.kernelBlockSize = (uint32_t)ceil(locPageSize / (double)storageComplexSize);
-			axis->specializationConstants.kernelBlockNum = (uint32_t)ceil(totalSize / (double)(axis->specializationConstants.kernelBlockSize * storageComplexSize));
+			axis->specializationConstants.kernelBlockSize = (uint64_t)ceil(locPageSize / (double)storageComplexSize);
+			axis->specializationConstants.kernelBlockNum = (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.kernelBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.kernelBlockNum == 1) axis->specializationConstants.inputBufferBlockSize = totalSize / storageComplexSize;
 			if (axis->specializationConstants.kernelBlockNum == 0) axis->specializationConstants.kernelBlockNum = 1;
 		}
@@ -12001,7 +12028,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		const VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		VkDescriptorSetLayoutBinding* descriptorSetLayoutBindings;
 		descriptorSetLayoutBindings = (VkDescriptorSetLayoutBinding*)malloc(axis->numBindings * sizeof(VkDescriptorSetLayoutBinding));
-		for (uint32_t i = 0; i < axis->numBindings; ++i) {
+		for (uint64_t i = 0; i < axis->numBindings; ++i) {
 			descriptorSetLayoutBindings[i].binding = i;
 			descriptorSetLayoutBindings[i].descriptorType = descriptorType;
 			descriptorSetLayoutBindings[i].descriptorCount = axis->specializationConstants.numBuffersBound[i];
@@ -12047,7 +12074,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			VkPushConstantRange pushConstantRange = { VK_SHADER_STAGE_COMPUTE_BIT };
 			pushConstantRange.offset = 0;
-			pushConstantRange.size = sizeof(VkFFTPushConstantsLayout);
+			pushConstantRange.size = (app->configuration.useUint64) ? sizeof(VkFFTPushConstantsLayoutUint64) : sizeof(VkFFTPushConstantsLayoutUint32);
 			// Push constant ranges are part of the pipeline layout
 			pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
 			pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
@@ -12058,7 +12085,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				return VKFFT_ERROR_FAILED_TO_CREATE_PIPELINE_LAYOUT;
 			}
 #endif
-			uint32_t maxBatchCoalesced = app->configuration.coalescedMemory / complexSize;
+			uint64_t maxBatchCoalesced = app->configuration.coalescedMemory / complexSize;
 			axis->groupedBatch = maxBatchCoalesced;
 			/*if ((app->configuration.size[0] < 4096) && (app->configuration.size[1] < 512) && (app->configuration.size[2] == 1)) {
 				if (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) {
@@ -12073,7 +12100,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			else {
 				axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
 			}*/
-			//if (axis->groupedBatch * (uint32_t)ceil(axis->specializationConstants.fftDim / 8.0) < app->configuration.warpSize) axis->groupedBatch = app->configuration.warpSize / (uint32_t)ceil(axis->specializationConstants.fftDim / 8.0);
+			//if (axis->groupedBatch * (uint64_t)ceil(axis->specializationConstants.fftDim / 8.0) < app->configuration.warpSize) axis->groupedBatch = app->configuration.warpSize / (uint64_t)ceil(axis->specializationConstants.fftDim / 8.0);
 			//axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
 			if (((FFTPlan->numAxisUploads[axis_id] == 1) && (axis_id == 0)) || ((axis_id == 0) && (!app->configuration.reorderFourStep) && (axis_upload_id == 0))) {
 				axis->groupedBatch = (maxSequenceLengthSharedMemoryPow2 / axis->specializationConstants.fftDim > axis->groupedBatch) ? maxSequenceLengthSharedMemoryPow2 / axis->specializationConstants.fftDim : axis->groupedBatch;
@@ -12085,27 +12112,27 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//shared memory bank conflict resolve
 	//#if(VKFFT_BACKEND!=2)//for some reason, hip doesn't get performance increase from having variable shared memory strides.
 			if ((FFTPlan->numAxisUploads[axis_id] == 2) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim * maxBatchCoalesced <= maxSequenceLengthSharedMemory)) {
-				axis->groupedBatch = (uint32_t)ceil(axis->groupedBatch / 2.0);
+				axis->groupedBatch = (uint64_t)ceil(axis->groupedBatch / 2.0);
 			}
 			//#endif
 			if ((FFTPlan->numAxisUploads[axis_id] == 3) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory / (2 * complexSize))) {
-				axis->groupedBatch = (uint32_t)ceil(axis->groupedBatch / 2.0);
+				axis->groupedBatch = (uint64_t)ceil(axis->groupedBatch / 2.0);
 			}
 			if (axis->groupedBatch < maxBatchCoalesced) axis->groupedBatch = maxBatchCoalesced;
 			axis->groupedBatch = (axis->groupedBatch / maxBatchCoalesced) * maxBatchCoalesced;
 			//half bandiwdth technique
 			if (!((axis_id == 0) && (FFTPlan->numAxisUploads[axis_id] == 1)) && !((axis_id == 0) && (axis_upload_id == 0) && (!app->configuration.reorderFourStep)) && (axis->specializationConstants.fftDim > maxSingleSizeStrided)) {
-				axis->groupedBatch = (uint32_t)ceil(axis->groupedBatch / 2.0);
+				axis->groupedBatch = (uint64_t)ceil(axis->groupedBatch / 2.0);
 			}
 
 			if ((app->configuration.halfThreads) && (axis->groupedBatch * axis->specializationConstants.fftDim * complexSize >= app->configuration.sharedMemorySize))
-				axis->groupedBatch = (uint32_t)ceil(axis->groupedBatch / 2.0);
+				axis->groupedBatch = (uint64_t)ceil(axis->groupedBatch / 2.0);
 			if (axis->groupedBatch > app->configuration.warpSize) axis->groupedBatch = (axis->groupedBatch / app->configuration.warpSize) * app->configuration.warpSize;
 			if (axis->groupedBatch > 2 * maxBatchCoalesced) axis->groupedBatch = (axis->groupedBatch / (2 * maxBatchCoalesced)) * (2 * maxBatchCoalesced);
 			if (axis->groupedBatch > 4 * maxBatchCoalesced) axis->groupedBatch = (axis->groupedBatch / (4 * maxBatchCoalesced)) * (2 * maxBatchCoalesced);
-			uint32_t maxThreadNum = maxSequenceLengthSharedMemory / (axis->specializationConstants.min_registers_per_thread * axis->specializationConstants.registerBoost);
+			uint64_t maxThreadNum = maxSequenceLengthSharedMemory / (axis->specializationConstants.min_registers_per_thread * axis->specializationConstants.registerBoost);
 			axis->specializationConstants.axisSwapped = 0;
-			uint32_t r2cmult = (axis->specializationConstants.mergeSequencesR2C) ? 2 : 1;
+			uint64_t r2cmult = (axis->specializationConstants.mergeSequencesR2C) ? 2 : 1;
 			if (axis_id == 0) {
 
 				if (axis_upload_id == 0) {
@@ -12118,15 +12145,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						//axis->axisBlock[1] = (axis->axisBlock[0] < app->configuration.warpSize) ? app->configuration.warpSize / axis->axisBlock[0] : 1;
 						axis->axisBlock[1] = ((axis->axisBlock[0] < app->configuration.aimThreads)) ? app->configuration.aimThreads / axis->axisBlock[0] : 1;
 					}
-					uint32_t currentAxisBlock1 = axis->axisBlock[1];
-					for (uint32_t i = currentAxisBlock1; i < 2 * currentAxisBlock1; i++) {
+					uint64_t currentAxisBlock1 = axis->axisBlock[1];
+					for (uint64_t i = currentAxisBlock1; i < 2 * currentAxisBlock1; i++) {
 						if (((FFTPlan->numAxisUploads[0] > 1) && (((app->configuration.size[0] / axis->specializationConstants.fftDim) % i) == 0)) || ((FFTPlan->numAxisUploads[0] == 1) && (((app->configuration.size[1] / r2cmult) % i) == 0))) {
 							if (i * axis->specializationConstants.fftDim * complexSize <= app->configuration.sharedMemorySize) axis->axisBlock[1] = i;
 							i = 2 * currentAxisBlock1;
 						}
 					}
 
-					if ((FFTPlan->numAxisUploads[0] > 1) && ((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim) < axis->axisBlock[1])) axis->axisBlock[1] = (uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim);
+					if ((FFTPlan->numAxisUploads[0] > 1) && ((uint64_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim) < axis->axisBlock[1])) axis->axisBlock[1] = (uint64_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim);
 					if ((axis->specializationConstants.mergeSequencesR2C != 0) && (axis->specializationConstants.fftDim * axis->axisBlock[1] >= maxSequenceLengthSharedMemory)) {
 						axis->specializationConstants.mergeSequencesR2C = 0;
 						/*if ((!inverse) && (axis_id == 0) && (axis_upload_id == 0) && (!(app->configuration.isInputFormatted))) {
@@ -12143,7 +12170,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}*/
 						r2cmult = 1;
 					}
-					if ((FFTPlan->numAxisUploads[0] == 1) && ((uint32_t)ceil(app->configuration.size[1] / (double)r2cmult) < axis->axisBlock[1])) axis->axisBlock[1] = (uint32_t)ceil(app->configuration.size[1] / (double)r2cmult);
+					if ((FFTPlan->numAxisUploads[0] == 1) && ((uint64_t)ceil(app->configuration.size[1] / (double)r2cmult) < axis->axisBlock[1])) axis->axisBlock[1] = (uint64_t)ceil(app->configuration.size[1] / (double)r2cmult);
 
 					if (axis->axisBlock[1] > app->configuration.maxComputeWorkGroupSize[1]) axis->axisBlock[1] = app->configuration.maxComputeWorkGroupSize[1];
 					if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[1] /= 2;
@@ -12151,13 +12178,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (((axis->specializationConstants.fftDim % 2 == 0) || (axis->axisBlock[0] < app->configuration.numSharedBanks / 4)) && (!((!app->configuration.reorderFourStep) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim < maxSequenceLengthSharedMemoryPow2) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2])))) {
 #if (VKFFT_BACKEND==0)
 						if (((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) != 0)) {
-							uint32_t temp = axis->axisBlock[1];
+							uint64_t temp = axis->axisBlock[1];
 							axis->axisBlock[1] = axis->axisBlock[0];
 							axis->axisBlock[0] = temp;
 							axis->specializationConstants.axisSwapped = 1;
 						}
 #else
-						uint32_t temp = axis->axisBlock[1];
+						uint64_t temp = axis->axisBlock[1];
 						axis->axisBlock[1] = axis->axisBlock[0];
 						axis->axisBlock[0] = temp;
 						axis->specializationConstants.axisSwapped = 1;
@@ -12168,16 +12195,16 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 					axis->axisBlock[1] = (axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread / axis->specializationConstants.registerBoost > 1) ? axis->specializationConstants.fftDim / axis->specializationConstants.min_registers_per_thread / axis->specializationConstants.registerBoost : 1;
-					uint32_t scale = app->configuration.aimThreads / axis->axisBlock[1] / axis->groupedBatch;
+					uint64_t scale = app->configuration.aimThreads / axis->axisBlock[1] / axis->groupedBatch;
 					if (scale > 1) axis->groupedBatch *= scale;
 					axis->axisBlock[0] = (axis->specializationConstants.stageStartSize > axis->groupedBatch) ? axis->groupedBatch : axis->specializationConstants.stageStartSize;
 					if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 					if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) {
-						for (uint32_t i = 1; i <= axis->axisBlock[0]; i++) {
+						for (uint64_t i = 1; i <= axis->axisBlock[0]; i++) {
 							if ((axis->axisBlock[0] / i) * axis->axisBlock[1] <= app->configuration.maxThreadsNum)
 							{
 								axis->axisBlock[0] /= i;
-								i = axis->axisBlock[0]+1;
+								i = axis->axisBlock[0] + 1;
 							}
 
 						}
@@ -12194,7 +12221,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				if (app->configuration.performR2C) {
 					/*if (axis_upload_id == 0) {
 						VkFFTScheduler(app, FFTPlan, axis_id, 1);
-						for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[0]; i++) {
+						for (uint64_t i = 0; i < FFTPlan->numSupportAxisUploads[0]; i++) {
 							VkFFTPlanSupportAxis(app, FFTPlan, 1, i, inverse);
 						}
 					}*/
@@ -12215,7 +12242,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 				if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) {
-					for (uint32_t i = 1; i <= axis->axisBlock[0]; i++) {
+					for (uint64_t i = 1; i <= axis->axisBlock[0]; i++) {
 						if ((axis->axisBlock[0] / i) * axis->axisBlock[1] <= app->configuration.maxThreadsNum)
 						{
 							axis->axisBlock[0] /= i;
@@ -12235,7 +12262,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					/*if (axis_upload_id == 0) {
 						VkFFTScheduler(app, FFTPlan, axis_id, 1);
 						//->numSupportAxisUploads[1] = FFTPlan->numAxisUploads[2];
-						for (uint32_t i = 0; i < FFTPlan->numSupportAxisUploads[1]; i++) {
+						for (uint64_t i = 0; i < FFTPlan->numSupportAxisUploads[1]; i++) {
 							VkFFTPlanSupportAxis(app, FFTPlan, 2, i, inverse);
 						}
 					}*/
@@ -12256,7 +12283,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 				if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) {
-					for (uint32_t i = 1; i <= axis->axisBlock[0]; i++) {
+					for (uint64_t i = 1; i <= axis->axisBlock[0]; i++) {
 						if ((axis->axisBlock[0] / i) * axis->axisBlock[1] <= app->configuration.maxThreadsNum)
 						{
 							axis->axisBlock[0] /= i;
@@ -12271,7 +12298,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 
 
-			uint32_t tempSize[3] = { app->configuration.size[0], app->configuration.size[1], app->configuration.size[2] };
+			uint64_t tempSize[3] = { app->configuration.size[0], app->configuration.size[1], app->configuration.size[2] };
 
 
 			if (axis_id == 0) {
@@ -12279,9 +12306,9 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					tempSize[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[1];
 				else
 					tempSize[0] = app->configuration.size[0] / axis->specializationConstants.fftDim / axis->axisBlock[0];
-				if ((app->configuration.performR2C == 1) && (axis->specializationConstants.mergeSequencesR2C)) tempSize[1] = (uint32_t)ceil(tempSize[1] / 2.0);
-				//if (app->configuration.performZeropadding[1]) tempSize[1] = (uint32_t)ceil(tempSize[1] / 2.0);
-				//if (app->configuration.performZeropadding[2]) tempSize[2] = (uint32_t)ceil(tempSize[2] / 2.0);
+				if ((app->configuration.performR2C == 1) && (axis->specializationConstants.mergeSequencesR2C)) tempSize[1] = (uint64_t)ceil(tempSize[1] / 2.0);
+				//if (app->configuration.performZeropadding[1]) tempSize[1] = (uint64_t)ceil(tempSize[1] / 2.0);
+				//if (app->configuration.performZeropadding[2]) tempSize[2] = (uint64_t)ceil(tempSize[2] / 2.0);
 				if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
 				else  axis->specializationConstants.performWorkGroupShift[0] = 0;
 				if (tempSize[1] > app->configuration.maxComputeWorkGroupCount[1]) axis->specializationConstants.performWorkGroupShift[1] = 1;
@@ -12290,11 +12317,11 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				else  axis->specializationConstants.performWorkGroupShift[2] = 0;
 			}
 			if (axis_id == 1) {
-				tempSize[0] = (app->configuration.performR2C == 1) ? (uint32_t)ceil((app->configuration.size[0] / 2 + 1) / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim) : (uint32_t)ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+				tempSize[0] = (app->configuration.performR2C == 1) ? (uint64_t)ceil((app->configuration.size[0] / 2 + 1) / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim) : (uint64_t)ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 				tempSize[1] = 1;
 				tempSize[2] = app->configuration.size[2];
-				//if (app->configuration.performR2C == 1) tempSize[0] = (uint32_t)ceil(tempSize[0] / 2.0);
-				//if (app->configuration.performZeropadding[2]) tempSize[2] = (uint32_t)ceil(tempSize[2] / 2.0);
+				//if (app->configuration.performR2C == 1) tempSize[0] = (uint64_t)ceil(tempSize[0] / 2.0);
+				//if (app->configuration.performZeropadding[2]) tempSize[2] = (uint64_t)ceil(tempSize[2] / 2.0);
 
 				if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
 				else  axis->specializationConstants.performWorkGroupShift[0] = 0;
@@ -12305,10 +12332,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			}
 			if (axis_id == 2) {
-				tempSize[0] = (app->configuration.performR2C == 1) ? (uint32_t)ceil((app->configuration.size[0] / 2 + 1) / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim) : (uint32_t)ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
+				tempSize[0] = (app->configuration.performR2C == 1) ? (uint64_t)ceil((app->configuration.size[0] / 2 + 1) / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim) : (uint64_t)ceil(app->configuration.size[0] / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 				tempSize[1] = 1;
 				tempSize[2] = app->configuration.size[1];
-				//if (app->configuration.performR2C == 1) tempSize[0] = (uint32_t)ceil(tempSize[0] / 2.0);
+				//if (app->configuration.performR2C == 1) tempSize[0] = (uint64_t)ceil(tempSize[0] / 2.0);
 
 				if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
 				else  axis->specializationConstants.performWorkGroupShift[0] = 0;
@@ -12319,20 +12346,20 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			}
 			/*VkSpecializationMapEntry specializationMapEntries[36] = { {} };
-			for (uint32_t i = 0; i < 36; i++) {
+			for (uint64_t i = 0; i < 36; i++) {
 				specializationMapEntries[i].constantID = i + 1;
-				specializationMapEntries[i].size = sizeof(uint32_t);
-				specializationMapEntries[i].offset = i * sizeof(uint32_t);
+				specializationMapEntries[i].size = sizeof(uint64_t);
+				specializationMapEntries[i].offset = i * sizeof(uint64_t);
 			}
 			VkSpecializationInfo specializationInfo = { 0 };
-			specializationInfo.dataSize = 36 * sizeof(uint32_t);
+			specializationInfo.dataSize = 36 * sizeof(uint64_t);
 			specializationInfo.mapEntryCount = 36;
 			specializationInfo.pMapEntries = specializationMapEntries;*/
 			axis->specializationConstants.localSize[0] = axis->axisBlock[0];
 			axis->specializationConstants.localSize[1] = axis->axisBlock[1];
 			axis->specializationConstants.localSize[2] = axis->axisBlock[2];
 			//specializationInfo.pData = &axis->specializationConstants;
-			//uint32_t registerBoost = (FFTPlan->numAxisUploads[axis_id] > 1) ? app->configuration.registerBoost4Step : app->configuration.registerBoost;
+			//uint64_t registerBoost = (FFTPlan->numAxisUploads[axis_id] > 1) ? app->configuration.registerBoost4Step : app->configuration.registerBoost;
 
 			axis->specializationConstants.numCoordinates = (app->configuration.matrixConvolution > 1) ? 1 : app->configuration.coordinateFeatures;
 			axis->specializationConstants.matrixConvolution = app->configuration.matrixConvolution;
@@ -12351,7 +12378,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			axis->specializationConstants.axis_id = axis_id;
 			axis->specializationConstants.axis_upload_id = axis_upload_id;
 
-			for (uint32_t i = 0; i < 3; i++) {
+			for (uint64_t i = 0; i < 3; i++) {
 				axis->specializationConstants.frequencyZeropadding = app->configuration.frequencyZeroPadding;
 				axis->specializationConstants.performZeropaddingFull[i] = app->configuration.performZeropadding[i]; // don't read if input is zeropadded (0 - off, 1 - on)
 				axis->specializationConstants.fft_zeropad_left_full[i] = app->configuration.fft_zeropad_left[i];
@@ -12438,18 +12465,31 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 			}
 			char uintType[20] = "";
+			if (!app->configuration.useUint64) {
 #if(VKFFT_BACKEND==0)
-			sprintf(uintType, "uint");
+				sprintf(uintType, "uint");
 #elif(VKFFT_BACKEND==1)
-			sprintf(uintType, "unsigned int");
+				sprintf(uintType, "unsigned int");
 #elif(VKFFT_BACKEND==2)
-			sprintf(uintType, "unsigned int");
+				sprintf(uintType, "unsigned int");
 #elif(VKFFT_BACKEND==3)
-			sprintf(uintType, "unsigned int");
+				sprintf(uintType, "unsigned int");
 #endif
+			}
+			else {
+#if(VKFFT_BACKEND==0)
+				sprintf(uintType, "uint64_t");
+#elif(VKFFT_BACKEND==1)
+				sprintf(uintType, "unsigned long long");
+#elif(VKFFT_BACKEND==2)
+				sprintf(uintType, "unsigned long long");
+#elif(VKFFT_BACKEND==3)
+				sprintf(uintType, "unsigned long");
+#endif
+			}
 
-			//uint32_t LUT = app->configuration.useLUT;
-			uint32_t type = 0;
+			//uint64_t LUT = app->configuration.useLUT;
+			uint64_t type = 0;
 			if ((axis_id == 0) && (axis_upload_id == 0)) type = 0;
 			if (axis_id != 0) type = 1;
 			if ((axis_id == 0) && (axis_upload_id > 0)) type = 2;
@@ -12600,7 +12640,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			{
 				err = glslang_shader_get_info_log(shader);
 				printf("%s\n", code0);
-				printf("%s\nVkFFT shader type: %d\n", err, type);
+				printf("%s\nVkFFT shader type: %" PRIu64 "\n", err, type);
 				glslang_shader_delete(shader);
 				free(code0);
 				deleteVkFFT(app);
@@ -12612,7 +12652,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			{
 				err = glslang_shader_get_info_log(shader);
 				printf("%s\n", code0);
-				printf("%s\nVkFFT shader type: %d\n", err, type);
+				printf("%s\nVkFFT shader type: %" PRIu64 "\n", err, type);
 				glslang_shader_delete(shader);
 				free(code0);
 				deleteVkFFT(app);
@@ -12625,7 +12665,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			{
 				err = glslang_program_get_info_log(program);
 				printf("%s\n", code0);
-				printf("%s\nVkFFT shader type: %d\n", err, type);
+				printf("%s\nVkFFT shader type: %" PRIu64 "\n", err, type);
 				glslang_shader_delete(shader);
 				glslang_program_delete(program);
 				free(code0);
@@ -12757,7 +12797,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					return VKFFT_ERROR_FAILED_TO_SET_DYNAMIC_SHARED_MEMORY;
 				}
 			}
-			size_t size = sizeof(VkFFTPushConstantsLayout);
+			size_t size = (app->configuration.useUint64) ? sizeof(VkFFTPushConstantsLayoutUint64) : sizeof(VkFFTPushConstantsLayoutUint32);
 			result2 = cuModuleGetGlobal(&axis->consts_addr, &size, axis->VkFFTModule, "consts");
 			if (result2 != CUDA_SUCCESS) {
 				printf("cuModuleGetGlobal error: %d\n", result2);
@@ -12863,7 +12903,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					return VKFFT_ERROR_FAILED_TO_SET_DYNAMIC_SHARED_MEMORY;
 				}
 			}
-			size_t size = sizeof(VkFFTPushConstantsLayout);
+			size_t size = (app->configuration.useUint64) ? sizeof(VkFFTPushConstantsLayoutUint64) : sizeof(VkFFTPushConstantsLayoutUint32);
 			result2 = hipModuleGetGlobal(&axis->consts_addr, &size, axis->VkFFTModule, "consts");
 			if (result2 != hipSuccess) {
 				printf("hipModuleGetGlobal error: %d\n", result2);
@@ -12905,7 +12945,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			free(code0);
 		}
 		if (axis->specializationConstants.axisSwapped) {//swap back for correct dispatch
-			uint32_t temp = axis->axisBlock[1];
+			uint64_t temp = axis->axisBlock[1];
 			axis->axisBlock[1] = axis->axisBlock[0];
 			axis->axisBlock[0] = temp;
 			axis->specializationConstants.axisSwapped = 0;
@@ -12944,7 +12984,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.maxComputeWorkGroupSize[2] = physicalDeviceProperties.limits.maxComputeWorkGroupSize[2];
 		if ((physicalDeviceProperties.vendorID == 0x8086) && (!app->configuration.doublePrecision)) app->configuration.halfThreads = 1;
 		app->configuration.sharedMemorySize = physicalDeviceProperties.limits.maxComputeSharedMemorySize;
-		app->configuration.sharedMemorySizePow2 = (uint32_t)pow(2, (uint32_t)log2(physicalDeviceProperties.limits.maxComputeSharedMemorySize));
+		app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(physicalDeviceProperties.limits.maxComputeSharedMemorySize));
 
 		switch (physicalDeviceProperties.vendorID) {
 		case 0x10DE://NVIDIA
@@ -13011,10 +13051,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.sharedMemorySize = (value > 65536) ? 65536 : value;
 		cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_WARP_SIZE, app->configuration.device[0]);
 		app->configuration.warpSize = value;
-		app->configuration.sharedMemorySizePow2 = (uint32_t)pow(2, (uint32_t)log2(app->configuration.sharedMemorySize));
+		app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(app->configuration.sharedMemorySize));
 		if (app->configuration.num_streams > 1) {
 			app->configuration.stream_event = (cudaEvent_t*)malloc(app->configuration.num_streams * sizeof(cudaEvent_t));
-			for (uint32_t i = 0; i < app->configuration.num_streams; i++) {
+			for (uint64_t i = 0; i < app->configuration.num_streams; i++) {
 				cudaEventCreate(&app->configuration.stream_event[i]);
 			}
 		}
@@ -13053,10 +13093,10 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.sharedMemorySize = (value > 65536) ? 65536 : value;
 		hipDeviceGetAttribute(&value, hipDeviceAttributeWarpSize, app->configuration.device[0]);
 		app->configuration.warpSize = value;
-		app->configuration.sharedMemorySizePow2 = (uint32_t)pow(2, (uint32_t)log2(app->configuration.sharedMemorySize));
+		app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(app->configuration.sharedMemorySize));
 		if (app->configuration.num_streams > 1) {
 			app->configuration.stream_event = (hipEvent_t*)malloc(app->configuration.num_streams * sizeof(hipEvent_t));
-			for (uint32_t i = 0; i < app->configuration.num_streams; i++) {
+			for (uint64_t i = 0; i < app->configuration.num_streams; i++) {
 				hipEventCreate(&app->configuration.stream_event[i]);
 			}
 		}
@@ -13075,25 +13115,25 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.platform = inputLaunchConfiguration.platform;
 		cl_uint vendorID;
 		size_t value_int64;
-		uint32_t value_uint;
+		cl_uint value_cl_uint;
 		clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
 		clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &value_int64, 0);
 		app->configuration.maxThreadsNum = value_int64;
-		clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, sizeof(uint32_t), &value_uint, 0);
-		size_t* dims = (size_t*)malloc(sizeof(size_t) * value_uint);
-		clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(size_t) * value_uint, dims, 0);
+		clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, sizeof(cl_uint), &value_cl_uint, 0);
+		size_t* dims = (size_t*)malloc(sizeof(size_t) * value_cl_uint);
+		clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(size_t) * value_cl_uint, dims, 0);
 		app->configuration.maxComputeWorkGroupSize[0] = dims[0];
 		app->configuration.maxComputeWorkGroupSize[1] = dims[1];
 		app->configuration.maxComputeWorkGroupSize[2] = dims[2];
 		free(dims);
-		app->configuration.maxComputeWorkGroupCount[0] = -1;
-		app->configuration.maxComputeWorkGroupCount[1] = -1;
-		app->configuration.maxComputeWorkGroupCount[2] = -1;
+		app->configuration.maxComputeWorkGroupCount[0] = UINT64_MAX;
+		app->configuration.maxComputeWorkGroupCount[1] = UINT64_MAX;
+		app->configuration.maxComputeWorkGroupCount[2] = UINT64_MAX;
 		if ((vendorID == 0x8086) && (!app->configuration.doublePrecision)) app->configuration.halfThreads = 1;
 		cl_ulong sharedMemorySize;
 		clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_LOCAL_MEM_SIZE, sizeof(cl_ulong), &sharedMemorySize, 0);
 		app->configuration.sharedMemorySize = sharedMemorySize;
-		app->configuration.sharedMemorySizePow2 = (uint32_t)pow(2, (uint32_t)log2(sharedMemorySize));
+		app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(sharedMemorySize));
 
 		switch (vendorID) {
 		case 0x10DE://NVIDIA
@@ -13105,7 +13145,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			app->configuration.registerBoost4Step = 1;
 			app->configuration.swapTo3Stage4Step = 0;
 			app->configuration.sharedMemorySize -= 0x10;//reserved by system
-			app->configuration.sharedMemorySizePow2 = (uint32_t)pow(2, (uint32_t)log2(app->configuration.sharedMemorySize));
+			app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(app->configuration.sharedMemorySize));
 			break;
 		case 0x8086://INTEL
 			app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
@@ -13171,7 +13211,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		else
 			app->configuration.outputBufferStride[0] = inputLaunchConfiguration.outputBufferStride[0];
-		for (uint32_t i = 1; i < 3; i++) {
+		for (uint64_t i = 1; i < 3; i++) {
 			if (inputLaunchConfiguration.size[i] == 0)
 				app->configuration.size[i] = 1;
 			else
@@ -13219,7 +13259,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			app->configuration.tempBufferSize = (uint64_t*)malloc(sizeof(uint64_t));
 			app->configuration.tempBufferSize[0] = 0;
 
-			for (uint32_t i = 0; i < app->configuration.bufferNum; i++) {
+			for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
 				app->configuration.tempBufferSize[0] += app->configuration.bufferSize[i];
 			}
 		}
@@ -13263,6 +13303,30 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 
 		//set optional parameters:
+		uint64_t checkBufferSizeFor64BitAddressing = 0;
+		for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
+			checkBufferSizeFor64BitAddressing += app->configuration.bufferSize[i];
+		}
+		if (checkBufferSizeFor64BitAddressing >= (uint64_t)pow((uint64_t)2, (uint64_t)34)) app->configuration.useUint64 = 1;
+		checkBufferSizeFor64BitAddressing = 0;
+		for (uint64_t i = 0; i < app->configuration.inputBufferNum; i++) {
+			checkBufferSizeFor64BitAddressing += app->configuration.inputBufferSize[i];
+		}
+		if (checkBufferSizeFor64BitAddressing >= (uint64_t)pow((uint64_t)2, (uint64_t)34)) app->configuration.useUint64 = 1;
+		
+		checkBufferSizeFor64BitAddressing = 0;
+		for (uint64_t i = 0; i < app->configuration.outputBufferNum; i++) {
+			checkBufferSizeFor64BitAddressing += app->configuration.outputBufferSize[i];
+		}
+		if (checkBufferSizeFor64BitAddressing >= (uint64_t)pow((uint64_t)2, (uint64_t)34)) app->configuration.useUint64 = 1;
+		
+		checkBufferSizeFor64BitAddressing = 0;
+		for (uint64_t i = 0; i < app->configuration.kernelNum; i++) {
+			checkBufferSizeFor64BitAddressing += app->configuration.kernelSize[i];
+		}
+		if (checkBufferSizeFor64BitAddressing >= (uint64_t)pow((uint64_t)2, (uint64_t)34)) app->configuration.useUint64 = 1;
+		if (inputLaunchConfiguration.useUint64 != 0)	app->configuration.useUint64 = inputLaunchConfiguration.useUint64;
+
 		if (inputLaunchConfiguration.coalescedMemory != 0)	app->configuration.coalescedMemory = inputLaunchConfiguration.coalescedMemory;
 		app->configuration.aimThreads = 128;
 		if (inputLaunchConfiguration.aimThreads != 0)	app->configuration.aimThreads = inputLaunchConfiguration.aimThreads;
@@ -13287,7 +13351,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		app->configuration.reorderFourStep = 1;
 		if (inputLaunchConfiguration.disableReorderFourStep != 0) app->configuration.reorderFourStep = 0;
 		if (inputLaunchConfiguration.frequencyZeroPadding != 0) app->configuration.frequencyZeroPadding = inputLaunchConfiguration.frequencyZeroPadding;
-		for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
+		for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 			if (inputLaunchConfiguration.performZeropadding[i] != 0) {
 				app->configuration.performZeropadding[i] = inputLaunchConfiguration.performZeropadding[i];
 				app->configuration.fft_zeropad_left[i] = inputLaunchConfiguration.fft_zeropad_left[i];
@@ -13343,13 +13407,14 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 		//temporary set:
 		app->configuration.registerBoost4Step = 1;
+		if (VKFFT_BACKEND==0) app->configuration.useUint64 = 0; //No physical addressing mode in Vulkan shaders. Use multiple-buffer support to achieve emulation of physical addressing.
 
 		VkFFTResult resFFT = VKFFT_SUCCESS;
-		uint32_t initSharedMemory = app->configuration.sharedMemorySize;
+		uint64_t initSharedMemory = app->configuration.sharedMemorySize;
 		if (!app->configuration.makeForwardPlanOnly) {
 			app->localFFTPlan_inverse = (VkFFTPlan*)malloc(sizeof(VkFFTPlan));
 			app->localFFTPlan_inverse[0] = { 0 };
-			for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
+			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 				app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
 				resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, i, 0);
 				if (resFFT != VKFFT_SUCCESS) {
@@ -13359,7 +13424,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 					return resFFT;
 				}
-				for (uint32_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
+				for (uint64_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
 					resFFT = VkFFTPlanAxis(app, app->localFFTPlan_inverse, i, j, 1);
 					if (resFFT != VKFFT_SUCCESS) {
 #if(VKFFT_BACKEND==0)
@@ -13386,7 +13451,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		if (!app->configuration.makeInversePlanOnly) {
 			app->localFFTPlan = (VkFFTPlan*)malloc(sizeof(VkFFTPlan));
 			app->localFFTPlan[0] = { 0 };
-			for (uint32_t i = 0; i < app->configuration.FFTdim; i++) {
+			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 				app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
 				resFFT = VkFFTScheduler(app, app->localFFTPlan, i, 0);
 				if (resFFT != VKFFT_SUCCESS) {
@@ -13396,7 +13461,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 					return resFFT;
 				}
-				for (uint32_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++) {
+				for (uint64_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++) {
 					resFFT = VkFFTPlanAxis(app, app->localFFTPlan, i, j, 0);
 					if (resFFT != VKFFT_SUCCESS) {
 #if(VKFFT_BACKEND==0)
@@ -13426,12 +13491,15 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #endif
 		return resFFT;
 	}
-	static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axis, uint32_t* dispatchBlock) {
+	static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axis, uint64_t* dispatchBlock) {
 		VkFFTResult resFFT = VKFFT_SUCCESS;
-		uint32_t maxBlockSize[3] = { (uint32_t)pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[0])),(uint32_t)pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[1])),(uint32_t)pow(2,(uint32_t)log2(app->configuration.maxComputeWorkGroupCount[2])) };
-		uint32_t blockNumber[3] = { (uint32_t)ceil(dispatchBlock[0] / (float)maxBlockSize[0]),(uint32_t)ceil(dispatchBlock[1] / (float)maxBlockSize[1]),(uint32_t)ceil(dispatchBlock[2] / (float)maxBlockSize[2]) };
+		uint64_t maxBlockSize[3] = { (uint64_t)pow(2,(uint64_t)log2(app->configuration.maxComputeWorkGroupCount[0])),(uint64_t)pow(2,(uint64_t)log2(app->configuration.maxComputeWorkGroupCount[1])),(uint64_t)pow(2,(uint64_t)log2(app->configuration.maxComputeWorkGroupCount[2])) };
+		uint64_t blockNumber[3] = { (uint64_t)ceil(dispatchBlock[0] / (double)maxBlockSize[0]),(uint64_t)ceil(dispatchBlock[1] / (double)maxBlockSize[1]),(uint64_t)ceil(dispatchBlock[2] / (double)maxBlockSize[2]) };
+		if (blockNumber[0] == 0) blockNumber[0] = 1;
+		if (blockNumber[1] == 0) blockNumber[1] = 1;
+		if (blockNumber[2] == 0) blockNumber[2] = 1;
 		if ((blockNumber[0] > 1) && (blockNumber[0] * maxBlockSize[0] != dispatchBlock[0])) {
-			for (uint32_t i = app->configuration.maxComputeWorkGroupCount[0]; i > 0; i--) {
+			for (uint64_t i = app->configuration.maxComputeWorkGroupCount[0]; i > 0; i--) {
 				if (dispatchBlock[0] % i == 0) {
 					maxBlockSize[0] = i;
 					blockNumber[0] = dispatchBlock[0] / i;
@@ -13440,7 +13508,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 		}
 		if ((blockNumber[1] > 1) && (blockNumber[1] * maxBlockSize[1] != dispatchBlock[1])) {
-			for (uint32_t i = app->configuration.maxComputeWorkGroupCount[1]; i > 0; i--) {
+			for (uint64_t i = app->configuration.maxComputeWorkGroupCount[1]; i > 0; i--) {
 				if (dispatchBlock[1] % i == 0) {
 					maxBlockSize[1] = i;
 					blockNumber[1] = dispatchBlock[1] / i;
@@ -13449,7 +13517,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 		}
 		if ((blockNumber[2] > 1) && (blockNumber[2] * maxBlockSize[2] != dispatchBlock[2])) {
-			for (uint32_t i = app->configuration.maxComputeWorkGroupCount[2]; i > 0; i--) {
+			for (uint64_t i = app->configuration.maxComputeWorkGroupCount[2]; i > 0; i--) {
 				if (dispatchBlock[2] % i == 0) {
 					maxBlockSize[2] = i;
 					blockNumber[2] = dispatchBlock[2] / i;
@@ -13457,25 +13525,36 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 			}
 		}
-		//printf("%d %d %d\n", dispatchBlock[0], dispatchBlock[1], dispatchBlock[2]);
-		for (uint32_t i = 0; i < 3; i++)
+		//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 "\n", dispatchBlock[0], dispatchBlock[1], dispatchBlock[2]);
+		//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 "\n", blockNumber[0], blockNumber[1], blockNumber[2]);
+		for (uint64_t i = 0; i < 3; i++)
 			if (blockNumber[i] == 1) maxBlockSize[i] = dispatchBlock[i];
-
-		for (uint32_t i = 0; i < blockNumber[0]; i++) {
-			for (uint32_t j = 0; j < blockNumber[1]; j++) {
-				for (uint32_t k = 0; k < blockNumber[2]; k++) {
+		for (uint64_t i = 0; i < blockNumber[0]; i++) {
+			for (uint64_t j = 0; j < blockNumber[1]; j++) {
+				for (uint64_t k = 0; k < blockNumber[2]; k++) {
 					axis->pushConstants.workGroupShift[0] = i * maxBlockSize[0];
 					axis->pushConstants.workGroupShift[1] = j * maxBlockSize[1];
 					axis->pushConstants.workGroupShift[2] = k * maxBlockSize[2];
 #if(VKFFT_BACKEND==0)
-					vkCmdPushConstants(app->configuration.commandBuffer[0], axis->pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(VkFFTPushConstantsLayout), &axis->pushConstants);
+					size_t sizePushConsts = (app->configuration.useUint64) ? sizeof(VkFFTPushConstantsLayoutUint64) : sizeof(VkFFTPushConstantsLayoutUint32);
+					if (app->configuration.useUint64) {
+						vkCmdPushConstants(app->configuration.commandBuffer[0], axis->pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizePushConsts, &axis->pushConstants);
+					}
+					else {
+						axis->pushConstantsUint32.batch = axis->pushConstants.batch;
+						axis->pushConstantsUint32.coordinate = axis->pushConstants.coordinate;
+						axis->pushConstantsUint32.workGroupShift[0] = axis->pushConstants.workGroupShift[0];
+						axis->pushConstantsUint32.workGroupShift[1] = axis->pushConstants.workGroupShift[1];
+						axis->pushConstantsUint32.workGroupShift[2] = axis->pushConstants.workGroupShift[2];
+						vkCmdPushConstants(app->configuration.commandBuffer[0], axis->pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizePushConsts, &axis->pushConstantsUint32);
+					}
 					vkCmdDispatch(app->configuration.commandBuffer[0], maxBlockSize[0], maxBlockSize[1], maxBlockSize[2]);
 #elif(VKFFT_BACKEND==1)
 					void* args[5];
 					CUresult result = CUDA_SUCCESS;
 					args[0] = axis->inputBuffer;
 					args[1] = axis->outputBuffer;
-					uint32_t args_id = 2;
+					uint64_t args_id = 2;
 					if (axis->specializationConstants.convolutionStep) {
 						args[args_id] = app->configuration.kernel;
 						args_id++;
@@ -13486,7 +13565,18 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					//args[args_id] = &axis->pushConstants;
 					if ((i > 0) || (j > 0) || (k > 0) || (axis->pushConstants.coordinate > 0) || (axis->pushConstants.batch > 0)) {
-						result = cuMemcpyHtoD(axis->consts_addr, &axis->pushConstants, sizeof(VkFFTPushConstantsLayout));
+						size_t sizePushConsts = (app->configuration.useUint64) ? sizeof(VkFFTPushConstantsLayoutUint64) : sizeof(VkFFTPushConstantsLayoutUint32);
+						if (app->configuration.useUint64) {
+							result = cuMemcpyHtoD(axis->consts_addr, &axis->pushConstants, sizePushConsts);
+						}
+						else {
+							axis->pushConstantsUint32.batch = axis->pushConstants.batch;
+							axis->pushConstantsUint32.coordinate = axis->pushConstants.coordinate;
+							axis->pushConstantsUint32.workGroupShift[0] = axis->pushConstants.workGroupShift[0];
+							axis->pushConstantsUint32.workGroupShift[1] = axis->pushConstants.workGroupShift[1];
+							axis->pushConstantsUint32.workGroupShift[2] = axis->pushConstants.workGroupShift[2];
+							result = cuMemcpyHtoD(axis->consts_addr, &axis->pushConstantsUint32, sizePushConsts);
+						}
 						if (result != CUDA_SUCCESS) {
 							printf("cuMemcpyHtoD error: %d\n", result);
 							return VKFFT_ERROR_FAILED_TO_COPY;
@@ -13507,7 +13597,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							args, 0);
 					}
 					if (result != CUDA_SUCCESS) {
-						printf("cuLaunchKernel error: %d, %d %d %d - %d %d %d\n", result, maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
+						printf("cuLaunchKernel error: %d, %" PRIu64 " %" PRIu64 " %" PRIu64 " - %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", result, maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
 						return VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL;
 					}
 					if (app->configuration.num_streams > 1) {
@@ -13523,7 +13613,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					void* args[5];
 					args[0] = axis->inputBuffer;
 					args[1] = axis->outputBuffer;
-					uint32_t args_id = 2;
+					uint64_t args_id = 2;
 					if (axis->specializationConstants.convolutionStep) {
 						args[args_id] = app->configuration.kernel;
 						args_id++;
@@ -13534,13 +13624,24 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 					//args[args_id] = &axis->pushConstants;
 					if ((i > 0) || (j > 0) || (k > 0) || (axis->pushConstants.coordinate > 0) || (axis->pushConstants.batch > 0)) {
-						result = hipMemcpyHtoD(axis->consts_addr, &axis->pushConstants, sizeof(VkFFTPushConstantsLayout));
+						size_t sizePushConsts = (app->configuration.useUint64) ? sizeof(VkFFTPushConstantsLayoutUint64) : sizeof(VkFFTPushConstantsLayoutUint32);
+						if (app->configuration.useUint64) {
+							result = hipMemcpyHtoD(axis->consts_addr, &axis->pushConstants, sizePushConsts);
+						}
+						else {
+							axis->pushConstantsUint32.batch = axis->pushConstants.batch;
+							axis->pushConstantsUint32.coordinate = axis->pushConstants.coordinate;
+							axis->pushConstantsUint32.workGroupShift[0] = axis->pushConstants.workGroupShift[0];
+							axis->pushConstantsUint32.workGroupShift[1] = axis->pushConstants.workGroupShift[1];
+							axis->pushConstantsUint32.workGroupShift[2] = axis->pushConstants.workGroupShift[2];
+							result = hipMemcpyHtoD(axis->consts_addr, &axis->pushConstantsUint32, sizePushConsts);
+						}
 						if (result != hipSuccess) {
 							printf("hipMemcpyHtoD error: %d\n", result);
 							return VKFFT_ERROR_FAILED_TO_COPY;
 						}
 					}
-					//printf("%d %d %d %d %d %d\n",maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
+					//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n",maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
 					if (app->configuration.num_streams >= 1) {
 						result = hipModuleLaunchKernel(axis->VkFFTKernel,
 							maxBlockSize[0], maxBlockSize[1], maxBlockSize[2],     // grid dim
@@ -13556,7 +13657,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							args, 0);
 					}
 					if (result != hipSuccess) {
-						printf("hipModuleLaunchKernel error: %d, %d %d %d - %d %d %d\n", result, maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
+						printf("hipModuleLaunchKernel error: %d, %" PRIu64 " %" PRIu64 " %" PRIu64 " - %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", result, maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
 						return VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL;
 					}
 					if (app->configuration.num_streams > 1) {
@@ -13580,7 +13681,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					if (result != CL_SUCCESS) {
 						return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
 					}
-					uint32_t args_id = 2;
+					uint64_t args_id = 2;
 					if (axis->specializationConstants.convolutionStep) {
 						args[args_id] = app->configuration.kernel;
 						result = clSetKernelArg(axis->kernel, args_id, sizeof(cl_mem), args[args_id]);
@@ -13597,7 +13698,18 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 						args_id++;
 					}
-					result = clSetKernelArg(axis->kernel, args_id, sizeof(VkFFTPushConstantsLayout), &axis->pushConstants);
+					size_t sizePushConsts = (app->configuration.useUint64) ? sizeof(VkFFTPushConstantsLayoutUint64) : sizeof(VkFFTPushConstantsLayoutUint32);
+					if (app->configuration.useUint64) {
+						result = clSetKernelArg(axis->kernel, args_id, sizePushConsts, &axis->pushConstants);
+					}
+					else {
+						axis->pushConstantsUint32.batch = axis->pushConstants.batch;
+						axis->pushConstantsUint32.coordinate = axis->pushConstants.coordinate;
+						axis->pushConstantsUint32.workGroupShift[0] = axis->pushConstants.workGroupShift[0];
+						axis->pushConstantsUint32.workGroupShift[1] = axis->pushConstants.workGroupShift[1];
+						axis->pushConstantsUint32.workGroupShift[2] = axis->pushConstants.workGroupShift[2];
+						result = clSetKernelArg(axis->kernel, args_id, sizePushConsts, &axis->pushConstantsUint32);
+					}
 					if (result != CL_SUCCESS) {
 						return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
 					}
@@ -13605,6 +13717,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					size_t local_work_size[3] = { (size_t)axis->specializationConstants.localSize[0], (size_t)axis->specializationConstants.localSize[1],(size_t)axis->specializationConstants.localSize[2] };
 					size_t global_work_size[3] = { (size_t)maxBlockSize[0] * local_work_size[0] , (size_t)maxBlockSize[1] * local_work_size[1] ,(size_t)maxBlockSize[2] * local_work_size[2] };
 					result = clEnqueueNDRangeKernel(app->configuration.commandQueue[0], axis->kernel, 3, 0, global_work_size, local_work_size, 0, 0, 0);
+					//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 " - %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
+
 					if (result != CL_SUCCESS) {
 						return VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL;
 					}
@@ -13620,7 +13734,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==1)
 		if (app->configuration.num_streams > 1) {
 			cudaError_t res = cudaSuccess;
-			for (uint32_t s = 0; s < app->configuration.num_streams; s++) {
+			for (uint64_t s = 0; s < app->configuration.num_streams; s++) {
 				res = cudaEventSynchronize(app->configuration.stream_event[s]);
 				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 			}
@@ -13629,7 +13743,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==2)
 		if (app->configuration.num_streams > 1) {
 			hipError_t res = hipSuccess;
-			for (uint32_t s = 0; s < app->configuration.num_streams; s++) {
+			for (uint64_t s = 0; s < app->configuration.num_streams; s++) {
 				res = hipEventSynchronize(app->configuration.stream_event[s]);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 			}
@@ -13658,7 +13772,7 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 #elif(VKFFT_BACKEND==3)
 		app->configuration.commandQueue = launchParams->commandQueue;
 #endif
-		uint32_t localSize0 = (app->configuration.performR2C == 1) ? app->configuration.size[0] / 2 + 1 : app->configuration.size[0];
+		uint64_t localSize0 = (app->configuration.performR2C == 1) ? app->configuration.size[0] / 2 + 1 : app->configuration.size[0];
 		if ((inverse != 1) && (app->configuration.makeInversePlanOnly)) return VKFFT_ERROR_ONLY_INVERSE_FFT_INITIALIZED;
 		if ((inverse == 1) && (app->configuration.makeForwardPlanOnly)) return VKFFT_ERROR_ONLY_FORWARD_FFT_INITIALIZED;
 
@@ -13667,49 +13781,48 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			deleteVkFFT(app);
 			return resFFT;
 		}
-
 		if (inverse != 1) {
 			//FFT axis 0
 			if (app->localFFTPlan->multiUploadR2C) app->configuration.size[0] /= 2;
-			for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
+			for (uint64_t j = 0; j < app->configuration.numberBatches; j++) {
 				for (int l = app->localFFTPlan->numAxisUploads[0] - 1; l >= 0; l--) {
 					VkFFTAxis* axis = &app->localFFTPlan->axes[0][l];
 					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 0, l, 0);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
 					axis->pushConstants.batch = j;
-					uint32_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
-					for (uint32_t i = 0; i < maxCoordinate; i++) {
+					uint64_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
+					for (uint64_t i = 0; i < maxCoordinate; i++) {
 						axis->pushConstants.coordinate = i;
 
 #if(VKFFT_BACKEND==0)
 						vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 						vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-						uint32_t dispatchBlock[3];
+						uint64_t dispatchBlock[3];
 						if (l == 0) {
 							if (app->localFFTPlan->numAxisUploads[0] > 2) {
-								dispatchBlock[0] = (uint32_t)ceil((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan->axisSplit[0][1]) * app->localFFTPlan->axisSplit[0][1];
+								dispatchBlock[0] = (uint64_t)ceil((uint64_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan->axisSplit[0][1]) * app->localFFTPlan->axisSplit[0][1];
 								dispatchBlock[1] = app->configuration.size[1];
 							}
 							else {
 								if (app->localFFTPlan->numAxisUploads[0] > 1) {
-									dispatchBlock[0] = (uint32_t)ceil((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
+									dispatchBlock[0] = (uint64_t)ceil((uint64_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
 									dispatchBlock[1] = app->configuration.size[1];
 								}
 								else {
 									dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
-									dispatchBlock[1] = (uint32_t)ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
+									dispatchBlock[1] = (uint64_t)ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
 								}
 							}
 						}
 						else {
-							dispatchBlock[0] = (uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
+							dispatchBlock[0] = (uint64_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 							dispatchBlock[1] = app->configuration.size[1];
 						}
 						dispatchBlock[2] = app->configuration.size[2];
-						if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
-						//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
-						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
+						if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = (uint64_t)ceil(dispatchBlock[1] / 2.0);
+						//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = (uint64_t)ceil(dispatchBlock[1] / 2.0);
+						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
 						resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
 					}
@@ -13718,22 +13831,22 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 			}
 			if (app->localFFTPlan->multiUploadR2C) {
-				for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
+				for (uint64_t j = 0; j < app->configuration.numberBatches; j++) {
 					VkFFTAxis* axis = &app->localFFTPlan->R2Cdecomposition;
 					resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan, axis, 0, 0, 0);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
 					axis->pushConstants.batch = j;
-					uint32_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
-					for (uint32_t i = 0; i < maxCoordinate; i++) {
+					uint64_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
+					for (uint64_t i = 0; i < maxCoordinate; i++) {
 						axis->pushConstants.coordinate = i;
 
 #if(VKFFT_BACKEND==0)
 						vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 						vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-						uint32_t dispatchBlock[3];
+						uint64_t dispatchBlock[3];
 
-						dispatchBlock[0] = (uint32_t)ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0]));
+						dispatchBlock[0] = (uint64_t)ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0]));
 						dispatchBlock[1] = 1;
 						dispatchBlock[2] = 1;
 						resFFT = dispatchEnhanced(app, axis, dispatchBlock);
@@ -13753,8 +13866,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						VkFFTAxis* axis = &app->localFFTPlan->axes[1][l];
 						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 1, l, 0);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
-						uint32_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (l == 0)) ? 1 : app->configuration.coordinateFeatures;
-						for (uint32_t i = 0; i < maxCoordinate; i++) {
+						uint64_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (l == 0)) ? 1 : app->configuration.coordinateFeatures;
+						for (uint64_t i = 0; i < maxCoordinate; i++) {
 
 							axis->pushConstants.coordinate = i;
 							axis->pushConstants.batch = ((l == 0) && (app->configuration.matrixConvolution == 1)) ? app->configuration.numberKernels : 0;
@@ -13762,12 +13875,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+							uint64_t dispatchBlock[3];
+							dispatchBlock[0] = (uint64_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
-							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
-							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 						}
@@ -13777,25 +13890,25 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 
-					for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
+					for (uint64_t j = 0; j < app->configuration.numberBatches; j++) {
 						for (int l = app->localFFTPlan->numAxisUploads[1] - 1; l >= 0; l--) {
 							VkFFTAxis* axis = &app->localFFTPlan->axes[1][l];
 							resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 1, l, 0);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 							axis->pushConstants.batch = j;
-							for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
+							for (uint64_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 								axis->pushConstants.coordinate = i;
 #if(VKFFT_BACKEND==0)
 								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-								uint32_t dispatchBlock[3];
+								uint64_t dispatchBlock[3];
 
-								dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+								dispatchBlock[0] = (uint64_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[2];
-								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
-								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
+								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
+								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
 								resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 								if (resFFT != VKFFT_SUCCESS) return resFFT;
 							}
@@ -13815,19 +13928,19 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						VkFFTAxis* axis = &app->localFFTPlan->axes[2][l];
 						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 2, l, 0);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
-						uint32_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (l == 0)) ? 1 : app->configuration.coordinateFeatures;
-						for (uint32_t i = 0; i < maxCoordinate; i++) {
+						uint64_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (l == 0)) ? 1 : app->configuration.coordinateFeatures;
+						for (uint64_t i = 0; i < maxCoordinate; i++) {
 							axis->pushConstants.coordinate = i;
 							axis->pushConstants.batch = ((l == 0) && (app->configuration.matrixConvolution == 1)) ? app->configuration.numberKernels : 0;
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
+							uint64_t dispatchBlock[3];
+							dispatchBlock[0] = (uint64_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[1];
-							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 
@@ -13838,23 +13951,23 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 				else {
 
-					for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
+					for (uint64_t j = 0; j < app->configuration.numberBatches; j++) {
 						for (int l = app->localFFTPlan->numAxisUploads[2] - 1; l >= 0; l--) {
 							VkFFTAxis* axis = &app->localFFTPlan->axes[2][l];
 							resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 2, l, 0);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 							axis->pushConstants.batch = j;
-							for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
+							for (uint64_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 								axis->pushConstants.coordinate = i;
 #if(VKFFT_BACKEND==0)
 								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-								uint32_t dispatchBlock[3];
-								dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
+								uint64_t dispatchBlock[3];
+								dispatchBlock[0] = (uint64_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[1];
-								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
+								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
 								resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 								if (resFFT != VKFFT_SUCCESS) return resFFT;
 							}
@@ -13873,24 +13986,24 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				//multiple upload ifft leftovers
 				if (app->configuration.FFTdim == 3) {
 
-					for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
+					for (uint64_t j = 0; j < app->configuration.numberKernels; j++) {
 						for (int l = 1; l < app->localFFTPlan_inverse->numAxisUploads[2]; l++) {
 							VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[2][l];
 							resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 2, l, 1);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
-							uint32_t maxCoordinate = app->configuration.coordinateFeatures;
-							for (uint32_t i = 0; i < maxCoordinate; i++) {
+							uint64_t maxCoordinate = app->configuration.coordinateFeatures;
+							for (uint64_t i = 0; i < maxCoordinate; i++) {
 								axis->pushConstants.coordinate = i;
 								axis->pushConstants.batch = j;
 #if(VKFFT_BACKEND==0)
 								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-								uint32_t dispatchBlock[3];
-								dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
+								uint64_t dispatchBlock[3];
+								dispatchBlock[0] = (uint64_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[1];
-								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
+								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
 								resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 								if (resFFT != VKFFT_SUCCESS) return resFFT;
 							}
@@ -13900,24 +14013,24 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 					}
 				}
 
-				for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
+				for (uint64_t j = 0; j < app->configuration.numberKernels; j++) {
 					for (int l = 0; l < app->localFFTPlan_inverse->numAxisUploads[1]; l++) {
 						VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[1][l];
 						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 1, l, 1);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
 						axis->pushConstants.batch = j;
-						for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
+						for (uint64_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 							axis->pushConstants.coordinate = i;
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+							uint64_t dispatchBlock[3];
+							dispatchBlock[0] = (uint64_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
-							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
-							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 						}
@@ -13930,13 +14043,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			if (app->configuration.FFTdim > 1) {
 				if (app->configuration.FFTdim == 2) {
 
-					for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
+					for (uint64_t j = 0; j < app->configuration.numberKernels; j++) {
 						for (int l = 1; l < app->localFFTPlan_inverse->numAxisUploads[1]; l++) {
 							VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[1][l];
 							resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 1, l, 1);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
-							uint32_t maxCoordinate = app->configuration.coordinateFeatures;
-							for (uint32_t i = 0; i < maxCoordinate; i++) {
+							uint64_t maxCoordinate = app->configuration.coordinateFeatures;
+							for (uint64_t i = 0; i < maxCoordinate; i++) {
 
 								axis->pushConstants.coordinate = i;
 								axis->pushConstants.batch = j;
@@ -13944,12 +14057,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-								uint32_t dispatchBlock[3];
-								dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+								uint64_t dispatchBlock[3];
+								dispatchBlock[0] = (uint64_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 								dispatchBlock[1] = 1;
 								dispatchBlock[2] = app->configuration.size[2];
-								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
-								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
+								//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
+								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
 								resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 								if (resFFT != VKFFT_SUCCESS) return resFFT;
 							}
@@ -13958,43 +14071,43 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 						}
 					}
 				}
-				for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
+				for (uint64_t j = 0; j < app->configuration.numberKernels; j++) {
 					for (int l = 0; l < app->localFFTPlan_inverse->numAxisUploads[0]; l++) {
 						VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[0][l];
 						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 0, l, 1);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
 						axis->pushConstants.batch = j;
-						for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
+						for (uint64_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 							axis->pushConstants.coordinate = i;
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-							uint32_t dispatchBlock[3];
+							uint64_t dispatchBlock[3];
 							if (l == 0) {
 								if (app->localFFTPlan->numAxisUploads[0] > 2) {
-									dispatchBlock[0] = (uint32_t)ceil((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan->axisSplit[0][1]) * app->localFFTPlan->axisSplit[0][1];
+									dispatchBlock[0] = (uint64_t)ceil((uint64_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan->axisSplit[0][1]) * app->localFFTPlan->axisSplit[0][1];
 									dispatchBlock[1] = app->configuration.size[1];
 								}
 								else {
 									if (app->localFFTPlan->numAxisUploads[0] > 1) {
-										dispatchBlock[0] = (uint32_t)ceil((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
+										dispatchBlock[0] = (uint64_t)ceil((uint64_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
 										dispatchBlock[1] = app->configuration.size[1];
 									}
 									else {
 										dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
-										dispatchBlock[1] = (uint32_t)ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
+										dispatchBlock[1] = (uint64_t)ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
 									}
 								}
 							}
 							else {
-								dispatchBlock[0] = (uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
+								dispatchBlock[0] = (uint64_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 								dispatchBlock[1] = app->configuration.size[1];
 							}
 							dispatchBlock[2] = app->configuration.size[2];
-							if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
-							//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
-							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
+							if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = (uint64_t)ceil(dispatchBlock[1] / 2.0);
+							//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = (uint64_t)ceil(dispatchBlock[1] / 2.0);
+							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 						}
@@ -14006,13 +14119,13 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 			}
 			if (app->configuration.FFTdim == 1) {
-				for (uint32_t j = 0; j < app->configuration.numberKernels; j++) {
+				for (uint64_t j = 0; j < app->configuration.numberKernels; j++) {
 					for (int l = 1; l < app->localFFTPlan_inverse->numAxisUploads[0]; l++) {
 						VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[0][l];
 						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 0, l, 1);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
-						uint32_t maxCoordinate = app->configuration.coordinateFeatures;
-						for (uint32_t i = 0; i < maxCoordinate; i++) {
+						uint64_t maxCoordinate = app->configuration.coordinateFeatures;
+						for (uint64_t i = 0; i < maxCoordinate; i++) {
 
 							axis->pushConstants.coordinate = i;
 							axis->pushConstants.batch = j;
@@ -14020,12 +14133,12 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+							uint64_t dispatchBlock[3];
+							dispatchBlock[0] = (uint64_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
-							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
-							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 						}
@@ -14041,27 +14154,27 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			//FFT axis 2
 			if (app->configuration.FFTdim > 2) {
 
-				for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
+				for (uint64_t j = 0; j < app->configuration.numberBatches; j++) {
 					for (int l = app->localFFTPlan_inverse->numAxisUploads[2] - 1; l >= 0; l--) {
 						if (!app->configuration.reorderFourStep) l = app->localFFTPlan_inverse->numAxisUploads[2] - 1 - l;
 						VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[2][l];
 						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 2, l, 1);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
 						axis->pushConstants.batch = j;
-						for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
+						for (uint64_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 							axis->pushConstants.coordinate = i;
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
+							uint64_t dispatchBlock[3];
+							dispatchBlock[0] = (uint64_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[2] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[1];
-							//if (app->configuration.performZeropaddingInverse[0]) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
-							//if (app->configuration.performZeropaddingInverse[1]) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
+							//if (app->configuration.performZeropaddingInverse[0]) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.performZeropaddingInverse[1]) dispatchBlock[1] = (uint64_t)ceil(dispatchBlock[1] / 2.0);
 
-							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 						}
@@ -14076,26 +14189,26 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 
 				//FFT axis 1
 
-				for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
+				for (uint64_t j = 0; j < app->configuration.numberBatches; j++) {
 					for (int l = app->localFFTPlan_inverse->numAxisUploads[1] - 1; l >= 0; l--) {
 						if (!app->configuration.reorderFourStep) l = app->localFFTPlan_inverse->numAxisUploads[1] - 1 - l;
 						VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[1][l];
 						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 1, l, 1);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
 						axis->pushConstants.batch = j;
-						for (uint32_t i = 0; i < app->configuration.coordinateFeatures; i++) {
+						for (uint64_t i = 0; i < app->configuration.coordinateFeatures; i++) {
 							axis->pushConstants.coordinate = i;
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-							uint32_t dispatchBlock[3];
-							dispatchBlock[0] = (uint32_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
+							uint64_t dispatchBlock[3];
+							dispatchBlock[0] = (uint64_t)ceil(localSize0 / (double)axis->axisBlock[0] * app->configuration.size[1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
 							dispatchBlock[2] = app->configuration.size[2];
-							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
-							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
-							//if (app->configuration.performZeropaddingInverse[0]) dispatchBlock[0] = (uint32_t)ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
+							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
+							//if (app->configuration.performZeropaddingInverse[0]) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
 
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -14109,22 +14222,22 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 			}
 			if (app->localFFTPlan_inverse->multiUploadR2C) {
 				app->configuration.size[0] /= 2;
-				for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
+				for (uint64_t j = 0; j < app->configuration.numberBatches; j++) {
 					VkFFTAxis* axis = &app->localFFTPlan_inverse->R2Cdecomposition;
 					resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan_inverse, axis, 0, 0, 1);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
 					axis->pushConstants.batch = j;
-					uint32_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
-					for (uint32_t i = 0; i < maxCoordinate; i++) {
+					uint64_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
+					for (uint64_t i = 0; i < maxCoordinate; i++) {
 						axis->pushConstants.coordinate = i;
 
 #if(VKFFT_BACKEND==0)
 						vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 						vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-						uint32_t dispatchBlock[3];
+						uint64_t dispatchBlock[3];
 
-						dispatchBlock[0] = (uint32_t)ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0]));
+						dispatchBlock[0] = (uint64_t)ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0]));
 						dispatchBlock[1] = 1;
 						dispatchBlock[2] = 1;
 						resFFT = dispatchEnhanced(app, axis, dispatchBlock);
@@ -14135,45 +14248,45 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 				}
 			}
 			//FFT axis 0
-			for (uint32_t j = 0; j < app->configuration.numberBatches; j++) {
+			for (uint64_t j = 0; j < app->configuration.numberBatches; j++) {
 				for (int l = app->localFFTPlan_inverse->numAxisUploads[0] - 1; l >= 0; l--) {
 					if (!app->configuration.reorderFourStep) l = app->localFFTPlan_inverse->numAxisUploads[0] - 1 - l;
 					VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[0][l];
 					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 0, l, 1);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
 					axis->pushConstants.batch = j;
-					uint32_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
-					for (uint32_t i = 0; i < maxCoordinate; i++) {
+					uint64_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
+					for (uint64_t i = 0; i < maxCoordinate; i++) {
 						axis->pushConstants.coordinate = i;
 #if(VKFFT_BACKEND==0)
 						vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 						vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
-						uint32_t dispatchBlock[3];
+						uint64_t dispatchBlock[3];
 						if (l == 0) {
 							if (app->localFFTPlan_inverse->numAxisUploads[0] > 2) {
-								dispatchBlock[0] = (uint32_t)ceil((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan_inverse->axisSplit[0][1]) * app->localFFTPlan_inverse->axisSplit[0][1];
+								dispatchBlock[0] = (uint64_t)ceil((uint64_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]) / (double)app->localFFTPlan_inverse->axisSplit[0][1]) * app->localFFTPlan_inverse->axisSplit[0][1];
 								dispatchBlock[1] = app->configuration.size[1];
 							}
 							else {
 								if (app->localFFTPlan_inverse->numAxisUploads[0] > 1) {
-									dispatchBlock[0] = (uint32_t)ceil((uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
+									dispatchBlock[0] = (uint64_t)ceil((uint64_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[1]));
 									dispatchBlock[1] = app->configuration.size[1];
 								}
 								else {
 									dispatchBlock[0] = app->configuration.size[0] / axis->specializationConstants.fftDim;
-									dispatchBlock[1] = (uint32_t)ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
+									dispatchBlock[1] = (uint64_t)ceil(app->configuration.size[1] / (double)axis->axisBlock[1]);
 								}
 							}
 						}
 						else {
-							dispatchBlock[0] = (uint32_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
+							dispatchBlock[0] = (uint64_t)ceil(app->configuration.size[0] / axis->specializationConstants.fftDim / (double)axis->axisBlock[0]);
 							dispatchBlock[1] = app->configuration.size[1];
 						}
 						dispatchBlock[2] = app->configuration.size[2];
-						if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
-						//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = (uint32_t)ceil(dispatchBlock[1] / 2.0);
-						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint32_t)ceil(dispatchBlock[2] / 2.0);
+						if (axis->specializationConstants.mergeSequencesR2C == 1) dispatchBlock[1] = (uint64_t)ceil(dispatchBlock[1] / 2.0);
+						//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = (uint64_t)ceil(dispatchBlock[1] / 2.0);
+						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
 						resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
 					}
@@ -14187,8 +14300,8 @@ layout(std430, binding = %d) readonly buffer DataLUT {\n\
 		}
 		return resFFT;
 	}
-	static inline uint32_t VkFFTGetVersion() {
-		return 10200; //X.XX.XX format
+	static inline int VkFFTGetVersion() {
+		return 10201; //X.XX.XX format
 	}
 #ifdef __cplusplus
 }

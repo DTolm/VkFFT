@@ -6,6 +6,8 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 
 //ROCM parts
 #include "hip/hip_runtime.h"
@@ -34,13 +36,13 @@ void launch_benchmark_rocFFT_single_2_4096(bool file_output, FILE* output)
 			hipfftHandle planC2C;
 			hipfftComplex* dataC;
 
-			uint32_t dims[3];
+			uint64_t dims[3];
 
 			dims[0] = n;
 			if (n == 1) dims[0] = 4096;
-			uint32_t temp = dims[0];
+			uint64_t temp = dims[0];
 
-			for (uint32_t j = 2; j < 14; j++)
+			for (uint64_t j = 2; j < 14; j++)
 			{
 				if (temp % j == 0) {
 					temp /= j;
@@ -48,7 +50,7 @@ void launch_benchmark_rocFFT_single_2_4096(bool file_output, FILE* output)
 				}
 			}
 			if (temp != 1) break;
-			dims[1] = pow(2, (uint32_t)log2(64 * 32 * pow(2, 16) / dims[0]));
+			dims[1] = pow(2, (uint64_t)log2(64 * 32 * pow(2, 16) / dims[0]));
 			if (dims[1] < 1) dims[1] = 1;
 			dims[2] = 1;
 			
@@ -74,8 +76,8 @@ void launch_benchmark_rocFFT_single_2_4096(bool file_output, FILE* output)
 			}
 
 			float totTime = 0;
-			uint32_t rocBufferSize = sizeof(float) * 2 * dims[0] * dims[1] * dims[2];
-			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / rocBufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / rocBufferSize;
+			uint64_t rocBufferSize = sizeof(float) * 2 * dims[0] * dims[1] * dims[2];
+			uint64_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / rocBufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / rocBufferSize;
 			if (num_iter == 0) num_iter = 1;
 
 			std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
@@ -93,18 +95,18 @@ void launch_benchmark_rocFFT_single_2_4096(bool file_output, FILE* output)
 					num_systems++;
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t][0];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t][0] - avg_time) * (run_time[t][0] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
 					if (file_output)
-						fprintf(output, "rocFFT System: %d %d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", dims[0], dims[1], rocBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)rocBufferSize / 1024) / avg_time), rocBufferSize / 1024.0 / 1024.0 / 1.024 * 4 / avg_time);
+						fprintf(output, "rocFFT System: %" PRIu64 " %" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", dims[0], dims[1], rocBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)rocBufferSize / 1024) / avg_time), rocBufferSize / 1024.0 / 1024.0 / 1.024 * 4 / avg_time);
 
-					printf("rocFFT System: %d %d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", dims[0], dims[1], rocBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)rocBufferSize / 1024) / avg_time), rocBufferSize / 1024.0 / 1024.0 / 1.024 * 4 / avg_time);
+					printf("rocFFT System: %" PRIu64 " %" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", dims[0], dims[1], rocBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)rocBufferSize / 1024) / avg_time), rocBufferSize / 1024.0 / 1024.0 / 1.024 * 4 / avg_time);
 					benchmark_result[0] += ((double)rocBufferSize / 1024) / avg_time;
 				}
 
@@ -122,7 +124,7 @@ void launch_benchmark_rocFFT_single_2_4096(bool file_output, FILE* output)
 	free(inputC);
 	benchmark_result[0] /= (num_systems);
 	if (file_output)
-		fprintf(output, "Benchmark score rocFFT: %d\n", (int)(benchmark_result[0]));
-	printf("Benchmark score rocFFT: %d\n", (int)(benchmark_result[0]));
+		fprintf(output, "Benchmark score rocFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result[0]));
+	printf("Benchmark score rocFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result[0]));
 
 }

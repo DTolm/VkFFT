@@ -5,6 +5,8 @@
 #include <thread>
 #include <iostream>
 #include <algorithm>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #if(VKFFT_BACKEND==0)
 #include "vulkan/vulkan.h"
 #include "glslang_c_interface.h"
@@ -21,6 +23,7 @@
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
 #elif(VKFFT_BACKEND==3)
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -77,7 +80,7 @@ typedef struct {
 	VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;//bastic memory properties of the device
 	VkDevice device;//a logical device, interacting with physical device
 	VkDebugUtilsMessengerEXT debugMessenger;//extension for debugging
-	uint32_t queueFamilyIndex;//if multiple queues are available, specify the used one
+	uint64_t queueFamilyIndex;//if multiple queues are available, specify the used one
 	VkQueue queue;//a place, where all operations are submitted
 	VkCommandPool commandPool;//an opaque objects that command buffer memory is allocated from
 	VkFence fence;//a vkGPU->fence used to synchronize dispatches
@@ -94,7 +97,7 @@ typedef struct {
 	cl_context context;
 	cl_command_queue commandQueue;
 #endif
-	uint32_t device_id;//an id of a device, reported by Vulkan device list
+	uint64_t device_id;//an id of a device, reported by Vulkan device list
 } VkGPU;//an example structure containing Vulkan primitives
 #if(VKFFT_BACKEND==0)
 const char validationLayers[28] = "VK_LAYER_KHRONOS_validation";
@@ -158,7 +161,7 @@ VkResult checkValidationLayerSupport() {
 	VkLayerProperties* availableLayers = (VkLayerProperties*)malloc(sizeof(VkLayerProperties) * layerCount);
 	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers);
 
-	for (uint32_t i = 0; i < layerCount; i++) {
+	for (uint64_t i = 0; i < layerCount; i++) {
 		if (strcmp("VK_LAYER_KHRONOS_validation", availableLayers[i].layerName) == 0) {
 			free(availableLayers);
 			return VK_SUCCESS;
@@ -168,7 +171,7 @@ VkResult checkValidationLayerSupport() {
 	return VK_ERROR_LAYER_NOT_PRESENT;
 }
 
-std::vector<const char*> getRequiredExtensions(uint32_t sample_id) {
+std::vector<const char*> getRequiredExtensions(uint64_t sample_id) {
 	std::vector<const char*> extensions;
 
 	if (enableValidationLayers) {
@@ -188,7 +191,7 @@ std::vector<const char*> getRequiredExtensions(uint32_t sample_id) {
 	return extensions;
 }
 
-VkResult createInstance(VkGPU* vkGPU, uint32_t sample_id) {
+VkResult createInstance(VkGPU* vkGPU, uint64_t sample_id) {
 	//create instance - a connection between the application and the Vulkan library 
 	VkResult res = VK_SUCCESS;
 	//check if validation layers are supported
@@ -215,7 +218,7 @@ VkResult createInstance(VkGPU* vkGPU, uint32_t sample_id) {
 	createInfo.pApplicationInfo = &applicationInfo;
 
 	auto extensions = getRequiredExtensions(sample_id);
-	createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+	createInfo.enabledExtensionCount = static_cast<uint64_t>(extensions.size());
 	createInfo.ppEnabledExtensionNames = extensions.data();
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = { VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT };
@@ -265,7 +268,7 @@ VkResult getComputeQueueFamilyIndex(VkGPU* vkGPU) {
 
 	VkQueueFamilyProperties* queueFamilies = (VkQueueFamilyProperties*)malloc(sizeof(VkQueueFamilyProperties) * queueFamilyCount);
 	vkGetPhysicalDeviceQueueFamilyProperties(vkGPU->physicalDevice, &queueFamilyCount, queueFamilies);
-	uint32_t i = 0;
+	uint64_t i = 0;
 	for (; i < queueFamilyCount; i++) {
 		VkQueueFamilyProperties props = queueFamilies[i];
 
@@ -281,7 +284,7 @@ VkResult getComputeQueueFamilyIndex(VkGPU* vkGPU) {
 	return VK_SUCCESS;
 }
 
-VkResult createDevice(VkGPU* vkGPU, uint32_t sample_id) {
+VkResult createDevice(VkGPU* vkGPU, uint64_t sample_id) {
 	//create logical device representation
 	VkResult res = VK_SUCCESS;
 	VkDeviceQueueCreateInfo queueCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
@@ -294,7 +297,7 @@ VkResult createDevice(VkGPU* vkGPU, uint32_t sample_id) {
 	VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	VkPhysicalDeviceFeatures deviceFeatures = {};
 	switch (sample_id) {
-	case 1: {
+	case 1: case 12: case 1001: {
 		deviceFeatures.shaderFloat64 = true;
 		deviceCreateInfo.enabledExtensionCount = vkGPU->enabledDeviceExtensions.size();
 		deviceCreateInfo.ppEnabledExtensionNames = vkGPU->enabledDeviceExtensions.data();
@@ -366,12 +369,12 @@ VkResult createCommandPool(VkGPU* vkGPU) {
 	return res;
 }
 
-VkFFTResult findMemoryType(VkGPU* vkGPU, uint32_t memoryTypeBits, uint32_t memorySize, VkMemoryPropertyFlags properties, uint32_t* memoryTypeIndex) {
+VkFFTResult findMemoryType(VkGPU* vkGPU, uint64_t memoryTypeBits, uint64_t memorySize, VkMemoryPropertyFlags properties, uint32_t* memoryTypeIndex) {
 	VkPhysicalDeviceMemoryProperties memoryProperties = { 0 };
 
 	vkGetPhysicalDeviceMemoryProperties(vkGPU->physicalDevice, &memoryProperties);
 
-	for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
+	for (uint64_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
 		if ((memoryTypeBits & (1 << i)) && ((memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) && (memoryProperties.memoryHeaps[memoryProperties.memoryTypes[i].heapIndex].size >= memorySize))
 		{
 			memoryTypeIndex[0] = i;
@@ -521,10 +524,10 @@ VkFFTResult devices_list() {
 	VkPhysicalDevice* devices = (VkPhysicalDevice*)malloc(sizeof(VkPhysicalDevice) * deviceCount);
 	res = vkEnumeratePhysicalDevices(local_instance, &deviceCount, devices);
 	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES;
-	for (uint32_t i = 0; i < deviceCount; i++) {
+	for (uint64_t i = 0; i < deviceCount; i++) {
 		VkPhysicalDeviceProperties device_properties;
 		vkGetPhysicalDeviceProperties(devices[i], &device_properties);
-		printf("Device id: %d name: %s API:%d.%d.%d\n", i, device_properties.deviceName, (device_properties.apiVersion >> 22), ((device_properties.apiVersion >> 12) & 0x3ff), (device_properties.apiVersion & 0xfff));
+		printf("Device id: %" PRIu64 " name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", i, device_properties.deviceName, (device_properties.apiVersion >> 22), ((device_properties.apiVersion >> 12) & 0x3ff), (device_properties.apiVersion & 0xfff));
 	}
 	free(devices);
 	vkDestroyInstance(local_instance, NULL);
@@ -535,14 +538,14 @@ VkFFTResult devices_list() {
 	int numDevices;
 	res = cuDeviceGetCount(&numDevices);
 	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID;
-	for (uint32_t i = 0; i < numDevices; i++) {
+	for (uint64_t i = 0; i < numDevices; i++) {
 		char deviceName[256];
 		CUdevice device = {};
 		res = cuDeviceGet(&device, i);
 		if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
 		res = cuDeviceGetName(deviceName, 256, device);
 		if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
-		printf("Device id: %d name: %s\n", i, deviceName);
+		printf("Device id: %" PRIu64 " name: %s\n", i, deviceName);
 	}
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
@@ -551,14 +554,14 @@ VkFFTResult devices_list() {
 	int numDevices;
 	res = hipGetDeviceCount(&numDevices);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID;
-	for (uint32_t i = 0; i < numDevices; i++) {
+	for (uint64_t i = 0; i < numDevices; i++) {
 		char deviceName[256];
 		hipDevice_t device = {};
 		res = hipDeviceGet(&device, i);
 		if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
 		res = hipDeviceGetName(deviceName, 256, device);
 		if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
-		printf("Device id: %d name: %s\n", i, deviceName);
+		printf("Device id: %" PRIu64 " name: %s\n", i, deviceName);
 	}
 #elif(VKFFT_BACKEND==3)
 	cl_int res = CL_SUCCESS;
@@ -568,21 +571,21 @@ VkFFTResult devices_list() {
 	cl_platform_id* platforms = (cl_platform_id*)malloc(sizeof(cl_platform_id) * numPlatforms);
 	res = clGetPlatformIDs(numPlatforms, platforms, 0);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
-	uint32_t k = 0;
-	for (uint32_t j = 0; j < numPlatforms; j++) {
+	uint64_t k = 0;
+	for (uint64_t j = 0; j < numPlatforms; j++) {
 		cl_uint numDevices;
 		res = clGetDeviceIDs(platforms[j], CL_DEVICE_TYPE_ALL, 0, 0, &numDevices);
 		cl_device_id* deviceList = (cl_device_id*)malloc(sizeof(cl_device_id) * numDevices);
 		res = clGetDeviceIDs(platforms[j], CL_DEVICE_TYPE_ALL, numDevices, deviceList, 0);
 		if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
-		for (uint32_t i = 0; i < numDevices; i++) {
+		for (uint64_t i = 0; i < numDevices; i++) {
 			char deviceName[256];
 			char apiVersion[256];
 			res = clGetDeviceInfo(deviceList[i], CL_DEVICE_NAME, 256 * sizeof(char), deviceName, 0);
 			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES;
 			res = clGetDeviceInfo(deviceList[i], CL_DEVICE_VERSION, 256 * sizeof(char), apiVersion, 0);
 			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES;
-			printf("Platform id: %d Device id: %d name: %s API:%s\n", j, k, deviceName, apiVersion);
+			printf("Platform id: %" PRIu64 " Device id: %" PRIu64 " name: %s API:%s\n", j, k, deviceName, apiVersion);
 			k++;
 		}
 		free(deviceList);
@@ -591,7 +594,7 @@ VkFFTResult devices_list() {
 #endif
 	return VKFFT_SUCCESS;
 }
-VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchParams* launchParams, int inverse, uint32_t num_iter) {
+VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchParams* launchParams, int inverse, uint64_t num_iter) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -608,7 +611,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	if (res != 0) return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
 	launchParams->commandBuffer = &commandBuffer;
 	//Record commands num_iter times. Allows to perform multiple convolutions/transforms in one submit.
-	for (uint32_t i = 0; i < num_iter; i++) {
+	for (uint64_t i = 0; i < num_iter; i++) {
 		resFFT = VkFFTAppend(app, inverse, launchParams);
 		if (resFFT != VKFFT_SUCCESS) return resFFT;
 	}
@@ -631,7 +634,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 #elif(VKFFT_BACKEND==1)
 	cudaError_t res = cudaSuccess;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
-	for (uint32_t i = 0; i < num_iter; i++) {
+	for (uint64_t i = 0; i < num_iter; i++) {
 		resFFT = VkFFTAppend(app, inverse, launchParams);
 		if (resFFT != VKFFT_SUCCESS) return resFFT;
 	}
@@ -642,7 +645,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
-	for (uint32_t i = 0; i < num_iter; i++) {
+	for (uint64_t i = 0; i < num_iter; i++) {
 		resFFT = VkFFTAppend(app, inverse, launchParams);
 		if (resFFT != VKFFT_SUCCESS) return resFFT;
 	}
@@ -654,7 +657,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	cl_int res = CL_SUCCESS;
 	launchParams->commandQueue = &vkGPU->commandQueue;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
-	for (uint32_t i = 0; i < num_iter; i++) {
+	for (uint64_t i = 0; i < num_iter; i++) {
 		resFFT = VkFFTAppend(app, inverse, launchParams);
 		if (resFFT != VKFFT_SUCCESS) return resFFT;
 	}
@@ -665,7 +668,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 #endif
 	return resFFT;
 }
-VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchParams* launchParams, uint32_t num_iter, float* time_result) {
+VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchParams* launchParams, uint64_t num_iter, float* time_result) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -681,7 +684,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
 	if (res != 0) return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
 	launchParams->commandBuffer = &commandBuffer;
-	for (uint32_t i = 0; i < num_iter; i++) {
+	for (uint64_t i = 0; i < num_iter; i++) {
 		resFFT = VkFFTAppend(app, -1, launchParams);
 		if (resFFT != VKFFT_SUCCESS) return resFFT;
 		resFFT = VkFFTAppend(app, 1, launchParams);
@@ -706,7 +709,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 #elif(VKFFT_BACKEND==1)
 	cudaError_t res = cudaSuccess;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
-	for (uint32_t i = 0; i < num_iter; i++) {
+	for (uint64_t i = 0; i < num_iter; i++) {
 		resFFT = VkFFTAppend(app, -1, launchParams);
 		if (resFFT != VKFFT_SUCCESS) return resFFT;
 		resFFT = VkFFTAppend(app, 1, launchParams);
@@ -720,7 +723,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
-	for (uint32_t i = 0; i < num_iter; i++) {
+	for (uint64_t i = 0; i < num_iter; i++) {
 		resFFT = VkFFTAppend(app, -1, launchParams);
 		if (resFFT != VKFFT_SUCCESS) return resFFT;
 		resFFT = VkFFTAppend(app, 1, launchParams);
@@ -735,7 +738,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	cl_int res = CL_SUCCESS;
 	launchParams->commandQueue = &vkGPU->commandQueue;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
-	for (uint32_t i = 0; i < num_iter; i++) {
+	for (uint64_t i = 0; i < num_iter; i++) {
 		resFFT = VkFFTAppend(app, -1, launchParams);
 		if (resFFT != VKFFT_SUCCESS) return resFFT;
 		resFFT = VkFFTAppend(app, 1, launchParams);
@@ -749,7 +752,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 #endif
 	return resFFT;
 }
-VkFFTResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_0(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -770,9 +773,9 @@ VkFFTResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
 		buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 	}
-	for (uint32_t n = 0; n < 26; n++) {
+	for (uint64_t n = 0; n < 26; n++) {
 		double run_time[num_runs];
-		for (uint32_t r = 0; r < num_runs; r++) {
+		for (uint64_t r = 0; r < num_runs; r++) {
 			//Configuration + FFT application .
 			VkFFTConfiguration configuration = {};
 			VkFFTApplication app = {};
@@ -827,9 +830,9 @@ VkFFTResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 			/*float* buffer_input = (float*)malloc(bufferSize);
 
-			for (uint32_t k = 0; k < configuration.size[2]; k++) {
-				for (uint32_t j = 0; j < configuration.size[1]; j++) {
-					for (uint32_t i = 0; i < configuration.size[0]; i++) {
+			for (uint64_t k = 0; k < configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < configuration.size[0]; i++) {
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						}
@@ -857,7 +860,7 @@ VkFFTResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
+			uint64_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #elif(VKFFT_BACKEND==3)
@@ -876,22 +879,22 @@ VkFFTResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
-					uint32_t num_tot_transfers = 0;
-					for (uint32_t i = 0; i < configuration.FFTdim; i++)
+					uint64_t num_tot_transfers = 0;
+					for (uint64_t i = 0; i < configuration.FFTdim; i++)
 						num_tot_transfers += app.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
-						fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						fprintf(output, "VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 
-					printf("VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+					printf("VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 					benchmark_result += ((double)bufferSize / 1024) / avg_time;
 				}
 
@@ -917,18 +920,18 @@ VkFFTResult sample_0(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	benchmark_result /= (26 - 1);
 
 	if (file_output) {
-		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	}
-	printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	return resFFT;
 }
-VkFFTResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_1(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -949,9 +952,9 @@ VkFFTResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
 		buffer_input[i] = 2 * ((double)rand()) / RAND_MAX - 1.0;
 	}
-	for (uint32_t n = 0; n < 24; n++) {
+	for (uint64_t n = 0; n < 24; n++) {
 		double run_time[num_runs];
-		for (uint32_t r = 0; r < num_runs; r++) {
+		for (uint64_t r = 0; r < num_runs; r++) {
 			//Configuration + FFT application .
 			VkFFTConfiguration configuration = {};
 			VkFFTApplication app = {};
@@ -1009,9 +1012,9 @@ VkFFTResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 			/*float* buffer_input = (float*)malloc(bufferSize);
 
-			for (uint32_t k = 0; k < configuration.size[2]; k++) {
-				for (uint32_t j = 0; j < configuration.size[1]; j++) {
-					for (uint32_t i = 0; i < configuration.size[0]; i++) {
+			for (uint64_t k = 0; k < configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < configuration.size[0]; i++) {
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						}
@@ -1039,7 +1042,7 @@ VkFFTResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
+			uint64_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #elif(VKFFT_BACKEND==3)
@@ -1057,22 +1060,22 @@ VkFFTResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
-					uint32_t num_tot_transfers = 0;
-					for (uint32_t i = 0; i < configuration.FFTdim; i++)
+					uint64_t num_tot_transfers = 0;
+					for (uint64_t i = 0; i < configuration.FFTdim; i++)
 						num_tot_transfers += app.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
-						fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						fprintf(output, "VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 
-					printf("VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+					printf("VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 					benchmark_result += ((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time;
 				}
 
@@ -1096,19 +1099,19 @@ VkFFTResult sample_1(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	free(buffer_input);
 	benchmark_result /= (24 - 1);
 	if (file_output) {
-		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	}
-	printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	return resFFT;
 }
 #if (VK_API_VERSION>10)
-VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_2(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -1129,9 +1132,9 @@ VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
 		buffer_input[i] = 2 * ((half)rand()) / RAND_MAX - 1.0;
 	}
-	for (uint32_t n = 0; n < 25; n++) {
+	for (uint64_t n = 0; n < 25; n++) {
 		double run_time[num_runs];
-		for (uint32_t r = 0; r < num_runs; r++) {
+		for (uint64_t r = 0; r < num_runs; r++) {
 			//Configuration + FFT application .
 			VkFFTConfiguration configuration = {};
 			VkFFTApplication app = {};
@@ -1206,9 +1209,9 @@ VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 			/*float* buffer_input = (float*)malloc(bufferSize);
 
-			for (uint32_t k = 0; k < configuration.size[2]; k++) {
-				for (uint32_t j = 0; j < configuration.size[1]; j++) {
-					for (uint32_t i = 0; i < configuration.size[0]; i++) {
+			for (uint64_t k = 0; k < configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < configuration.size[0]; i++) {
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						}
@@ -1236,7 +1239,7 @@ VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
+			uint64_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #elif(VKFFT_BACKEND==3)
@@ -1252,22 +1255,22 @@ VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
-					uint32_t num_tot_transfers = 0;
-					for (uint32_t i = 0; i < configuration.FFTdim; i++)
+					uint64_t num_tot_transfers = 0;
+					for (uint64_t i = 0; i < configuration.FFTdim; i++)
 						num_tot_transfers += app.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
-						fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize * sizeof(float) / sizeof(half) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						fprintf(output, "VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize * sizeof(float) / sizeof(half) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 
-					printf("VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize * sizeof(float) / sizeof(half) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+					printf("VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize * sizeof(float) / sizeof(half) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 					benchmark_result += ((double)bufferSize * sizeof(float) / sizeof(half) / 1024) / avg_time;
 				}
 
@@ -1291,19 +1294,19 @@ VkFFTResult sample_2(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	free(buffer_input);
 	benchmark_result /= (25 - 1);
 	if (file_output) {
-		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	}
-	printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	return resFFT;
 }
 #endif
-VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_3(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -1320,14 +1323,14 @@ VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 
 	const int num_benchmark_samples = 39;
 	const int num_runs = 3;
-	uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
-	{720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},{7680, 4320, 1, 2},
-	{(uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},	{(uint32_t)pow(2,7), (uint32_t)pow(2,6), 1, 2}, {(uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},	{(uint32_t)pow(2,8), (uint32_t)pow(2,7), 1, 2},{(uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},
-	{(uint32_t)pow(2,9), (uint32_t)pow(2,8), 1, 2},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},	{(uint32_t)pow(2,10), (uint32_t)pow(2,9), 1, 2},{(uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},	{(uint32_t)pow(2,11), (uint32_t)pow(2,10), 1, 2},{(uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},
-	{(uint32_t)pow(2,12), (uint32_t)pow(2,11), 1, 2},{(uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
-	{(uint32_t)pow(2,4), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{(uint32_t)pow(2,6), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3} ,{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,5), 3} ,
-	{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{(uint32_t)pow(2,7), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3} ,{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,6), 3} ,{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{(uint32_t)pow(2,8), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3} , {(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,7), 3} ,
-	{(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3}, {(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3}
+	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
+{720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},{7680, 4320, 1, 2},
+	{(uint64_t)pow(2,6), (uint64_t)pow(2,6), 1, 2},	{(uint64_t)pow(2,7), (uint64_t)pow(2,6), 1, 2}, {(uint64_t)pow(2,7), (uint64_t)pow(2,7), 1, 2},	{(uint64_t)pow(2,8), (uint64_t)pow(2,7), 1, 2},{(uint64_t)pow(2,8), (uint64_t)pow(2,8), 1, 2},
+	{(uint64_t)pow(2,9), (uint64_t)pow(2,8), 1, 2},{(uint64_t)pow(2,9), (uint64_t)pow(2,9), 1, 2},	{(uint64_t)pow(2,10), (uint64_t)pow(2,9), 1, 2},{(uint64_t)pow(2,10), (uint64_t)pow(2,10), 1, 2},	{(uint64_t)pow(2,11), (uint64_t)pow(2,10), 1, 2},{(uint64_t)pow(2,11), (uint64_t)pow(2,11), 1, 2},
+	{(uint64_t)pow(2,12), (uint64_t)pow(2,11), 1, 2},{(uint64_t)pow(2,12), (uint64_t)pow(2,12), 1, 2},	{(uint64_t)pow(2,13), (uint64_t)pow(2,12), 1, 2},	{(uint64_t)pow(2,13), (uint64_t)pow(2,13), 1, 2},{(uint64_t)pow(2,14), (uint64_t)pow(2,13), 1, 2},
+	{(uint64_t)pow(2,4), (uint64_t)pow(2,4), (uint64_t)pow(2,4), 3} ,{(uint64_t)pow(2,5), (uint64_t)pow(2,4), (uint64_t)pow(2,4), 3} ,{(uint64_t)pow(2,5), (uint64_t)pow(2,5), (uint64_t)pow(2,4), 3} ,{(uint64_t)pow(2,5), (uint64_t)pow(2,5), (uint64_t)pow(2,5), 3},{(uint64_t)pow(2,6), (uint64_t)pow(2,5), (uint64_t)pow(2,5), 3} ,{(uint64_t)pow(2,6), (uint64_t)pow(2,6), (uint64_t)pow(2,5), 3} ,
+	{(uint64_t)pow(2,6), (uint64_t)pow(2,6), (uint64_t)pow(2,6), 3},{(uint64_t)pow(2,7), (uint64_t)pow(2,6), (uint64_t)pow(2,6), 3} ,{(uint64_t)pow(2,7), (uint64_t)pow(2,7), (uint64_t)pow(2,6), 3} ,{(uint64_t)pow(2,7), (uint64_t)pow(2,7), (uint64_t)pow(2,7), 3},{(uint64_t)pow(2,8), (uint64_t)pow(2,7), (uint64_t)pow(2,7), 3} , {(uint64_t)pow(2,8), (uint64_t)pow(2,8), (uint64_t)pow(2,7), 3} ,
+	{(uint64_t)pow(2,8), (uint64_t)pow(2,8), (uint64_t)pow(2,8), 3},{(uint64_t)pow(2,9), (uint64_t)pow(2,8), (uint64_t)pow(2,8), 3}, {(uint64_t)pow(2,9), (uint64_t)pow(2,9), (uint64_t)pow(2,8), 3},{(uint64_t)pow(2,9), (uint64_t)pow(2,9), (uint64_t)pow(2,9), 3}
 	};
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
@@ -1335,9 +1338,9 @@ VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
 		buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 	}
-	for (uint32_t n = 0; n < num_benchmark_samples; n++) {
+	for (uint64_t n = 0; n < num_benchmark_samples; n++) {
 		double run_time[num_runs];
-		for (uint32_t r = 0; r < num_runs; r++) {
+		for (uint64_t r = 0; r < num_runs; r++) {
 			//Configuration + FFT application .
 			VkFFTConfiguration configuration = {};
 			VkFFTApplication app = {};
@@ -1389,9 +1392,9 @@ VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 			/*float* buffer_input = (float*)malloc(bufferSize);
 
-			for (uint32_t k = 0; k < configuration.size[2]; k++) {
-				for (uint32_t j = 0; j < configuration.size[1]; j++) {
-					for (uint32_t i = 0; i < configuration.size[0]; i++) {
+			for (uint64_t k = 0; k < configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < configuration.size[0]; i++) {
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 					}
@@ -1419,7 +1422,7 @@ VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
+			uint64_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #elif(VKFFT_BACKEND==3)
@@ -1437,22 +1440,22 @@ VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
 
-					uint32_t num_tot_transfers = 0;
-					for (uint32_t i = 0; i < configuration.FFTdim; i++)
+					uint64_t num_tot_transfers = 0;
+					for (uint64_t i = 0; i < configuration.FFTdim; i++)
 						num_tot_transfers += app.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
-						fprintf(output, "VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
-					printf("VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						fprintf(output, "VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+					printf("VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 					benchmark_result += ((double)bufferSize / 1024) / avg_time;
 				}
 
@@ -1477,18 +1480,18 @@ VkFFTResult sample_3(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	benchmark_result /= (num_benchmark_samples - 1);
 
 	if (file_output) {
-		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	}
-	printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	return resFFT;
 }
-VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_4(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -1505,14 +1508,14 @@ VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 
 	const int num_benchmark_samples = 39;
 	const int num_runs = 3;
-	uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
+	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
 	{720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},{7680, 4320, 1, 2},
-	{(uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},	{(uint32_t)pow(2,7), (uint32_t)pow(2,6), 1, 2}, {(uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},	{(uint32_t)pow(2,8), (uint32_t)pow(2,7), 1, 2},{(uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},
-	{(uint32_t)pow(2,9), (uint32_t)pow(2,8), 1, 2},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},	{(uint32_t)pow(2,10), (uint32_t)pow(2,9), 1, 2},{(uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},	{(uint32_t)pow(2,11), (uint32_t)pow(2,10), 1, 2},{(uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},
-	{(uint32_t)pow(2,12), (uint32_t)pow(2,11), 1, 2},{(uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
-	{(uint32_t)pow(2,4), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{(uint32_t)pow(2,6), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3} ,{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,5), 3} ,
-	{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{(uint32_t)pow(2,7), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3} ,{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,6), 3} ,{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{(uint32_t)pow(2,8), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3} , {(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,7), 3} ,
-	{(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3}, {(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3}
+	{(uint64_t)pow(2,6), (uint64_t)pow(2,6), 1, 2},	{(uint64_t)pow(2,7), (uint64_t)pow(2,6), 1, 2}, {(uint64_t)pow(2,7), (uint64_t)pow(2,7), 1, 2},	{(uint64_t)pow(2,8), (uint64_t)pow(2,7), 1, 2},{(uint64_t)pow(2,8), (uint64_t)pow(2,8), 1, 2},
+	{(uint64_t)pow(2,9), (uint64_t)pow(2,8), 1, 2},{(uint64_t)pow(2,9), (uint64_t)pow(2,9), 1, 2},	{(uint64_t)pow(2,10), (uint64_t)pow(2,9), 1, 2},{(uint64_t)pow(2,10), (uint64_t)pow(2,10), 1, 2},	{(uint64_t)pow(2,11), (uint64_t)pow(2,10), 1, 2},{(uint64_t)pow(2,11), (uint64_t)pow(2,11), 1, 2},
+	{(uint64_t)pow(2,12), (uint64_t)pow(2,11), 1, 2},{(uint64_t)pow(2,12), (uint64_t)pow(2,12), 1, 2},	{(uint64_t)pow(2,13), (uint64_t)pow(2,12), 1, 2},	{(uint64_t)pow(2,13), (uint64_t)pow(2,13), 1, 2},{(uint64_t)pow(2,14), (uint64_t)pow(2,13), 1, 2},
+	{(uint64_t)pow(2,4), (uint64_t)pow(2,4), (uint64_t)pow(2,4), 3} ,{(uint64_t)pow(2,5), (uint64_t)pow(2,4), (uint64_t)pow(2,4), 3} ,{(uint64_t)pow(2,5), (uint64_t)pow(2,5), (uint64_t)pow(2,4), 3} ,{(uint64_t)pow(2,5), (uint64_t)pow(2,5), (uint64_t)pow(2,5), 3},{(uint64_t)pow(2,6), (uint64_t)pow(2,5), (uint64_t)pow(2,5), 3} ,{(uint64_t)pow(2,6), (uint64_t)pow(2,6), (uint64_t)pow(2,5), 3} ,
+	{(uint64_t)pow(2,6), (uint64_t)pow(2,6), (uint64_t)pow(2,6), 3},{(uint64_t)pow(2,7), (uint64_t)pow(2,6), (uint64_t)pow(2,6), 3} ,{(uint64_t)pow(2,7), (uint64_t)pow(2,7), (uint64_t)pow(2,6), 3} ,{(uint64_t)pow(2,7), (uint64_t)pow(2,7), (uint64_t)pow(2,7), 3},{(uint64_t)pow(2,8), (uint64_t)pow(2,7), (uint64_t)pow(2,7), 3} , {(uint64_t)pow(2,8), (uint64_t)pow(2,8), (uint64_t)pow(2,7), 3} ,
+	{(uint64_t)pow(2,8), (uint64_t)pow(2,8), (uint64_t)pow(2,8), 3},{(uint64_t)pow(2,9), (uint64_t)pow(2,8), (uint64_t)pow(2,8), 3}, {(uint64_t)pow(2,9), (uint64_t)pow(2,9), (uint64_t)pow(2,8), 3},{(uint64_t)pow(2,9), (uint64_t)pow(2,9), (uint64_t)pow(2,9), 3}
 	};
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
@@ -1520,9 +1523,9 @@ VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
 		buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 	}
-	for (uint32_t n = 0; n < num_benchmark_samples; n++) {
+	for (uint64_t n = 0; n < num_benchmark_samples; n++) {
 		double run_time[num_runs];
-		for (uint32_t r = 0; r < num_runs; r++) {
+		for (uint64_t r = 0; r < num_runs; r++) {
 			//Configuration + FFT application .
 			VkFFTConfiguration configuration = {};
 			VkFFTApplication app = {};
@@ -1585,9 +1588,9 @@ VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 			/*float* buffer_input = (float*)malloc(bufferSize);
 
-			for (uint32_t k = 0; k < configuration.size[2]; k++) {
-				for (uint32_t j = 0; j < configuration.size[1]; j++) {
-					for (uint32_t i = 0; i < configuration.size[0]; i++) {
+			for (uint64_t k = 0; k < configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < configuration.size[0]; i++) {
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 					}
@@ -1615,7 +1618,7 @@ VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
+			uint64_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #elif(VKFFT_BACKEND==3)
@@ -1633,21 +1636,21 @@ VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
-					uint32_t num_tot_transfers = 0;
-					for (uint32_t i = 0; i < configuration.FFTdim; i++)
+					uint64_t num_tot_transfers = 0;
+					for (uint64_t i = 0; i < configuration.FFTdim; i++)
 						num_tot_transfers += app.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
-						fprintf(output, "VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
-					printf("VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						fprintf(output, "VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+					printf("VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 					benchmark_result += ((double)bufferSize / 1024) / avg_time;
 				}
 
@@ -1672,18 +1675,18 @@ VkFFTResult sample_4(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	benchmark_result /= (num_benchmark_samples - 1);
 
 	if (file_output) {
-		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	}
-	printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	return resFFT;
 }
-VkFFTResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_5(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -1704,9 +1707,9 @@ VkFFTResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
 		buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 	}
-	for (uint32_t n = 0; n < 26; n++) {
+	for (uint64_t n = 0; n < 26; n++) {
 		double run_time[num_runs];
-		for (uint32_t r = 0; r < num_runs; r++) {
+		for (uint64_t r = 0; r < num_runs; r++) {
 			//Configuration + FFT application .
 			VkFFTConfiguration configuration = {};
 			VkFFTApplication app = {};
@@ -1765,9 +1768,9 @@ VkFFTResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 			/*float* buffer_input = (float*)malloc(bufferSize);
 
-			for (uint32_t k = 0; k < configuration.size[2]; k++) {
-				for (uint32_t j = 0; j < configuration.size[1]; j++) {
-					for (uint32_t i = 0; i < configuration.size[0]; i++) {
+			for (uint64_t k = 0; k < configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < configuration.size[0]; i++) {
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 					}
@@ -1795,7 +1798,7 @@ VkFFTResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
+			uint64_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #elif(VKFFT_BACKEND==3)
@@ -1813,22 +1816,22 @@ VkFFTResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
-					uint32_t num_tot_transfers = 0;
-					for (uint32_t i = 0; i < configuration.FFTdim; i++)
+					uint64_t num_tot_transfers = 0;
+					for (uint64_t i = 0; i < configuration.FFTdim; i++)
 						num_tot_transfers += app.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
-						fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						fprintf(output, "VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 
-					printf("VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+					printf("VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 					benchmark_result += ((double)bufferSize / 1024) / avg_time;
 				}
 
@@ -1853,18 +1856,18 @@ VkFFTResult sample_5(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	benchmark_result /= (26 - 1);
 
 	if (file_output) {
-		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	}
-	printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	return resFFT;
 }
-VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_6(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -1878,19 +1881,19 @@ VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	if (file_output)
 		fprintf(output, "6 - VkFFT FFT + iFFT R2C/C2R benchmark\n");
 	printf("6 - VkFFT FFT + iFFT R2C/C2R benchmark\n");
-	const uint32_t num_benchmark_samples = 24;
-	const uint32_t num_runs = 3;
-	//printf("First %d runs are a warmup\n", num_runs);
-	uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {64, 64, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2},  {4096, 256, 1, 2}, {2048, 1024, 1, 2},{4096, 2048, 1, 2}, {4096, 4096, 1, 2}, {720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},
+	const uint64_t num_benchmark_samples = 24;
+	const uint64_t num_runs = 3;
+	//printf("First %" PRIu64 " runs are a warmup\n", num_runs);
+	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {64, 64, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2},  {4096, 256, 1, 2}, {2048, 1024, 1, 2},{4096, 2048, 1, 2}, {4096, 4096, 1, 2}, {720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},
 																{32, 32, 32, 3}, {64, 64, 64, 3}, {256, 256, 32, 3},  {1024, 256, 32, 3},  {256, 256, 256, 3}, {2048, 1024, 8, 3},  {512, 512, 128, 3}, {2048, 256, 256, 3}, {4096, 512, 8, 3} };
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	float* buffer_input = (float*)malloc((uint64_t)4 * 2 * pow(2, 27));
 	for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
 		buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 	}
-	for (uint32_t n = 0; n < num_benchmark_samples; n++) {
+	for (uint64_t n = 0; n < num_benchmark_samples; n++) {
 		double run_time[num_runs];
-		for (uint32_t r = 0; r < num_runs; r++) {
+		for (uint64_t r = 0; r < num_runs; r++) {
 			//Configuration + FFT application .
 			VkFFTConfiguration configuration = {};
 			VkFFTApplication app = {};
@@ -1947,9 +1950,9 @@ VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 			/*float* buffer_input = (float*)malloc(bufferSize);
 
-			for (uint32_t k = 0; k < configuration.size[2]; k++) {
-				for (uint32_t j = 0; j < configuration.size[1]; j++) {
-					for (uint32_t i = 0; i < configuration.size[0]; i++) {
+			for (uint64_t k = 0; k < configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < configuration.size[0]; i++) {
 						buffer_input[i + j * configuration.size[0] + k * (configuration.size[0] + 2) * configuration.size[1]] = i;//[-1,1]
 						}
 					}
@@ -1974,7 +1977,7 @@ VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint32_t num_iter = ((4096.0 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096.0 * 1024.0 * 1024.0) / bufferSize;
+			uint64_t num_iter = ((4096.0 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096.0 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #elif(VKFFT_BACKEND==3)
@@ -1995,21 +1998,21 @@ VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
-					uint32_t num_tot_transfers = 0;
-					for (uint32_t i = 0; i < configuration.FFTdim; i++)
+					uint64_t num_tot_transfers = 0;
+					for (uint64_t i = 0; i < configuration.FFTdim; i++)
 						num_tot_transfers += app.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
-						fprintf(output, "VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
-					printf("VkFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						fprintf(output, "VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+					printf("VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 					benchmark_result += ((double)bufferSize / 1024) / avg_time;
 				}
 
@@ -2019,9 +2022,9 @@ VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 			//transferDataToCPU(buffer_output, &buffer, bufferSize);
 			//Print data, if needed.
 			/*
-				for (uint32_t k = 0; k < configuration.size[2]; k++) {
-					for (uint32_t j = 0; j < configuration.size[1]; j++) {
-						for (uint32_t i = 0; i < configuration.size[0]; i++) {
+				for (uint64_t k = 0; k < configuration.size[2]; k++) {
+					for (uint64_t j = 0; j < configuration.size[1]; j++) {
+						for (uint64_t i = 0; i < configuration.size[0]; i++) {
 							printf("%.6f ", buffer_output[i + j * configuration.size[0] + k * (configuration.size[0] + 2) * configuration.size[1] + v * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2]]);
 						}
 						std::cout << "\n";
@@ -2047,18 +2050,18 @@ VkFFTResult sample_6(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	free(buffer_input);
 	benchmark_result /= ((num_benchmark_samples - 1));
 	if (file_output) {
-		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	}
-	printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	return resFFT;
 }
-VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_7(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -2134,19 +2137,19 @@ VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	configuration.bufferSize = &kernelSize;
 
 	if (file_output)
-		fprintf(output, "Total memory needed for kernel: %d MB\n", kernelSize / 1024 / 1024);
-	printf("Total memory needed for kernel: %d MB\n", kernelSize / 1024 / 1024);
+		fprintf(output, "Total memory needed for kernel: %" PRIu64 " MB\n", kernelSize / 1024 / 1024);
+	printf("Total memory needed for kernel: %" PRIu64 " MB\n", kernelSize / 1024 / 1024);
 	//Fill kernel on CPU.
 	float* kernel_input = (float*)malloc(kernelSize);
-	for (uint32_t v = 0; v < configuration.coordinateFeatures; v++) {
-		for (uint32_t k = 0; k < configuration.size[2]; k++) {
-			for (uint32_t j = 0; j < configuration.size[1]; j++) {
+	for (uint64_t v = 0; v < configuration.coordinateFeatures; v++) {
+		for (uint64_t k = 0; k < configuration.size[2]; k++) {
+			for (uint64_t j = 0; j < configuration.size[1]; j++) {
 
-				//for (uint32_t i = 0; i < configuration.size[0]; i++) {
+				//for (uint64_t i = 0; i < configuration.size[0]; i++) {
 				//	kernel_input[i + j * configuration.size[0] + k * (configuration.size[0] + 2) * configuration.size[1] + v * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2]] = 1;
 
 				//Below is the test identity kernel for 3x3 nonsymmetric FFT
-				for (uint32_t i = 0; i < configuration.size[0]; i++) {
+				for (uint64_t i = 0; i < configuration.size[0]; i++) {
 					if ((v == 0) || (v == 4) || (v == 8))
 
 						kernel_input[2 * (i + j * (configuration.size[0]) + k * (configuration.size[0]) * configuration.size[1] + v * (configuration.size[0]) * configuration.size[1] * configuration.size[2])] = 1;
@@ -2233,15 +2236,15 @@ VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	convolution_configuration.kernelSize = &kernelSize;
 
 	if (file_output)
-		fprintf(output, "Total memory needed for buffer: %d MB\n", bufferSize / 1024 / 1024);
-	printf("Total memory needed for buffer: %d MB\n", bufferSize / 1024 / 1024);
+		fprintf(output, "Total memory needed for buffer: %" PRIu64 " MB\n", bufferSize / 1024 / 1024);
+	printf("Total memory needed for buffer: %" PRIu64 " MB\n", bufferSize / 1024 / 1024);
 	//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 	float* buffer_input = (float*)malloc(bufferSize);
 
-	for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
-		for (uint32_t k = 0; k < convolution_configuration.size[2]; k++) {
-			for (uint32_t j = 0; j < convolution_configuration.size[1]; j++) {
-				for (uint32_t i = 0; i < convolution_configuration.size[0]; i++) {
+	for (uint64_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
+		for (uint64_t k = 0; k < convolution_configuration.size[2]; k++) {
+			for (uint64_t j = 0; j < convolution_configuration.size[1]; j++) {
+				for (uint64_t i = 0; i < convolution_configuration.size[0]; i++) {
 					buffer_input[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2])] = i % 8 - 3.5;
 					buffer_input[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2]) + 1] = i % 4 - 1.5;
 				}
@@ -2288,13 +2291,13 @@ VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
 #endif
 	//Print data, if needed.
-	for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
+	for (uint64_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
 		if (file_output)
-			fprintf(output, "\ncoordinate: %d\n\n", v);
-		printf("\ncoordinate: %d\n\n", v);
-		for (uint32_t k = 0; k < convolution_configuration.size[2]; k++) {
-			for (uint32_t j = 0; j < convolution_configuration.size[1]; j++) {
-				for (uint32_t i = 0; i < convolution_configuration.size[0]; i++) {
+			fprintf(output, "\ncoordinate: %" PRIu64 "\n\n", v);
+		printf("\ncoordinate: %" PRIu64 "\n\n", v);
+		for (uint64_t k = 0; k < convolution_configuration.size[2]; k++) {
+			for (uint64_t j = 0; j < convolution_configuration.size[1]; j++) {
+				for (uint64_t i = 0; i < convolution_configuration.size[0]; i++) {
 					if (file_output)
 						fprintf(output, "%.6f %.6f ", buffer_output[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2])], buffer_output[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2]) + 1]);
 					printf("%.6f %.6f ", buffer_output[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2])], buffer_output[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2]) + 1]);
@@ -2325,7 +2328,7 @@ VkFFTResult sample_7(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	deleteVkFFT(&app_convolution);
 	return resFFT;
 }
-VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_8(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -2410,20 +2413,20 @@ VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	configuration.bufferSize = &kernelSize;
 
 	if (file_output)
-		fprintf(output, "Total memory needed for kernel: %d MB\n", kernelSize / 1024 / 1024);
-	printf("Total memory needed for kernel: %d MB\n", kernelSize / 1024 / 1024);
+		fprintf(output, "Total memory needed for kernel: %" PRIu64 " MB\n", kernelSize / 1024 / 1024);
+	printf("Total memory needed for kernel: %" PRIu64 " MB\n", kernelSize / 1024 / 1024);
 
 	//Fill kernel on CPU.
 	float* kernel_input = (float*)malloc(kernelSize);
-	for (uint32_t v = 0; v < configuration.coordinateFeatures; v++) {
-		for (uint32_t k = 0; k < configuration.size[2]; k++) {
-			for (uint32_t j = 0; j < configuration.size[1]; j++) {
+	for (uint64_t v = 0; v < configuration.coordinateFeatures; v++) {
+		for (uint64_t k = 0; k < configuration.size[2]; k++) {
+			for (uint64_t j = 0; j < configuration.size[1]; j++) {
 
-				//for (uint32_t i = 0; i < configuration.size[0]; i++) {
+				//for (uint64_t i = 0; i < configuration.size[0]; i++) {
 				//	kernel_input[i + j * configuration.size[0] + k * (configuration.size[0] + 2) * configuration.size[1] + v * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2]] = 1;
 
 				//Below is the test identity kernel for 3x3 nonsymmetric FFT
-				for (uint32_t i = 0; i < configuration.size[0] / 2 + 1; i++) {
+				for (uint64_t i = 0; i < configuration.size[0] / 2 + 1; i++) {
 					if ((v == 0) || (v == 4) || (v == 8))
 
 						kernel_input[2 * i + j * (configuration.size[0] + 2) + k * (configuration.size[0] + 2) * configuration.size[1] + v * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2]] = 1;
@@ -2510,15 +2513,15 @@ VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	convolution_configuration.kernelSize = &kernelSize;
 
 	if (file_output)
-		fprintf(output, "Total memory needed for buffer: %d MB\n", bufferSize / 1024 / 1024);
-	printf("Total memory needed for buffer: %d MB\n", bufferSize / 1024 / 1024);
+		fprintf(output, "Total memory needed for buffer: %" PRIu64 " MB\n", bufferSize / 1024 / 1024);
+	printf("Total memory needed for buffer: %" PRIu64 " MB\n", bufferSize / 1024 / 1024);
 	//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 	float* buffer_input = (float*)malloc(bufferSize);
 
-	for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
-		for (uint32_t k = 0; k < ceil(convolution_configuration.size[2] / 2.0); k++) {
-			for (uint32_t j = 0; j < ceil(convolution_configuration.size[1] / 2.0); j++) {
-				for (uint32_t i = 0; i < ceil(convolution_configuration.size[0] / 2.0); i++) {
+	for (uint64_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
+		for (uint64_t k = 0; k < ceil(convolution_configuration.size[2] / 2.0); k++) {
+			for (uint64_t j = 0; j < ceil(convolution_configuration.size[1] / 2.0); j++) {
+				for (uint64_t i = 0; i < ceil(convolution_configuration.size[0] / 2.0); i++) {
 					buffer_input[i + j * (convolution_configuration.size[0] + 2) + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]] = i;
 				}
 			}
@@ -2564,13 +2567,13 @@ VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #endif
 
 	//Print data, if needed.
-	for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
+	for (uint64_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
 		if (file_output)
-			fprintf(output, "\ncoordinate: %d\n\n", v);
-		printf("\ncoordinate: %d\n\n", v);
-		for (uint32_t k = 0; k < ceil(convolution_configuration.size[2] / 2.0); k++) {
-			for (uint32_t j = 0; j < ceil(convolution_configuration.size[1] / 2.0); j++) {
-				for (uint32_t i = 0; i < ceil(convolution_configuration.size[0] / 2.0); i++) {
+			fprintf(output, "\ncoordinate: %" PRIu64 "\n\n", v);
+		printf("\ncoordinate: %" PRIu64 "\n\n", v);
+		for (uint64_t k = 0; k < ceil(convolution_configuration.size[2] / 2.0); k++) {
+			for (uint64_t j = 0; j < ceil(convolution_configuration.size[1] / 2.0); j++) {
+				for (uint64_t i = 0; i < ceil(convolution_configuration.size[0] / 2.0); i++) {
 					if (file_output)
 						fprintf(output, "%.6f ", buffer_output[i + j * (convolution_configuration.size[0] + 2) + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]]);
 					printf("%.6f ", buffer_output[i + j * (convolution_configuration.size[0] + 2) + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]]);
@@ -2601,7 +2604,7 @@ VkFFTResult sample_8(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	deleteVkFFT(&app_convolution);
 	return resFFT;
 }
-VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_9(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -2678,18 +2681,18 @@ VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	configuration.bufferSize = &kernelSize;
 
 	if (file_output)
-		fprintf(output, "Total memory needed for kernel: %d MB\n", kernelSize / 1024 / 1024);
-	printf("Total memory needed for kernel: %d MB\n", kernelSize / 1024 / 1024);
+		fprintf(output, "Total memory needed for kernel: %" PRIu64 " MB\n", kernelSize / 1024 / 1024);
+	printf("Total memory needed for kernel: %" PRIu64 " MB\n", kernelSize / 1024 / 1024);
 
 	//Fill kernel on CPU.
 	float* kernel_input = (float*)malloc(kernelSize);
-	for (uint32_t f = 0; f < configuration.numberBatches; f++) {
-		for (uint32_t v = 0; v < configuration.coordinateFeatures; v++) {
-			for (uint32_t k = 0; k < configuration.size[2]; k++) {
-				for (uint32_t j = 0; j < configuration.size[1]; j++) {
+	for (uint64_t f = 0; f < configuration.numberBatches; f++) {
+		for (uint64_t v = 0; v < configuration.coordinateFeatures; v++) {
+			for (uint64_t k = 0; k < configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < configuration.size[1]; j++) {
 
 					//Below is the test identity kernel for 1x1 nonsymmetric FFT, multiplied by (f * configuration.coordinateFeatures + v + 1);
-					for (uint32_t i = 0; i < configuration.size[0] / 2 + 1; i++) {
+					for (uint64_t i = 0; i < configuration.size[0] / 2 + 1; i++) {
 
 						kernel_input[2 * i + j * (configuration.size[0] + 2) + k * (configuration.size[0] + 2) * configuration.size[1] + v * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2] + f * configuration.coordinateFeatures * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2]] = f * configuration.coordinateFeatures + v + 1;
 						kernel_input[2 * i + 1 + j * (configuration.size[0] + 2) + k * (configuration.size[0] + 2) * configuration.size[1] + v * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2] + f * configuration.coordinateFeatures * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2]] = 0;
@@ -2794,15 +2797,15 @@ VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 
 
 	if (file_output)
-		fprintf(output, "Total memory needed for buffer: %d MB\n", bufferSize / 1024 / 1024);
-	printf("Total memory needed for buffer: %d MB\n", bufferSize / 1024 / 1024);
+		fprintf(output, "Total memory needed for buffer: %" PRIu64 " MB\n", bufferSize / 1024 / 1024);
+	printf("Total memory needed for buffer: %" PRIu64 " MB\n", bufferSize / 1024 / 1024);
 	//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 	float* buffer_input = (float*)malloc(inputBufferSize);
 
-	for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
-		for (uint32_t k = 0; k < convolution_configuration.size[2]; k++) {
-			for (uint32_t j = 0; j < convolution_configuration.size[1]; j++) {
-				for (uint32_t i = 0; i < convolution_configuration.size[0]; i++) {
+	for (uint64_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
+		for (uint64_t k = 0; k < convolution_configuration.size[2]; k++) {
+			for (uint64_t j = 0; j < convolution_configuration.size[1]; j++) {
+				for (uint64_t i = 0; i < convolution_configuration.size[0]; i++) {
 					buffer_input[i + j * (convolution_configuration.size[0] + 2) + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]] = 1;
 				}
 			}
@@ -2849,17 +2852,17 @@ VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 #endif
 
 	//Print data, if needed.
-	for (uint32_t f = 0; f < convolution_configuration.numberKernels; f++) {
+	for (uint64_t f = 0; f < convolution_configuration.numberKernels; f++) {
 		if (file_output)
-			fprintf(output, "\nKernel id: %d\n\n", f);
-		printf("\nKernel id: %d\n\n", f);
-		for (uint32_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
+			fprintf(output, "\nKernel id: %" PRIu64 "\n\n", f);
+		printf("\nKernel id: %" PRIu64 "\n\n", f);
+		for (uint64_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
 			if (file_output)
-				fprintf(output, "\ncoordinate: %d\n\n", v);
-			printf("\ncoordinate: %d\n\n", v);
-			for (uint32_t k = 0; k < convolution_configuration.size[2]; k++) {
-				for (uint32_t j = 0; j < convolution_configuration.size[1]; j++) {
-					for (uint32_t i = 0; i < convolution_configuration.size[0]; i++) {
+				fprintf(output, "\ncoordinate: %" PRIu64 "\n\n", v);
+			printf("\ncoordinate: %" PRIu64 "\n\n", v);
+			for (uint64_t k = 0; k < convolution_configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < convolution_configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < convolution_configuration.size[0]; i++) {
 						if (file_output)
 							fprintf(output, "%.6f ", buffer_output[i + j * (convolution_configuration.size[0] + 2) + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2] + f * convolution_configuration.coordinateFeatures * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]]);
 
@@ -2898,7 +2901,7 @@ VkFFTResult sample_9(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* o
 	return resFFT;
 }
 #if(VKFFT_BACKEND==0)
-VkFFTResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_10(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -2919,9 +2922,9 @@ VkFFTResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
 		buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 	}
-	for (uint32_t n = 0; n < 26; n++) {
+	for (uint64_t n = 0; n < 26; n++) {
 		double run_time[num_runs];
-		for (uint32_t r = 0; r < num_runs; r++) {
+		for (uint64_t r = 0; r < num_runs; r++) {
 			//Configuration + FFT application .
 			VkFFTConfiguration configuration = {};
 			VkFFTApplication app = {};
@@ -2934,7 +2937,7 @@ VkFFTResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			if (configuration.size[1] < 1) configuration.size[1] = 1;
 			//configuration.size[1] = (configuration.size[1] > 32768) ? 32768 : configuration.size[1];
 			configuration.size[2] = 1;
-			uint32_t numBuf = 4;
+			uint64_t numBuf = 4;
 
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 			configuration.device = &vkGPU->device;
@@ -2946,7 +2949,7 @@ VkFFTResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			//Allocate buffers for the input data. - we use 4 in this example
 			uint64_t* bufferSize = (uint64_t*)malloc(sizeof(uint64_t) * numBuf);
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 				bufferSize[i] = {};
 				bufferSize[i] = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2] / numBuf;
 			}
@@ -2958,7 +2961,7 @@ VkFFTResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			VkBuffer* tempBuffer = (VkBuffer*)malloc(numBuf * sizeof(VkBuffer));
 			VkDeviceMemory* tempBufferDeviceMemory = (VkDeviceMemory*)malloc(numBuf * sizeof(VkDeviceMemory));
 
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 				buffer[i] = {};
 				tempBuffer[i] = {};
 				bufferDeviceMemory[i] = {};
@@ -2980,9 +2983,9 @@ VkFFTResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 			/*float* buffer_input = (float*)malloc(bufferSize);
-			for (uint32_t k = 0; k < configuration.size[2]; k++) {
-				for (uint32_t j = 0; j < configuration.size[1]; j++) {
-					for (uint32_t i = 0; i < configuration.size[0]; i++) {
+			for (uint64_t k = 0; k < configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < configuration.size[0]; i++) {
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1] + v * (configuration.size[0]) * configuration.size[1] * configuration.size[2])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1] + v * (configuration.size[0]) * configuration.size[1] * configuration.size[2]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						}
@@ -2991,7 +2994,7 @@ VkFFTResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			*/
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 			uint64_t shift = 0;
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 				resFFT = transferDataFromCPU(vkGPU, (buffer_input + shift / sizeof(float)), &buffer[i], bufferSize[i]);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
 				shift += bufferSize[i];
@@ -3004,7 +3007,7 @@ VkFFTResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / (numBuf * bufferSize[0]) > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / (numBuf * bufferSize[0]);
+			uint64_t num_iter = ((4096 * 1024.0 * 1024.0) / (numBuf * bufferSize[0]) > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / (numBuf * bufferSize[0]);
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 			if (num_iter == 0) num_iter = 1;
 			if (vkGPU->physicalDeviceProperties.vendorID != 0x8086) num_iter *= 5;
@@ -3017,28 +3020,28 @@ VkFFTResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
-					uint32_t num_tot_transfers = 0;
-					for (uint32_t i = 0; i < configuration.FFTdim; i++)
+					uint64_t num_tot_transfers = 0;
+					for (uint64_t i = 0; i < configuration.FFTdim; i++)
 						num_tot_transfers += app.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
-						fprintf(output, "VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(configuration.size[0]), configuration.size[0], configuration.size[1], (numBuf * bufferSize[0]) / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)(numBuf * bufferSize[0]) / 1024) / avg_time), (numBuf * bufferSize[0]) / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						fprintf(output, "VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.size[1], (numBuf * bufferSize[0]) / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)(numBuf * bufferSize[0]) / 1024) / avg_time), (numBuf * bufferSize[0]) / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 
-					printf("VkFFT System: %d %dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", (int)log2(configuration.size[0]), configuration.size[0], configuration.size[1], (numBuf * bufferSize[0]) / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)(numBuf * bufferSize[0]) / 1024) / avg_time), (numBuf * bufferSize[0]) / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+					printf("VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.size[1], (numBuf * bufferSize[0]) / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)(numBuf * bufferSize[0]) / 1024) / avg_time), (numBuf * bufferSize[0]) / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 					benchmark_result += ((double)numBuf * bufferSize[0] / 1024) / avg_time;
 				}
 
 
 			}
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 
 				vkDestroyBuffer(vkGPU->device, buffer[i], NULL);
 				vkDestroyBuffer(vkGPU->device, tempBuffer[i], NULL);
@@ -3059,16 +3062,16 @@ VkFFTResult sample_10(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	benchmark_result /= (26 - 1);
 
 	if (file_output) {
-		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
-		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
+		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 	}
-	printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
-	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
+	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 	return resFFT;
 }
 #endif
 #ifdef USE_FFTW
-VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_11(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -3086,18 +3089,18 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	const int num_benchmark_samples = 63;
 	const int num_runs = 1;
 
-	uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {(uint32_t)pow(2,5), 1, 1, 1}, {(uint32_t)pow(2,6), 1, 1, 1},{(uint32_t)pow(2,7), 1, 1, 1},{(uint32_t)pow(2,8), 1, 1, 1},{(uint32_t)pow(2,9), 1, 1, 1},{(uint32_t)pow(2,10), 1, 1, 1},
-		{(uint32_t)pow(2,11), 1, 1, 1},{(uint32_t)pow(2,12), 1, 1, 1},{(uint32_t)pow(2,13), 1, 1, 1},{(uint32_t)pow(2,14), 1, 1, 1},{(uint32_t)pow(2,15), 1, 1, 1},{(uint32_t)pow(2,16), 1, 1, 1},{(uint32_t)pow(2,17), 1, 1, 1},{(uint32_t)pow(2,18), 1, 1, 1},
-		{(uint32_t)pow(2,19), 1, 1, 1},{(uint32_t)pow(2,20), 1, 1, 1},{(uint32_t)pow(2,21), 1, 1, 1},{(uint32_t)pow(2,22), 1, 1, 1},{(uint32_t)pow(2,23), 1, 1, 1},{(uint32_t)pow(2,24), 1, 1, 1},{(uint32_t)pow(2,25), 1, 1, 1},{(uint32_t)pow(2,26), 1, 1, 1},
+	uint64_t benchmark_dimensions[num_benchmark_samples][4] = {  {(uint64_t)pow(2,5), 1, 1, 1}, {(uint64_t)pow(2,6), 1, 1, 1},{(uint64_t)pow(2,7), 1, 1, 1},{(uint64_t)pow(2,8), 1, 1, 1},{(uint64_t)pow(2,9), 1, 1, 1},{(uint64_t)pow(2,10), 1, 1, 1},
+		{(uint64_t)pow(2,11), 1, 1, 1},{(uint64_t)pow(2,12), 1, 1, 1},{(uint64_t)pow(2,13), 1, 1, 1},{(uint64_t)pow(2,14), 1, 1, 1},{(uint64_t)pow(2,15), 1, 1, 1},{(uint64_t)pow(2,16), 1, 1, 1},{(uint64_t)pow(2,17), 1, 1, 1},{(uint64_t)pow(2,18), 1, 1, 1},
+		{(uint64_t)pow(2,19), 1, 1, 1},{(uint64_t)pow(2,20), 1, 1, 1},{(uint64_t)pow(2,21), 1, 1, 1},{(uint64_t)pow(2,22), 1, 1, 1},{(uint64_t)pow(2,23), 1, 1, 1},{(uint64_t)pow(2,24), 1, 1, 1},{(uint64_t)pow(2,25), 1, 1, 1},{(uint64_t)pow(2,26), 1, 1, 1},
 
-		{8, (uint32_t)pow(2,3), 1, 2},{8, (uint32_t)pow(2,4), 1, 2},{8, (uint32_t)pow(2,5), 1, 2},{8, (uint32_t)pow(2,6), 1, 2},{8, (uint32_t)pow(2,7), 1, 2},{8, (uint32_t)pow(2,8), 1, 2},{8, (uint32_t)pow(2,9), 1, 2},{8, (uint32_t)pow(2,10), 1, 2},
-		{8, (uint32_t)pow(2,11), 1, 2},{8, (uint32_t)pow(2,12), 1, 2},{8, (uint32_t)pow(2,13), 1, 2},{8, (uint32_t)pow(2,14), 1, 2},{8, (uint32_t)pow(2,15), 1, 2},{8, (uint32_t)pow(2,16), 1, 2},{8, (uint32_t)pow(2,17), 1, 2},{8, (uint32_t)pow(2,18), 1, 2},
-		{8, (uint32_t)pow(2,19), 1, 2},{8, (uint32_t)pow(2,20), 1, 2},{8, (uint32_t)pow(2,21), 1, 2},{8, (uint32_t)pow(2,22), 1, 2},{8, (uint32_t)pow(2,23), 1, 2},{8, (uint32_t)pow(2,24), 1, 2},
+		{8, (uint64_t)pow(2,3), 1, 2},{8, (uint64_t)pow(2,4), 1, 2},{8, (uint64_t)pow(2,5), 1, 2},{8, (uint64_t)pow(2,6), 1, 2},{8, (uint64_t)pow(2,7), 1, 2},{8, (uint64_t)pow(2,8), 1, 2},{8, (uint64_t)pow(2,9), 1, 2},{8, (uint64_t)pow(2,10), 1, 2},
+		{8, (uint64_t)pow(2,11), 1, 2},{8, (uint64_t)pow(2,12), 1, 2},{8, (uint64_t)pow(2,13), 1, 2},{8, (uint64_t)pow(2,14), 1, 2},{8, (uint64_t)pow(2,15), 1, 2},{8, (uint64_t)pow(2,16), 1, 2},{8, (uint64_t)pow(2,17), 1, 2},{8, (uint64_t)pow(2,18), 1, 2},
+		{8, (uint64_t)pow(2,19), 1, 2},{8, (uint64_t)pow(2,20), 1, 2},{8, (uint64_t)pow(2,21), 1, 2},{8, (uint64_t)pow(2,22), 1, 2},{8, (uint64_t)pow(2,23), 1, 2},{8, (uint64_t)pow(2,24), 1, 2},
 
-		{ (uint32_t)pow(2,3), (uint32_t)pow(2,3), 1, 2},{ (uint32_t)pow(2,4), (uint32_t)pow(2,4), 1, 2},{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},
-		{ (uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},{ (uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},{ (uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},{ (uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{ (uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
+		{ (uint64_t)pow(2,3), (uint64_t)pow(2,3), 1, 2},{ (uint64_t)pow(2,4), (uint64_t)pow(2,4), 1, 2},{ (uint64_t)pow(2,5), (uint64_t)pow(2,5), 1, 2},{ (uint64_t)pow(2,6), (uint64_t)pow(2,6), 1, 2},{ (uint64_t)pow(2,7), (uint64_t)pow(2,7), 1, 2},{ (uint64_t)pow(2,8), (uint64_t)pow(2,8), 1, 2},{ (uint64_t)pow(2,9), (uint64_t)pow(2,9), 1, 2},
+		{ (uint64_t)pow(2,10), (uint64_t)pow(2,10), 1, 2},{ (uint64_t)pow(2,11), (uint64_t)pow(2,11), 1, 2},{ (uint64_t)pow(2,12), (uint64_t)pow(2,12), 1, 2},{ (uint64_t)pow(2,13), (uint64_t)pow(2,13), 1, 2},{ (uint64_t)pow(2,14), (uint64_t)pow(2,13), 1, 2},
 
-		{ (uint32_t)pow(2,3), (uint32_t)pow(2,3), (uint32_t)pow(2,3), 3},{ (uint32_t)pow(2,4), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3},{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3},
+		{ (uint64_t)pow(2,3), (uint64_t)pow(2,3), (uint64_t)pow(2,3), 3},{ (uint64_t)pow(2,4), (uint64_t)pow(2,4), (uint64_t)pow(2,4), 3},{ (uint64_t)pow(2,5), (uint64_t)pow(2,5), (uint64_t)pow(2,5), 3},{ (uint64_t)pow(2,6), (uint64_t)pow(2,6), (uint64_t)pow(2,6), 3},{ (uint64_t)pow(2,7), (uint64_t)pow(2,7), (uint64_t)pow(2,7), 3},{ (uint64_t)pow(2,8), (uint64_t)pow(2,8), (uint64_t)pow(2,8), 3},{ (uint64_t)pow(2,9), (uint64_t)pow(2,9), (uint64_t)pow(2,9), 3},
 	};
 
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
@@ -3107,15 +3110,15 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			fftwf_complex* inputC;
 			fftw_complex* inputC_double;
-			uint32_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
+			uint64_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
 
 			inputC = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * dims[0] * dims[1] * dims[2]));
 			inputC_double = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
-			for (int l = 0; l < dims[2]; l++) {
-				for (int j = 0; j < dims[1]; j++) {
-					for (int i = 0; i < dims[0]; i++) {
-						inputC[i + j * dims[0] + l * dims[0] * dims[1]][0] = 2 * ((float)rand()) / RAND_MAX - 1.0;
-						inputC[i + j * dims[0] + l * dims[0] * dims[1]][1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+			for (uint64_t l = 0; l < dims[2]; l++) {
+				for (uint64_t j = 0; j < dims[1]; j++) {
+					for (uint64_t i = 0; i < dims[0]; i++) {
+						inputC[i + j * dims[0] + l * dims[0] * dims[1]][0] = 1;// 2 * ((float)rand()) / RAND_MAX - 1.0;
+						inputC[i + j * dims[0] + l * dims[0] * dims[1]][1] = 0;// 2 * ((float)rand()) / RAND_MAX - 1.0;
 						inputC_double[i + j * dims[0] + l * dims[0] * dims[1]][0] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]][0];
 						inputC_double[i + j * dims[0] + l * dims[0] * dims[1]][1] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]][1];
 					}
@@ -3173,11 +3176,11 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			configuration.context = &vkGPU->context;
 #endif
 
-			uint32_t numBuf = 1;
+			uint64_t numBuf = 1;
 
 			//Allocate buffers for the input data. - we use 4 in this example
 			uint64_t* bufferSize = (uint64_t*)malloc(sizeof(uint64_t) * numBuf);
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 				bufferSize[i] = {};
 				bufferSize[i] = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2] / numBuf;
 			}
@@ -3191,7 +3194,7 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==3)
 			cl_mem buffer = 0;
 #endif
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				buffer[i] = {};
 				bufferDeviceMemory[i] = {};
@@ -3223,7 +3226,7 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 			uint64_t shift = 0;
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				resFFT = transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -3262,7 +3265,7 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			//Transfer data from GPU using staging buffer.
 			shift = 0;
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -3282,12 +3285,12 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			float max_difference[2] = { 0,0 };
 			float avg_eps[2] = { 0,0 };
 			float max_eps[2] = { 0,0 };
-			for (int l = 0; l < dims[2]; l++) {
-				for (int j = 0; j < dims[1]; j++) {
-					for (int i = 0; i < dims[0]; i++) {
-						int loc_i = i;
-						int loc_j = j;
-						int loc_l = l;
+			for (uint64_t l = 0; l < dims[2]; l++) {
+				for (uint64_t j = 0; j < dims[1]; j++) {
+					for (uint64_t i = 0; i < dims[0]; i++) {
+						uint64_t loc_i = i;
+						uint64_t loc_j = j;
+						uint64_t loc_l = l;
 
 						//if (file_output) fprintf(output, "%f %f - %f %f \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
 
@@ -3323,19 +3326,19 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			avg_eps[1] /= (dims[0] * dims[1] * dims[2]);
 #ifdef USE_cuFFT
 			if (file_output)
-				fprintf(output, "cuFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
-			printf("cuFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+				fprintf(output, "cuFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+			printf("cuFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
 #endif
 #ifdef USE_rocFFT
 			if (file_output)
-				fprintf(output, "rocFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
-			printf("rocFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+				fprintf(output, "rocFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+			printf("rocFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
 #endif
 			if (file_output)
-				fprintf(output, "VkFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
-			printf("VkFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+				fprintf(output, "VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+			printf("VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
 			free(output_VkFFT);
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				vkDestroyBuffer(vkGPU->device, buffer[i], NULL);
 				vkFreeMemory(vkGPU->device, bufferDeviceMemory[i], NULL);
@@ -3364,7 +3367,7 @@ VkFFTResult sample_11(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	}
 	return resFFT;
 }
-VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_12(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -3381,18 +3384,18 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	const int num_benchmark_samples = 60;
 	const int num_runs = 1;
 
-	uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {(uint32_t)pow(2,5), 1, 1, 1},{(uint32_t)pow(2,6), 1, 1, 1},{(uint32_t)pow(2,7), 1, 1, 1},{(uint32_t)pow(2,8), 1, 1, 1},{(uint32_t)pow(2,9), 1, 1, 1},{(uint32_t)pow(2,10), 1, 1, 1},
-		{(uint32_t)pow(2,11), 1, 1, 1},{(uint32_t)pow(2,12), 1, 1, 1},{(uint32_t)pow(2,13), 1, 1, 1},{(uint32_t)pow(2,14), 1, 1, 1},{(uint32_t)pow(2,15), 1, 1, 1},{(uint32_t)pow(2,16), 1, 1, 1},{(uint32_t)pow(2,17), 1, 1, 1},{(uint32_t)pow(2,18), 1, 1, 1},
-		{(uint32_t)pow(2,19), 1, 1, 1},{(uint32_t)pow(2,20), 1, 1, 1},{(uint32_t)pow(2,21), 1, 1, 1},{(uint32_t)pow(2,22), 1, 1, 1},{(uint32_t)pow(2,23), 1, 1, 1},{(uint32_t)pow(2,24), 1, 1, 1},{(uint32_t)pow(2,25), 1, 1, 1},{(uint32_t)pow(2,26), 1, 1, 1},
+	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {(uint64_t)pow(2,5), 1, 1, 1},{(uint64_t)pow(2,6), 1, 1, 1},{(uint64_t)pow(2,7), 1, 1, 1},{(uint64_t)pow(2,8), 1, 1, 1},{(uint64_t)pow(2,9), 1, 1, 1},{(uint64_t)pow(2,10), 1, 1, 1},
+		{(uint64_t)pow(2,11), 1, 1, 1},{(uint64_t)pow(2,12), 1, 1, 1},{(uint64_t)pow(2,13), 1, 1, 1},{(uint64_t)pow(2,14), 1, 1, 1},{(uint64_t)pow(2,15), 1, 1, 1},{(uint64_t)pow(2,16), 1, 1, 1},{(uint64_t)pow(2,17), 1, 1, 1},{(uint64_t)pow(2,18), 1, 1, 1},
+		{(uint64_t)pow(2,19), 1, 1, 1},{(uint64_t)pow(2,20), 1, 1, 1},{(uint64_t)pow(2,21), 1, 1, 1},{(uint64_t)pow(2,22), 1, 1, 1},{(uint64_t)pow(2,23), 1, 1, 1},{(uint64_t)pow(2,24), 1, 1, 1},{(uint64_t)pow(2,25), 1, 1, 1},{(uint64_t)pow(2,26), 1, 1, 1},
 
-		{8, (uint32_t)pow(2,3), 1, 2},{8, (uint32_t)pow(2,4), 1, 2},{8, (uint32_t)pow(2,5), 1, 2},{8, (uint32_t)pow(2,6), 1, 2},{8, (uint32_t)pow(2,7), 1, 2},{8, (uint32_t)pow(2,8), 1, 2},{8, (uint32_t)pow(2,9), 1, 2},{8, (uint32_t)pow(2,10), 1, 2},
-		{8, (uint32_t)pow(2,11), 1, 2},{8, (uint32_t)pow(2,12), 1, 2},{8, (uint32_t)pow(2,13), 1, 2},{8, (uint32_t)pow(2,14), 1, 2},{8, (uint32_t)pow(2,15), 1, 2},{8, (uint32_t)pow(2,16), 1, 2},{8, (uint32_t)pow(2,17), 1, 2},{8, (uint32_t)pow(2,18), 1, 2},
-		{8, (uint32_t)pow(2,19), 1, 2},{8, (uint32_t)pow(2,20), 1, 2},{8, (uint32_t)pow(2,21), 1, 2},{8, (uint32_t)pow(2,22), 1, 2},{8, (uint32_t)pow(2,23), 1, 2},
+		{8, (uint64_t)pow(2,3), 1, 2},{8, (uint64_t)pow(2,4), 1, 2},{8, (uint64_t)pow(2,5), 1, 2},{8, (uint64_t)pow(2,6), 1, 2},{8, (uint64_t)pow(2,7), 1, 2},{8, (uint64_t)pow(2,8), 1, 2},{8, (uint64_t)pow(2,9), 1, 2},{8, (uint64_t)pow(2,10), 1, 2},
+		{8, (uint64_t)pow(2,11), 1, 2},{8, (uint64_t)pow(2,12), 1, 2},{8, (uint64_t)pow(2,13), 1, 2},{8, (uint64_t)pow(2,14), 1, 2},{8, (uint64_t)pow(2,15), 1, 2},{8, (uint64_t)pow(2,16), 1, 2},{8, (uint64_t)pow(2,17), 1, 2},{8, (uint64_t)pow(2,18), 1, 2},
+		{8, (uint64_t)pow(2,19), 1, 2},{8, (uint64_t)pow(2,20), 1, 2},{8, (uint64_t)pow(2,21), 1, 2},{8, (uint64_t)pow(2,22), 1, 2},{8, (uint64_t)pow(2,23), 1, 2},
 
-		{ (uint32_t)pow(2,3), (uint32_t)pow(2,3), 1, 2}, { (uint32_t)pow(2,4), (uint32_t)pow(2,4), 1, 2},{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},
-		{ (uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},{ (uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},{ (uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},{ (uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},
+		{ (uint64_t)pow(2,3), (uint64_t)pow(2,3), 1, 2}, { (uint64_t)pow(2,4), (uint64_t)pow(2,4), 1, 2},{ (uint64_t)pow(2,5), (uint64_t)pow(2,5), 1, 2},{ (uint64_t)pow(2,6), (uint64_t)pow(2,6), 1, 2},{ (uint64_t)pow(2,7), (uint64_t)pow(2,7), 1, 2},{ (uint64_t)pow(2,8), (uint64_t)pow(2,8), 1, 2},{ (uint64_t)pow(2,9), (uint64_t)pow(2,9), 1, 2},
+		{ (uint64_t)pow(2,10), (uint64_t)pow(2,10), 1, 2},{ (uint64_t)pow(2,11), (uint64_t)pow(2,11), 1, 2},{ (uint64_t)pow(2,12), (uint64_t)pow(2,12), 1, 2},{ (uint64_t)pow(2,13), (uint64_t)pow(2,13), 1, 2},
 
-		{ (uint32_t)pow(2,3), (uint32_t)pow(2,3), (uint32_t)pow(2,3), 3},{ (uint32_t)pow(2,4), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3},{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3}
+		{ (uint64_t)pow(2,3), (uint64_t)pow(2,3), (uint64_t)pow(2,3), 3},{ (uint64_t)pow(2,4), (uint64_t)pow(2,4), (uint64_t)pow(2,4), 3},{ (uint64_t)pow(2,5), (uint64_t)pow(2,5), (uint64_t)pow(2,5), 3},{ (uint64_t)pow(2,6), (uint64_t)pow(2,6), (uint64_t)pow(2,6), 3},{ (uint64_t)pow(2,7), (uint64_t)pow(2,7), (uint64_t)pow(2,7), 3},{ (uint64_t)pow(2,8), (uint64_t)pow(2,8), (uint64_t)pow(2,8), 3}
 	};
 
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
@@ -3401,13 +3404,13 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 		for (int r = 0; r < num_runs; r++) {
 			fftw_complex* inputC;
 			fftw_complex* inputC_double;
-			uint32_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
+			uint64_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
 
 			inputC = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
 			inputC_double = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
-			for (int l = 0; l < dims[2]; l++) {
-				for (int j = 0; j < dims[1]; j++) {
-					for (int i = 0; i < dims[0]; i++) {
+			for (uint64_t l = 0; l < dims[2]; l++) {
+				for (uint64_t j = 0; j < dims[1]; j++) {
+					for (uint64_t i = 0; i < dims[0]; i++) {
 						inputC[i + j * dims[0] + l * dims[0] * dims[1]][0] = 2 * ((double)rand()) / RAND_MAX - 1.0;
 						inputC[i + j * dims[0] + l * dims[0] * dims[1]][1] = 2 * ((double)rand()) / RAND_MAX - 1.0;
 						inputC_double[i + j * dims[0] + l * dims[0] * dims[1]][0] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]][0];
@@ -3469,11 +3472,11 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #endif
 			configuration.doublePrecision = true;
 
-			uint32_t numBuf = 1;
+			uint64_t numBuf = 1;
 
 			//Allocate buffers for the input data. - we use 4 in this example
 			uint64_t* bufferSize = (uint64_t*)malloc(sizeof(uint64_t) * numBuf);
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 				bufferSize[i] = {};
 				bufferSize[i] = (uint64_t)sizeof(double) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2] / numBuf;
 			}
@@ -3487,7 +3490,7 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==3)
 			cl_mem buffer = 0;
 #endif
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				buffer[i] = {};
 				bufferDeviceMemory[i] = {};
@@ -3519,7 +3522,7 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 			uint64_t shift = 0;
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				resFFT = transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftw_complex)), &buffer[i], bufferSize[i]);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -3557,7 +3560,7 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			//Transfer data from GPU using staging buffer.
 			shift = 0;
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftw_complex)), &buffer[i], bufferSize[i]);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -3577,12 +3580,12 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			double max_difference[2] = { 0,0 };
 			double avg_eps[2] = { 0,0 };
 			double max_eps[2] = { 0,0 };
-			for (int l = 0; l < dims[2]; l++) {
-				for (int j = 0; j < dims[1]; j++) {
-					for (int i = 0; i < dims[0]; i++) {
-						int loc_i = i;
-						int loc_j = j;
-						int loc_l = l;
+			for (uint64_t l = 0; l < dims[2]; l++) {
+				for (uint64_t j = 0; j < dims[1]; j++) {
+					for (uint64_t i = 0; i < dims[0]; i++) {
+						uint64_t loc_i = i;
+						uint64_t loc_j = j;
+						uint64_t loc_l = l;
 
 						//if (file_output) fprintf(output, "%f %f - %f %f \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
 						//printf("%f %f - %f %f \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0], output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
@@ -3618,19 +3621,19 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			avg_eps[1] /= (dims[0] * dims[1] * dims[2]);
 #ifdef USE_cuFFT
 			if (file_output)
-				fprintf(output, "cuFFT System: %dx%dx%d avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
-			printf("cuFFT System: %dx%dx%d avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+				fprintf(output, "cuFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+			printf("cuFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
 #endif
 #ifdef USE_rocFFT
 			if (file_output)
-				fprintf(output, "rocFFT System: %dx%dx%d avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
-			printf("rocFFT System: %dx%dx%d avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+				fprintf(output, "rocFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+			printf("rocFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
 #endif
 			if (file_output)
-				fprintf(output, "VkFFT System: %dx%dx%d avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
-			printf("VkFFT System: %dx%dx%d avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+				fprintf(output, "VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+			printf("VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
 			free(output_VkFFT);
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 
 #if(VKFFT_BACKEND==0)
 				vkDestroyBuffer(vkGPU->device, buffer[i], NULL);
@@ -3661,7 +3664,7 @@ VkFFTResult sample_12(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	return resFFT;
 }
 #if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
-VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_13(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -3679,18 +3682,18 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	const int num_benchmark_samples = 61;
 	const int num_runs = 1;
 
-	uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {(uint32_t)pow(2,5), 1, 1, 1},{(uint32_t)pow(2,6), 1, 1, 1},{(uint32_t)pow(2,7), 1, 1, 1},{(uint32_t)pow(2,8), 1, 1, 1},{(uint32_t)pow(2,9), 1, 1, 1},{(uint32_t)pow(2,10), 1, 1, 1},
-		{(uint32_t)pow(2,11), 1, 1, 1},{(uint32_t)pow(2,12), 1, 1, 1},{(uint32_t)pow(2,13), 1, 1, 1},{(uint32_t)pow(2,14), 1, 1, 1},{(uint32_t)pow(2,15), 1, 1, 1},{(uint32_t)pow(2,16), 1, 1, 1},{(uint32_t)pow(2,17), 1, 1, 1},{(uint32_t)pow(2,18), 1, 1, 1},
-		{(uint32_t)pow(2,19), 1, 1, 1},{(uint32_t)pow(2,20), 1, 1, 1},{(uint32_t)pow(2,21), 1, 1, 1},{(uint32_t)pow(2,22), 1, 1, 1},{(uint32_t)pow(2,23), 1, 1, 1},{(uint32_t)pow(2,24), 1, 1, 1},
+	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {(uint64_t)pow(2,5), 1, 1, 1},{(uint64_t)pow(2,6), 1, 1, 1},{(uint64_t)pow(2,7), 1, 1, 1},{(uint64_t)pow(2,8), 1, 1, 1},{(uint64_t)pow(2,9), 1, 1, 1},{(uint64_t)pow(2,10), 1, 1, 1},
+		{(uint64_t)pow(2,11), 1, 1, 1},{(uint64_t)pow(2,12), 1, 1, 1},{(uint64_t)pow(2,13), 1, 1, 1},{(uint64_t)pow(2,14), 1, 1, 1},{(uint64_t)pow(2,15), 1, 1, 1},{(uint64_t)pow(2,16), 1, 1, 1},{(uint64_t)pow(2,17), 1, 1, 1},{(uint64_t)pow(2,18), 1, 1, 1},
+		{(uint64_t)pow(2,19), 1, 1, 1},{(uint64_t)pow(2,20), 1, 1, 1},{(uint64_t)pow(2,21), 1, 1, 1},{(uint64_t)pow(2,22), 1, 1, 1},{(uint64_t)pow(2,23), 1, 1, 1},{(uint64_t)pow(2,24), 1, 1, 1},
 
-		{8, (uint32_t)pow(2,3), 1, 2},{8, (uint32_t)pow(2,4), 1, 2},{8, (uint32_t)pow(2,5), 1, 2},{8, (uint32_t)pow(2,6), 1, 2},{8, (uint32_t)pow(2,7), 1, 2},{8, (uint32_t)pow(2,8), 1, 2},{8, (uint32_t)pow(2,9), 1, 2},{8, (uint32_t)pow(2,10), 1, 2},
-		{8, (uint32_t)pow(2,11), 1, 2},{8, (uint32_t)pow(2,12), 1, 2},{8, (uint32_t)pow(2,13), 1, 2},{8, (uint32_t)pow(2,14), 1, 2},{8, (uint32_t)pow(2,15), 1, 2},{8, (uint32_t)pow(2,16), 1, 2},{8, (uint32_t)pow(2,17), 1, 2},{8, (uint32_t)pow(2,18), 1, 2},
-		{8, (uint32_t)pow(2,19), 1, 2},{8, (uint32_t)pow(2,20), 1, 2},{8, (uint32_t)pow(2,21), 1, 2},{8, (uint32_t)pow(2,22), 1, 2},{8, (uint32_t)pow(2,23), 1, 2},{8, (uint32_t)pow(2,24), 1, 2},
+		{8, (uint64_t)pow(2,3), 1, 2},{8, (uint64_t)pow(2,4), 1, 2},{8, (uint64_t)pow(2,5), 1, 2},{8, (uint64_t)pow(2,6), 1, 2},{8, (uint64_t)pow(2,7), 1, 2},{8, (uint64_t)pow(2,8), 1, 2},{8, (uint64_t)pow(2,9), 1, 2},{8, (uint64_t)pow(2,10), 1, 2},
+		{8, (uint64_t)pow(2,11), 1, 2},{8, (uint64_t)pow(2,12), 1, 2},{8, (uint64_t)pow(2,13), 1, 2},{8, (uint64_t)pow(2,14), 1, 2},{8, (uint64_t)pow(2,15), 1, 2},{8, (uint64_t)pow(2,16), 1, 2},{8, (uint64_t)pow(2,17), 1, 2},{8, (uint64_t)pow(2,18), 1, 2},
+		{8, (uint64_t)pow(2,19), 1, 2},{8, (uint64_t)pow(2,20), 1, 2},{8, (uint64_t)pow(2,21), 1, 2},{8, (uint64_t)pow(2,22), 1, 2},{8, (uint64_t)pow(2,23), 1, 2},{8, (uint64_t)pow(2,24), 1, 2},
 
-		{ (uint32_t)pow(2,3), (uint32_t)pow(2,3), 1, 2},{ (uint32_t)pow(2,4), (uint32_t)pow(2,4), 1, 2},{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},
-		{ (uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},{ (uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},{ (uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},{ (uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{ (uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
+		{ (uint64_t)pow(2,3), (uint64_t)pow(2,3), 1, 2},{ (uint64_t)pow(2,4), (uint64_t)pow(2,4), 1, 2},{ (uint64_t)pow(2,5), (uint64_t)pow(2,5), 1, 2},{ (uint64_t)pow(2,6), (uint64_t)pow(2,6), 1, 2},{ (uint64_t)pow(2,7), (uint64_t)pow(2,7), 1, 2},{ (uint64_t)pow(2,8), (uint64_t)pow(2,8), 1, 2},{ (uint64_t)pow(2,9), (uint64_t)pow(2,9), 1, 2},
+		{ (uint64_t)pow(2,10), (uint64_t)pow(2,10), 1, 2},{ (uint64_t)pow(2,11), (uint64_t)pow(2,11), 1, 2},{ (uint64_t)pow(2,12), (uint64_t)pow(2,12), 1, 2},{ (uint64_t)pow(2,13), (uint64_t)pow(2,13), 1, 2},{ (uint64_t)pow(2,14), (uint64_t)pow(2,13), 1, 2},
 
-		{ (uint32_t)pow(2,3), (uint32_t)pow(2,3), (uint32_t)pow(2,3), 3},{ (uint32_t)pow(2,4), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3},{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3},
+		{ (uint64_t)pow(2,3), (uint64_t)pow(2,3), (uint64_t)pow(2,3), 3},{ (uint64_t)pow(2,4), (uint64_t)pow(2,4), (uint64_t)pow(2,4), 3},{ (uint64_t)pow(2,5), (uint64_t)pow(2,5), (uint64_t)pow(2,5), 3},{ (uint64_t)pow(2,6), (uint64_t)pow(2,6), (uint64_t)pow(2,6), 3},{ (uint64_t)pow(2,7), (uint64_t)pow(2,7), (uint64_t)pow(2,7), 3},{ (uint64_t)pow(2,8), (uint64_t)pow(2,8), (uint64_t)pow(2,8), 3},{ (uint64_t)pow(2,9), (uint64_t)pow(2,9), (uint64_t)pow(2,9), 3},
 	};
 
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
@@ -3700,13 +3703,13 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			half2* inputC;
 			fftw_complex* inputC_double;
-			uint32_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
+			uint64_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
 
 			inputC = (half2*)(malloc(2 * sizeof(half) * dims[0] * dims[1] * dims[2]));
 			inputC_double = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
-			for (int l = 0; l < dims[2]; l++) {
-				for (int j = 0; j < dims[1]; j++) {
-					for (int i = 0; i < dims[0]; i++) {
+			for (uint64_t l = 0; l < dims[2]; l++) {
+				for (uint64_t j = 0; j < dims[1]; j++) {
+					for (uint64_t i = 0; i < dims[0]; i++) {
 						inputC[i + j * dims[0] + l * dims[0] * dims[1]][0] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						inputC[i + j * dims[0] + l * dims[0] * dims[1]][1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						inputC_double[i + j * dims[0] + l * dims[0] * dims[1]][0] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]][0];
@@ -3764,11 +3767,11 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			configuration.context = &vkGPU->context;
 #endif
 
-			uint32_t numBuf = 1;
+			uint64_t numBuf = 1;
 
 			//Allocate buffers for the input data. - we use 4 in this example
 			uint64_t* bufferSize = (uint64_t*)malloc(sizeof(uint64_t) * numBuf);
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 				bufferSize[i] = {};
 				bufferSize[i] = (uint64_t)sizeof(half) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2] / numBuf;
 			}
@@ -3782,7 +3785,7 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==3)
 			cl_mem buffer = 0;
 #endif			
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				buffer[i] = {};
 				bufferDeviceMemory[i] = {};
@@ -3814,7 +3817,7 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 			uint64_t shift = 0;
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				resFFT = transferDataFromCPU(vkGPU, (inputC + shift / 2 / sizeof(half)), &buffer[i], bufferSize[i]);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -3852,7 +3855,7 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			//Transfer data from GPU using staging buffer.
 			shift = 0;
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / 2 / sizeof(half)), &buffer[i], bufferSize[i]);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -3872,12 +3875,12 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			float max_difference[2] = { 0,0 };
 			float avg_eps[2] = { 0,0 };
 			float max_eps[2] = { 0,0 };
-			for (int l = 0; l < dims[2]; l++) {
-				for (int j = 0; j < dims[1]; j++) {
-					for (int i = 0; i < dims[0]; i++) {
-						int loc_i = i;
-						int loc_j = j;
-						int loc_l = l;
+			for (uint64_t l = 0; l < dims[2]; l++) {
+				for (uint64_t j = 0; j < dims[1]; j++) {
+					for (uint64_t i = 0; i < dims[0]; i++) {
+						uint64_t loc_i = i;
+						uint64_t loc_j = j;
+						uint64_t loc_l = l;
 
 						//if (file_output) fprintf(output, "%f %f - %f %f \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
 						//printf("%f %f - %f %f \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
@@ -3912,14 +3915,14 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			avg_eps[1] /= (dims[0] * dims[1] * dims[2]);
 #ifdef USE_cuFFT
 			if (file_output)
-				fprintf(output, "cuFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
-			printf("cuFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+				fprintf(output, "cuFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+			printf("cuFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
 #endif
 			if (file_output)
-				fprintf(output, "VkFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
-			printf("VkFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+				fprintf(output, "VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+			printf("VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
 			free(output_VkFFT);
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 
 #if(VKFFT_BACKEND==0)
 				vkDestroyBuffer(vkGPU->device, buffer[i], NULL);
@@ -3952,7 +3955,7 @@ VkFFTResult sample_13(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 }
 #endif
 
-VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_14(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -3970,24 +3973,24 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	const int num_benchmark_samples = 200;
 	const int num_runs = 1;
 
-	uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {3, 1, 1, 1},{5, 1, 1, 1},{6, 1, 1, 1},{7, 1, 1, 1},{9, 1, 1, 1},{10, 1, 1, 1},{11, 1, 1, 1},{12, 1, 1, 1},{13, 1, 1, 1},{14, 1, 1, 1},
+	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {3, 1, 1, 1},{5, 1, 1, 1},{6, 1, 1, 1},{7, 1, 1, 1},{9, 1, 1, 1},{10, 1, 1, 1},{11, 1, 1, 1},{12, 1, 1, 1},{13, 1, 1, 1},{14, 1, 1, 1},
 		{15, 1, 1, 1},{21, 1, 1, 1},{22, 1, 1, 1},{24, 1, 1, 1},{25, 1, 1, 1},{26, 1, 1, 1},{27, 1, 1, 1},{28, 1, 1, 1},{30, 1, 1, 1},{33, 1, 1, 1},{35, 1, 1, 1},{39, 1, 1, 1},{45, 1, 1, 1},{42, 1, 1, 1},{44, 1, 1, 1},{49, 1, 1, 1},{52, 1, 1, 1},{55, 1, 1, 1},{56, 1, 1, 1},{60, 1, 1, 1},{65, 1, 1, 1},{66, 1, 1, 1},{81, 1, 1, 1},
 		{121, 1, 1, 1},{125, 1, 1, 1},{143, 1, 1, 1},{169, 1, 1, 1},{243, 1, 1, 1},{286, 1, 1, 1},{343, 1, 1, 1},{429, 1, 1, 1},{572, 1, 1, 1},{625, 1, 1, 1},{720, 1, 1, 1},{1080, 1, 1, 1},{1001, 1, 1, 1},{1287, 1, 1, 1},{1400, 1, 1, 1},{1440, 1, 1, 1},{1920, 1, 1, 1},{2160, 1, 1, 1},{3024,1,1,1},{3500,1,1,1},
 		{3840, 1, 1, 1},{4000 , 1, 1, 1},{4050, 1, 1, 1},{4320 , 1, 1, 1},{7000,1,1,1},{7680, 1, 1, 1},{9000, 1, 1, 1},{7680 * 5, 1, 1, 1},
-		{(uint32_t)pow(3,10), 1, 1, 1},{(uint32_t)pow(3,11), 1, 1, 1},{(uint32_t)pow(3,12), 1, 1, 1},{(uint32_t)pow(3,13), 1, 1, 1},{(uint32_t)pow(3,14), 1, 1, 1},{(uint32_t)pow(3,15), 1, 1, 1},
-		{(uint32_t)pow(5,5), 1, 1, 1},{(uint32_t)pow(5,6), 1, 1, 1},{(uint32_t)pow(5,7), 1, 1, 1},{(uint32_t)pow(5,8), 1, 1, 1},{(uint32_t)pow(5,9), 1, 1, 1},
-		{(uint32_t)pow(7,4), 1, 1, 1},{(uint32_t)pow(7,5), 1, 1, 1},{(uint32_t)pow(7,6), 1, 1, 1},{(uint32_t)pow(7,7), 1, 1, 1},{(uint32_t)pow(7,8), 1, 1, 1},
-		{(uint32_t)pow(11,3), 1, 1, 1},{(uint32_t)pow(11,4), 1, 1, 1},{(uint32_t)pow(11,5), 1, 1, 1},{(uint32_t)pow(11,6), 1, 1, 1},
-		{(uint32_t)pow(13,3), 1, 1, 1},{(uint32_t)pow(13,4), 1, 1, 1},{(uint32_t)pow(13,5), 1, 1, 1},{(uint32_t)pow(13,6), 1, 1, 1},
+		{(uint64_t)pow(3,10), 1, 1, 1},{(uint64_t)pow(3,11), 1, 1, 1},{(uint64_t)pow(3,12), 1, 1, 1},{(uint64_t)pow(3,13), 1, 1, 1},{(uint64_t)pow(3,14), 1, 1, 1},{(uint64_t)pow(3,15), 1, 1, 1},
+		{(uint64_t)pow(5,5), 1, 1, 1},{(uint64_t)pow(5,6), 1, 1, 1},{(uint64_t)pow(5,7), 1, 1, 1},{(uint64_t)pow(5,8), 1, 1, 1},{(uint64_t)pow(5,9), 1, 1, 1},
+		{(uint64_t)pow(7,4), 1, 1, 1},{(uint64_t)pow(7,5), 1, 1, 1},{(uint64_t)pow(7,6), 1, 1, 1},{(uint64_t)pow(7,7), 1, 1, 1},{(uint64_t)pow(7,8), 1, 1, 1},
+		{(uint64_t)pow(11,3), 1, 1, 1},{(uint64_t)pow(11,4), 1, 1, 1},{(uint64_t)pow(11,5), 1, 1, 1},{(uint64_t)pow(11,6), 1, 1, 1},
+		{(uint64_t)pow(13,3), 1, 1, 1},{(uint64_t)pow(13,4), 1, 1, 1},{(uint64_t)pow(13,5), 1, 1, 1},{(uint64_t)pow(13,6), 1, 1, 1},
 		{8, 3, 1, 2},{8, 5, 1, 2},{8, 6, 1, 2},{8, 7, 1, 2},{8, 9, 1, 2},{8, 10, 1, 2},{8, 11, 1, 2},{8, 12, 1, 2},{8, 13, 1, 2},{8, 14, 1, 2},{8, 15, 1, 2},{8, 21, 1, 2},{8, 22, 1, 2},{8, 24, 1, 2},
 		{8, 25, 1, 2},{8, 26, 1, 2},{8, 27, 1, 2},{8, 28, 1, 2},{8, 30, 1, 2},{8, 33, 1, 2},{8, 35, 1, 2},{8, 39, 1, 2},{8, 44, 1, 2},{8, 45, 1, 2},{8, 49, 1, 2},{8, 52, 1, 2},{8, 56, 1, 2},{8, 60, 1, 2},{8, 66, 1, 2},{8, 81, 1, 2},{8, 125, 1, 2},{8, 243, 1, 2},{8, 343, 1, 2},
 		{8, 625, 1, 2},{8, 720, 1, 2},{8, 1080, 1, 2},{8, 1400, 1, 2},{8, 1440, 1, 2},{8, 1920, 1, 2},{8, 2160, 1, 2},{8, 3024, 1, 2},{8, 3500, 1, 2},
 		{8, 3840, 1, 2},{8, 4000, 1, 2},{8, 4050, 1, 2},{8, 4320, 1, 2},{8, 7000, 1, 2},{8, 7680, 1, 2},{8, 4050 * 3, 1, 2},{8, 7680 * 5, 1, 2}, {720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},{7680, 4320, 1, 2},
-		{8, (uint32_t)pow(3,10), 1, 2},	{8, (uint32_t)pow(3,11), 1, 2}, {8, (uint32_t)pow(3,12), 1, 2}, {8, (uint32_t)pow(3,13), 1, 2}, {8, (uint32_t)pow(3,14), 1, 2}, {8, (uint32_t)pow(3,15), 1, 2},
-		{8, (uint32_t)pow(5,5), 1, 2},	{8, (uint32_t)pow(5,6), 1, 2}, {8, (uint32_t)pow(5,7), 1, 2}, {8, (uint32_t)pow(5,8), 1, 2}, {8, (uint32_t)pow(5,9), 1, 2},
-		{8, (uint32_t)pow(7,4), 1, 2},{8, (uint32_t)pow(7,5), 1, 2},{8, (uint32_t)pow(7,6), 1, 2},{8, (uint32_t)pow(7,7), 1, 2},{8, (uint32_t)pow(7,8), 1, 2},
-		{8, (uint32_t)pow(11,3), 1, 2},{8, (uint32_t)pow(11,4), 1, 2},{8, (uint32_t)pow(11,5), 1, 2},{8, (uint32_t)pow(11,6), 1, 2},
-		{8, (uint32_t)pow(13,3), 1, 2},{8, (uint32_t)pow(13,4), 1, 2},{8, (uint32_t)pow(13,5), 1, 2},{8, (uint32_t)pow(13,6), 1, 2},
+		{8, (uint64_t)pow(3,10), 1, 2},	{8, (uint64_t)pow(3,11), 1, 2}, {8, (uint64_t)pow(3,12), 1, 2}, {8, (uint64_t)pow(3,13), 1, 2}, {8, (uint64_t)pow(3,14), 1, 2}, {8, (uint64_t)pow(3,15), 1, 2},
+		{8, (uint64_t)pow(5,5), 1, 2},	{8, (uint64_t)pow(5,6), 1, 2}, {8, (uint64_t)pow(5,7), 1, 2}, {8, (uint64_t)pow(5,8), 1, 2}, {8, (uint64_t)pow(5,9), 1, 2},
+		{8, (uint64_t)pow(7,4), 1, 2},{8, (uint64_t)pow(7,5), 1, 2},{8, (uint64_t)pow(7,6), 1, 2},{8, (uint64_t)pow(7,7), 1, 2},{8, (uint64_t)pow(7,8), 1, 2},
+		{8, (uint64_t)pow(11,3), 1, 2},{8, (uint64_t)pow(11,4), 1, 2},{8, (uint64_t)pow(11,5), 1, 2},{8, (uint64_t)pow(11,6), 1, 2},
+		{8, (uint64_t)pow(13,3), 1, 2},{8, (uint64_t)pow(13,4), 1, 2},{8, (uint64_t)pow(13,5), 1, 2},{8, (uint64_t)pow(13,6), 1, 2},
 		{3, 3, 3, 3},{5, 5, 5, 3},{6, 6, 6, 3},{7, 7, 7, 3},{9, 9, 9, 3},{10, 10, 10, 3},{11, 11, 11, 3},{12, 12, 12, 3},{13, 13, 13, 3},{14, 14, 14, 3},
 		{15, 15, 15, 3},{21, 21, 21, 3},{22, 22, 22, 3},{24, 24, 24, 3},{25, 25, 25, 3},{26, 26, 26, 3},{27, 27, 27, 3},{28, 28, 28, 3},{30, 30, 30, 3},{33, 33, 33, 3},{35, 35, 35, 3},{39, 39, 39, 3},{42, 42, 42, 3},{44, 44, 44, 3},{45, 45, 45, 3},{49, 49, 49, 3},{52, 52, 52, 3},{56, 56, 56, 3},{60, 60, 60, 3},{81, 81, 81, 3},
 		{121, 121, 121, 3},{125, 125, 125, 3},{143, 143, 143, 3},{169, 169, 169, 3},{243, 243, 243, 3}
@@ -4000,13 +4003,13 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			fftwf_complex* inputC;
 			fftw_complex* inputC_double;
-			uint32_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
+			uint64_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
 
 			inputC = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * dims[0] * dims[1] * dims[2]));
 			inputC_double = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
-			for (int l = 0; l < dims[2]; l++) {
-				for (int j = 0; j < dims[1]; j++) {
-					for (int i = 0; i < dims[0]; i++) {
+			for (uint64_t l = 0; l < dims[2]; l++) {
+				for (uint64_t j = 0; j < dims[1]; j++) {
+					for (uint64_t i = 0; i < dims[0]; i++) {
 						inputC[i + j * dims[0] + l * dims[0] * dims[1]][0] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						inputC[i + j * dims[0] + l * dims[0] * dims[1]][1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						inputC_double[i + j * dims[0] + l * dims[0] * dims[1]][0] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]][0];
@@ -4058,11 +4061,11 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			configuration.context = &vkGPU->context;
 #endif			
 
-			uint32_t numBuf = 1;
+			uint64_t numBuf = 1;
 
 			//Allocate buffers for the input data. - we use 4 in this example
 			uint64_t* bufferSize = (uint64_t*)malloc(sizeof(uint64_t) * numBuf);
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 				bufferSize[i] = {};
 				bufferSize[i] = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2] / numBuf;
 			}
@@ -4076,7 +4079,7 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 #elif(VKFFT_BACKEND==3)
 			cl_mem buffer = 0;
 #endif			
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				buffer[i] = {};
 				bufferDeviceMemory[i] = {};
@@ -4108,7 +4111,7 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 			uint64_t shift = 0;
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				resFFT = transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -4146,7 +4149,7 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			//Transfer data from GPU using staging buffer.
 			shift = 0;
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -4166,12 +4169,12 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			float max_difference[2] = { 0,0 };
 			float avg_eps[2] = { 0,0 };
 			float max_eps[2] = { 0,0 };
-			for (int l = 0; l < dims[2]; l++) {
-				for (int j = 0; j < dims[1]; j++) {
-					for (int i = 0; i < dims[0]; i++) {
-						int loc_i = i;
-						int loc_j = j;
-						int loc_l = l;
+			for (uint64_t l = 0; l < dims[2]; l++) {
+				for (uint64_t j = 0; j < dims[1]; j++) {
+					for (uint64_t i = 0; i < dims[0]; i++) {
+						uint64_t loc_i = i;
+						uint64_t loc_j = j;
+						uint64_t loc_l = l;
 
 						//if (file_output) fprintf(output, "%f %f - %f %f \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
 						//if (i > dims[0] - 10)
@@ -4195,10 +4198,10 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			avg_difference[1] /= (dims[0] * dims[1] * dims[2]);
 			avg_eps[1] /= (dims[0] * dims[1] * dims[2]);
 			if (file_output)
-				fprintf(output, "VkFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
-			printf("VkFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+				fprintf(output, "VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+			printf("VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
 			free(output_VkFFT);
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 
 #if(VKFFT_BACKEND==0)
 				vkDestroyBuffer(vkGPU->device, buffer[i], NULL);
@@ -4226,7 +4229,7 @@ VkFFTResult sample_14(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	}
 	return resFFT;
 }
-VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_15(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -4244,18 +4247,18 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	const int num_benchmark_samples = 190;
 	const int num_runs = 1;
 
-	uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {(uint32_t)pow(2,5), 1, 1, 1}, {(uint32_t)pow(2,6), 1, 1, 1},{(uint32_t)pow(2,7), 1, 1, 1},{(uint32_t)pow(2,8), 1, 1, 1},{(uint32_t)pow(2,9), 1, 1, 1},{(uint32_t)pow(2,10), 1, 1, 1},
-		{(uint32_t)pow(2,11), 1, 1, 1},{(uint32_t)pow(2,12), 1, 1, 1},{(uint32_t)pow(2,13), 1, 1, 1},{(uint32_t)pow(2,14), 1, 1, 1},{(uint32_t)pow(2,15), 1, 1, 1},{(uint32_t)pow(2,16), 1, 1, 1},{(uint32_t)pow(2,17), 1, 1, 1},{(uint32_t)pow(2,18), 1, 1, 1},
-		{(uint32_t)pow(2,19), 1, 1, 1},{(uint32_t)pow(2,20), 1, 1, 1},{(uint32_t)pow(2,21), 1, 1, 1},{(uint32_t)pow(2,22), 1, 1, 1},{(uint32_t)pow(2,23), 1, 1, 1},{(uint32_t)pow(2,24), 1, 1, 1},{(uint32_t)pow(2,25), 1, 1, 1},{(uint32_t)pow(2,26), 1, 1, 1},
+	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {(uint64_t)pow(2,5), 1, 1, 1}, {(uint64_t)pow(2,6), 1, 1, 1},{(uint64_t)pow(2,7), 1, 1, 1},{(uint64_t)pow(2,8), 1, 1, 1},{(uint64_t)pow(2,9), 1, 1, 1},{(uint64_t)pow(2,10), 1, 1, 1},
+		{(uint64_t)pow(2,11), 1, 1, 1},{(uint64_t)pow(2,12), 1, 1, 1},{(uint64_t)pow(2,13), 1, 1, 1},{(uint64_t)pow(2,14), 1, 1, 1},{(uint64_t)pow(2,15), 1, 1, 1},{(uint64_t)pow(2,16), 1, 1, 1},{(uint64_t)pow(2,17), 1, 1, 1},{(uint64_t)pow(2,18), 1, 1, 1},
+		{(uint64_t)pow(2,19), 1, 1, 1},{(uint64_t)pow(2,20), 1, 1, 1},{(uint64_t)pow(2,21), 1, 1, 1},{(uint64_t)pow(2,22), 1, 1, 1},{(uint64_t)pow(2,23), 1, 1, 1},{(uint64_t)pow(2,24), 1, 1, 1},{(uint64_t)pow(2,25), 1, 1, 1},{(uint64_t)pow(2,26), 1, 1, 1},
 
-		{8, (uint32_t)pow(2,3), 1, 2},{8, (uint32_t)pow(2,4), 1, 2},{8, (uint32_t)pow(2,5), 1, 2},{8, (uint32_t)pow(2,6), 1, 2},{8, (uint32_t)pow(2,7), 1, 2},{8, (uint32_t)pow(2,8), 1, 2},{8, (uint32_t)pow(2,9), 1, 2},{8, (uint32_t)pow(2,10), 1, 2},
-		{8, (uint32_t)pow(2,11), 1, 2},{8, (uint32_t)pow(2,12), 1, 2},{8, (uint32_t)pow(2,13), 1, 2},{8, (uint32_t)pow(2,14), 1, 2},{8, (uint32_t)pow(2,15), 1, 2},{8, (uint32_t)pow(2,16), 1, 2},{8, (uint32_t)pow(2,17), 1, 2},{8, (uint32_t)pow(2,18), 1, 2},
-		{8, (uint32_t)pow(2,19), 1, 2},{8, (uint32_t)pow(2,20), 1, 2},{8, (uint32_t)pow(2,21), 1, 2},{8, (uint32_t)pow(2,22), 1, 2},{8, (uint32_t)pow(2,23), 1, 2},{8, (uint32_t)pow(2,24), 1, 2},
+		{8, (uint64_t)pow(2,3), 1, 2},{8, (uint64_t)pow(2,4), 1, 2},{8, (uint64_t)pow(2,5), 1, 2},{8, (uint64_t)pow(2,6), 1, 2},{8, (uint64_t)pow(2,7), 1, 2},{8, (uint64_t)pow(2,8), 1, 2},{8, (uint64_t)pow(2,9), 1, 2},{8, (uint64_t)pow(2,10), 1, 2},
+		{8, (uint64_t)pow(2,11), 1, 2},{8, (uint64_t)pow(2,12), 1, 2},{8, (uint64_t)pow(2,13), 1, 2},{8, (uint64_t)pow(2,14), 1, 2},{8, (uint64_t)pow(2,15), 1, 2},{8, (uint64_t)pow(2,16), 1, 2},{8, (uint64_t)pow(2,17), 1, 2},{8, (uint64_t)pow(2,18), 1, 2},
+		{8, (uint64_t)pow(2,19), 1, 2},{8, (uint64_t)pow(2,20), 1, 2},{8, (uint64_t)pow(2,21), 1, 2},{8, (uint64_t)pow(2,22), 1, 2},{8, (uint64_t)pow(2,23), 1, 2},{8, (uint64_t)pow(2,24), 1, 2},
 
-		{ (uint32_t)pow(2,3), (uint32_t)pow(2,3), 1, 2},{ (uint32_t)pow(2,4), (uint32_t)pow(2,4), 1, 2},{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), 1, 2},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},
-		{ (uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},{ (uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},{ (uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},{ (uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{ (uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
+		{ (uint64_t)pow(2,3), (uint64_t)pow(2,3), 1, 2},{ (uint64_t)pow(2,4), (uint64_t)pow(2,4), 1, 2},{ (uint64_t)pow(2,5), (uint64_t)pow(2,5), 1, 2},{ (uint64_t)pow(2,6), (uint64_t)pow(2,6), 1, 2},{ (uint64_t)pow(2,7), (uint64_t)pow(2,7), 1, 2},{ (uint64_t)pow(2,8), (uint64_t)pow(2,8), 1, 2},{ (uint64_t)pow(2,9), (uint64_t)pow(2,9), 1, 2},
+		{ (uint64_t)pow(2,10), (uint64_t)pow(2,10), 1, 2},{ (uint64_t)pow(2,11), (uint64_t)pow(2,11), 1, 2},{ (uint64_t)pow(2,12), (uint64_t)pow(2,12), 1, 2},{ (uint64_t)pow(2,13), (uint64_t)pow(2,13), 1, 2},{ (uint64_t)pow(2,14), (uint64_t)pow(2,13), 1, 2},
 
-		{ (uint32_t)pow(2,3), (uint32_t)pow(2,3), (uint32_t)pow(2,3), 3},{ (uint32_t)pow(2,4), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3},{ (uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{ (uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{ (uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{ (uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{ (uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3},
+		{ (uint64_t)pow(2,3), (uint64_t)pow(2,3), (uint64_t)pow(2,3), 3},{ (uint64_t)pow(2,4), (uint64_t)pow(2,4), (uint64_t)pow(2,4), 3},{ (uint64_t)pow(2,5), (uint64_t)pow(2,5), (uint64_t)pow(2,5), 3},{ (uint64_t)pow(2,6), (uint64_t)pow(2,6), (uint64_t)pow(2,6), 3},{ (uint64_t)pow(2,7), (uint64_t)pow(2,7), (uint64_t)pow(2,7), 3},{ (uint64_t)pow(2,8), (uint64_t)pow(2,8), (uint64_t)pow(2,8), 3},{ (uint64_t)pow(2,9), (uint64_t)pow(2,9), (uint64_t)pow(2,9), 3},
 		{720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},
 
 		{3, 1, 1, 1},{5, 1, 1, 1},{6, 1, 1, 1},{7, 1, 1, 1},{9, 1, 1, 1},{10, 1, 1, 1},{11, 1, 1, 1},{12, 1, 1, 1},{13, 1, 1, 1},{14, 1, 1, 1},
@@ -4275,13 +4278,13 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			float* inputC;
 			double* inputC_double;
-			uint32_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
+			uint64_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
 
 			inputC = (float*)(malloc(sizeof(float) * (dims[0]) * dims[1] * dims[2]));
 			inputC_double = (double*)(malloc(sizeof(double) * (dims[0]) * dims[1] * dims[2]));
-			for (int l = 0; l < dims[2]; l++) {
-				for (int j = 0; j < dims[1]; j++) {
-					for (int i = 0; i < dims[0]; i++) {
+			for (uint64_t l = 0; l < dims[2]; l++) {
+				for (uint64_t j = 0; j < dims[1]; j++) {
+					for (uint64_t i = 0; i < dims[0]; i++) {
 						inputC[i + j * (dims[0]) + l * (dims[0]) * dims[1]] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						inputC_double[i + j * (dims[0]) + l * (dims[0]) * dims[1]] = (double)inputC[i + j * (dims[0]) + l * (dims[0]) * dims[1]];
 					}
@@ -4358,15 +4361,15 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			configuration.context = &vkGPU->context;
 #endif			
 
-			uint32_t numBuf = 1;
+			uint64_t numBuf = 1;
 
 			uint64_t* inputBufferSize = (uint64_t*)malloc(sizeof(uint64_t) * numBuf);
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 				inputBufferSize[i] = {};
 				inputBufferSize[i] = (uint64_t)sizeof(float) * configuration.size[0] * configuration.size[1] * configuration.size[2] / numBuf;
 			}
 			uint64_t* bufferSize = (uint64_t*)malloc(sizeof(uint64_t) * numBuf);
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 				bufferSize[i] = {};
 				bufferSize[i] = (uint64_t)sizeof(float) * 2 * (configuration.size[0] / 2 + 1) * configuration.size[1] * configuration.size[2] / numBuf;
 			}
@@ -4385,7 +4388,7 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			cl_mem ibuffer = 0;
 			cl_mem buffer = 0;
 #endif
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				buffer[i] = {};
 				bufferDeviceMemory[i] = {};
@@ -4450,7 +4453,7 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 			uint64_t shift = 0;
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				resFFT = transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftwf_complex)), &ibuffer[i], inputBufferSize[i]);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -4510,7 +4513,7 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 
 			//Transfer data from GPU using staging buffer.
 			shift = 0;
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 				//resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
 				resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftwf_complex)), &ibuffer[i], inputBufferSize[i]);
@@ -4534,12 +4537,12 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			float avg_eps[2] = { 0,0 };
 			float max_eps[2] = { 0,0 };
 
-			for (int l = 0; l < dims[2]; l++) {
-				for (int j = 0; j < dims[1]; j++) {
-					for (int i = 0; i < dims[0]; i++) {
-						int loc_i = i;
-						int loc_j = j;
-						int loc_l = l;
+			for (uint64_t l = 0; l < dims[2]; l++) {
+				for (uint64_t j = 0; j < dims[1]; j++) {
+					for (uint64_t i = 0; i < dims[0]; i++) {
+						uint64_t loc_i = i;
+						uint64_t loc_j = j;
+						uint64_t loc_l = l;
 
 						//if (file_output) fprintf(output, "%f %f - %f %f \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
 						//if (i > dims[0] - 10)
@@ -4574,19 +4577,19 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 			avg_eps[1] /= (dims[0] * dims[1] * dims[2]);
 #ifdef USE_cuFFT
 			if (file_output)
-				fprintf(output, "cuFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
-			printf("cuFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+				fprintf(output, "cuFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+			printf("cuFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
 #endif
 #ifdef USE_rocFFT
 			if (file_output)
-				fprintf(output, "rocFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
-			printf("rocFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+				fprintf(output, "rocFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+			printf("rocFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
 #endif
 			if (file_output)
-				fprintf(output, "VkFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
-			printf("VkFFT System: %dx%dx%d avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+				fprintf(output, "VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+			printf("VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
 			free(output_VkFFT);
-			for (uint32_t i = 0; i < numBuf; i++) {
+			for (uint64_t i = 0; i < numBuf; i++) {
 
 #if(VKFFT_BACKEND==0)
 				vkDestroyBuffer(vkGPU->device, buffer[i], NULL);
@@ -4627,7 +4630,7 @@ VkFFTResult sample_15(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* 
 	return resFFT;
 }
 #endif
-VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_1000(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -4649,9 +4652,9 @@ VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 		buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 	}
 	int num_systems = 0;
-	for (uint32_t n = 1; n < 4097; n++) {
+	for (uint64_t n = 1; n < 4097; n++) {
 		double run_time[num_runs];
-		for (uint32_t r = 0; r < num_runs; r++) {
+		for (uint64_t r = 0; r < num_runs; r++) {
 			//Configuration + FFT application .
 			VkFFTConfiguration configuration = {};
 			VkFFTApplication app = {};
@@ -4660,9 +4663,9 @@ VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
 			configuration.size[0] = n;// 4 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 			if (n == 1) configuration.size[0] = 4096;
-			uint32_t temp = configuration.size[0];
+			uint64_t temp = configuration.size[0];
 
-			for (uint32_t j = 2; j < 14; j++)
+			for (uint64_t j = 2; j < 14; j++)
 			{
 				if (temp % j == 0) {
 					temp /= j;
@@ -4670,7 +4673,7 @@ VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 				}
 			}
 			if (temp != 1) break;
-			configuration.size[1] = pow(2, (uint32_t)log2(64 * 32 * pow(2, 16) / configuration.size[0]));
+			configuration.size[1] = pow(2, (uint64_t)log2(64 * 32 * pow(2, 16) / configuration.size[0]));
 			if (configuration.size[1] < 1) configuration.size[1] = 1;
 			configuration.size[2] = 1;
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
@@ -4715,9 +4718,9 @@ VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 			/*float* buffer_input = (float*)malloc(bufferSize);
 
-			for (uint32_t k = 0; k < configuration.size[2]; k++) {
-				for (uint32_t j = 0; j < configuration.size[1]; j++) {
-					for (uint32_t i = 0; i < configuration.size[0]; i++) {
+			for (uint64_t k = 0; k < configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < configuration.size[0]; i++) {
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						}
@@ -4745,7 +4748,7 @@ VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
+			uint64_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #elif(VKFFT_BACKEND==3)
@@ -4764,22 +4767,22 @@ VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 					num_systems++;
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
-					uint32_t num_tot_transfers = 0;
-					for (uint32_t i = 0; i < configuration.FFTdim; i++)
+					uint64_t num_tot_transfers = 0;
+					for (uint64_t i = 0; i < configuration.FFTdim; i++)
 						num_tot_transfers += app.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
-						fprintf(output, "VkFFT System: %d %d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						fprintf(output, "VkFFT System: %" PRIu64 " %" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 
-					printf("VkFFT System: %d %d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+					printf("VkFFT System: %" PRIu64 " %" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 					benchmark_result += ((double)bufferSize / 1024) / avg_time;
 				}
 
@@ -4805,18 +4808,18 @@ VkFFTResult sample_1000(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 	benchmark_result /= (num_systems);
 
 	if (file_output) {
-		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	}
-	printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	return resFFT;
 }
-VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_1001(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -4840,7 +4843,7 @@ VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 	int num_systems = 0;
 	for (int n = 1; n < 4097; n++) {
 		double run_time[num_runs];
-		for (uint32_t r = 0; r < num_runs; r++) {
+		for (uint64_t r = 0; r < num_runs; r++) {
 			//Configuration + FFT application .
 			VkFFTConfiguration configuration = {};
 			VkFFTApplication app = {};
@@ -4849,9 +4852,9 @@ VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
 			configuration.size[0] = n;// 4 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 			if (n == 1) configuration.size[0] = 4096;
-			uint32_t temp = configuration.size[0];
+			uint64_t temp = configuration.size[0];
 
-			for (uint32_t j = 2; j < 14; j++)
+			for (uint64_t j = 2; j < 14; j++)
 			{
 				if (temp % j == 0) {
 					temp /= j;
@@ -4859,7 +4862,7 @@ VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 				}
 			}
 			if (temp != 1) break;
-			configuration.size[1] = pow(2, (uint32_t)log2(64 * 32 * pow(2, 15) / configuration.size[0]));
+			configuration.size[1] = pow(2, (uint64_t)log2(64 * 32 * pow(2, 15) / configuration.size[0]));
 			if (configuration.size[1] < 1) configuration.size[1] = 1;
 			configuration.size[2] = 1;
 
@@ -4907,9 +4910,9 @@ VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 			/*float* buffer_input = (float*)malloc(bufferSize);
 
-			for (uint32_t k = 0; k < configuration.size[2]; k++) {
-				for (uint32_t j = 0; j < configuration.size[1]; j++) {
-					for (uint32_t i = 0; i < configuration.size[0]; i++) {
+			for (uint64_t k = 0; k < configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < configuration.size[0]; i++) {
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						}
@@ -4937,7 +4940,7 @@ VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint32_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
+			uint64_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #elif(VKFFT_BACKEND==3)
@@ -4956,22 +4959,22 @@ VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 					num_systems++;
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
-					uint32_t num_tot_transfers = 0;
-					for (uint32_t i = 0; i < configuration.FFTdim; i++)
+					uint64_t num_tot_transfers = 0;
+					for (uint64_t i = 0; i < configuration.FFTdim; i++)
 						num_tot_transfers += app.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
-						fprintf(output, "VkFFT System: %d %d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						fprintf(output, "VkFFT System: %" PRIu64 " %" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 
-					printf("VkFFT System: %d %d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+					printf("VkFFT System: %" PRIu64 " %" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", configuration.size[0], configuration.size[1], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 					benchmark_result += ((double)bufferSize * sizeof(float) / sizeof(double) / 1024) / avg_time;
 				}
 
@@ -4995,18 +4998,18 @@ VkFFTResult sample_1001(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 	free(buffer_input);
 	benchmark_result /= (num_systems);
 	if (file_output) {
-		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	}
-	printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	return resFFT;
 }
-VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output, uint32_t isCompilerInitialized) {
+VkFFTResult sample_1003(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output, uint64_t isCompilerInitialized) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -5030,7 +5033,7 @@ VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 	int num_systems = 0;
 	for (int n = 1; n < 513; n++) {
 		double run_time[num_runs];
-		for (uint32_t r = 0; r < num_runs; r++) {
+		for (uint64_t r = 0; r < num_runs; r++) {
 			//Configuration + FFT application .
 			VkFFTConfiguration configuration = {};
 			VkFFTApplication app = {};
@@ -5039,9 +5042,9 @@ VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D (default 1).
 			configuration.size[0] = n;// 4 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 			if (n == 1) configuration.size[0] = 512;
-			uint32_t temp = configuration.size[0];
+			uint64_t temp = configuration.size[0];
 
-			for (uint32_t j = 2; j < 14; j++)
+			for (uint64_t j = 2; j < 14; j++)
 			{
 				if (temp % j == 0) {
 					temp /= j;
@@ -5093,9 +5096,9 @@ VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 			/*float* buffer_input = (float*)malloc(bufferSize);
 
-			for (uint32_t k = 0; k < configuration.size[2]; k++) {
-				for (uint32_t j = 0; j < configuration.size[1]; j++) {
-					for (uint32_t i = 0; i < configuration.size[0]; i++) {
+			for (uint64_t k = 0; k < configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < configuration.size[0]; i++) {
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1])] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						buffer_input[2 * (i + j * configuration.size[0] + k * (configuration.size[0]) * configuration.size[1]) + 1] = 2 * ((float)rand()) / RAND_MAX - 1.0;
 						}
@@ -5123,7 +5126,7 @@ VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint32_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
+			uint64_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #elif(VKFFT_BACKEND==3)
@@ -5142,22 +5145,22 @@ VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 					num_systems++;
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t] - avg_time) * (run_time[t] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
-					uint32_t num_tot_transfers = 0;
-					for (uint32_t i = 0; i < configuration.FFTdim; i++)
+					uint64_t num_tot_transfers = 0;
+					for (uint64_t i = 0; i < configuration.FFTdim; i++)
 						num_tot_transfers += app.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
-						fprintf(output, "VkFFT System: %d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", configuration.size[0], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						fprintf(output, "VkFFT System: %" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", configuration.size[0], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 
-					printf("VkFFT System: %d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %d benchmark: %d bandwidth: %0.1f\n", configuration.size[0], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (int)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+					printf("VkFFT System: %" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", configuration.size[0], bufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)bufferSize / 1024) / avg_time), bufferSize / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 					benchmark_result += ((double)bufferSize / 1024) / avg_time;
 				}
 
@@ -5183,18 +5186,18 @@ VkFFTResult sample_1003(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 	benchmark_result /= (num_systems);
 
 	if (file_output) {
-		fprintf(output, "Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	}
-	printf("Benchmark score VkFFT: %d\n", (int)(benchmark_result));
+	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	return resFFT;
 }
-VkFFTResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE* output) {
+VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE* output) {
 	//Sample Vulkan project GPU initialization.
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 
@@ -5203,37 +5206,37 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 	//create instance - a connection between the application and the Vulkan library 
 	res = createInstance(vkGPU, sample_id);
 	if (res != 0) {
-		//printf("Instance creation failed, error code: %d\n", res);
+		//printf("Instance creation failed, error code: %" PRIu64 "\n", res);
 		return VKFFT_ERROR_FAILED_TO_CREATE_INSTANCE;
 	}
 	//set up the debugging messenger 
 	res = setupDebugMessenger(vkGPU);
 	if (res != 0) {
-		//printf("Debug messenger creation failed, error code: %d\n", res);
+		//printf("Debug messenger creation failed, error code: %" PRIu64 "\n", res);
 		return VKFFT_ERROR_FAILED_TO_SETUP_DEBUG_MESSENGER;
 	}
 	//check if there are GPUs that support Vulkan and select one
 	res = findPhysicalDevice(vkGPU);
 	if (res != 0) {
-		//printf("Physical device not found, error code: %d\n", res);
+		//printf("Physical device not found, error code: %" PRIu64 "\n", res);
 		return VKFFT_ERROR_FAILED_TO_FIND_PHYSICAL_DEVICE;
 	}
 	//create logical device representation
 	res = createDevice(vkGPU, sample_id);
 	if (res != 0) {
-		//printf("Device creation failed, error code: %d\n", res);
+		//printf("Device creation failed, error code: %" PRIu64 "\n", res);
 		return VKFFT_ERROR_FAILED_TO_CREATE_DEVICE;
 	}
 	//create fence for synchronization 
 	res = createFence(vkGPU);
 	if (res != 0) {
-		//printf("Fence creation failed, error code: %d\n", res);
+		//printf("Fence creation failed, error code: %" PRIu64 "\n", res);
 		return VKFFT_ERROR_FAILED_TO_CREATE_FENCE;
 	}
 	//create a place, command buffer memory is allocated from
 	res = createCommandPool(vkGPU);
 	if (res != 0) {
-		//printf("Fence creation failed, error code: %d\n", res);
+		//printf("Fence creation failed, error code: %" PRIu64 "\n", res);
 		return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_POOL;
 	}
 	vkGetPhysicalDeviceProperties(vkGPU->physicalDevice, &vkGPU->physicalDeviceProperties);
@@ -5269,14 +5272,14 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 	cl_platform_id* platforms = (cl_platform_id*)malloc(sizeof(cl_platform_id) * numPlatforms);
 	res = clGetPlatformIDs(numPlatforms, platforms, 0);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
-	uint32_t k = 0;
-	for (uint32_t j = 0; j < numPlatforms; j++) {
+	uint64_t k = 0;
+	for (uint64_t j = 0; j < numPlatforms; j++) {
 		cl_uint numDevices;
 		res = clGetDeviceIDs(platforms[j], CL_DEVICE_TYPE_ALL, 0, 0, &numDevices);
 		cl_device_id* deviceList = (cl_device_id*)malloc(sizeof(cl_device_id) * numDevices);
 		res = clGetDeviceIDs(platforms[j], CL_DEVICE_TYPE_ALL, numDevices, deviceList, 0);
 		if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
-		for (uint32_t i = 0; i < numDevices; i++) {
+		for (uint64_t i = 0; i < numDevices; i++) {
 			if (k == vkGPU->device_id) {
 				vkGPU->platform = platforms[j];
 				vkGPU->device = deviceList[i];
@@ -5296,7 +5299,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint32_t sample_id, bool file_output, FILE
 	free(platforms);
 #endif
 
-	uint32_t isCompilerInitialized = 1;
+	uint64_t isCompilerInitialized = 1;
 
 	switch (sample_id) {
 	case 0:
@@ -5444,7 +5447,12 @@ int main(int argc, char* argv[])
 	if (findFlag(argv, argv + argc, "-h"))
 	{
 		//print help
-		printf("VkFFT v1.2.0 (13-04-2021). Author: Tolmachev Dmitrii\n");
+		int version = VkFFTGetVersion();
+		int version_decomposed[3];
+		version_decomposed[0] = version / 10000;
+		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
+		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
+		printf("VkFFT v%d.%d.%d (26-04-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
@@ -5543,7 +5551,7 @@ int main(int argc, char* argv[])
 		//select device_id
 		char* value = getFlagValue(argv, argv + argc, "-d");
 		if (value != 0) {
-			sscanf(value, "%d", &vkGPU.device_id);
+			sscanf(value, "%" PRIu64 "", &vkGPU.device_id);
 		}
 		else {
 			printf("No device is selected with -d flag\n");
@@ -5568,8 +5576,8 @@ int main(int argc, char* argv[])
 		//select sample_id
 		char* value = getFlagValue(argv, argv + argc, "-vkfft");
 		if (value != 0) {
-			uint32_t sample_id = 0;
-			sscanf(value, "%d", &sample_id);
+			uint64_t sample_id = 0;
+			sscanf(value, "%" PRIu64 "", &sample_id);
 			VkFFTResult resFFT = launchVkFFT(&vkGPU, sample_id, file_output, output);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 		}
@@ -5584,8 +5592,8 @@ int main(int argc, char* argv[])
 		//select sample_id
 		char* value = getFlagValue(argv, argv + argc, "-cufft");
 		if (value != 0) {
-			uint32_t sample_id = 0;
-			sscanf(value, "%d", &sample_id);
+			uint64_t sample_id = 0;
+			sscanf(value, "%" PRIu64 "", &sample_id);
 			switch (sample_id) {
 			case 0:
 				launch_benchmark_cuFFT_single(file_output, output);
@@ -5624,8 +5632,8 @@ int main(int argc, char* argv[])
 		//select sample_id
 		char* value = getFlagValue(argv, argv + argc, "-rocfft");
 		if (value != 0) {
-			uint32_t sample_id = 0;
-			sscanf(value, "%d", &sample_id);
+			uint64_t sample_id = 0;
+			sscanf(value, "%" PRIu64 "", &sample_id);
 			switch (sample_id) {
 			case 0:
 				launch_benchmark_rocFFT_single(file_output, output);
@@ -5662,7 +5670,7 @@ int main(int argc, char* argv[])
 			file_output = true;
 			output = fopen("result.txt", "a");
 		}
-		for (uint32_t i = 0; i < 7; i++) {
+		for (uint64_t i = 0; i < 7; i++) {
 #if((VKFFT_BACKEND>0) || (VK_API_VERSION == 10))
 			if (i == 2) i++;
 #endif

@@ -6,13 +6,15 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 
 //CUDA parts
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include <cufft.h>
 
-void launch_precision_cuFFT_r2c(void* inputC, void* output_cuFFT, uint32_t* dims)
+void launch_precision_cuFFT_r2c(void* inputC, void* output_cuFFT, uint64_t* dims)
 {
 	cufftHandle planR2C;
 	cufftReal* dataR;

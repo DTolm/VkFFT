@@ -1,10 +1,12 @@
 [![Build Status](https://travis-ci.com/DTolm/VkFFT.svg?token=nMgUQeqx7PXMeCFaXqsb&branch=master)](https://travis-ci.com/github/DTolm/VkFFT)
-# VkFFT - Vulkan/CUDA/HIP Fast Fourier Transform library
+# VkFFT - Vulkan/CUDA/HIP/OpenCL Fast Fourier Transform library
 VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan/CUDA/HIP/OpenCL projects. VkFFT aims to provide community with an open-source alternative to Nvidia's cuFFT library, while achieving better performance. VkFFT is written in C language and supports Vulkan, CUDA, HIP and OpenCL as backends.
 
 ## Join my panel at Nvidia's GTC 2021 in Higher Education and Research category on April 13th, 2021: https://gtc21.event.nvidia.com/
 
 ## Python interface to VkFFT can be found here: https://github.com/vincefn/pyvkfft
+
+## Rust bindings to VkFFT can be found here: https://github.com/semio-ai/vkfft-rs
 
 ## Benchmark results of VkFFT can be found here: https://openbenchmarking.org/test/pts/vkfft
 
@@ -22,13 +24,14 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - WHDCN layout - data is stored in the following order (sorted by increase in strides): the width, the height, the depth, the coordinate (the number of feature maps), the batch number
   - Multiple feature/batch convolutions - one input, multiple kernels
   - Multiple input/output/temporary buffer split. Allows to use data split between different memory allocations and mitigate 4GB single allocation limit.
-  - Works on Nvidia, AMD and Intel GPUs (tested on Nvidia RTX 3080, GTX 1660 Ti, AMD Radeon VII and Intel UHD 620)
+  - Works on Nvidia, AMD and Intel GPUs. And Raspberry Pi 4 GPU.
+  - Works on Windows, Linux and macOS
   - VkFFT supports Vulkan, CUDA, HIP and OpenCL as backend to cover wide range of APIs
-  - Header-only library with Vulkan interface, which allows to append VkFFT directly to user's command buffer. Shaders are compiled once during the plan creation stage
+  - Header-only library with Vulkan interface, which allows to append VkFFT directly to user's command buffer. Kernels are compiled at run-time
 ## Future release plan
  - ##### Planned
     - Publication based on implemented optimizations
-    - Test mobile GPUs
+    - Test mobile GPUs (they should work)
  - ##### Ambitious
     - Multiple GPU job splitting
 
@@ -89,6 +92,4 @@ The precision_cuFFT_VkFFT_FFTW_double.txt file contains the double precision res
 The precision_cuFFT_VkFFT_FFTW_half.txt file contains the half precision results for Nvidia's 1660Ti GPU and AMD Ryzen 2700 CPU. On average, VkFFT is at least two times more precise than cuFFT in half precision (see: max_difference and max_eps coloumns), while being faster on average (vkfft_benchmark_half.png). Note that half precision is still in testing and is only used to store data in VkFFT. cuFFT script can probably also be improved. Average ratio stays in range of 0.2% for both cuFFT and VkFFT. Overall, half precision of VkFFT is ~50%-100% times faster than single on Nvidia's 1660Ti GPU.
 ## Contact information
 Initial version of VkFFT is developed by Tolmachev Dmitrii\
-Formerly Peter Grünberg Institute and Institute for Advanced Simulation, Forschungszentrum Jülich,  D-52425 Jülich, Germany\
-E-mail 1: <d.tolmachev@fz-juelich.de>\
-E-mail 2: <dtolm96@gmail.com>
+E-mail 1: <dtolm96@gmail.com>

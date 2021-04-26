@@ -6,6 +6,8 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 
 //CUDA parts
 #include "cuda_runtime.h"
@@ -22,14 +24,14 @@ void launch_benchmark_cuFFT_single_3d(bool file_output, FILE* output)
 	printf("3 - cuFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
 	const int num_benchmark_samples = 39;
 	const int num_runs = 3;
-	uint32_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
+	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
 	{720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},{7680, 4320, 1, 2},
-	{(uint32_t)pow(2,6), (uint32_t)pow(2,6), 1, 2},	{(uint32_t)pow(2,7), (uint32_t)pow(2,6), 1, 2}, {(uint32_t)pow(2,7), (uint32_t)pow(2,7), 1, 2},	{(uint32_t)pow(2,8), (uint32_t)pow(2,7), 1, 2},{(uint32_t)pow(2,8), (uint32_t)pow(2,8), 1, 2},
-	{(uint32_t)pow(2,9), (uint32_t)pow(2,8), 1, 2},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), 1, 2},	{(uint32_t)pow(2,10), (uint32_t)pow(2,9), 1, 2},{(uint32_t)pow(2,10), (uint32_t)pow(2,10), 1, 2},	{(uint32_t)pow(2,11), (uint32_t)pow(2,10), 1, 2},{(uint32_t)pow(2,11), (uint32_t)pow(2,11), 1, 2},
-	{(uint32_t)pow(2,12), (uint32_t)pow(2,11), 1, 2},{(uint32_t)pow(2,12), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,12), 1, 2},	{(uint32_t)pow(2,13), (uint32_t)pow(2,13), 1, 2},{(uint32_t)pow(2,14), (uint32_t)pow(2,13), 1, 2},
-	{(uint32_t)pow(2,4), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,4), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,4), 3} ,{(uint32_t)pow(2,5), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3},{(uint32_t)pow(2,6), (uint32_t)pow(2,5), (uint32_t)pow(2,5), 3} ,{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,5), 3} ,
-	{(uint32_t)pow(2,6), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3},{(uint32_t)pow(2,7), (uint32_t)pow(2,6), (uint32_t)pow(2,6), 3} ,{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,6), 3} ,{(uint32_t)pow(2,7), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3},{(uint32_t)pow(2,8), (uint32_t)pow(2,7), (uint32_t)pow(2,7), 3} , {(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,7), 3} ,
-	{(uint32_t)pow(2,8), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,8), (uint32_t)pow(2,8), 3}, {(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,8), 3},{(uint32_t)pow(2,9), (uint32_t)pow(2,9), (uint32_t)pow(2,9), 3}
+	{(uint64_t)pow(2,6), (uint64_t)pow(2,6), 1, 2},	{(uint64_t)pow(2,7), (uint64_t)pow(2,6), 1, 2}, {(uint64_t)pow(2,7), (uint64_t)pow(2,7), 1, 2},	{(uint64_t)pow(2,8), (uint64_t)pow(2,7), 1, 2},{(uint64_t)pow(2,8), (uint64_t)pow(2,8), 1, 2},
+	{(uint64_t)pow(2,9), (uint64_t)pow(2,8), 1, 2},{(uint64_t)pow(2,9), (uint64_t)pow(2,9), 1, 2},	{(uint64_t)pow(2,10), (uint64_t)pow(2,9), 1, 2},{(uint64_t)pow(2,10), (uint64_t)pow(2,10), 1, 2},	{(uint64_t)pow(2,11), (uint64_t)pow(2,10), 1, 2},{(uint64_t)pow(2,11), (uint64_t)pow(2,11), 1, 2},
+	{(uint64_t)pow(2,12), (uint64_t)pow(2,11), 1, 2},{(uint64_t)pow(2,12), (uint64_t)pow(2,12), 1, 2},	{(uint64_t)pow(2,13), (uint64_t)pow(2,12), 1, 2},	{(uint64_t)pow(2,13), (uint64_t)pow(2,13), 1, 2},{(uint64_t)pow(2,14), (uint64_t)pow(2,13), 1, 2},
+	{(uint64_t)pow(2,4), (uint64_t)pow(2,4), (uint64_t)pow(2,4), 3} ,{(uint64_t)pow(2,5), (uint64_t)pow(2,4), (uint64_t)pow(2,4), 3} ,{(uint64_t)pow(2,5), (uint64_t)pow(2,5), (uint64_t)pow(2,4), 3} ,{(uint64_t)pow(2,5), (uint64_t)pow(2,5), (uint64_t)pow(2,5), 3},{(uint64_t)pow(2,6), (uint64_t)pow(2,5), (uint64_t)pow(2,5), 3} ,{(uint64_t)pow(2,6), (uint64_t)pow(2,6), (uint64_t)pow(2,5), 3} ,
+	{(uint64_t)pow(2,6), (uint64_t)pow(2,6), (uint64_t)pow(2,6), 3},{(uint64_t)pow(2,7), (uint64_t)pow(2,6), (uint64_t)pow(2,6), 3} ,{(uint64_t)pow(2,7), (uint64_t)pow(2,7), (uint64_t)pow(2,6), 3} ,{(uint64_t)pow(2,7), (uint64_t)pow(2,7), (uint64_t)pow(2,7), 3},{(uint64_t)pow(2,8), (uint64_t)pow(2,7), (uint64_t)pow(2,7), 3} , {(uint64_t)pow(2,8), (uint64_t)pow(2,8), (uint64_t)pow(2,7), 3} ,
+	{(uint64_t)pow(2,8), (uint64_t)pow(2,8), (uint64_t)pow(2,8), 3},{(uint64_t)pow(2,9), (uint64_t)pow(2,8), (uint64_t)pow(2,8), 3}, {(uint64_t)pow(2,9), (uint64_t)pow(2,9), (uint64_t)pow(2,8), 3},{(uint64_t)pow(2,9), (uint64_t)pow(2,9), (uint64_t)pow(2,9), 3}
 	};
 	double benchmark_result[2] = { 0,0 };//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	cufftComplex* inputC = (cufftComplex*)malloc((uint64_t)sizeof(cufftComplex)*pow(2, 27));
@@ -43,7 +45,7 @@ void launch_benchmark_cuFFT_single_3d(bool file_output, FILE* output)
 			cufftHandle planC2C;
 			cufftComplex* dataC;
 
-			uint32_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
+			uint64_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
 
 			cudaMalloc((void**)&dataC, sizeof(cufftComplex) * dims[0] * dims[1] * dims[2]);
 
@@ -65,8 +67,8 @@ void launch_benchmark_cuFFT_single_3d(bool file_output, FILE* output)
 			}
 
 			float totTime = 0;
-			uint32_t cuBufferSize = sizeof(float) * 2 * dims[0] * dims[1] * dims[2];
-			uint32_t batch = ((4096 * 1024.0 * 1024.0) / cuBufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / cuBufferSize;
+			uint64_t cuBufferSize = sizeof(float) * 2 * dims[0] * dims[1] * dims[2];
+			uint64_t batch = ((4096 * 1024.0 * 1024.0) / cuBufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / cuBufferSize;
 			if (batch == 0) batch = 1;
 			std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 			for (int i = 0; i < batch; i++) {
@@ -82,18 +84,18 @@ void launch_benchmark_cuFFT_single_3d(bool file_output, FILE* output)
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						avg_time += run_time[t][0];
 					}
 					avg_time /= num_runs;
-					for (uint32_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 0; t < num_runs; t++) {
 						std_error += (run_time[t][0] - avg_time) * (run_time[t][0] - avg_time);
 					}
 					std_error = sqrt(std_error / num_runs);
 					if (file_output)
-						fprintf(output, "cuFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], cuBufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)cuBufferSize / 1024) / avg_time));
+						fprintf(output, "cuFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %" PRIu64 " benchmark: %" PRIu64 "\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], cuBufferSize / 1024 / 1024, avg_time, std_error, batch, (uint64_t)(((double)cuBufferSize / 1024) / avg_time));
 
-					printf("cuFFT System: %dx%dx%d Buffer: %d MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %d benchmark: %d\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], cuBufferSize / 1024 / 1024, avg_time, std_error, batch, (int)(((double)cuBufferSize / 1024) / avg_time));
+					printf("cuFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f batch: %" PRIu64 " benchmark: %" PRIu64 "\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], cuBufferSize / 1024 / 1024, avg_time, std_error, batch, (uint64_t)(((double)cuBufferSize / 1024) / avg_time));
 					benchmark_result[0] += ((double)cuBufferSize / 1024) / avg_time;
 				}
 
@@ -111,7 +113,7 @@ void launch_benchmark_cuFFT_single_3d(bool file_output, FILE* output)
 	free(inputC);
 	benchmark_result[0] /= (num_benchmark_samples - 1);
 	if (file_output)
-		fprintf(output, "Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));
-	printf("Benchmark score cuFFT: %d\n", (int)(benchmark_result[0]));
+		fprintf(output, "Benchmark score cuFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result[0]));
+	printf("Benchmark score cuFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result[0]));
 
 }

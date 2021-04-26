@@ -6,12 +6,14 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 
 //ROCM parts
 #include "hip/hip_runtime.h"
 #include <hipfft.h>
 
-void launch_precision_rocFFT_r2c(void* inputC, void* output_rocFFT, uint32_t* dims)
+void launch_precision_rocFFT_r2c(void* inputC, void* output_rocFFT, uint64_t* dims)
 {
 	hipfftHandle planR2C;
 	hipfftReal* dataR;

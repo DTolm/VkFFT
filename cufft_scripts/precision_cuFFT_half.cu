@@ -6,6 +6,8 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 
 //CUDA parts
 #include "cuda_runtime.h"
@@ -14,7 +16,7 @@
 #include <cuda_fp16.h>
 #include <cufftXt.h>
 
-void launch_precision_cuFFT_half(void* inputC, void* output_cuFFT, uint32_t* dims)
+void launch_precision_cuFFT_half(void* inputC, void* output_cuFFT, uint64_t* dims)
 {
 	cufftHandle planHalf;
 	half2* dataC;
