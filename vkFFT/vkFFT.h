@@ -6951,6 +6951,68 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 		sprintf(sc->combinedID, "combinedID");
 		sprintf(sc->inoutID, "inoutID");
 		sprintf(sc->sdataID, "sdataID");
+
+		char convTypeLeftInput[20] = "";
+		char convTypeRightInput[20] = "";
+		if ((!strcmp(floatType, "float")) && (strcmp(floatTypeInputMemory, "float"))) {
+#if(VKFFT_BACKEND==0)
+			sprintf(convTypeLeftInput, "vec2(");
+			sprintf(convTypeRightInput, ")");
+#elif(VKFFT_BACKEND==1)
+			sprintf(convTypeLeftInput, "(float2)");
+#elif(VKFFT_BACKEND==2)
+			sprintf(convTypeLeftInput, "(float2)");
+#elif(VKFFT_BACKEND==3)
+			sprintf(convTypeLeftInput, "convert_float2(");
+			sprintf(convTypeRightInput, ")");
+#endif
+		}
+		if ((!strcmp(floatType, "double")) && (strcmp(floatTypeInputMemory, "double"))) {
+#if(VKFFT_BACKEND==0)
+			sprintf(convTypeLeftInput, "dvec2(");
+			sprintf(convTypeRightInput, ")");
+#elif(VKFFT_BACKEND==1)
+			sprintf(convTypeLeftInput, "(double2)");
+#elif(VKFFT_BACKEND==2)
+			sprintf(convTypeLeftInput, "(double2)");
+#elif(VKFFT_BACKEND==3)
+			sprintf(convTypeLeftInput, "convert_double2(");
+			sprintf(convTypeRightInput, ")");
+#endif
+		}
+
+		char convTypeLeftOutput[20] = "";
+		char convTypeRightOutput[20] = "";
+		if ((!strcmp(floatTypeOutputMemory, "half")) && (strcmp(floatType, "half"))) {
+			sprintf(convTypeLeftOutput, "f16vec2(");
+			sprintf(convTypeRightOutput, ")");
+		}
+		if ((!strcmp(floatTypeOutputMemory, "float")) && (strcmp(floatType, "float"))) {
+#if(VKFFT_BACKEND==0)
+			sprintf(convTypeLeftOutput, "vec2(");
+			sprintf(convTypeRightOutput, ")");
+#elif(VKFFT_BACKEND==1)
+			sprintf(convTypeLeftOutput, "(float2)");
+#elif(VKFFT_BACKEND==2)
+			sprintf(convTypeLeftOutput, "(float2)");
+#elif(VKFFT_BACKEND==3)
+			sprintf(convTypeLeftOutput, "convert_float2(");
+			sprintf(convTypeRightOutput, ")");
+#endif
+		}
+		if ((!strcmp(floatTypeOutputMemory, "double")) && (strcmp(floatType, "double"))) {
+#if(VKFFT_BACKEND==0)
+			sprintf(convTypeLeftOutput, "dvec2(");
+			sprintf(convTypeRightOutput, ")");
+#elif(VKFFT_BACKEND==1)
+			sprintf(convTypeLeftOutput, "(double2)");
+#elif(VKFFT_BACKEND==2)
+			sprintf(convTypeLeftOutput, "(double2)");
+#elif(VKFFT_BACKEND==3)
+			sprintf(convTypeLeftOutput, "convert_double2(");
+			sprintf(convTypeRightOutput, ")");
+#endif
+		}
 		//sprintf(sc->tempReg, "temp");
 		appendVersion(sc);
 		appendExtensions(sc, floatType, floatTypeInputMemory, floatTypeOutputMemory, floatTypeKernelMemory);
@@ -6985,7 +7047,6 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 #if(VKFFT_BACKEND==0)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "void main() {\n");
 #elif(VKFFT_BACKEND==1)
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern __shared__ float shared[];\n");
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern \"C\" __global__ __launch_bounds__(%" PRIu64 ") void VkFFT_main_R2C ", sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
 		if (type == 5)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "(%s* inputs, %s* outputs", vecTypeInput, vecTypeOutput);
@@ -7004,7 +7065,6 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 		sc->currentLen += sprintf(sc->output + sc->currentLen, ") {\n");
 		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
 #elif(VKFFT_BACKEND==2)
-		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern __shared__ float shared[];\n");
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern \"C\" __launch_bounds__(%" PRIu64 ") __global__ void VkFFT_main_R2C ", sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
 		if (type == 5)
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "(%s* inputs, %s* outputs", vecTypeInput, vecTypeOutput);
@@ -7056,18 +7116,18 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s inoutID2;\n", uintType);
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "%s inoutID3;\n", uintType);
 		if (sc->inputBufferBlockNum == 1)
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t0 = %s[inoutID];\n", vecType, inputsStruct);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t0 = %s%s[inoutID]%s;\n", vecType, convTypeLeftInput, inputsStruct, convTypeRightInput);
 		else
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t0 = inputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "];\n", vecType, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t0 = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", vecType, convTypeLeftInput, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRightInput);
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s tf;\n", vecType);
 		if (sc->size[0] % 4 == 0) {
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "if (id_x == 0)  {\n");
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "	inoutID2 = %" PRIu64 " + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "	inoutID3 = %" PRIu64 " + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", (sc->size[0] / 4), sc->inputStride[1], sc->inputStride[2]);
 			if (sc->inputBufferBlockNum == 1)
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "		tf = %s[inoutID3];\n", inputsStruct);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "		tf = %s%s[inoutID3]%s;\n", convTypeLeftInput, inputsStruct, convTypeRightInput);
 			else
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "		tf = inputBlocks[inoutID3 / %" PRIu64 "]%s[inoutID3 %% %" PRIu64 "];\n", sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "		tf = %sinputBlocks[inoutID3 / %" PRIu64 "]%s[inoutID3 %% %" PRIu64 "]%s;\n", convTypeLeftInput, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRightInput);
 
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "} else {\n");
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "	inoutID2 = (%" PRIu64 "-id_x) + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
@@ -7077,9 +7137,9 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "inoutID2 = (%" PRIu64 "-id_x) + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
 		}
 		if (sc->inputBufferBlockNum == 1)
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t1 = %s[inoutID2];\n", vecType, inputsStruct);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t1 = %s%s[inoutID2]%s;\n", vecType, convTypeLeftInput, inputsStruct, convTypeRightInput);
 		else
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t1 = inputBlocks[inoutID2 / %" PRIu64 "]%s[inoutID2 %% %" PRIu64 "];\n", vecType, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t1 = %sinputBlocks[inoutID2 / %" PRIu64 "]%s[inoutID2 %% %" PRIu64 "]%s;\n", vecType, convTypeLeftInput, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRightInput);
 
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t2;\n", vecType);
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s t3;\n", vecType);
@@ -7098,19 +7158,19 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			sc->currentLen += sprintf(sc->output + sc->currentLen, "	tf.y = -tf.y;\n");
 			if (sc->inverse) VkMulComplexNumber(sc, "tf", "tf", "2");
 			if (sc->outputBufferBlockNum == 1)
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = t2;\n", outputsStruct);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %st2%s;\n", outputsStruct, convTypeLeftOutput, convTypeRightOutput);
 			else
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = t2;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %st2%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeftOutput, convTypeRightOutput);
 			if (!sc->inverse) {
 				if (sc->outputBufferBlockNum == 1)
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID2] = t3;\n", outputsStruct);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID2] = %st3%s;\n", outputsStruct, convTypeLeftOutput, convTypeRightOutput);
 				else
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID2 / %" PRIu64 "]%s[inoutID2 %% %" PRIu64 "] = t3;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID2 / %" PRIu64 "]%s[inoutID2 %% %" PRIu64 "] = %st3%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeftOutput, convTypeRightOutput);
 			}
 			if (sc->outputBufferBlockNum == 1)
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID3] = tf;\n", outputsStruct);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID3] = %stf%s;\n", outputsStruct, convTypeLeftOutput, convTypeRightOutput);
 			else
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID3 / %" PRIu64 "]%s[inoutID3 %% %" PRIu64 "] = tf;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID3 / %" PRIu64 "]%s[inoutID3 %% %" PRIu64 "] = %stf%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeftOutput, convTypeRightOutput);
 
 		}
 		else {
@@ -7125,14 +7185,14 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	t2.y = (t0.x-t1.x);\n");
 			}
 			if (sc->outputBufferBlockNum == 1)
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = t2;\n", outputsStruct);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %st2%s;\n", outputsStruct, convTypeLeftOutput, convTypeRightOutput);
 			else
-				sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = t2;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+				sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %st2%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeftOutput, convTypeRightOutput);
 			if (!sc->inverse) {
 				if (sc->outputBufferBlockNum == 1)
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID2] = t3;\n", outputsStruct);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID2] = %st3%s;\n", outputsStruct, convTypeLeftOutput, convTypeRightOutput);
 				else
-					sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID2 / %" PRIu64 "]%s[inoutID2 %% %" PRIu64 "] = t3;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+					sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID2 / %" PRIu64 "]%s[inoutID2 %% %" PRIu64 "] = %st3%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeftOutput, convTypeRightOutput);
 			}
 		}
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "} else {\n");
@@ -7176,14 +7236,14 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 		//sc->currentLen += sprintf(sc->output + sc->currentLen, "	t1.y = -t3.y-tf.y*t2.y-tf.x*t3.x;\n");
 
 		if (sc->outputBufferBlockNum == 1)
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = t0;\n", outputsStruct);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID] = %st0%s;\n", outputsStruct, convTypeLeftOutput, convTypeRightOutput);
 		else
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = t0;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %st0%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeftOutput, convTypeRightOutput);
 
 		if (sc->outputBufferBlockNum == 1)
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID2] = t1;\n", outputsStruct);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		%s[inoutID2] = %st1%s;\n", outputsStruct, convTypeLeftOutput, convTypeRightOutput);
 		else
-			sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID2 / %" PRIu64 "]%s[inoutID2 %% %" PRIu64 "] = t1;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "		outputBlocks[inoutID2 / %" PRIu64 "]%s[inoutID2 %% %" PRIu64 "] = %st1%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeftOutput, convTypeRightOutput);
 
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "}\n");
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "}\n");
@@ -10851,15 +10911,9 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 					sprintf(floatType, "float");
 					if (app->configuration.halfPrecisionMemoryOnly) {
 						//only out of place mode, input/output buffer must be different
+						sprintf(floatTypeInputMemory, "float");
+						sprintf(floatTypeOutputMemory, "float");
 						sprintf(floatTypeKernelMemory, "float");
-						if ((axis_id == 0) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (!axis->specializationConstants.inverse))
-							sprintf(floatTypeInputMemory, "half");
-						else
-							sprintf(floatTypeInputMemory, "float");
-						if ((axis_id == 0) && (((!app->configuration.reorderFourStep) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) || ((app->configuration.reorderFourStep) && (axis_upload_id == 0))) && (axis->specializationConstants.inverse))
-							sprintf(floatTypeOutputMemory, "half");
-						else
-							sprintf(floatTypeOutputMemory, "float");
 					}
 					else {
 						sprintf(floatTypeInputMemory, "half");
@@ -14301,7 +14355,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 		return resFFT;
 	}
 	static inline int VkFFTGetVersion() {
-		return 10201; //X.XX.XX format
+		return 10202; //X.XX.XX format
 	}
 #ifdef __cplusplus
 }

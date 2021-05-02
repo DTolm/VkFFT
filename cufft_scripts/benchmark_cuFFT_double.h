@@ -1,1 +1,0 @@
-void launch_benchmark_cuFFT_double(bool file_output, FILE* output);

@@ -1,0 +1,1 @@
+void sample_1000_benchmark_rocFFT_single_2_4096(bool file_output, FILE* output);

@@ -1,1 +1,0 @@
-void launch_benchmark_cuFFT_single_3d(bool file_output, FILE* output);

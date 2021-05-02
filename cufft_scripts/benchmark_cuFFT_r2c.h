@@ -1,1 +1,0 @@
-void launch_benchmark_cuFFT_single_r2c(bool file_output, FILE* output);

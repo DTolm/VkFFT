@@ -21,8 +21,48 @@ if (MSVC)
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
 	add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 endif()
-
-add_executable(${PROJECT_NAME} Vulkan_FFT.cpp)
+if(build_VkFFT_FFTW_precision)
+	add_executable(${PROJECT_NAME} Vulkan_FFT.cpp
+		benchmark_scripts/vkFFT_scripts/src/utils_VkFFT.cpp
+		benchmark_scripts/vkFFT_scripts/src/user_benchmark_VkFFT.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_0_benchmark_VkFFT_single.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1_benchmark_VkFFT_double.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_2_benchmark_VkFFT_half.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_3_benchmark_VkFFT_single_3d.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_4_benchmark_VkFFT_single_3d_zeropadding.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_5_benchmark_VkFFT_single_disableReorderFourStep.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_6_benchmark_VkFFT_single_r2c.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_7_convolution_VkFFT_single_1d_matrix.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_8_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_9_convolution_VkFFT_single_2d_batched_r2c.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_10_benchmark_VkFFT_single_multipleBuffers.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_11_precision_VkFFT_single.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_12_precision_VkFFT_double.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_13_precision_VkFFT_half.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_14_precision_VkFFT_single_nonPow2.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_15_precision_VkFFT_single_r2c.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1000_VkFFT_single_2_4096.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1001_benchmark_VkFFT_double_2_4096.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1003_benchmark_VkFFT_single_3d_2_512.cpp)
+else()		
+	add_executable(${PROJECT_NAME} Vulkan_FFT.cpp
+		benchmark_scripts/vkFFT_scripts/src/utils_VkFFT.cpp
+		benchmark_scripts/vkFFT_scripts/src/user_benchmark_VkFFT.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_0_benchmark_VkFFT_single.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1_benchmark_VkFFT_double.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_2_benchmark_VkFFT_half.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_3_benchmark_VkFFT_single_3d.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_4_benchmark_VkFFT_single_3d_zeropadding.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_5_benchmark_VkFFT_single_disableReorderFourStep.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_6_benchmark_VkFFT_single_r2c.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_7_convolution_VkFFT_single_1d_matrix.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_8_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_9_convolution_VkFFT_single_2d_batched_r2c.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_10_benchmark_VkFFT_single_multipleBuffers.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1000_VkFFT_single_2_4096.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1001_benchmark_VkFFT_double_2_4096.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1003_benchmark_VkFFT_single_3d_2_512.cpp)
+endif()
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_11)
 add_definitions(-DVKFFT_BACKEND=${VKFFT_BACKEND})
 if(${VKFFT_BACKEND} EQUAL 0)
@@ -67,12 +107,16 @@ if(${VKFFT_BACKEND} EQUAL 0)
 	target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glslang-master/glslang/Include/)
 	add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-master)
 endif()
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/)
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/half_lib/)
 
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/)
 add_library(VkFFT INTERFACE)
 target_compile_definitions(VkFFT INTERFACE -DVKFFT_BACKEND=${VKFFT_BACKEND})
+
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/half_lib/)
 add_library(half INTERFACE)
+
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/vkFFT_scripts/include/)
+
 if(${VKFFT_BACKEND} EQUAL 0)
 	target_link_libraries(${PROJECT_NAME} PUBLIC SPIRV glslang Vulkan::Vulkan VkFFT half)
 elseif(${VKFFT_BACKEND} EQUAL 1)
@@ -112,43 +156,45 @@ if(build_VkFFT_cuFFT_benchmark)
 	find_package(CUDA 9.0 REQUIRED)
 	enable_language(CUDA)	
 	if(build_VkFFT_FFTW_precision)
-		add_library(cufft_scripts STATIC
-		cufft_scripts/benchmark_cuFFT.cu
-		cufft_scripts/benchmark_cuFFT_2_4096.cu
-		cufft_scripts/benchmark_cuFFT_r2c.cu
-		cufft_scripts/benchmark_cuFFT_double.cu
-		cufft_scripts/benchmark_cuFFT_double_2_4096.cu
-		cufft_scripts/benchmark_cuFFT_half.cu
-		cufft_scripts/benchmark_cuFFT_3d.cu
-		cufft_scripts/benchmark_cuFFT_3d_2_512.cu
-		cufft_scripts/precision_cuFFT.cu
-		cufft_scripts/precision_cuFFT_r2c.cu
-		cufft_scripts/precision_cuFFT_double.cu
-		cufft_scripts/precision_cuFFT_half.cu)
+		add_library(cuFFT_scripts STATIC
+		benchmark_scripts/cuFFT_scripts/src/user_benchmark_cuFFT.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_0_benchmark_cuFFT_single.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_1_benchmark_cuFFT_double.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_2_benchmark_cuFFT_half.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_3_benchmark_cuFFT_single_3d.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_6_benchmark_cuFFT_single_r2c.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_1000_benchmark_cuFFT_single_2_4096.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_1001_benchmark_cuFFT_double_2_4096.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_1003_benchmark_cuFFT_single_3d_2_512.cu
+		benchmark_scripts/cuFFT_scripts/src/precision_cuFFT_single.cu
+		benchmark_scripts/cuFFT_scripts/src/precision_cuFFT_r2c.cu
+		benchmark_scripts/cuFFT_scripts/src/precision_cuFFT_double.cu
+		benchmark_scripts/cuFFT_scripts/src/precision_cuFFT_half.cu)
 	else()
-		add_library(cufft_scripts STATIC
-		cufft_scripts/benchmark_cuFFT.cu
-		cufft_scripts/benchmark_cuFFT_2_4096.cu
-		cufft_scripts/benchmark_cuFFT_r2c.cu
-		cufft_scripts/benchmark_cuFFT_double.cu
-		cufft_scripts/benchmark_cuFFT_double_2_4096.cu
-		cufft_scripts/benchmark_cuFFT_half.cu
-		cufft_scripts/benchmark_cuFFT_3d.cu
-		cufft_scripts/benchmark_cuFFT_3d_2_512.cu)
+		add_library(cuFFT_scripts STATIC
+		benchmark_scripts/cuFFT_scripts/src/user_benchmark_cuFFT.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_0_benchmark_cuFFT_single.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_1_benchmark_cuFFT_double.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_2_benchmark_cuFFT_half.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_3_benchmark_cuFFT_single_3d.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_6_benchmark_cuFFT_single_r2c.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_1000_benchmark_cuFFT_single_2_4096.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_1001_benchmark_cuFFT_double_2_4096.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_1003_benchmark_cuFFT_single_3d_2_512.cu)
 	endif()
-	set_property(TARGET cufft_scripts PROPERTY CUDA_ARCHITECTURES 35 60 70 75 80 86)
-	CUDA_ADD_CUFFT_TO_TARGET(cufft_scripts)
-	target_compile_options(cufft_scripts PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:
+	set_property(TARGET cuFFT_scripts PROPERTY CUDA_ARCHITECTURES 35 60 70 75 80 86)
+	CUDA_ADD_CUFFT_TO_TARGET(cuFFT_scripts)
+	target_compile_options(cuFFT_scripts PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:
 	-gencode arch=compute_35,code=compute_35
 	-gencode arch=compute_60,code=compute_60
 	-gencode arch=compute_70,code=compute_70 
 	-gencode arch=compute_75,code=compute_75 
 	-gencode arch=compute_80,code=compute_80 
 	-gencode arch=compute_86,code=compute_86>")
-	target_include_directories(cufft_scripts PUBLIC "cufft_scripts/")
-	set_target_properties(cufft_scripts PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-	set_target_properties(cufft_scripts PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-	target_link_libraries(${PROJECT_NAME} PUBLIC cufft_scripts)
+	target_include_directories(cuFFT_scripts PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/cuFFT_scripts/include)
+	set_target_properties(cuFFT_scripts PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+	set_target_properties(cuFFT_scripts PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+	target_link_libraries(${PROJECT_NAME} PUBLIC cuFFT_scripts)
 endif()
 if(build_VkFFT_rocFFT_benchmark)
 	add_definitions(-DUSE_rocFFT)
@@ -157,28 +203,30 @@ if(build_VkFFT_rocFFT_benchmark)
     	find_package(rocfft)
 
 	if(build_VkFFT_FFTW_precision)
-		add_library(rocfft_scripts STATIC
-		rocfft_scripts/benchmark_rocFFT.cpp
-		rocfft_scripts/benchmark_rocFFT_2_4096.cpp
-		rocfft_scripts/benchmark_rocFFT_r2c.cpp
-		rocfft_scripts/benchmark_rocFFT_double.cpp
-		rocfft_scripts/benchmark_rocFFT_double_2_4096.cpp
-		rocfft_scripts/benchmark_rocFFT_3d.cpp
-		rocfft_scripts/benchmark_rocFFT_3d_2_512.cpp
-		rocfft_scripts/precision_rocFFT.cpp
-		rocfft_scripts/precision_rocFFT_r2c.cpp
-		rocfft_scripts/precision_rocFFT_double.cpp)
+		add_library(rocFFT_scripts STATIC
+		benchmark_scripts/rocFFT_scripts/src/user_benchmark_rocFFT.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_0_benchmark_rocFFT_single.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_1_benchmark_rocFFT_double.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_3_benchmark_rocFFT_single_3d.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_6_benchmark_rocFFT_single_r2c.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_1000_benchmark_rocFFT_single_2_4096.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_1001_benchmark_rocFFT_double_2_4096.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_1003_benchmark_rocFFT_single_3d_2_512.cpp
+		benchmark_scripts/rocFFT_scripts/src/precision_rocFFT_single.cpp
+		benchmark_scripts/rocFFT_scripts/src/precision_rocFFT_r2c.cpp
+		benchmark_scripts/rocFFT_scripts/src/precision_rocFFT_double.cpp)
 	else()
-		add_library(rocfft_scripts STATIC
-		rocfft_scripts/benchmark_rocFFT.cpp
-		rocfft_scripts/benchmark_rocFFT_2_4096.cpp
-		rocfft_scripts/benchmark_rocFFT_r2c.cpp
-		rocfft_scripts/benchmark_rocFFT_double.cpp
-		rocfft_scripts/benchmark_rocFFT_double_2_4096.cpp
-		rocfft_scripts/benchmark_rocFFT_3d.cpp
-		rocfft_scripts/benchmark_rocFFT_3d_2_512.cpp)
+		add_library(rocFFT_scripts STATIC
+		benchmark_scripts/rocFFT_scripts/src/user_benchmark_rocFFT.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_0_benchmark_rocFFT_single.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_1_benchmark_rocFFT_double.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_3_benchmark_rocFFT_single_3d.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_6_benchmark_rocFFT_single_r2c.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_1000_benchmark_rocFFT_single_2_4096.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_1001_benchmark_rocFFT_double_2_4096.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_1003_benchmark_rocFFT_single_3d_2_512.cpp)
 	endif()
-	target_include_directories(rocfft_scripts PUBLIC "rocfft_scripts/")
-	target_link_libraries(rocfft_scripts PRIVATE hip::host roc::rocfft)
-	target_link_libraries(${PROJECT_NAME} PUBLIC rocfft_scripts)
+	target_include_directories(rocFFT_scripts PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/rocFFT_scripts/include)
+	target_link_libraries(rocFFT_scripts PRIVATE hip::host roc::rocfft)
+	target_link_libraries(${PROJECT_NAME} PUBLIC rocFFT_scripts)
 endif()

@@ -1,0 +1,1 @@
+void sample_6_benchmark_rocFFT_single_r2c(bool file_output, FILE* output);
