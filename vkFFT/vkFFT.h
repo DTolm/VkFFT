@@ -13367,13 +13367,13 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			checkBufferSizeFor64BitAddressing += app->configuration.inputBufferSize[i];
 		}
 		if (checkBufferSizeFor64BitAddressing >= (uint64_t)pow((uint64_t)2, (uint64_t)34)) app->configuration.useUint64 = 1;
-		
+
 		checkBufferSizeFor64BitAddressing = 0;
 		for (uint64_t i = 0; i < app->configuration.outputBufferNum; i++) {
 			checkBufferSizeFor64BitAddressing += app->configuration.outputBufferSize[i];
 		}
 		if (checkBufferSizeFor64BitAddressing >= (uint64_t)pow((uint64_t)2, (uint64_t)34)) app->configuration.useUint64 = 1;
-		
+
 		checkBufferSizeFor64BitAddressing = 0;
 		for (uint64_t i = 0; i < app->configuration.kernelNum; i++) {
 			checkBufferSizeFor64BitAddressing += app->configuration.kernelSize[i];
@@ -13461,7 +13461,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 
 		//temporary set:
 		app->configuration.registerBoost4Step = 1;
-		if (VKFFT_BACKEND==0) app->configuration.useUint64 = 0; //No physical addressing mode in Vulkan shaders. Use multiple-buffer support to achieve emulation of physical addressing.
+		if (VKFFT_BACKEND == 0) app->configuration.useUint64 = 0; //No physical addressing mode in Vulkan shaders. Use multiple-buffer support to achieve emulation of physical addressing.
 
 		VkFFTResult resFFT = VKFFT_SUCCESS;
 		uint64_t initSharedMemory = app->configuration.sharedMemorySize;
@@ -13525,7 +13525,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 						return resFFT;
 					}
 				}
-				if ((app->localFFTPlan_inverse->multiUploadR2C) && (i == 0)) {
+				if ((app->localFFTPlan->multiUploadR2C) && (i == 0)) {
 					app->configuration.size[0] *= 2;
 					app->configuration.performR2C = 1;
 					resFFT = VkFFTPlanR2CMultiUploadDecomposition(app, app->localFFTPlan, 0);
