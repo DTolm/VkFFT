@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 project(Vulkan_FFT)
 set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
-set(VKFFT_BACKEND 0)#0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL
+set(VKFFT_BACKEND 0 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL")
 
 if(${VKFFT_BACKEND} EQUAL 1)
 	option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" ON)
