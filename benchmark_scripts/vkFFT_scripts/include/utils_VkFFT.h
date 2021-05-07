@@ -1,7 +1,7 @@
 #ifndef VKFFT_UTILS_H
 #define VKFFT_UTILS_H
 #include "vkFFT.h"
-
+#include <vector>
 typedef struct {
 #if(VKFFT_BACKEND==0)
 	VkInstance instance;//a connection between the application and the Vulkan library 

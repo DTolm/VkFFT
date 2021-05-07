@@ -447,7 +447,7 @@ VkFFTResult devices_list() {
 	for (uint64_t i = 0; i < deviceCount; i++) {
 		VkPhysicalDeviceProperties device_properties;
 		vkGetPhysicalDeviceProperties(devices[i], &device_properties);
-		printf("Device id: %" PRIu64 " name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", i, device_properties.deviceName, (device_properties.apiVersion >> 22), ((device_properties.apiVersion >> 12) & 0x3ff), (device_properties.apiVersion & 0xfff));
+		printf("Device id: %" PRIu64 " name: %s API:%d.%d.%d\n", i, device_properties.deviceName, (device_properties.apiVersion >> 22), ((device_properties.apiVersion >> 12) & 0x3ff), (device_properties.apiVersion & 0xfff));
 	}
 	free(devices);
 	vkDestroyInstance(local_instance, NULL);
