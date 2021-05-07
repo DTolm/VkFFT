@@ -14349,7 +14349,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
 				}
 			}
-			if (app->localFFTPlan->multiUploadR2C) app->configuration.size[0] *= 2;
+			if (app->localFFTPlan_inverse->multiUploadR2C) app->configuration.size[0] *= 2;
 
 		}
 		return resFFT;
