@@ -7,9 +7,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/. 
 #ifndef VKFFT_H
 #define VKFFT_H
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #include <memory.h>
 #include <math.h>
@@ -419,6 +416,7 @@ extern "C" {
 		VkFFTSpecializationConstantsLayout specializationConstants;
 		VkFFTPushConstantsLayoutUint32 pushConstantsUint32;
 		VkFFTPushConstantsLayoutUint64 pushConstants;
+		uint64_t updatePushConstants;
 #if(VKFFT_BACKEND==0)
 		VkBuffer* inputBuffer;
 		VkBuffer* outputBuffer;
@@ -10654,8 +10652,8 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			else
 				storageComplexSize = (2 * sizeof(float));
 
-		uint64_t initPageSize = 0;
-		for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
+		uint64_t initPageSize = -1;
+		/*for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
 			initPageSize += app->configuration.bufferSize[i];
 		}
 		if (app->configuration.performConvolution) {
@@ -10667,7 +10665,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 		}
 		if ((!((!app->configuration.reorderFourStep))) && (axis->specializationConstants.inputStride[1] * storageComplexSize > app->configuration.devicePageSize * 1024) && (app->configuration.devicePageSize > 0)) {
 			initPageSize = app->configuration.localPageSize * 1024;
-		}
+		}*/
 		uint64_t axis_id = 0;
 		uint64_t axis_upload_id = 0;
 
@@ -11877,11 +11875,11 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			else
 				storageComplexSize = (2 * sizeof(float));
 
-		uint64_t initPageSize = 0;
-		for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
+		uint64_t initPageSize = -1;
+		/*for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
 			initPageSize += app->configuration.bufferSize[i];
-		}
-		if (app->configuration.performConvolution) {
+		}*/
+		/*if (app->configuration.performConvolution) {
 			uint64_t initPageSizeKernel = 0;
 			for (uint64_t i = 0; i < app->configuration.kernelNum; i++) {
 				initPageSizeKernel += app->configuration.kernelSize[i];
@@ -11903,7 +11901,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 				initPageSize = app->configuration.localPageSize * 1024;
 			}
 		}
-
+		*/
 		if ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted) && (
 			((axis_id == 0) && (!inverse))
 			|| ((axis_id == app->configuration.FFTdim - 1) && (inverse) && (!app->configuration.performConvolution) && (!app->configuration.inverseReturnToInputBuffer)))
@@ -13586,9 +13584,18 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 		for (uint64_t i = 0; i < blockNumber[0]; i++) {
 			for (uint64_t j = 0; j < blockNumber[1]; j++) {
 				for (uint64_t k = 0; k < blockNumber[2]; k++) {
-					axis->pushConstants.workGroupShift[0] = i * maxBlockSize[0];
-					axis->pushConstants.workGroupShift[1] = j * maxBlockSize[1];
-					axis->pushConstants.workGroupShift[2] = k * maxBlockSize[2];
+					if (axis->pushConstants.workGroupShift[0] != i * maxBlockSize[0]) {
+						axis->pushConstants.workGroupShift[0] = i * maxBlockSize[0];
+						axis->updatePushConstants = 1;
+					}
+					if (axis->pushConstants.workGroupShift[1] != j * maxBlockSize[1]) {
+						axis->pushConstants.workGroupShift[1] = j * maxBlockSize[1];
+						axis->updatePushConstants = 1;
+					}
+					if (axis->pushConstants.workGroupShift[2] != k * maxBlockSize[2]) {
+						axis->pushConstants.workGroupShift[2] = k * maxBlockSize[2];
+						axis->updatePushConstants = 1;
+					}
 #if(VKFFT_BACKEND==0)
 					size_t sizePushConsts = (app->configuration.useUint64) ? sizeof(VkFFTPushConstantsLayoutUint64) : sizeof(VkFFTPushConstantsLayoutUint32);
 					if (app->configuration.useUint64) {
@@ -13618,7 +13625,8 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 						args_id++;
 					}
 					//args[args_id] = &axis->pushConstants;
-					if ((i > 0) || (j > 0) || (k > 0) || (axis->pushConstants.coordinate > 0) || (axis->pushConstants.batch > 0)) {
+					if (axis->updatePushConstants) {
+						axis->updatePushConstants = 0;
 						size_t sizePushConsts = (app->configuration.useUint64) ? sizeof(VkFFTPushConstantsLayoutUint64) : sizeof(VkFFTPushConstantsLayoutUint32);
 						if (app->configuration.useUint64) {
 							result = cuMemcpyHtoD(axis->consts_addr, &axis->pushConstants, sizePushConsts);
@@ -13677,7 +13685,8 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 						args_id++;
 					}
 					//args[args_id] = &axis->pushConstants;
-					if ((i > 0) || (j > 0) || (k > 0) || (axis->pushConstants.coordinate > 0) || (axis->pushConstants.batch > 0)) {
+					if (axis->updatePushConstants) {
+						axis->updatePushConstants = 0;
 						size_t sizePushConsts = (app->configuration.useUint64) ? sizeof(VkFFTPushConstantsLayoutUint64) : sizeof(VkFFTPushConstantsLayoutUint32);
 						if (app->configuration.useUint64) {
 							result = hipMemcpyHtoD(axis->consts_addr, &axis->pushConstants, sizePushConsts);
@@ -13843,11 +13852,16 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 					VkFFTAxis* axis = &app->localFFTPlan->axes[0][l];
 					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 0, l, 0);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
-					axis->pushConstants.batch = j;
+					if (axis->pushConstants.batch != j) {
+						axis->pushConstants.batch = j;
+						axis->updatePushConstants = 1;
+					}
 					uint64_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
 					for (uint64_t i = 0; i < maxCoordinate; i++) {
-						axis->pushConstants.coordinate = i;
-
+						if (axis->pushConstants.coordinate != i) {
+							axis->pushConstants.coordinate = i;
+							axis->updatePushConstants = 1;
+						}
 #if(VKFFT_BACKEND==0)
 						vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 						vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -13889,10 +13903,16 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 					VkFFTAxis* axis = &app->localFFTPlan->R2Cdecomposition;
 					resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan, axis, 0, 0, 0);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
-					axis->pushConstants.batch = j;
+					if (axis->pushConstants.batch != j) {
+						axis->pushConstants.batch = j;
+						axis->updatePushConstants = 1;
+					}
 					uint64_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
 					for (uint64_t i = 0; i < maxCoordinate; i++) {
-						axis->pushConstants.coordinate = i;
+						if (axis->pushConstants.coordinate != i) {
+							axis->pushConstants.coordinate = i;
+							axis->updatePushConstants = 1;
+						}
 
 #if(VKFFT_BACKEND==0)
 						vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
@@ -13923,8 +13943,22 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 						uint64_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (l == 0)) ? 1 : app->configuration.coordinateFeatures;
 						for (uint64_t i = 0; i < maxCoordinate; i++) {
 
-							axis->pushConstants.coordinate = i;
-							axis->pushConstants.batch = ((l == 0) && (app->configuration.matrixConvolution == 1)) ? app->configuration.numberKernels : 0;
+							if (axis->pushConstants.coordinate != i) {
+								axis->pushConstants.coordinate = i;
+								axis->updatePushConstants = 1;
+							}
+							if ((l == 0) && (app->configuration.matrixConvolution == 1)){
+								if (axis->pushConstants.batch != app->configuration.numberKernels) {
+									axis->pushConstants.batch = app->configuration.numberKernels;
+									axis->updatePushConstants = 1;
+								}
+							}
+							else {
+								if (axis->pushConstants.batch != 0) {
+									axis->pushConstants.batch = 0;
+									axis->updatePushConstants = 1;
+								}
+							}
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -13949,9 +13983,15 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 							VkFFTAxis* axis = &app->localFFTPlan->axes[1][l];
 							resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 1, l, 0);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
-							axis->pushConstants.batch = j;
+							if (axis->pushConstants.batch != j) {
+								axis->pushConstants.batch = j;
+								axis->updatePushConstants = 1;
+							}
 							for (uint64_t i = 0; i < app->configuration.coordinateFeatures; i++) {
-								axis->pushConstants.coordinate = i;
+								if (axis->pushConstants.coordinate != i) {
+									axis->pushConstants.coordinate = i;
+									axis->updatePushConstants = 1;
+								}
 #if(VKFFT_BACKEND==0)
 								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -13984,8 +14024,22 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
 						uint64_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (l == 0)) ? 1 : app->configuration.coordinateFeatures;
 						for (uint64_t i = 0; i < maxCoordinate; i++) {
-							axis->pushConstants.coordinate = i;
-							axis->pushConstants.batch = ((l == 0) && (app->configuration.matrixConvolution == 1)) ? app->configuration.numberKernels : 0;
+							if (axis->pushConstants.coordinate != i) {
+								axis->pushConstants.coordinate = i;
+								axis->updatePushConstants = 1;
+							}
+							if ((l == 0) && (app->configuration.matrixConvolution == 1)) {
+								if (axis->pushConstants.batch != app->configuration.numberKernels) {
+									axis->pushConstants.batch = app->configuration.numberKernels;
+									axis->updatePushConstants = 1;
+								}
+							}
+							else {
+								if (axis->pushConstants.batch != 0) {
+									axis->pushConstants.batch = 0;
+									axis->updatePushConstants = 1;
+								}
+							}
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -14010,9 +14064,15 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 							VkFFTAxis* axis = &app->localFFTPlan->axes[2][l];
 							resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 2, l, 0);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
-							axis->pushConstants.batch = j;
+							if (axis->pushConstants.batch != j) {
+								axis->pushConstants.batch = j;
+								axis->updatePushConstants = 1;
+							}
 							for (uint64_t i = 0; i < app->configuration.coordinateFeatures; i++) {
-								axis->pushConstants.coordinate = i;
+								if (axis->pushConstants.coordinate != i) {
+									axis->pushConstants.coordinate = i;
+									axis->updatePushConstants = 1;
+								}
 #if(VKFFT_BACKEND==0)
 								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -14047,8 +14107,14 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 							uint64_t maxCoordinate = app->configuration.coordinateFeatures;
 							for (uint64_t i = 0; i < maxCoordinate; i++) {
-								axis->pushConstants.coordinate = i;
-								axis->pushConstants.batch = j;
+								if (axis->pushConstants.coordinate != i) {
+									axis->pushConstants.coordinate = i;
+									axis->updatePushConstants = 1;
+								}
+								if (axis->pushConstants.batch != j) {
+									axis->pushConstants.batch = j;
+									axis->updatePushConstants = 1;
+								}
 #if(VKFFT_BACKEND==0)
 								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -14072,9 +14138,15 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 						VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[1][l];
 						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 1, l, 1);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
-						axis->pushConstants.batch = j;
+						if (axis->pushConstants.batch != j) {
+							axis->pushConstants.batch = j;
+							axis->updatePushConstants = 1;
+						}
 						for (uint64_t i = 0; i < app->configuration.coordinateFeatures; i++) {
-							axis->pushConstants.coordinate = i;
+							if (axis->pushConstants.coordinate != i) {
+								axis->pushConstants.coordinate = i;
+								axis->updatePushConstants = 1;
+							}
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -14105,8 +14177,14 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 							uint64_t maxCoordinate = app->configuration.coordinateFeatures;
 							for (uint64_t i = 0; i < maxCoordinate; i++) {
 
-								axis->pushConstants.coordinate = i;
-								axis->pushConstants.batch = j;
+								if (axis->pushConstants.coordinate != i) {
+									axis->pushConstants.coordinate = i;
+									axis->updatePushConstants = 1;
+								}
+								if (axis->pushConstants.batch != j) {
+									axis->pushConstants.batch = j;
+									axis->updatePushConstants = 1;
+								}
 #if(VKFFT_BACKEND==0)
 								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -14130,9 +14208,15 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 						VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[0][l];
 						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 0, l, 1);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
-						axis->pushConstants.batch = j;
+						if (axis->pushConstants.batch != j) {
+							axis->pushConstants.batch = j;
+							axis->updatePushConstants = 1;
+						}
 						for (uint64_t i = 0; i < app->configuration.coordinateFeatures; i++) {
-							axis->pushConstants.coordinate = i;
+							if (axis->pushConstants.coordinate != i) {
+								axis->pushConstants.coordinate = i;
+								axis->updatePushConstants = 1;
+							}
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -14181,8 +14265,14 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 						uint64_t maxCoordinate = app->configuration.coordinateFeatures;
 						for (uint64_t i = 0; i < maxCoordinate; i++) {
 
-							axis->pushConstants.coordinate = i;
-							axis->pushConstants.batch = j;
+							if (axis->pushConstants.coordinate != i) {
+								axis->pushConstants.coordinate = i;
+								axis->updatePushConstants = 1;
+							}
+							if (axis->pushConstants.batch != j) {
+								axis->pushConstants.batch = j;
+								axis->updatePushConstants = 1;
+							}
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -14214,9 +14304,15 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 						VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[2][l];
 						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 2, l, 1);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
-						axis->pushConstants.batch = j;
+						if (axis->pushConstants.batch != j) {
+							axis->pushConstants.batch = j;
+							axis->updatePushConstants = 1;
+						}
 						for (uint64_t i = 0; i < app->configuration.coordinateFeatures; i++) {
-							axis->pushConstants.coordinate = i;
+							if (axis->pushConstants.coordinate != i) {
+								axis->pushConstants.coordinate = i;
+								axis->updatePushConstants = 1;
+							}
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -14249,9 +14345,15 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 						VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[1][l];
 						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 1, l, 1);
 						if (resFFT != VKFFT_SUCCESS) return resFFT;
-						axis->pushConstants.batch = j;
+						if (axis->pushConstants.batch != j) {
+							axis->pushConstants.batch = j;
+							axis->updatePushConstants = 1;
+						}
 						for (uint64_t i = 0; i < app->configuration.coordinateFeatures; i++) {
-							axis->pushConstants.coordinate = i;
+							if (axis->pushConstants.coordinate != i) {
+								axis->pushConstants.coordinate = i;
+								axis->updatePushConstants = 1;
+							}
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -14280,10 +14382,16 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 					VkFFTAxis* axis = &app->localFFTPlan_inverse->R2Cdecomposition;
 					resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan_inverse, axis, 0, 0, 1);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
-					axis->pushConstants.batch = j;
+					if (axis->pushConstants.batch != j) {
+						axis->pushConstants.batch = j;
+						axis->updatePushConstants = 1;
+					}
 					uint64_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
 					for (uint64_t i = 0; i < maxCoordinate; i++) {
-						axis->pushConstants.coordinate = i;
+						if (axis->pushConstants.coordinate != i) {
+							axis->pushConstants.coordinate = i;
+							axis->updatePushConstants = 1;
+						}
 
 #if(VKFFT_BACKEND==0)
 						vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
@@ -14308,10 +14416,16 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 					VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[0][l];
 					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 0, l, 1);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
-					axis->pushConstants.batch = j;
+					if (axis->pushConstants.batch != j) {
+						axis->pushConstants.batch = j;
+						axis->updatePushConstants = 1;
+					}
 					uint64_t maxCoordinate = ((app->configuration.matrixConvolution) > 1 && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
 					for (uint64_t i = 0; i < maxCoordinate; i++) {
-						axis->pushConstants.coordinate = i;
+						if (axis->pushConstants.coordinate != i) {
+							axis->pushConstants.coordinate = i;
+							axis->updatePushConstants = 1;
+						}
 #if(VKFFT_BACKEND==0)
 						vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 						vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -14355,9 +14469,6 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 		return resFFT;
 	}
 	static inline int VkFFTGetVersion() {
-		return 10202; //X.XX.XX format
+		return 10203; //X.XX.XX format
 	}
-#ifdef __cplusplus
-}
-#endif
 #endif
