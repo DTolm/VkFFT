@@ -1246,11 +1246,11 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			else {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "void radix2(inout %s temp_0, inout %s temp_1, %s angle) {\n", vecType, vecType, floatType);
 			}*/
-			//VkAppendLine(sc, "	{\n");
-			//sprintf(sc->tempStr, "	%s %s;\n", vecType, temp);
-			//VkAppendLine(sc, sc->tempStr);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "	{\n\
-	%s temp;\n", vecType);
+			/*VkAppendLine(sc, "	{\n");
+			sprintf(sc->tempStr, "	%s %s;\n", vecType, temp);
+			VkAppendLine(sc, sc->tempStr);
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "	{\n\
+	%s temp;\n", vecType);*/
 			if (sc->LUT) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId];\n", w);
 				if (!sc->inverse)
@@ -1267,13 +1267,13 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkMulComplex(sc, temp, regID[1], w, 0);
 			VkSubComplex(sc, regID[1], regID[0], temp);
 			VkAddComplex(sc, regID[0], regID[0], temp);
-			//VkAppendLine(sc, "	}\n");
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*VkAppendLine(sc, "	}\n");
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp.x = temp%s.x * w.x - temp%s.y * w.y;\n\
 	temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
 	temp%s = temp%s - temp;\n\
 	temp%s = temp%s + temp;\n\
-}\n", regID[1], regID[1], regID[1], regID[1], regID[1], regID[0], regID[0], regID[0]);
+	}\n", regID[1], regID[1], regID[1], regID[1], regID[1], regID[0], regID[0], regID[0]);*/
 			break;
 		}
 		case 3: {
@@ -1313,9 +1313,9 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = sincos_20(angle*%.17f%s);\n", w, 4.0 / 3.0, LFending);
 			}
 			VkMulComplex(sc, sc->locID[2], regID[2], w, 0);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	loc_2.x = temp%s.x * w.x - temp%s.y * w.y;\n\
-	loc_2.y = temp%s.y * w.x + temp%s.x * w.y;\n", regID[2], regID[2], regID[2], regID[2]);
+	loc_2.y = temp%s.y * w.x + temp%s.x * w.y;\n", regID[2], regID[2], regID[2], regID[2]);*/
 			if (sc->LUT) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n", w, stageSize);
 				if (!sc->inverse)
@@ -1331,42 +1331,42 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 					sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s=sincos_20(angle*%.17f%s);\n", w, 2.0 / 3.0, LFending);
 			}
 			VkMulComplex(sc, sc->locID[1], regID[1], w, 0);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	loc_1.x = temp%s.x * w.x - temp%s.y * w.y;\n\
-	loc_1.y = temp%s.y * w.x + temp%s.x * w.y;\n", regID[1], regID[1], regID[1], regID[1]);
+	loc_1.y = temp%s.y * w.x + temp%s.x * w.y;\n", regID[1], regID[1], regID[1], regID[1]);*/
 			VkAddComplex(sc, regID[1], sc->locID[1], sc->locID[2]);
 			VkSubComplex(sc, regID[2], sc->locID[1], sc->locID[2]);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp%s = loc_1 + loc_2;\n\
-	temp%s = loc_1 - loc_2;\n", regID[1], regID[2]);
+	temp%s = loc_1 - loc_2;\n", regID[1], regID[2]);*/
 			VkAddComplex(sc, sc->locID[0], regID[0], regID[1]);
 			VkFMAComplex(sc, sc->locID[1], regID[1], tf[0], regID[0]);
 			VkMulComplexNumber(sc, sc->locID[2], regID[2], tf[1]);
 			VkMovComplex(sc, regID[0], sc->locID[0]);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	loc_0 = temp%s + temp%s;\n\
 	loc_1 = temp%s - 0.5 * temp%s;\n\
 	loc_2 = -0.8660254037844386467637231707529 * temp%s;\n\
-	temp%s = loc_0;\n", regID[0], regID[1], regID[0], regID[1], regID[2], regID[0]);
+	temp%s = loc_0;\n", regID[0], regID[1], regID[0], regID[1], regID[2], regID[0]);*/
 
 			if (stageAngle < 0)
 			{
 				VkShuffleComplex(sc, regID[1], sc->locID[1], sc->locID[2], 0);
 				VkShuffleComplexInv(sc, regID[2], sc->locID[1], sc->locID[2], 0);
-				//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+				/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp%s.x = loc_1.x - loc_2.y; \n\
 	temp%s.y = loc_1.y + loc_2.x; \n\
 	temp%s.x = loc_1.x + loc_2.y; \n\
-	temp%s.y = loc_1.y - loc_2.x; \n", regID[1], regID[1], regID[2], regID[2]);
+	temp%s.y = loc_1.y - loc_2.x; \n", regID[1], regID[1], regID[2], regID[2]);*/
 			}
 			else {
 				VkShuffleComplexInv(sc, regID[1], sc->locID[1], sc->locID[2], 0);
 				VkShuffleComplex(sc, regID[2], sc->locID[1], sc->locID[2], 0);
-				//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+				/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp%s.x = loc_1.x + loc_2.y; \n\
 	temp%s.y = loc_1.y - loc_2.x; \n\
 	temp%s.x = loc_1.x - loc_2.y; \n\
-	temp%s.y = loc_1.y + loc_2.x; \n", regID[1], regID[1], regID[2], regID[2]);
+	temp%s.y = loc_1.y + loc_2.x; \n", regID[1], regID[1], regID[2], regID[2]);*/
 			}
 
 			//VkAppendLine(sc, "	}\n");
@@ -1405,7 +1405,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkMulComplex(sc, temp, regID[3], w, 0);
 			VkSubComplex(sc, regID[3], regID[1], temp);
 			VkAddComplex(sc, regID[1], regID[1], temp);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp.x=temp%s.x*w.x-temp%s.y*w.y;\n\
 	temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
 	temp%s = temp%s - temp;\n\
@@ -1414,7 +1414,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 	temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
 	temp%s = temp%s - temp;\n\
 	temp%s = temp%s + temp;\n\n\
-	//DIF 2nd stage with angle\n", regID[2], regID[2], regID[2], regID[2], regID[2], regID[0], regID[0], regID[0], regID[3], regID[3], regID[3], regID[3], regID[3], regID[1], regID[1], regID[1]);
+	//DIF 2nd stage with angle\n", regID[2], regID[2], regID[2], regID[2], regID[2], regID[0], regID[0], regID[0], regID[3], regID[3], regID[3], regID[3], regID[3], regID[1], regID[1], regID[1]);*/
 			if (sc->LUT) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s=twiddleLUT[LUTId+%" PRIu64 "];\n", w, stageSize);
 				if (!sc->inverse)
@@ -1431,11 +1431,11 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkMulComplex(sc, temp, regID[1], w, 0);
 			VkSubComplex(sc, regID[1], regID[0], temp);
 			VkAddComplex(sc, regID[0], regID[0], temp);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp.x = temp%s.x * w.x - temp%s.y * w.y;\n\
 	temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
 	temp%s = temp%s - temp;\n\
-	temp%s = temp%s + temp;\n\n", regID[1], regID[1], regID[1], regID[1], regID[1], regID[0], regID[0], regID[0]);
+	temp%s = temp%s + temp;\n\n", regID[1], regID[1], regID[1], regID[1], regID[1], regID[0], regID[0], regID[0]);*/
 			if (stageAngle < 0) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.x = %s.x;", temp, w);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.x = %s.y;\n", w, w);
@@ -1454,8 +1454,8 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkMovComplex(sc, temp, regID[1]);
 			VkMovComplex(sc, regID[1], regID[2]);
 			VkMovComplex(sc, regID[2], temp);
-			//VkAppendLine(sc, "	}\n");
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*VkAppendLine(sc, "	}\n");
+			sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp.x = temp%s.x * w.x - temp%s.y * w.y;\n\
 	temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
 	temp%s = temp%s - temp;\n\
@@ -1463,7 +1463,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 	temp = temp%s;\n\
 	temp%s = temp%s;\n\
 	temp%s = temp;\n\
-}\n", regID[3], regID[3], regID[3], regID[3], regID[3], regID[2], regID[2], regID[2], regID[1], regID[1], regID[2], regID[2]);
+}\n", regID[3], regID[3], regID[3], regID[3], regID[3], regID[2], regID[2], regID[2], regID[1], regID[1], regID[2], regID[2]);*/
 			break;
 		}
 		case 5: {
@@ -1490,8 +1490,8 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 				sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->locID[i]);
 				VkAppendLine(sc, sc->tempStr);
 			}*/
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "	{\n\
-	%s loc_0;\n	%s loc_1;\n	%s loc_2;\n	%s loc_3;\n	%s loc_4;\n", vecType, vecType, vecType, vecType, vecType);
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "	{\n\
+	%s loc_0;\n	%s loc_1;\n	%s loc_2;\n	%s loc_3;\n	%s loc_4;\n", vecType, vecType, vecType, vecType, vecType);*/
 			for (uint64_t i = radix - 1; i > 0; i--) {
 				if (i == radix - 1) {
 					if (sc->LUT) {
@@ -1526,9 +1526,9 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 					}
 				}
 				VkMulComplex(sc, sc->locID[i], regID[i], w, 0);
-				//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+				/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	loc_%" PRIu64 ".x = temp%s.x * w.x - temp%s.y * w.y;\n\
-	loc_%" PRIu64 ".y = temp%s.y * w.x + temp%s.x * w.y;\n", i, regID[i], regID[i], i, regID[i], regID[i]);
+	loc_%" PRIu64 ".y = temp%s.y * w.x + temp%s.x * w.y;\n", i, regID[i], regID[i], i, regID[i], regID[i]);*/
 			}
 			VkAddComplex(sc, regID[1], sc->locID[1], sc->locID[4]);
 			VkAddComplex(sc, regID[2], sc->locID[2], sc->locID[3]);
@@ -1536,13 +1536,13 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkSubComplex(sc, regID[4], sc->locID[1], sc->locID[4]);
 			VkSubComplex(sc, sc->locID[3], regID[1], regID[2]);
 			VkAddComplex(sc, sc->locID[4], regID[3], regID[4]);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp%s = loc_1 + loc_4;\n\
 	temp%s = loc_2 + loc_3;\n\
 	temp%s = loc_2 - loc_3;\n\
 	temp%s = loc_1 - loc_4;\n\
 	loc_3 = temp%s - temp%s;\n\
-	loc_4 = temp%s + temp%s;\n", regID[1], regID[2], regID[3], regID[4], regID[1], regID[2], regID[3], regID[4]);
+	loc_4 = temp%s + temp%s;\n", regID[1], regID[2], regID[3], regID[4], regID[1], regID[2], regID[3], regID[4]);*/
 			VkAddComplex(sc, sc->locID[0], regID[0], regID[1]);
 			VkAddComplex(sc, sc->locID[0], sc->locID[0], regID[2]);
 			VkFMAComplex(sc, sc->locID[1], regID[1], tf[0], regID[0]);
@@ -1551,25 +1551,25 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkMulComplexNumber(sc, regID[4], regID[4], tf[2]);
 			VkMulComplexNumber(sc, sc->locID[3], sc->locID[3], tf[3]);
 			VkMulComplexNumber(sc, sc->locID[4], sc->locID[4], tf[4]);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	loc_0 = temp%s + temp%s + temp%s;\n\
 	loc_1 = temp%s - 0.5 * temp%s;\n\
 	loc_2 = temp%s - 0.5 * temp%s;\n\
 	temp%s *= 1.538841768587626701285145288018455;\n\
 	temp%s *= -0.363271264002680442947733378740309;\n\
 	loc_3 *= -0.809016994374947424102293417182819;\n\
-	loc_4 *= -0.587785252292473129168705954639073;\n", regID[0], regID[1], regID[2], regID[0], regID[1], regID[0], regID[2], regID[3], regID[4]);
+	loc_4 *= -0.587785252292473129168705954639073;\n", regID[0], regID[1], regID[2], regID[0], regID[1], regID[0], regID[2], regID[3], regID[4]);*/
 			VkSubComplex(sc, sc->locID[1], sc->locID[1], sc->locID[3]);
 			VkAddComplex(sc, sc->locID[2], sc->locID[2], sc->locID[3]);
 			VkAddComplex(sc, sc->locID[3], regID[3], sc->locID[4]);
 			VkAddComplex(sc, sc->locID[4], sc->locID[4], regID[4]);
 			VkMovComplex(sc, regID[0], sc->locID[0]);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	loc_1 -= loc_3;\n\
 	loc_2 += loc_3;\n\
 	loc_3 = temp%s+loc_4;\n\
 	loc_4 += temp%s;\n\
-	temp%s = loc_0;\n", regID[3], regID[4], regID[0]);
+	temp%s = loc_0;\n", regID[3], regID[4], regID[0]);*/
 
 			if (stageAngle < 0)
 			{
@@ -1577,7 +1577,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 				VkShuffleComplex(sc, regID[2], sc->locID[2], sc->locID[3], 0);
 				VkShuffleComplexInv(sc, regID[3], sc->locID[2], sc->locID[3], 0);
 				VkShuffleComplexInv(sc, regID[4], sc->locID[1], sc->locID[4], 0);
-				//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+				/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp%s.x = loc_1.x - loc_4.y; \n\
 	temp%s.y = loc_1.y + loc_4.x; \n\
 	temp%s.x = loc_2.x - loc_3.y; \n\
@@ -1585,14 +1585,14 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 	temp%s.x = loc_2.x + loc_3.y; \n\
 	temp%s.y = loc_2.y - loc_3.x; \n\
 	temp%s.x = loc_1.x + loc_4.y; \n\
-	temp%s.y = loc_1.y - loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID[3], regID[3], regID[4], regID[4]);
+	temp%s.y = loc_1.y - loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID[3], regID[3], regID[4], regID[4]);*/
 			}
 			else {
 				VkShuffleComplexInv(sc, regID[1], sc->locID[1], sc->locID[4], 0);
 				VkShuffleComplexInv(sc, regID[2], sc->locID[2], sc->locID[3], 0);
 				VkShuffleComplex(sc, regID[3], sc->locID[2], sc->locID[3], 0);
 				VkShuffleComplex(sc, regID[4], sc->locID[1], sc->locID[4], 0);
-				//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+				/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp%s.x = loc_1.x + loc_4.y; \n\
 	temp%s.y = loc_1.y - loc_4.x; \n\
 	temp%s.x = loc_2.x + loc_3.y; \n\
@@ -1600,7 +1600,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 	temp%s.x = loc_2.x - loc_3.y; \n\
 	temp%s.y = loc_2.y + loc_3.x; \n\
 	temp%s.x = loc_1.x - loc_4.y; \n\
-	temp%s.y = loc_1.y + loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID[3], regID[3], regID[4], regID[4]);
+	temp%s.y = loc_1.y + loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID[3], regID[3], regID[4], regID[4]);*/
 			}
 
 			//VkAppendLine(sc, "	}\n");
@@ -1680,9 +1680,9 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 					}
 				}
 				VkMulComplex(sc, sc->locID[i], regID[i], w, 0);
-				//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+				/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	loc_%" PRIu64 ".x = temp%s.x * w.x - temp%s.y * w.y;\n\
-	loc_%" PRIu64 ".y = temp%s.y * w.x + temp%s.x * w.y;\n", i, regID[i], regID[i], i, regID[i], regID[i]);
+	loc_%" PRIu64 ".y = temp%s.y * w.x + temp%s.x * w.y;\n", i, regID[i], regID[i], i, regID[i], regID[i]);*/
 			}
 			VkMovComplex(sc, sc->locID[0], regID[0]);
 			VkAddComplex(sc, regID[0], sc->locID[1], sc->locID[6]);
@@ -1691,37 +1691,37 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkSubComplex(sc, regID[3], sc->locID[2], sc->locID[5]);
 			VkAddComplex(sc, regID[4], sc->locID[4], sc->locID[3]);
 			VkSubComplex(sc, regID[5], sc->locID[4], sc->locID[3]);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	loc_0 = temp%s;\n\
 	temp%s = loc_1 + loc_6;\n\
 	temp%s = loc_1 - loc_6;\n\
 	temp%s = loc_2 + loc_5;\n\
 	temp%s = loc_2 - loc_5;\n\
 	temp%s = loc_4 + loc_3;\n\
-	temp%s = loc_4 - loc_3;\n", regID[0], regID[0], regID[1], regID[2], regID[3], regID[4], regID[5]);
+	temp%s = loc_4 - loc_3;\n", regID[0], regID[0], regID[1], regID[2], regID[3], regID[4], regID[5]);*/
 			VkAddComplex(sc, sc->locID[5], regID[1], regID[3]);
 			VkAddComplex(sc, sc->locID[5], sc->locID[5], regID[5]);
 			VkAddComplex(sc, sc->locID[1], regID[0], regID[2]);
 			VkAddComplex(sc, sc->locID[1], sc->locID[1], regID[4]);
 			VkAddComplex(sc, sc->locID[0], sc->locID[0], sc->locID[1]);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	loc_5 = temp%s + temp%s + temp%s;\n\
 	loc_1 = temp%s + temp%s + temp%s;\n\
-	loc_0 += loc_1;\n", regID[1], regID[3], regID[5], regID[0], regID[2], regID[4]);
+	loc_0 += loc_1;\n", regID[1], regID[3], regID[5], regID[0], regID[2], regID[4]);*/
 			VkSubComplex(sc, sc->locID[2], regID[0], regID[4]);
 			VkSubComplex(sc, sc->locID[3], regID[4], regID[2]);
 			VkSubComplex(sc, sc->locID[4], regID[2], regID[0]);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	loc_2 = temp%s - temp%s;\n\
 	loc_3 = temp%s - temp%s;\n\
-	loc_4 = temp%s - temp%s;\n", regID[0], regID[4], regID[4], regID[2], regID[2], regID[0]);
+	loc_4 = temp%s - temp%s;\n", regID[0], regID[4], regID[4], regID[2], regID[2], regID[0]);*/
 			VkSubComplex(sc, regID[0], regID[1], regID[5]);
 			VkSubComplex(sc, regID[2], regID[5], regID[3]);
 			VkSubComplex(sc, regID[4], regID[3], regID[1]);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp%s = temp%s - temp%s;\n\
 	temp%s = temp%s - temp%s;\n\
-	temp%s = temp%s - temp%s;\n", regID[0], regID[1], regID[5], regID[2], regID[5], regID[3], regID[4], regID[3], regID[1]);
+	temp%s = temp%s - temp%s;\n", regID[0], regID[1], regID[5], regID[2], regID[5], regID[3], regID[4], regID[3], regID[1]);*/
 
 			VkMulComplexNumber(sc, sc->locID[1], sc->locID[1], tf[0]);
 			VkMulComplexNumber(sc, sc->locID[2], sc->locID[2], tf[1]);
@@ -1731,7 +1731,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkMulComplexNumber(sc, regID[0], regID[0], tf[5]);
 			VkMulComplexNumber(sc, regID[2], regID[2], tf[6]);
 			VkMulComplexNumber(sc, regID[4], regID[4], tf[7]);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	loc_1 *= -1.16666666666666651863693004997913;\n\
 	loc_2 *= 0.79015646852540022404554065360571;\n\
 	loc_3 *= 0.05585426728964774240049351305970;\n\
@@ -1739,24 +1739,24 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 	loc_5 *= 0.44095855184409837868031445395900;\n\
 	temp%s *= 0.34087293062393136944265847887436;\n\
 	temp%s *= -0.53396936033772524066165487965918;\n\
-	temp%s *= 0.87484229096165666561546458979137;\n", regID[0], regID[2], regID[4]);
+	temp%s *= 0.87484229096165666561546458979137;\n", regID[0], regID[2], regID[4]);*/
 
 			VkSubComplex(sc, regID[5], regID[4], regID[2]);
 			VkAddComplexInv(sc, regID[6], regID[4], regID[0]);
 			VkAddComplex(sc, regID[4], regID[0], regID[2]);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp%s = temp%s - temp%s;\n\
 	temp%s = - temp%s - temp%s;\n\
-	temp%s = temp%s + temp%s;\n", regID[5], regID[4], regID[2], regID[6], regID[4], regID[0], regID[4], regID[0], regID[2]);
+	temp%s = temp%s + temp%s;\n", regID[5], regID[4], regID[2], regID[6], regID[4], regID[0], regID[4], regID[0], regID[2]);*/
 			VkAddComplex(sc, regID[0], sc->locID[0], sc->locID[1]);
 			VkAddComplex(sc, regID[1], sc->locID[2], sc->locID[3]);
 			VkSubComplex(sc, regID[2], sc->locID[4], sc->locID[3]);
 			VkAddComplexInv(sc, regID[3], sc->locID[2], sc->locID[4]);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp%s = loc_0 + loc_1;\n\
 	temp%s = loc_2 + loc_3;\n\
 	temp%s = loc_4 - loc_3;\n\
-	temp%s = - loc_2 - loc_4;\n", regID[0], regID[1], regID[2], regID[3]);
+	temp%s = - loc_2 - loc_4;\n", regID[0], regID[1], regID[2], regID[3]);*/
 			VkAddComplex(sc, sc->locID[1], regID[0], regID[1]);
 			VkAddComplex(sc, sc->locID[2], regID[0], regID[2]);
 			VkAddComplex(sc, sc->locID[3], regID[0], regID[3]);
@@ -1764,14 +1764,14 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkAddComplex(sc, sc->locID[6], regID[6], sc->locID[5]);
 			VkAddComplex(sc, sc->locID[5], sc->locID[5], regID[5]);
 			VkMovComplex(sc, regID[0], sc->locID[0]);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	loc_1 = temp%s + temp%s;\n\
 	loc_2 = temp%s + temp%s;\n\
 	loc_3 = temp%s + temp%s;\n\
 	loc_4 = temp%s + loc_5;\n\
 	loc_6 = temp%s + loc_5;\n\
 	loc_5 += temp%s;\n\
-	temp%s = loc_0;\n", regID[0], regID[1], regID[0], regID[2], regID[0], regID[3], regID[4], regID[6], regID[5], regID[0]);
+	temp%s = loc_0;\n", regID[0], regID[1], regID[0], regID[2], regID[0], regID[3], regID[4], regID[6], regID[5], regID[0]);*/
 			VkShuffleComplexInv(sc, regID[1], sc->locID[1], sc->locID[4], 0);
 			VkShuffleComplexInv(sc, regID[2], sc->locID[3], sc->locID[6], 0);
 			VkShuffleComplex(sc, regID[3], sc->locID[2], sc->locID[5], 0);
@@ -1779,7 +1779,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkShuffleComplex(sc, regID[5], sc->locID[3], sc->locID[6], 0);
 			VkShuffleComplex(sc, regID[6], sc->locID[1], sc->locID[4], 0);
 
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp%s.x = loc_1.x + loc_4.y; \n\
 	temp%s.y = loc_1.y - loc_4.x; \n\
 	temp%s.x = loc_3.x + loc_6.y; \n\
@@ -1792,7 +1792,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 	temp%s.y = loc_3.y + loc_6.x; \n\
 	temp%s.x = loc_1.x - loc_4.y; \n\
 	temp%s.y = loc_1.y + loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID[3], regID[3], regID[4], regID[4], regID[5], regID[5], regID[6], regID[6]);
-			//VkAppendLine(sc, "	}\n");
+			VkAppendLine(sc, "	}\n");*/
 			/*for (uint64_t i = 0; i < 7; i++) {
 				free(sc->locID[i]);
 			}*/
@@ -1829,11 +1829,11 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 				VkMulComplex(sc, temp, regID[i + 4], w, 0);
 				VkSubComplex(sc, regID[i + 4], regID[i], temp);
 				VkAddComplex(sc, regID[i], regID[i], temp);
-				//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+				/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp.x=temp%s.x*w.x-temp%s.y*w.y;\n\
 	temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
 	temp%s = temp%s - temp;\n\
-	temp%s = temp%s + temp;\n\n", regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 0], regID[i + 0], regID[i + 0]);
+	temp%s = temp%s + temp;\n\n", regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 0], regID[i + 0], regID[i + 0]);*/
 			}
 			if (sc->LUT) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s=twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, stageSize);
@@ -1852,11 +1852,11 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 				VkMulComplex(sc, temp, regID[i + 2], w, 0);
 				VkSubComplex(sc, regID[i + 2], regID[i], temp);
 				VkAddComplex(sc, regID[i], regID[i], temp);
-				//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+				/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp.x=temp%s.x*w.x-temp%s.y*w.y;\n\
 	temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
 	temp%s = temp%s - temp;\n\
-	temp%s = temp%s + temp;\n\n", regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 0], regID[i + 0], regID[i + 0]);
+	temp%s = temp%s + temp;\n\n", regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 0], regID[i + 0], regID[i + 0]);*/
 			}
 			if (stageAngle < 0) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.x = %s.y;\n", iw, w);
@@ -1873,11 +1873,11 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 				VkMulComplex(sc, temp, regID[i + 2], iw, 0);
 				VkSubComplex(sc, regID[i + 2], regID[i], temp);
 				VkAddComplex(sc, regID[i], regID[i], temp);
-				//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+				/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp.x = temp%s.x * iw.x - temp%s.y * iw.y;\n\
 	temp.y = temp%s.y * iw.x + temp%s.x * iw.y;\n\
 	temp%s = temp%s - temp;\n\
-	temp%s = temp%s + temp;\n\n", regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 0], regID[i + 0], regID[i + 0]);
+	temp%s = temp%s + temp;\n\n", regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 0], regID[i + 0], regID[i + 0]);*/
 			}
 
 			if (sc->LUT) {
@@ -1897,11 +1897,11 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkMulComplex(sc, temp, regID[1], w, 0);
 			VkSubComplex(sc, regID[1], regID[0], temp);
 			VkAddComplex(sc, regID[0], regID[0], temp);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp.x=temp%s.x*w.x-temp%s.y*w.y;\n\
 	temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
 	temp%s = temp%s - temp;\n\
-	temp%s = temp%s + temp;\n\n", regID[1], regID[1], regID[1], regID[1], regID[1], regID[0], regID[0], regID[0]);
+	temp%s = temp%s + temp;\n\n", regID[1], regID[1], regID[1], regID[1], regID[1], regID[0], regID[0], regID[0]);*/
 			if (stageAngle < 0) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.x = %s.y;\n", iw, w);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.y = -%s.x;\n", iw, w);
@@ -1915,11 +1915,11 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkMulComplex(sc, temp, regID[3], iw, 0);
 			VkSubComplex(sc, regID[3], regID[2], temp);
 			VkAddComplex(sc, regID[2], regID[2], temp);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp.x = temp%s.x * iw.x - temp%s.y * iw.y;\n\
 	temp.y = temp%s.y * iw.x + temp%s.x * iw.y;\n\
 	temp%s = temp%s - temp;\n\
-	temp%s = temp%s + temp;\n\n", regID[3], regID[3], regID[3], regID[3], regID[3], regID[2], regID[2], regID[2]);
+	temp%s = temp%s + temp;\n\n", regID[3], regID[3], regID[3], regID[3], regID[3], regID[2], regID[2], regID[2]);*/
 			if (stageAngle < 0) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.x = %s.x * loc_SQRT1_2 + %s.y * loc_SQRT1_2;\n", iw, w, w);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.y = %s.y * loc_SQRT1_2 - %s.x * loc_SQRT1_2;\n\n", iw, w, w);
@@ -1931,11 +1931,11 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkMulComplex(sc, temp, regID[5], iw, 0);
 			VkSubComplex(sc, regID[5], regID[4], temp);
 			VkAddComplex(sc, regID[4], regID[4], temp);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp.x = temp%s.x * iw.x - temp%s.y * iw.y;\n\
 	temp.y = temp%s.y * iw.x + temp%s.x * iw.y;\n\
 	temp%s = temp%s - temp;\n\
-	temp%s = temp%s + temp;\n\n", regID[5], regID[5], regID[5], regID[5], regID[5], regID[4], regID[4], regID[4]);
+	temp%s = temp%s + temp;\n\n", regID[5], regID[5], regID[5], regID[5], regID[5], regID[4], regID[4], regID[4]);*/
 			if (stageAngle < 0) {
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.x = %s.y;\n", w, iw);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	%s.y = -%s.x;\n", w, iw);
@@ -1955,7 +1955,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			VkMovComplex(sc, temp, regID[3]);
 			VkMovComplex(sc, regID[3], regID[6]);
 			VkMovComplex(sc, regID[6], temp);
-			//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+			/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 	temp.x = temp%s.x * w.x - temp%s.y * w.y;\n\
 	temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
 	temp%s = temp%s - temp;\n\
@@ -1967,7 +1967,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 	temp%s = temp%s;\n\
 	temp%s = temp;\n\
 }\n\n", regID[7], regID[7], regID[7], regID[7], regID[7], regID[6], regID[6], regID[6], regID[1], regID[1], regID[4], regID[4], regID[3], regID[3], regID[6], regID[6]);
-			//VkAppendLine(sc, "	}\n");
+			//VkAppendLine(sc, "	}\n");*/
 
 			break;
 		}
@@ -2528,8 +2528,8 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 	%s tshuffle= ((%s>>1))%%(%" PRIu64 ");\n\
 	%s shuffle[%" PRIu64 "];\n", uintType, sc->gl_LocalInvocationID_x, sc->registers_per_thread, vecType, sc->registers_per_thread);
 			for (uint64_t i = 0; i < sc->registers_per_thread; i++) {
-				//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	shuffle[%" PRIu64 "];\n", i, vecType);
+				/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+	shuffle[%" PRIu64 "];\n", i, vecType);*/
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	shuffle[%" PRIu64 "].x = 0;\n", i);
 				sc->currentLen += sprintf(sc->output + sc->currentLen, "	shuffle[%" PRIu64 "].y = 0;\n", i);
 			}
@@ -4629,10 +4629,10 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 						sprintf(tempNum, "%" PRIu64 "", stageRadix);
 						VkMulReal(sc, sc->inoutID, sc->blockInvocationID, tempNum);
 						VkAddReal(sc, sc->inoutID, sc->inoutID, sc->stageInvocationID);
-						//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+						/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 		stageInvocationID = (gl_LocalInvocationID.x + %" PRIu64 ") %% (%" PRIu64 ");\n\
 		blockInvocationID = (gl_LocalInvocationID.x + %" PRIu64 ") - stageInvocationID;\n\
-		inoutID = stageInvocationID + blockInvocationID * %" PRIu64 ";\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);
+		inoutID = stageInvocationID + blockInvocationID * %" PRIu64 ";\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);*/
 						if ((stageSize == 1) && (sc->cacheShuffle)) {
 							for (uint64_t i = 0; i < stageRadix; i++) {
 								uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
@@ -4655,8 +4655,8 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 								if (strcmp(stageNormalization, ""))
 									VkDivComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], stageNormalization);
 								VkSharedStore(sc, sc->sdataID, sc->regIDs[id]);
-								//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	sdata[sharedStride * gl_LocalInvocationID.y + inoutID + ((%" PRIu64 "+tshuffle) %% (%" PRIu64 "))*%" PRIu64 "] = temp%s%s;\n", i, logicalRegistersPerThread, stageSize, sc->regIDs[id], stageNormalization);
+								/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+	sdata[sharedStride * gl_LocalInvocationID.y + inoutID + ((%" PRIu64 "+tshuffle) %% (%" PRIu64 "))*%" PRIu64 "] = temp%s%s;\n", i, logicalRegistersPerThread, stageSize, sc->regIDs[id], stageNormalization);*/
 							}
 						}
 						else {
@@ -4692,8 +4692,8 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 								if (strcmp(stageNormalization, ""))
 									VkDivComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], stageNormalization);
 								VkSharedStore(sc, sc->sdataID, sc->regIDs[id]);
-								//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-	sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;\n", i * stageSize, sc->regIDs[id], stageNormalization);
+								/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+	sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;\n", i * stageSize, sc->regIDs[id], stageNormalization);*/
 							}
 						}
 					}
@@ -4726,8 +4726,8 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 								}
 								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %" PRIu64 "", t * logicalGroupSizeNext);
 								VkSharedLoad(sc, tempID[t + k * sc->registers_per_thread], sc->sdataID);
-								//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		temp%s = sdata[sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %" PRIu64 "];\n", tempID[t + k * sc->registers_per_thread], t * logicalGroupSizeNext);
+								/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+		temp%s = sdata[sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %" PRIu64 "];\n", tempID[t + k * sc->registers_per_thread], t * logicalGroupSizeNext);*/
 								t++;
 							}
 
@@ -4790,8 +4790,8 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			if (((sc->inverse) && (sc->normalize)) || ((sc->convolutionStep) && (stageAngle > 0))) {
 				for (uint64_t i = 0; i < logicalStoragePerThread; i++) {
 					VkDivComplexNumber(sc, sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], stageNormalization);
-					//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		temp%s = temp%s%s;\n", sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], stageNormalization);
+					/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+		temp%s = temp%s%s;\n", sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], stageNormalization);*/
 				}
 			}
 			if (sc->localSize[0] * logicalStoragePerThread > sc->fftDim)
@@ -4866,10 +4866,10 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 						sprintf(tempNum, "%" PRIu64 "", stageRadix);
 						VkMulReal(sc, sc->inoutID, sc->blockInvocationID, tempNum);
 						VkAddReal(sc, sc->inoutID, sc->inoutID, sc->stageInvocationID);
-						//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+						/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
 		stageInvocationID = (gl_LocalInvocationID.y + %" PRIu64 ") %% (%" PRIu64 ");\n\
 		blockInvocationID = (gl_LocalInvocationID.y + %" PRIu64 ") - stageInvocationID;\n\
-		inoutID = stageInvocationID + blockInvocationID * %" PRIu64 ";\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);
+		inoutID = stageInvocationID + blockInvocationID * %" PRIu64 ";\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);*/
 						for (uint64_t i = 0; i < stageRadix; i++) {
 							uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
 							id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
@@ -4883,8 +4883,8 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 							if (strcmp(stageNormalization, ""))
 								VkDivComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], stageNormalization);
 							VkSharedStore(sc, sc->sdataID, sc->regIDs[id]);
-							//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		sdata[gl_WorkGroupSize.x*(inoutID+%" PRIu64 ")+gl_LocalInvocationID.x] = temp%s%s;\n", i * stageSize, sc->regIDs[id], stageNormalization);
+							/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+		sdata[gl_WorkGroupSize.x*(inoutID+%" PRIu64 ")+gl_LocalInvocationID.x] = temp%s%s;\n", i * stageSize, sc->regIDs[id], stageNormalization);*/
 						}
 					}
 					for (uint64_t j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
@@ -4913,8 +4913,8 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 								VkAddReal(sc, sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
 								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %" PRIu64 "", t * logicalGroupSizeNext);
 								VkSharedLoad(sc, tempID[t + k * sc->registers_per_thread], sc->sdataID);
-								//sc->currentLen += sprintf(sc->output + sc->currentLen, "\
-		temp%s = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%" PRIu64 ")+gl_LocalInvocationID.x];\n", tempID[t + k * sc->registers_per_thread], t * logicalGroupSizeNext);
+								/*sc->currentLen += sprintf(sc->output + sc->currentLen, "\
+		temp%s = sdata[gl_WorkGroupSize.x*(gl_LocalInvocationID.y+%" PRIu64 ")+gl_LocalInvocationID.x];\n", tempID[t + k * sc->registers_per_thread], t * logicalGroupSizeNext);*/
 								t++;
 							}
 						}
