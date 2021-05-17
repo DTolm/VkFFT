@@ -4,7 +4,7 @@
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at https://mozilla.org/MPL/2.0/. 
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #ifndef VKFFT_H
 #define VKFFT_H
 
@@ -35,7 +35,7 @@
 #include <OpenCL/opencl.h>
 #else
 #include <CL/cl.h>
-#endif 
+#endif
 #endif
 
 	typedef struct {
@@ -43,7 +43,7 @@
 
 		//required parameters:
 		uint64_t FFTdim; //FFT dimensionality (1, 2 or 3)
-		uint64_t size[3]; // WHD -system dimensions 
+		uint64_t size[3]; // WHD -system dimensions
 
 #if(VKFFT_BACKEND==0)
 		VkPhysicalDevice* physicalDevice;//pointer to Vulkan physical device, obtained from vkEnumeratePhysicalDevices
@@ -110,7 +110,7 @@
 #endif
 
 		//optional: (default 0 if not stated otherwise)
-		uint64_t coalescedMemory;//in bits, for Nvidia and AMD is equal to 32, Intel is equal 64, scaled for half precision. Gonna work regardles, but if specified by user correctly, the performance will be higher. 
+		uint64_t coalescedMemory;//in bits, for Nvidia and AMD is equal to 32, Intel is equal 64, scaled for half precision. Gonna work regardles, but if specified by user correctly, the performance will be higher.
 		uint64_t aimThreads;//aim at this many threads per block. Default 128
 		uint64_t numSharedBanks;//how many banks shared memory has. Default 32
 		uint64_t inverseReturnToInputBuffer;//return data to the input buffer in inverse transform (0 - off, 1 - on). isInputFormatted must be enabled
@@ -166,7 +166,7 @@
 		uint64_t maxThreadsNum; //max number of threads from VkPhysicalDeviceLimits
 		uint64_t sharedMemorySizeStatic; //available for static allocation shared memory size, in bytes
 		uint64_t sharedMemorySize; //available for allocation shared memory size, in bytes
-		uint64_t sharedMemorySizePow2; //power of 2 which is less or equal to sharedMemorySize, in bytes 
+		uint64_t sharedMemorySizePow2; //power of 2 which is less or equal to sharedMemorySize, in bytes
 		uint64_t warpSize; //number of threads per warp/wavefront.
 		uint64_t halfThreads;//Intel fix
 		uint64_t allocateTempBuffer; //buffer allocated by app automatically if needed to reorder Four step algorithm. Parameter to check if it has been allocated
@@ -7061,7 +7061,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* twiddleLUT", vecType);
 		}
 		sc->currentLen += sprintf(sc->output + sc->currentLen, ") {\n");
-		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
+		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n");
 #elif(VKFFT_BACKEND==2)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern \"C\" __launch_bounds__(%" PRIu64 ") __global__ void VkFFT_main_R2C ", sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
 		if (type == 5)
@@ -7079,7 +7079,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* twiddleLUT", vecType);
 		}
 		sc->currentLen += sprintf(sc->output + sc->currentLen, ") {\n");
-		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
+		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n");
 #elif(VKFFT_BACKEND==3)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "__kernel __attribute__((reqd_work_group_size(%" PRIu64 ", %" PRIu64 ", %" PRIu64 "))) void VkFFT_main_R2C ", sc->localSize[0], sc->localSize[1], sc->localSize[2]);
 		if (type == 5)
@@ -7098,7 +7098,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 		}
 		sc->currentLen += sprintf(sc->output + sc->currentLen, ", PushConsts consts");
 		sc->currentLen += sprintf(sc->output + sc->currentLen, ") {\n");
-		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
+		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n");
 #endif
 		char idX[500] = "";
 		if (sc->performWorkGroupShift[0])
@@ -7410,7 +7410,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* twiddleLUT", vecType);
 		}
 		sc->currentLen += sprintf(sc->output + sc->currentLen, ") {\n");
-		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
+		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n");
 		appendSharedMemoryVkFFT(sc, floatType, uintType, locType);
 #elif(VKFFT_BACKEND==2)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "extern __shared__ float shared[];\n");
@@ -7430,7 +7430,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			sc->currentLen += sprintf(sc->output + sc->currentLen, ", %s* twiddleLUT", vecType);
 		}
 		sc->currentLen += sprintf(sc->output + sc->currentLen, ") {\n");
-		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
+		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n");
 		appendSharedMemoryVkFFT(sc, floatType, uintType, locType);
 #elif(VKFFT_BACKEND==3)
 		sc->currentLen += sprintf(sc->output + sc->currentLen, "__kernel __attribute__((reqd_work_group_size(%" PRIu64 ", %" PRIu64 ", %" PRIu64 "))) void VkFFT_main ", sc->localSize[0], sc->localSize[1], sc->localSize[2]);
@@ -7450,7 +7450,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 		}
 		sc->currentLen += sprintf(sc->output + sc->currentLen, ", PushConsts consts");
 		sc->currentLen += sprintf(sc->output + sc->currentLen, ") {\n");
-		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n"); 
+		//sc->currentLen += sprintf(sc->output + sc->currentLen, ", const PushConsts consts) {\n");
 		appendSharedMemoryVkFFT(sc, floatType, uintType, locType);
 #endif
 		//if (type==0) sc->currentLen += sprintf(sc->output + sc->currentLen, "return;\n");
@@ -7796,11 +7796,9 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 		if (!app->configuration.makeInversePlanOnly) {
 			if (app->localFFTPlan != 0) {
 				for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
-					if (app->localFFTPlan->numAxisUploads != 0) {
-						if (app->localFFTPlan->numAxisUploads[i] > 0) {
-							for (uint64_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
-								deleteAxis(app, &app->localFFTPlan->axes[i][j]);
-						}
+					if (app->localFFTPlan->numAxisUploads[i] > 0) {
+						for (uint64_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
+							deleteAxis(app, &app->localFFTPlan->axes[i][j]);
 					}
 				}
 				if (app->localFFTPlan->multiUploadR2C) {
@@ -7815,11 +7813,9 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 		if (!app->configuration.makeForwardPlanOnly) {
 			if (app->localFFTPlan_inverse != 0) {
 				for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
-					if (app->localFFTPlan_inverse->numAxisUploads != 0) {
-						if (app->localFFTPlan_inverse->numAxisUploads[i] > 0) {
-							for (uint64_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
-								deleteAxis(app, &app->localFFTPlan_inverse->axes[i][j]);
-						}
+					if (app->localFFTPlan_inverse->numAxisUploads[i] > 0) {
+						for (uint64_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
+							deleteAxis(app, &app->localFFTPlan_inverse->axes[i][j]);
 					}
 				}
 				if (app->localFFTPlan_inverse->multiUploadR2C) {
@@ -9439,7 +9435,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 					else
 					{
 						if (loc_multipliers[7] > 0) {
-							if ((loc_multipliers[3] == 1)) {
+							if (loc_multipliers[3] == 1) {
 								if (loc_multipliers[11] > 0) {
 									if (loc_multipliers[13] > 0) {
 										registers_per_thread = 21;
@@ -9533,7 +9529,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 							}
 						}
 						else {
-							if ((loc_multipliers[3] == 1)) {
+							if (loc_multipliers[3] == 1) {
 								if (loc_multipliers[11] > 0) {
 									if (loc_multipliers[13] > 0) {
 										registers_per_thread = 39;
@@ -10460,7 +10456,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 
 		axis->specializationConstants.fft_dim_full = app->configuration.size[0];
 
-		//allocate LUT 
+		//allocate LUT
 		if (app->configuration.useLUT) {
 			double double_PI = 3.1415926535897932384626433832795;
 			if (app->configuration.doublePrecision) {
@@ -11487,7 +11483,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			}
 #endif
 		}
-		//allocate LUT 
+		//allocate LUT
 		if (app->configuration.useLUT) {
 			double double_PI = 3.1415926535897932384626433832795;
 			uint64_t dimMult = 1;
@@ -13040,7 +13036,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 
 		switch (physicalDeviceProperties.vendorID) {
 		case 0x10DE://NVIDIA
-			app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
+			app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
 			app->configuration.useLUT = (app->configuration.doublePrecision) ? 1 : 0;
 			app->configuration.warpSize = 32;
 			app->configuration.registerBoostNonPow2 = 0;
@@ -13111,7 +13107,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 			}
 		}
 
-		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
+		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
 		app->configuration.useLUT = (app->configuration.doublePrecision) ? 1 : 0;
 		app->configuration.registerBoostNonPow2 = 0;
 		app->configuration.registerBoost = 1;
@@ -13189,7 +13185,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 
 		switch (vendorID) {
 		case 0x10DE://NVIDIA
-			app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM. 
+			app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
 			app->configuration.useLUT = (app->configuration.doublePrecision) ? 1 : 0;
 			app->configuration.warpSize = 32;
 			app->configuration.registerBoostNonPow2 = 0;
