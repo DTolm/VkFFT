@@ -6,7 +6,9 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
+#endif
 #include <inttypes.h>
 
 #if(VKFFT_BACKEND==0)
@@ -19,13 +21,17 @@
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
 #elif(VKFFT_BACKEND==2)
+#ifndef __HIP_PLATFORM_HCC__
 #define __HIP_PLATFORM_HCC__
+#endif
 #include <hip/hip_runtime.h>
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
 #elif(VKFFT_BACKEND==3)
+#ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#endif
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -51,7 +57,7 @@ VkFFTResult user_benchmark_VkFFT(VkGPU* vkGPU, uint64_t file_output, FILE* outpu
 	const int num_runs = 3;
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
-	uint64_t storageComplexSize;
+	uint64_t storageComplexSize=8;
 	switch (userParams->P) {
 	case 0:
 		storageComplexSize = (2 * sizeof(float));
@@ -61,6 +67,9 @@ VkFFTResult user_benchmark_VkFFT(VkGPU* vkGPU, uint64_t file_output, FILE* outpu
 		break;
 	case 2:
 		storageComplexSize = (2 * 2);
+		break;
+	default:
+		storageComplexSize = (2 * sizeof(float));
 		break;
 	}
 	for (uint64_t n = 0; n < 2; n++) {
@@ -126,7 +135,7 @@ VkFFTResult user_benchmark_VkFFT(VkGPU* vkGPU, uint64_t file_output, FILE* outpu
 
 			//Submit FFT+iFFT.
 			
-			float totTime = 0;
+			double totTime = 0;
 
 			VkFFTLaunchParams launchParams = {};
 			resFFT = performVulkanFFTiFFT(vkGPU, &app, &launchParams, userParams->N, &totTime);

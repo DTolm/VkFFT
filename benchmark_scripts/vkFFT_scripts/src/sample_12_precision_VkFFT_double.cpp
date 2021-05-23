@@ -6,7 +6,9 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
+#endif
 #include <inttypes.h>
 
 #if(VKFFT_BACKEND==0)
@@ -19,13 +21,17 @@
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
 #elif(VKFFT_BACKEND==2)
+#ifndef __HIP_PLATFORM_HCC__
 #define __HIP_PLATFORM_HCC__
+#endif
 #include <hip/hip_runtime.h>
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
 #elif(VKFFT_BACKEND==3)
+#ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#endif
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -82,12 +88,14 @@ VkFFTResult sample_12_precision_VkFFT_double(VkGPU* vkGPU, uint64_t file_output,
 			uint64_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
 
 			inputC = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
+			if (!inputC) return VKFFT_ERROR_MALLOC_FAILED;
 			inputC_double = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
+			if (!inputC_double) return VKFFT_ERROR_MALLOC_FAILED;
 			for (uint64_t l = 0; l < dims[2]; l++) {
 				for (uint64_t j = 0; j < dims[1]; j++) {
 					for (uint64_t i = 0; i < dims[0]; i++) {
-						inputC[i + j * dims[0] + l * dims[0] * dims[1]][0] = 2 * ((double)rand()) / RAND_MAX - 1.0;
-						inputC[i + j * dims[0] + l * dims[0] * dims[1]][1] = 2 * ((double)rand()) / RAND_MAX - 1.0;
+						inputC[i + j * dims[0] + l * dims[0] * dims[1]][0] = (double)(2 * ((double)rand()) / RAND_MAX - 1.0);
+						inputC[i + j * dims[0] + l * dims[0] * dims[1]][1] = (double)(2 * ((double)rand()) / RAND_MAX - 1.0);
 						inputC_double[i + j * dims[0] + l * dims[0] * dims[1]][0] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]][0];
 						inputC_double[i + j * dims[0] + l * dims[0] * dims[1]][1] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]][1];
 					}
@@ -97,16 +105,16 @@ VkFFTResult sample_12_precision_VkFFT_double(VkGPU* vkGPU, uint64_t file_output,
 			fftw_plan p;
 
 			fftw_complex* output_FFTW = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
-
+			if (!output_FFTW) return VKFFT_ERROR_MALLOC_FAILED;
 			switch (benchmark_dimensions[n][3]) {
 			case 1:
-				p = fftw_plan_dft_1d(benchmark_dimensions[n][0], inputC_double, output_FFTW, -1, FFTW_ESTIMATE);
+				p = fftw_plan_dft_1d((int)benchmark_dimensions[n][0], inputC_double, output_FFTW, -1, FFTW_ESTIMATE);
 				break;
 			case 2:
-				p = fftw_plan_dft_2d(benchmark_dimensions[n][1], benchmark_dimensions[n][0], inputC_double, output_FFTW, -1, FFTW_ESTIMATE);
+				p = fftw_plan_dft_2d((int)benchmark_dimensions[n][1], (int)benchmark_dimensions[n][0], inputC_double, output_FFTW, -1, FFTW_ESTIMATE);
 				break;
 			case 3:
-				p = fftw_plan_dft_3d(benchmark_dimensions[n][2], benchmark_dimensions[n][1], benchmark_dimensions[n][0], inputC_double, output_FFTW, -1, FFTW_ESTIMATE);
+				p = fftw_plan_dft_3d((int)benchmark_dimensions[n][2], (int)benchmark_dimensions[n][1], (int)benchmark_dimensions[n][0], inputC_double, output_FFTW, -1, FFTW_ESTIMATE);
 				break;
 			}
 
@@ -114,10 +122,12 @@ VkFFTResult sample_12_precision_VkFFT_double(VkGPU* vkGPU, uint64_t file_output,
 
 #ifdef USE_cuFFT
 			fftw_complex* output_extFFT = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
+			if (!output_extFFT) return VKFFT_ERROR_MALLOC_FAILED;
 			launch_precision_cuFFT_double(inputC, (void*)output_extFFT, benchmark_dimensions[n]);
 #endif // USE_cuFFT
 #ifdef USE_rocFFT
 			fftw_complex* output_extFFT = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
+			if (!output_extFFT) return VKFFT_ERROR_MALLOC_FAILED;
 			launch_precision_rocFFT_double(inputC, (void*)output_extFFT, benchmark_dimensions[n]);
 #endif // USE_rocFFT
 			float totTime = 0;
@@ -151,13 +161,16 @@ VkFFTResult sample_12_precision_VkFFT_double(VkGPU* vkGPU, uint64_t file_output,
 
 			//Allocate buffers for the input data. - we use 4 in this example
 			uint64_t* bufferSize = (uint64_t*)malloc(sizeof(uint64_t) * numBuf);
+			if (!bufferSize) return VKFFT_ERROR_MALLOC_FAILED;
 			for (uint64_t i = 0; i < numBuf; i++) {
 				bufferSize[i] = {};
 				bufferSize[i] = (uint64_t)sizeof(double) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2] / numBuf;
 			}
 #if(VKFFT_BACKEND==0)
 			VkBuffer* buffer = (VkBuffer*)malloc(numBuf * sizeof(VkBuffer));
+			if (!buffer) return VKFFT_ERROR_MALLOC_FAILED;
 			VkDeviceMemory* bufferDeviceMemory = (VkDeviceMemory*)malloc(numBuf * sizeof(VkDeviceMemory));
+			if (!bufferDeviceMemory) return VKFFT_ERROR_MALLOC_FAILED;
 #elif(VKFFT_BACKEND==1)
 			cuFloatComplex* buffer = 0;
 #elif(VKFFT_BACKEND==2)
@@ -232,7 +245,7 @@ VkFFTResult sample_12_precision_VkFFT_double(VkGPU* vkGPU, uint64_t file_output,
 			resFFT = performVulkanFFT(vkGPU, &app, &launchParams, -1, num_iter);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 			fftw_complex* output_VkFFT = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
-
+			if (!output_VkFFT) return VKFFT_ERROR_MALLOC_FAILED;
 			//Transfer data from GPU using staging buffer.
 			shift = 0;
 			for (uint64_t i = 0; i < numBuf; i++) {

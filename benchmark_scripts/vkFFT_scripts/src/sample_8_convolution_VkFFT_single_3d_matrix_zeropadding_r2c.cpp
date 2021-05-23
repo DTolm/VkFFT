@@ -6,7 +6,9 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
+#endif
 #include <inttypes.h>
 
 #if(VKFFT_BACKEND==0)
@@ -19,13 +21,17 @@
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
 #elif(VKFFT_BACKEND==2)
+#ifndef __HIP_PLATFORM_HCC__
 #define __HIP_PLATFORM_HCC__
+#endif
 #include <hip/hip_runtime.h>
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
 #elif(VKFFT_BACKEND==3)
+#ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#endif
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -67,11 +73,11 @@ VkFFTResult sample_8_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(VkGPU* v
 	configuration.performZeropadding[0] = true; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
 	configuration.performZeropadding[1] = true;
 	configuration.performZeropadding[2] = true;
-	configuration.fft_zeropad_left[0] = ceil(configuration.size[0] / 2.0);
+	configuration.fft_zeropad_left[0] = (uint64_t)ceil(configuration.size[0] / 2.0);
 	configuration.fft_zeropad_right[0] = configuration.size[0];
-	configuration.fft_zeropad_left[1] = ceil(configuration.size[1] / 2.0);
+	configuration.fft_zeropad_left[1] = (uint64_t)ceil(configuration.size[1] / 2.0);
 	configuration.fft_zeropad_right[1] = configuration.size[1];
-	configuration.fft_zeropad_left[2] = ceil(configuration.size[2] / 2.0);
+	configuration.fft_zeropad_left[2] = (uint64_t)ceil(configuration.size[2] / 2.0);
 	configuration.fft_zeropad_right[2] = configuration.size[2];
 	configuration.kernelConvolution = true; //specify if this plan is used to create kernel for convolution
 	configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
@@ -126,6 +132,7 @@ VkFFTResult sample_8_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(VkGPU* v
 
 	//Fill kernel on CPU.
 	float* kernel_input = (float*)malloc(kernelSize);
+	if (!kernel_input) return VKFFT_ERROR_MALLOC_FAILED;
 	for (uint64_t v = 0; v < configuration.coordinateFeatures; v++) {
 		for (uint64_t k = 0; k < configuration.size[2]; k++) {
 			for (uint64_t j = 0; j < configuration.size[1]; j++) {
@@ -225,12 +232,12 @@ VkFFTResult sample_8_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(VkGPU* v
 	printf("Total memory needed for buffer: %" PRIu64 " MB\n", bufferSize / 1024 / 1024);
 	//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 	float* buffer_input = (float*)malloc(bufferSize);
-
+	if (!buffer_input) return VKFFT_ERROR_MALLOC_FAILED;
 	for (uint64_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
 		for (uint64_t k = 0; k < ceil(convolution_configuration.size[2] / 2.0); k++) {
 			for (uint64_t j = 0; j < ceil(convolution_configuration.size[1] / 2.0); j++) {
 				for (uint64_t i = 0; i < ceil(convolution_configuration.size[0] / 2.0); i++) {
-					buffer_input[i + j * (convolution_configuration.size[0] + 2) + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]] = i;
+					buffer_input[i + j * (convolution_configuration.size[0] + 2) + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]] = (float)i;
 				}
 			}
 		}
@@ -259,6 +266,7 @@ VkFFTResult sample_8_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(VkGPU* v
 	//The kernel has been trasnformed.
 
 	float* buffer_output = (float*)malloc(bufferSize);
+	if (!buffer_output) return VKFFT_ERROR_MALLOC_FAILED;
 	//Transfer data from GPU using staging buffer.
 #if(VKFFT_BACKEND==0)
 	resFFT = transferDataToCPU(vkGPU, buffer_output, &buffer, bufferSize);

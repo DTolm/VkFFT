@@ -6,7 +6,9 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
+#endif
 #include <inttypes.h>
 
 #if(VKFFT_BACKEND==0)
@@ -19,13 +21,17 @@
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
 #elif(VKFFT_BACKEND==2)
+#ifndef __HIP_PLATFORM_HCC__
 #define __HIP_PLATFORM_HCC__
+#endif
 #include <hip/hip_runtime.h>
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
 #elif(VKFFT_BACKEND==3)
+#ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#endif
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -116,6 +122,7 @@ VkFFTResult sample_7_convolution_VkFFT_single_1d_matrix(VkGPU* vkGPU, uint64_t f
 	printf("Total memory needed for kernel: %" PRIu64 " MB\n", kernelSize / 1024 / 1024);
 	//Fill kernel on CPU.
 	float* kernel_input = (float*)malloc(kernelSize);
+	if (!kernel_input) return VKFFT_ERROR_MALLOC_FAILED;
 	for (uint64_t v = 0; v < configuration.coordinateFeatures; v++) {
 		for (uint64_t k = 0; k < configuration.size[2]; k++) {
 			for (uint64_t j = 0; j < configuration.size[1]; j++) {
@@ -215,13 +222,13 @@ VkFFTResult sample_7_convolution_VkFFT_single_1d_matrix(VkGPU* vkGPU, uint64_t f
 	printf("Total memory needed for buffer: %" PRIu64 " MB\n", bufferSize / 1024 / 1024);
 	//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 	float* buffer_input = (float*)malloc(bufferSize);
-
+	if (!buffer_input) return VKFFT_ERROR_MALLOC_FAILED;
 	for (uint64_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
 		for (uint64_t k = 0; k < convolution_configuration.size[2]; k++) {
 			for (uint64_t j = 0; j < convolution_configuration.size[1]; j++) {
 				for (uint64_t i = 0; i < convolution_configuration.size[0]; i++) {
-					buffer_input[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2])] = i % 8 - 3.5;
-					buffer_input[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2]) + 1] = i % 4 - 1.5;
+					buffer_input[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2])] = (float)(i % 8 - 3.5);
+					buffer_input[2 * (i + j * convolution_configuration.size[0] + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2]) + 1] = (float)(i % 4 - 1.5);
 				}
 			}
 		}
@@ -251,6 +258,7 @@ VkFFTResult sample_7_convolution_VkFFT_single_1d_matrix(VkGPU* vkGPU, uint64_t f
 	//The kernel has been trasnformed.
 
 	float* buffer_output = (float*)malloc(bufferSize);
+	if (!buffer_output) return VKFFT_ERROR_MALLOC_FAILED;
 	//Transfer data from GPU using staging buffer.
 #if(VKFFT_BACKEND==0)
 	resFFT = transferDataToCPU(vkGPU, buffer_output, &buffer, bufferSize);

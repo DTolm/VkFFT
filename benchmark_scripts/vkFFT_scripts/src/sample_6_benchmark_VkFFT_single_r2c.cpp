@@ -6,7 +6,9 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
+#endif
 #include <inttypes.h>
 
 #if(VKFFT_BACKEND==0)
@@ -19,13 +21,17 @@
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
 #elif(VKFFT_BACKEND==2)
+#ifndef __HIP_PLATFORM_HCC__
 #define __HIP_PLATFORM_HCC__
+#endif
 #include <hip/hip_runtime.h>
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
 #elif(VKFFT_BACKEND==3)
+#ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#endif
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -56,9 +62,10 @@ VkFFTResult sample_6_benchmark_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_outp
 	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {64, 64, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2},  {4096, 256, 1, 2}, {2048, 1024, 1, 2},{4096, 2048, 1, 2}, {4096, 4096, 1, 2}, {720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},
 																{32, 32, 32, 3}, {64, 64, 64, 3}, {256, 256, 32, 3},  {1024, 256, 32, 3},  {256, 256, 256, 3}, {2048, 1024, 8, 3},  {512, 512, 128, 3}, {2048, 256, 256, 3}, {4096, 512, 8, 3} };
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
-	float* buffer_input = (float*)malloc((uint64_t)4 * 2 * pow(2, 27));
-	for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
-		buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+	float* buffer_input = (float*)malloc((uint64_t)4 * 2 * (uint64_t)pow(2, 27));
+	if (!buffer_input) return VKFFT_ERROR_MALLOC_FAILED;
+	for (uint64_t i = 0; i < 2 * (uint64_t)pow(2, 27); i++) {
+		buffer_input[i] = (float)(2 * ((float)rand()) / RAND_MAX - 1.0);
 	}
 	for (uint64_t n = 0; n < num_benchmark_samples; n++) {
 		double run_time[num_runs];
@@ -146,7 +153,7 @@ VkFFTResult sample_6_benchmark_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_outp
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint64_t num_iter = ((4096.0 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096.0 * 1024.0 * 1024.0) / bufferSize;
+			uint64_t num_iter = (((uint64_t)4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (uint64_t)((uint64_t)4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #elif(VKFFT_BACKEND==3)
@@ -157,7 +164,7 @@ VkFFTResult sample_6_benchmark_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_outp
 			if (num_iter == 0) num_iter = 1;
 
 			//num_iter *= 5; //makes result more smooth, takes longer time
-			float totTime = 0;
+			double totTime = 0;
 			VkFFTLaunchParams launchParams = {};
 			resFFT = performVulkanFFTiFFT(vkGPU, &app, &launchParams, num_iter, &totTime);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -221,12 +228,12 @@ VkFFTResult sample_6_benchmark_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_outp
 	if (file_output) {
 		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	}
 	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	return resFFT;
 }

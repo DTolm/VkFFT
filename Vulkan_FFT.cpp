@@ -17,13 +17,17 @@
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
 #elif(VKFFT_BACKEND==2)
+#ifndef __HIP_PLATFORM_HCC__
 #define __HIP_PLATFORM_HCC__
+#endif
 #include <hip/hip_runtime.h>
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
 #elif(VKFFT_BACKEND==3)
+#ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#endif
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -134,21 +138,21 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	cudaError_t res2 = cudaSuccess;
 	res = cuInit(0);
 	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
-	res2 = cudaSetDevice(vkGPU->device_id);
+	res2 = cudaSetDevice((int)vkGPU->device_id);
 	if (res2 != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID;
-	res = cuDeviceGet(&vkGPU->device, vkGPU->device_id);
+	res = cuDeviceGet(&vkGPU->device, (int)vkGPU->device_id);
 	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
-	res = cuCtxCreate(&vkGPU->context, 0, vkGPU->device);
+	res = cuCtxCreate(&vkGPU->context, 0, (int)vkGPU->device);
 	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
 	hipInit(0);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
-	hipSetDevice(vkGPU->device_id);
+	hipSetDevice((int)vkGPU->device_id);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID;
-	hipDeviceGet(&vkGPU->device, vkGPU->device_id);
+	hipDeviceGet(&vkGPU->device, (int)vkGPU->device_id);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
-	hipCtxCreate(&vkGPU->context, 0, vkGPU->device);
+	hipCtxCreate(&vkGPU->context, 0, (int)vkGPU->device);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
 #elif(VKFFT_BACKEND==3)
 	cl_int res = CL_SUCCESS;
@@ -156,6 +160,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	res = clGetPlatformIDs(0, 0, &numPlatforms);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
 	cl_platform_id* platforms = (cl_platform_id*)malloc(sizeof(cl_platform_id) * numPlatforms);
+	if (!platforms) return VKFFT_ERROR_MALLOC_FAILED;
 	res = clGetPlatformIDs(numPlatforms, platforms, 0);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
 	uint64_t k = 0;
@@ -163,6 +168,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 		cl_uint numDevices;
 		res = clGetDeviceIDs(platforms[j], CL_DEVICE_TYPE_ALL, 0, 0, &numDevices);
 		cl_device_id* deviceList = (cl_device_id*)malloc(sizeof(cl_device_id) * numDevices);
+		if (!deviceList) return VKFFT_ERROR_MALLOC_FAILED;
 		res = clGetDeviceIDs(platforms[j], CL_DEVICE_TYPE_ALL, numDevices, deviceList, 0);
 		if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
 		for (uint64_t i = 0; i < numDevices; i++) {
@@ -345,6 +351,7 @@ int main(int argc, char* argv[])
 #endif
 	bool file_output = false;
 	FILE* output = NULL;
+	int sscanf_res = 0;
 	if (findFlag(argv, argv + argc, "-h"))
 	{
 		//print help
@@ -353,7 +360,7 @@ int main(int argc, char* argv[])
 		version_decomposed[0] = version / 10000;
 		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
 		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
-		printf("VkFFT v%d.%d.%d (02-05-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
+		printf("VkFFT v%d.%d.%d (23-05-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
@@ -477,7 +484,11 @@ int main(int argc, char* argv[])
 		//select device_id
 		char* value = getFlagValue(argv, argv + argc, "-d");
 		if (value != 0) {
-			sscanf(value, "%" PRIu64 "", &vkGPU.device_id);
+			sscanf_res = sscanf(value, "%" PRIu64 "", &vkGPU.device_id);
+			if (sscanf_res <= 0) {
+				printf("sscanf failed\n");
+				return 1;
+			}
 		}
 		else {
 			printf("No device is selected with -d flag\n");
@@ -512,7 +523,11 @@ int main(int argc, char* argv[])
 		{
 			char* value = getFlagValue(argv, argv + argc, "-X");
 			if (value != 0) {
-				sscanf(value, "%" PRIu64 "", &userParams.X);
+				sscanf_res = sscanf(value, "%" PRIu64 "", &userParams.X);
+				if (sscanf_res <= 0) {
+					printf("sscanf failed\n");
+					return 1;
+				}
 			}
 			else {
 				printf("No dimension is selected with -X flag\n");
@@ -527,7 +542,11 @@ int main(int argc, char* argv[])
 		{
 			char* value = getFlagValue(argv, argv + argc, "-Y");
 			if (value != 0) {
-				sscanf(value, "%" PRIu64 "", &userParams.Y);
+				sscanf_res = sscanf(value, "%" PRIu64 "", &userParams.Y);
+				if (sscanf_res <= 0) {
+					printf("sscanf failed\n");
+					return 1;
+				}
 			}
 			else {
 				printf("No dimension is selected with -Y flag\n");
@@ -538,7 +557,11 @@ int main(int argc, char* argv[])
 		{
 			char* value = getFlagValue(argv, argv + argc, "-Z");
 			if (value != 0) {
-				sscanf(value, "%" PRIu64 "", &userParams.Z);
+				sscanf_res = sscanf(value, "%" PRIu64 "", &userParams.Z);
+				if (sscanf_res <= 0) {
+					printf("sscanf failed\n");
+					return 1;
+				}
 			}
 			else {
 				printf("No dimension is selected with -Z flag\n");
@@ -549,7 +572,11 @@ int main(int argc, char* argv[])
 		{
 			char* value = getFlagValue(argv, argv + argc, "-P");
 			if (value != 0) {
-				sscanf(value, "%" PRIu64 "", &userParams.P);
+				sscanf_res = sscanf(value, "%" PRIu64 "", &userParams.P);
+				if (sscanf_res <= 0) {
+					printf("sscanf failed\n");
+					return 1;
+				}
 			}
 			else {
 				printf("No precision is selected with -P flag\n");
@@ -560,7 +587,11 @@ int main(int argc, char* argv[])
 		{
 			char* value = getFlagValue(argv, argv + argc, "-B");
 			if (value != 0) {
-				sscanf(value, "%" PRIu64 "", &userParams.B);
+				sscanf_res = sscanf(value, "%" PRIu64 "", &userParams.B);
+				if (sscanf_res <= 0) {
+					printf("sscanf failed\n");
+					return 1;
+				}
 			}
 			else {
 				printf("No batch is selected with -B flag\n");
@@ -571,7 +602,11 @@ int main(int argc, char* argv[])
 		{
 			char* value = getFlagValue(argv, argv + argc, "-N");
 			if (value != 0) {
-				sscanf(value, "%" PRIu64 "", &userParams.N);
+				sscanf_res = sscanf(value, "%" PRIu64 "", &userParams.N);
+				if (sscanf_res <= 0) {
+					printf("sscanf failed\n");
+					return 1;
+				}
 			}
 			else {
 				printf("No number of iterations is selected with -N flag\n");
@@ -582,7 +617,11 @@ int main(int argc, char* argv[])
 		{
 			char* value = getFlagValue(argv, argv + argc, "-R2C");
 			if (value != 0) {
-				sscanf(value, "%" PRIu64 "", &userParams.R2C);
+				sscanf_res = sscanf(value, "%" PRIu64 "", &userParams.R2C);
+				if (sscanf_res <= 0) {
+					printf("sscanf failed\n");
+					return 1;
+				}
 			}
 			else {
 				printf("No R2C parameter is selected with -R2C flag\n");
@@ -596,12 +635,12 @@ int main(int argc, char* argv[])
 		else {
 #ifdef USE_cuFFT
 			if (findFlag(argv, argv + argc, "-benchmark_cufft")) {
-				user_benchmark_cuFFT(file_output, output, (cuFFTUserSystemParameters*) (&userParams));
+				user_benchmark_cuFFT(file_output, output, (cuFFTUserSystemParameters*)(&userParams));
 			}
 			return 0;
 #elif USE_rocFFT
 			if (findFlag(argv, argv + argc, "-benchmark_rocfft")) {
-				user_benchmark_rocFFT(file_output, output, (rocFFTUserSystemParameters*) (&userParams));
+				user_benchmark_rocFFT(file_output, output, (rocFFTUserSystemParameters*)(&userParams));
 			}
 			return 0;
 #endif
@@ -616,7 +655,11 @@ int main(int argc, char* argv[])
 		char* value = getFlagValue(argv, argv + argc, "-vkfft");
 		if (value != 0) {
 			uint64_t sample_id = 0;
-			sscanf(value, "%" PRIu64 "", &sample_id);
+			sscanf_res = sscanf(value, "%" PRIu64 "", &sample_id);
+			if (sscanf_res <= 0) {
+				printf("sscanf failed\n");
+				return 1;
+			}
 			VkFFTResult resFFT = launchVkFFT(&vkGPU, sample_id, file_output, output, 0);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 		}
@@ -632,7 +675,11 @@ int main(int argc, char* argv[])
 		char* value = getFlagValue(argv, argv + argc, "-cufft");
 		if (value != 0) {
 			uint64_t sample_id = 0;
-			sscanf(value, "%" PRIu64 "", &sample_id);
+			sscanf_res = sscanf(value, "%" PRIu64 "", &sample_id);
+			if (sscanf_res <= 0) {
+				printf("sscanf failed\n");
+				return 1;
+			}
 			switch (sample_id) {
 			case 0:
 				sample_0_benchmark_cuFFT_single(file_output, output);
@@ -672,7 +719,11 @@ int main(int argc, char* argv[])
 		char* value = getFlagValue(argv, argv + argc, "-rocfft");
 		if (value != 0) {
 			uint64_t sample_id = 0;
-			sscanf(value, "%" PRIu64 "", &sample_id);
+			sscanf_res = sscanf(value, "%" PRIu64 "", &sample_id);
+			if (sscanf_res <= 0) {
+				printf("sscanf failed\n");
+				return 1;
+			}
 			switch (sample_id) {
 			case 0:
 				sample_0_benchmark_rocFFT_single(file_output, output);

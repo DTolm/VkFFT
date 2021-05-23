@@ -6,7 +6,9 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
+#endif
 #include <inttypes.h>
 
 #if(VKFFT_BACKEND==0)
@@ -19,13 +21,17 @@
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
 #elif(VKFFT_BACKEND==2)
+#ifndef __HIP_PLATFORM_HCC__
 #define __HIP_PLATFORM_HCC__
+#endif
 #include <hip/hip_runtime.h>
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
 #elif(VKFFT_BACKEND==3)
+#ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#endif
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -79,15 +85,20 @@ VkResult checkValidationLayerSupport() {
 	vkEnumerateInstanceLayerProperties(&layerCount, NULL);
 
 	VkLayerProperties* availableLayers = (VkLayerProperties*)malloc(sizeof(VkLayerProperties) * layerCount);
+	if (!availableLayers) return VK_INCOMPLETE;
 	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers);
-
-	for (uint64_t i = 0; i < layerCount; i++) {
-		if (strcmp("VK_LAYER_KHRONOS_validation", availableLayers[i].layerName) == 0) {
-			free(availableLayers);
-			return VK_SUCCESS;
+	if (availableLayers) {
+		for (uint64_t i = 0; i < layerCount; i++) {
+			if (strcmp("VK_LAYER_KHRONOS_validation", availableLayers[i].layerName) == 0) {
+				free(availableLayers);
+				return VK_SUCCESS;
+			}
 		}
+		free(availableLayers);
 	}
-	free(availableLayers);
+	else {
+		return VK_INCOMPLETE;
+	}
 	return VK_ERROR_LAYER_NOT_PRESENT;
 }
 
@@ -122,9 +133,9 @@ VkResult createInstance(VkGPU* vkGPU, uint64_t sample_id) {
 
 	VkApplicationInfo applicationInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
 	applicationInfo.pApplicationName = "VkFFT";
-	applicationInfo.applicationVersion = 1.0;
+	applicationInfo.applicationVersion = (uint32_t)VkFFTGetVersion();
 	applicationInfo.pEngineName = "VkFFT";
-	applicationInfo.engineVersion = 1.0;
+	applicationInfo.engineVersion = 1;
 #if (VK_API_VERSION>=12)
 	applicationInfo.apiVersion = VK_API_VERSION_1_2;
 #elif (VK_API_VERSION==11)
@@ -138,7 +149,7 @@ VkResult createInstance(VkGPU* vkGPU, uint64_t sample_id) {
 	createInfo.pApplicationInfo = &applicationInfo;
 
 	auto extensions = getRequiredExtensions(vkGPU, sample_id);
-	createInfo.enabledExtensionCount = static_cast<uint64_t>(extensions.size());
+	createInfo.enabledExtensionCount = (uint32_t)(extensions.size());
 	createInfo.ppEnabledExtensionNames = extensions.data();
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = { VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT };
@@ -175,11 +186,16 @@ VkResult findPhysicalDevice(VkGPU* vkGPU) {
 	}
 
 	VkPhysicalDevice* devices = (VkPhysicalDevice*)malloc(sizeof(VkPhysicalDevice) * deviceCount);
+	if (!devices) return VK_INCOMPLETE;
 	res = vkEnumeratePhysicalDevices(vkGPU->instance, &deviceCount, devices);
 	if (res != VK_SUCCESS) return res;
-	vkGPU->physicalDevice = devices[vkGPU->device_id];
-	free(devices);
-	return VK_SUCCESS;
+	if (devices) {
+		vkGPU->physicalDevice = devices[vkGPU->device_id];
+		free(devices);
+		return VK_SUCCESS;
+	}
+	else
+		return VK_INCOMPLETE;
 }
 VkResult getComputeQueueFamilyIndex(VkGPU* vkGPU) {
 	//find a queue family for a selected GPU, select the first available for use
@@ -187,21 +203,26 @@ VkResult getComputeQueueFamilyIndex(VkGPU* vkGPU) {
 	vkGetPhysicalDeviceQueueFamilyProperties(vkGPU->physicalDevice, &queueFamilyCount, NULL);
 
 	VkQueueFamilyProperties* queueFamilies = (VkQueueFamilyProperties*)malloc(sizeof(VkQueueFamilyProperties) * queueFamilyCount);
-	vkGetPhysicalDeviceQueueFamilyProperties(vkGPU->physicalDevice, &queueFamilyCount, queueFamilies);
-	uint64_t i = 0;
-	for (; i < queueFamilyCount; i++) {
-		VkQueueFamilyProperties props = queueFamilies[i];
+	if (!queueFamilies) return VK_INCOMPLETE;
+	if (queueFamilies) {
+		vkGetPhysicalDeviceQueueFamilyProperties(vkGPU->physicalDevice, &queueFamilyCount, queueFamilies);
+		uint64_t i = 0;
+		for (; i < queueFamilyCount; i++) {
+			VkQueueFamilyProperties props = queueFamilies[i];
 
-		if (props.queueCount > 0 && (props.queueFlags & VK_QUEUE_COMPUTE_BIT)) {
-			break;
+			if (props.queueCount > 0 && (props.queueFlags & VK_QUEUE_COMPUTE_BIT)) {
+				break;
+			}
 		}
-	}
-	free(queueFamilies);
-	if (i == queueFamilyCount) {
-		return VK_ERROR_INITIALIZATION_FAILED;
-	}
-	vkGPU->queueFamilyIndex = i;
+		free(queueFamilies);
+		if (i == queueFamilyCount) {
+			return VK_ERROR_INITIALIZATION_FAILED;
+		}
+		vkGPU->queueFamilyIndex = i;
 	return VK_SUCCESS;
+	}
+	else
+		return VK_INCOMPLETE;
 }
 
 VkResult createDevice(VkGPU* vkGPU, uint64_t sample_id) {
@@ -210,7 +231,7 @@ VkResult createDevice(VkGPU* vkGPU, uint64_t sample_id) {
 	VkDeviceQueueCreateInfo queueCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
 	res = getComputeQueueFamilyIndex(vkGPU);
 	if (res != VK_SUCCESS) return res;
-	queueCreateInfo.queueFamilyIndex = vkGPU->queueFamilyIndex;
+	queueCreateInfo.queueFamilyIndex = (uint32_t)vkGPU->queueFamilyIndex;
 	queueCreateInfo.queueCount = 1;
 	float queuePriorities = 1.0;
 	queueCreateInfo.pQueuePriorities = &queuePriorities;
@@ -219,14 +240,14 @@ VkResult createDevice(VkGPU* vkGPU, uint64_t sample_id) {
 	switch (sample_id) {
 	case 1: case 12: case 101: case 1001: {
 		deviceFeatures.shaderFloat64 = true;
-		deviceCreateInfo.enabledExtensionCount = vkGPU->enabledDeviceExtensions.size();
+		deviceCreateInfo.enabledExtensionCount = (uint32_t)vkGPU->enabledDeviceExtensions.size();
 		deviceCreateInfo.ppEnabledExtensionNames = vkGPU->enabledDeviceExtensions.data();
 		deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
 		deviceCreateInfo.queueCreateInfoCount = 1;
 		deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 		res = vkCreateDevice(vkGPU->physicalDevice, &deviceCreateInfo, NULL, &vkGPU->device);
 		if (res != VK_SUCCESS) return res;
-		vkGetDeviceQueue(vkGPU->device, vkGPU->queueFamilyIndex, 0, &vkGPU->queue);
+		vkGetDeviceQueue(vkGPU->device, (uint32_t)vkGPU->queueFamilyIndex, 0, &vkGPU->queue);
 		break;
 	}
 #if (VK_API_VERSION>10)
@@ -245,19 +266,19 @@ VkResult createDevice(VkGPU* vkGPU, uint64_t sample_id) {
 		vkGetPhysicalDeviceFeatures2(vkGPU->physicalDevice, &deviceFeatures2);
 		deviceCreateInfo.pNext = &deviceFeatures2;
 		vkGPU->enabledDeviceExtensions.push_back("VK_KHR_16bit_storage");
-		deviceCreateInfo.enabledExtensionCount = vkGPU->enabledDeviceExtensions.size();
+		deviceCreateInfo.enabledExtensionCount = (uint32_t)vkGPU->enabledDeviceExtensions.size();
 		deviceCreateInfo.ppEnabledExtensionNames = vkGPU->enabledDeviceExtensions.data();
 		deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
 		deviceCreateInfo.queueCreateInfoCount = 1;
 		deviceCreateInfo.pEnabledFeatures = NULL;
 		res = vkCreateDevice(vkGPU->physicalDevice, &deviceCreateInfo, NULL, &vkGPU->device);
 		if (res != VK_SUCCESS) return res;
-		vkGetDeviceQueue(vkGPU->device, vkGPU->queueFamilyIndex, 0, &vkGPU->queue);
+		vkGetDeviceQueue(vkGPU->device, (uint32_t)vkGPU->queueFamilyIndex, 0, &vkGPU->queue);
 		break;
 	}
 #endif
 	default: {
-		deviceCreateInfo.enabledExtensionCount = vkGPU->enabledDeviceExtensions.size();
+		deviceCreateInfo.enabledExtensionCount = (uint32_t)vkGPU->enabledDeviceExtensions.size();
 		deviceCreateInfo.ppEnabledExtensionNames = vkGPU->enabledDeviceExtensions.data();
 		deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
 		deviceCreateInfo.queueCreateInfoCount = 1;
@@ -265,7 +286,7 @@ VkResult createDevice(VkGPU* vkGPU, uint64_t sample_id) {
 		deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 		res = vkCreateDevice(vkGPU->physicalDevice, &deviceCreateInfo, NULL, &vkGPU->device);
 		if (res != VK_SUCCESS) return res;
-		vkGetDeviceQueue(vkGPU->device, vkGPU->queueFamilyIndex, 0, &vkGPU->queue);
+		vkGetDeviceQueue(vkGPU->device, (uint32_t)vkGPU->queueFamilyIndex, 0, &vkGPU->queue);
 		break;
 	}
 	}
@@ -284,7 +305,7 @@ VkResult createCommandPool(VkGPU* vkGPU) {
 	VkResult res = VK_SUCCESS;
 	VkCommandPoolCreateInfo commandPoolCreateInfo = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
 	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	commandPoolCreateInfo.queueFamilyIndex = vkGPU->queueFamilyIndex;
+	commandPoolCreateInfo.queueFamilyIndex = (uint32_t)vkGPU->queueFamilyIndex;
 	res = vkCreateCommandPool(vkGPU->device, &commandPoolCreateInfo, NULL, &vkGPU->commandPool);
 	return res;
 }
@@ -295,9 +316,9 @@ VkFFTResult findMemoryType(VkGPU* vkGPU, uint64_t memoryTypeBits, uint64_t memor
 	vkGetPhysicalDeviceMemoryProperties(vkGPU->physicalDevice, &memoryProperties);
 
 	for (uint64_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
-		if ((memoryTypeBits & (1 << i)) && ((memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) && (memoryProperties.memoryHeaps[memoryProperties.memoryTypes[i].heapIndex].size >= memorySize))
+		if ((memoryTypeBits & ((uint64_t)1 << i)) && ((memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) && (memoryProperties.memoryHeaps[memoryProperties.memoryTypes[i].heapIndex].size >= memorySize))
 		{
-			memoryTypeIndex[0] = i;
+			memoryTypeIndex[0] = (uint32_t)i;
 			return VKFFT_SUCCESS;
 		}
 	}
@@ -442,14 +463,19 @@ VkFFTResult devices_list() {
 	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES;
 
 	VkPhysicalDevice* devices = (VkPhysicalDevice*)malloc(sizeof(VkPhysicalDevice) * deviceCount);
-	res = vkEnumeratePhysicalDevices(local_instance, &deviceCount, devices);
-	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES;
-	for (uint64_t i = 0; i < deviceCount; i++) {
-		VkPhysicalDeviceProperties device_properties;
-		vkGetPhysicalDeviceProperties(devices[i], &device_properties);
-		printf("Device id: %" PRIu64 " name: %s API:%d.%d.%d\n", i, device_properties.deviceName, (device_properties.apiVersion >> 22), ((device_properties.apiVersion >> 12) & 0x3ff), (device_properties.apiVersion & 0xfff));
+	if (!devices) return VKFFT_ERROR_MALLOC_FAILED;
+	if (devices) {
+		res = vkEnumeratePhysicalDevices(local_instance, &deviceCount, devices);
+		if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES;
+		for (uint64_t i = 0; i < deviceCount; i++) {
+			VkPhysicalDeviceProperties device_properties;
+			vkGetPhysicalDeviceProperties(devices[i], &device_properties);
+			printf("Device id: %" PRIu64 " name: %s API:%d.%d.%d\n", i, device_properties.deviceName, (device_properties.apiVersion >> 22), ((device_properties.apiVersion >> 12) & 0x3ff), (device_properties.apiVersion & 0xfff));
+		}
+		free(devices);
 	}
-	free(devices);
+	else 
+		return VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES;
 	vkDestroyInstance(local_instance, NULL);
 #elif(VKFFT_BACKEND==1)
 	CUresult res = CUDA_SUCCESS;
@@ -461,7 +487,7 @@ VkFFTResult devices_list() {
 	for (uint64_t i = 0; i < numDevices; i++) {
 		char deviceName[256];
 		CUdevice device = {};
-		res = cuDeviceGet(&device, i);
+		res = cuDeviceGet(&device, (int)i);
 		if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
 		res = cuDeviceGetName(deviceName, 256, device);
 		if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
@@ -489,6 +515,7 @@ VkFFTResult devices_list() {
 	res = clGetPlatformIDs(0, 0, &numPlatforms);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
 	cl_platform_id* platforms = (cl_platform_id*)malloc(sizeof(cl_platform_id) * numPlatforms);
+	if (!platforms) return VKFFT_ERROR_MALLOC_FAILED;
 	res = clGetPlatformIDs(numPlatforms, platforms, 0);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
 	uint64_t k = 0;
@@ -496,6 +523,7 @@ VkFFTResult devices_list() {
 		cl_uint numDevices;
 		res = clGetDeviceIDs(platforms[j], CL_DEVICE_TYPE_ALL, 0, 0, &numDevices);
 		cl_device_id* deviceList = (cl_device_id*)malloc(sizeof(cl_device_id) * numDevices);
+		if (!deviceList) return VKFFT_ERROR_MALLOC_FAILED;
 		res = clGetDeviceIDs(platforms[j], CL_DEVICE_TYPE_ALL, numDevices, deviceList, 0);
 		if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
 		for (uint64_t i = 0; i < numDevices; i++) {
@@ -546,7 +574,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	res = vkWaitForFences(vkGPU->device, 1, &vkGPU->fence, VK_TRUE, 100000000000);
 	if (res != 0) return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
-	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 	//printf("Pure submit execution time per num_iter: %.3f ms\n", totTime / num_iter);
 	res = vkResetFences(vkGPU->device, 1, &vkGPU->fence);
 	if (res != 0) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
@@ -561,7 +589,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	res = cudaDeviceSynchronize();
 	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
-	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
@@ -572,7 +600,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	res = hipDeviceSynchronize();
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
-	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 #elif(VKFFT_BACKEND==3)
 	cl_int res = CL_SUCCESS;
 	launchParams->commandQueue = &vkGPU->commandQueue;
@@ -584,11 +612,11 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	res = clFinish(vkGPU->commandQueue);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
-	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 #endif
 	return resFFT;
 }
-VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchParams* launchParams, uint64_t num_iter, float* time_result) {
+VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchParams* launchParams, uint64_t num_iter, double* time_result) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -621,7 +649,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	res = vkWaitForFences(vkGPU->device, 1, &vkGPU->fence, VK_TRUE, 100000000000);
 	if (res != 0) return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
-	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 	time_result[0] = totTime / num_iter;
 	res = vkResetFences(vkGPU->device, 1, &vkGPU->fence);
 	if (res != 0) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
@@ -638,7 +666,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	res = cudaDeviceSynchronize();
 	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
-	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 	time_result[0] = totTime / num_iter;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
@@ -652,7 +680,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	res = hipDeviceSynchronize();
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
-	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 	time_result[0] = totTime / num_iter;
 #elif(VKFFT_BACKEND==3)
 	cl_int res = CL_SUCCESS;
@@ -667,7 +695,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	res = clFinish(vkGPU->commandQueue);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
-	float totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 	time_result[0] = totTime / num_iter;
 #endif
 	return resFFT;

@@ -6,7 +6,9 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
+#endif
 #include <inttypes.h>
 
 #if(VKFFT_BACKEND==0)
@@ -19,13 +21,17 @@
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
 #elif(VKFFT_BACKEND==2)
+#ifndef __HIP_PLATFORM_HCC__
 #define __HIP_PLATFORM_HCC__
+#endif
 #include <hip/hip_runtime.h>
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
 #elif(VKFFT_BACKEND==3)
+#ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#endif
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -64,9 +70,10 @@ VkFFTResult sample_4_benchmark_VkFFT_single_3d_zeropadding(VkGPU* vkGPU, uint64_
 	};
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
-	float* buffer_input = (float*)malloc((uint64_t)4 * 2 * pow(2, 27));
-	for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
-		buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+	float* buffer_input = (float*)malloc((uint64_t)4 * 2 * (uint64_t)pow(2, 27));
+	if (!buffer_input) return VKFFT_ERROR_MALLOC_FAILED;
+	for (uint64_t i = 0; i < 2 * (uint64_t)pow(2, 27); i++) {
+		buffer_input[i] = (float)(2 * ((float)rand()) / RAND_MAX - 1.0);
 	}
 	for (uint64_t n = 0; n < num_benchmark_samples; n++) {
 		double run_time[num_runs];
@@ -85,11 +92,11 @@ VkFFTResult sample_4_benchmark_VkFFT_single_3d_zeropadding(VkGPU* vkGPU, uint64_
 			configuration.performZeropadding[0] = true; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
 			configuration.performZeropadding[1] = true;
 			configuration.performZeropadding[2] = true;
-			configuration.fft_zeropad_left[0] = ceil(configuration.size[0] / 2.0);
+			configuration.fft_zeropad_left[0] = (uint64_t)ceil(configuration.size[0] / 2.0);
 			configuration.fft_zeropad_right[0] = configuration.size[0];
-			configuration.fft_zeropad_left[1] = ceil(configuration.size[1] / 2.0);
+			configuration.fft_zeropad_left[1] = (uint64_t)ceil(configuration.size[1] / 2.0);
 			configuration.fft_zeropad_right[1] = configuration.size[1];
-			configuration.fft_zeropad_left[2] = ceil(configuration.size[2] / 2.0);
+			configuration.fft_zeropad_left[2] = (uint64_t)ceil(configuration.size[2] / 2.0);
 			configuration.fft_zeropad_right[2] = configuration.size[2];
 
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
@@ -163,7 +170,7 @@ VkFFTResult sample_4_benchmark_VkFFT_single_3d_zeropadding(VkGPU* vkGPU, uint64_
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint64_t num_iter = ((4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (4096 * 1024.0 * 1024.0) / bufferSize;
+			uint64_t num_iter = (((uint64_t)4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (uint64_t)((uint64_t)4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #elif(VKFFT_BACKEND==3)
@@ -172,7 +179,7 @@ VkFFTResult sample_4_benchmark_VkFFT_single_3d_zeropadding(VkGPU* vkGPU, uint64_
 			if (vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
-			float totTime = 0;
+			double totTime = 0;
 			VkFFTLaunchParams launchParams = {};
 			resFFT = performVulkanFFTiFFT(vkGPU, &app, &launchParams, num_iter, &totTime);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -217,17 +224,17 @@ VkFFTResult sample_4_benchmark_VkFFT_single_3d_zeropadding(VkGPU* vkGPU, uint64_
 		}
 	}
 	free(buffer_input);
-	benchmark_result /= (num_benchmark_samples - 1);
+	benchmark_result /= ((int64_t)num_benchmark_samples - 1);
 
 	if (file_output) {
 		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	}
 	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	return resFFT;
 }

@@ -6,7 +6,9 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
+#endif
 #include <inttypes.h>
 
 #if(VKFFT_BACKEND==0)
@@ -19,13 +21,17 @@
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
 #elif(VKFFT_BACKEND==2)
+#ifndef __HIP_PLATFORM_HCC__
 #define __HIP_PLATFORM_HCC__
+#endif
 #include <hip/hip_runtime.h>
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
 #elif(VKFFT_BACKEND==3)
+#ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#endif
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -118,6 +124,7 @@ VkFFTResult sample_9_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint6
 
 	//Fill kernel on CPU.
 	float* kernel_input = (float*)malloc(kernelSize);
+	if (!kernel_input) return VKFFT_ERROR_MALLOC_FAILED;
 	for (uint64_t f = 0; f < configuration.numberBatches; f++) {
 		for (uint64_t v = 0; v < configuration.coordinateFeatures; v++) {
 			for (uint64_t k = 0; k < configuration.size[2]; k++) {
@@ -126,7 +133,7 @@ VkFFTResult sample_9_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint6
 					//Below is the test identity kernel for 1x1 nonsymmetric FFT, multiplied by (f * configuration.coordinateFeatures + v + 1);
 					for (uint64_t i = 0; i < configuration.size[0] / 2 + 1; i++) {
 
-						kernel_input[2 * i + j * (configuration.size[0] + 2) + k * (configuration.size[0] + 2) * configuration.size[1] + v * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2] + f * configuration.coordinateFeatures * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2]] = f * configuration.coordinateFeatures + v + 1;
+						kernel_input[2 * i + j * (configuration.size[0] + 2) + k * (configuration.size[0] + 2) * configuration.size[1] + v * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2] + f * configuration.coordinateFeatures * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2]] = (float)(f * configuration.coordinateFeatures + v + 1.0);
 						kernel_input[2 * i + 1 + j * (configuration.size[0] + 2) + k * (configuration.size[0] + 2) * configuration.size[1] + v * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2] + f * configuration.coordinateFeatures * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2]] = 0;
 
 					}
@@ -233,7 +240,7 @@ VkFFTResult sample_9_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint6
 	printf("Total memory needed for buffer: %" PRIu64 " MB\n", bufferSize / 1024 / 1024);
 	//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
 	float* buffer_input = (float*)malloc(inputBufferSize);
-
+	if (!buffer_input) return VKFFT_ERROR_MALLOC_FAILED;
 	for (uint64_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
 		for (uint64_t k = 0; k < convolution_configuration.size[2]; k++) {
 			for (uint64_t j = 0; j < convolution_configuration.size[1]; j++) {
@@ -268,6 +275,7 @@ VkFFTResult sample_9_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint6
 	//The kernel has been trasnformed.
 
 	float* buffer_output = (float*)malloc(bufferSize);
+	if (!buffer_output) return VKFFT_ERROR_MALLOC_FAILED;
 	//Transfer data from GPU using staging buffer.
 #if(VKFFT_BACKEND==0)
 	resFFT = transferDataToCPU(vkGPU, buffer_output, &buffer, bufferSize);

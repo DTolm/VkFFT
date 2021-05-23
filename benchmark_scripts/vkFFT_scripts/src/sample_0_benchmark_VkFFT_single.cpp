@@ -6,7 +6,9 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
+#endif
 #include <inttypes.h>
 
 #if(VKFFT_BACKEND==0)
@@ -19,13 +21,17 @@
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
 #elif(VKFFT_BACKEND==2)
+#ifndef __HIP_PLATFORM_HCC__
 #define __HIP_PLATFORM_HCC__
+#endif
 #include <hip/hip_runtime.h>
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
 #elif(VKFFT_BACKEND==3)
+#ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#endif
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -53,9 +59,10 @@ VkFFTResult sample_0_benchmark_VkFFT_single(VkGPU* vkGPU, uint64_t file_output, 
 	const int num_runs = 3;
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.
-	float* buffer_input = (float*)malloc((uint64_t)4 * 2 * pow(2, 27));
-	for (uint64_t i = 0; i < 2 * pow(2, 27); i++) {
-		buffer_input[i] = 2 * ((float)rand()) / RAND_MAX - 1.0;
+	float* buffer_input = (float*)malloc((uint64_t)4 * 2 * (uint64_t)pow(2, 27));
+	if (!buffer_input) return VKFFT_ERROR_MALLOC_FAILED;
+	for (uint64_t i = 0; i < 2 * (uint64_t)pow(2, 27); i++) {
+		buffer_input[i] = (float)(2 * ((float)rand()) / RAND_MAX - 1.0);
 	}
 	for (uint64_t n = 0; n < 26; n++) {
 		double run_time[num_runs];
@@ -66,9 +73,9 @@ VkFFTResult sample_0_benchmark_VkFFT_single(VkGPU* vkGPU, uint64_t file_output, 
 			//FFT + iFFT sample code.
 			//Setting up FFT configuration for forward and inverse FFT.
 			configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
-			configuration.size[0] = 4 * pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
+			configuration.size[0] = 4 * (uint64_t)pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 			if (n == 0) configuration.size[0] = 4096;
-			configuration.size[1] = 64 * 32 * pow(2, 16) / configuration.size[0];
+			configuration.size[1] = (uint64_t)((64 * 32 * (uint64_t)pow(2, 16)) / configuration.size[0]);
 			if (configuration.size[1] < 1) configuration.size[1] = 1;
 			configuration.size[2] = 1;
 
@@ -144,7 +151,7 @@ VkFFTResult sample_0_benchmark_VkFFT_single(VkGPU* vkGPU, uint64_t file_output, 
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
-			uint64_t num_iter = ((3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (3 * 4096 * 1024.0 * 1024.0) / bufferSize;
+			uint64_t num_iter = (((uint64_t)3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (uint64_t)(((uint64_t)3 * 4096 * 1024.0 * 1024.0) / bufferSize);
 #if(VKFFT_BACKEND==0)
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #elif(VKFFT_BACKEND==3)
@@ -153,7 +160,7 @@ VkFFTResult sample_0_benchmark_VkFFT_single(VkGPU* vkGPU, uint64_t file_output, 
 			if (vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
-			float totTime = 0;
+			double totTime = 0;
 
 			VkFFTLaunchParams launchParams = {};
 			resFFT = performVulkanFFTiFFT(vkGPU, &app, &launchParams, num_iter, &totTime);
@@ -201,17 +208,17 @@ VkFFTResult sample_0_benchmark_VkFFT_single(VkGPU* vkGPU, uint64_t file_output, 
 		}
 	}
 	free(buffer_input);
-	benchmark_result /= (26 - 1);
+	benchmark_result /= 25;
 
 	if (file_output) {
 		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-		fprintf(output, "Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+		fprintf(output, "Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	}
 	printf("Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));
 #if(VKFFT_BACKEND==0)
-	printf("Device name: %s API:%" PRIu64 ".%" PRIu64 ".%" PRIu64 "\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
+	printf("Device name: %s API:%d.%d.%d\n", vkGPU->physicalDeviceProperties.deviceName, (vkGPU->physicalDeviceProperties.apiVersion >> 22), ((vkGPU->physicalDeviceProperties.apiVersion >> 12) & 0x3ff), (vkGPU->physicalDeviceProperties.apiVersion & 0xfff));
 #endif
 	return resFFT;
 }
