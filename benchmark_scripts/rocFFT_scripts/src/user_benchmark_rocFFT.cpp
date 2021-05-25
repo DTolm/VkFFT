@@ -64,10 +64,10 @@ void user_benchmark_rocFFT(bool file_output, FILE* output, rocFFTUserSystemParam
 			}
 			uint64_t bufferSize;
 			if (userParams->R2C)
-				bufferSize = (uint64_t)(storageComplexSize/2) * (dims[0]+2) * dims[1] * dims[2] * userParams->B;
-			else 
-				bufferSize = (uint64_t)storageComplexSize * dims[0] * dims[1] * dims[2] * userParams->B;
-			
+				bufferSize = (uint64_t)(storageComplexSize / 2) * (userParams->X + 2) * userParams->Y * userParams->Z * userParams->B;
+			else
+				bufferSize = (uint64_t)storageComplexSize * userParams->X * userParams->Y * userParams->Z * userParams->B;
+
 			hipMalloc((void**)&dataC, bufferSize);
 			
 			if (hipGetLastError() != hipSuccess) {
@@ -75,47 +75,65 @@ void user_benchmark_rocFFT(bool file_output, FILE* output, rocFFTUserSystemParam
 				return;
 			}
 
-			int iembed[3];
-			int istride = 1; 
-			int idist = bufferSize / userParams->B / storageComplexSize; 
-			int oembed[3];
-			int ostride = 1;
-			int odist = bufferSize / userParams->B / storageComplexSize;
+			//forward + inverse
+			int iembed[2][3];
+			int istride[2] = { 1, 1 };
+			int idist[2] = {bufferSize / userParams->B / storageComplexSize, bufferSize / userParams->B / storageComplexSize};
+			if (userParams->R2C) idist[0] *= 2;
+			int oembed[2][3];
+			int ostride[2] = { 1, 1 };
+			int odist[2] = { bufferSize / userParams->B / storageComplexSize, bufferSize / userParams->B / storageComplexSize };
+			if (userParams->R2C) odist[1] *= 2;
 			switch (FFTdim) {
 			case 1:
-				iembed[0] = (userParams->R2C) ? dims[0]+2 : dims[0];
-				oembed[0] = (userParams->R2C) ? dims[0]+2 : dims[0];
+				iembed[0][0] = (userParams->R2C) ? dims[0] + 2 : dims[0];
+				oembed[0][0] = (userParams->R2C) ? (dims[0] + 2) / 2 : dims[0];
+
+				iembed[1][0] = (userParams->R2C) ? (dims[0] + 2) / 2 : dims[0];
+				oembed[1][0] = (userParams->R2C) ? dims[0] + 2 : dims[0];
 				break;
 			case 2:
-				iembed[0] = dims[1];
-				iembed[1] = (userParams->R2C) ? dims[0]+2 : dims[0];
-				oembed[0] = dims[1];
-				oembed[1] = (userParams->R2C) ? dims[0]+2 : dims[0];
+				iembed[0][0] = dims[0];
+				iembed[0][1] = (userParams->R2C) ? dims[1] + 2 : dims[1];
+				oembed[0][0] = dims[0];
+				oembed[0][1] = (userParams->R2C) ? (dims[1] + 2) / 2 : dims[1];
+
+				iembed[1][0] = dims[0];
+				iembed[1][1] = (userParams->R2C) ? (dims[1] + 2) / 2 : dims[1];
+				oembed[1][0] = dims[0];
+				oembed[1][1] = (userParams->R2C) ? dims[1] + 2 : dims[1];
 				break;
 			case 3:
-				iembed[0] = idist;
-				iembed[1] = dims[1];
-				iembed[2] = (userParams->R2C) ? dims[0]+2 : dims[0];
-				oembed[0] = odist;
-				oembed[1] = dims[1];
-				oembed[2] = (userParams->R2C) ? dims[0]+2 : dims[0];
+				iembed[0][0] = idist[0];
+				iembed[0][1] = dims[1];
+				iembed[0][2] = (userParams->R2C) ? dims[2] + 2 : dims[2];
+				oembed[0][0] = odist[0];
+				oembed[0][1] = dims[1];
+				oembed[0][2] = (userParams->R2C) ? (dims[2] + 2)/2 : dims[2];
+
+				iembed[1][0] = idist[0];
+				iembed[1][1] = dims[1];
+				iembed[1][2] = (userParams->R2C) ? (dims[2] + 2)/2 : dims[2];
+				oembed[1][0] = odist[0];
+				oembed[1][1] = dims[1];
+				oembed[1][2] = (userParams->R2C) ? dims[2] + 2 : dims[2];
 				break;
 			}
 			switch (userParams->P) {
 			case 0:
 				if (userParams->R2C){
-					hipfftPlanMany(&plan, FFTdim, dims, iembed, istride, idist*2, oembed, ostride, odist, HIPFFT_R2C, userParams->B);
-					hipfftPlanMany(&plan2, FFTdim, dims, iembed, istride, idist, oembed, ostride, odist*2, HIPFFT_C2R, userParams->B);
+					hipfftPlanMany(&plan, FFTdim, dims, iembed[0], istride[0], idist[0], oembed[0], ostride[0], odist[0], HIPFFT_R2C, userParams->B);
+					hipfftPlanMany(&plan2, FFTdim, dims, iembed[1], istride[1], idist[1], oembed[1], ostride[1], odist[1], HIPFFT_C2R, userParams->B);
 				}else{
-					hipfftPlanMany(&plan, FFTdim, dims, iembed, istride, idist, oembed, ostride, odist, HIPFFT_C2C, userParams->B);
+					hipfftPlanMany(&plan, FFTdim, dims, iembed[0], istride[0], idist[0], oembed[0], ostride[0], odist[0], HIPFFT_C2C, userParams->B);
 				}
 				break;
 			case 1:
 				if (userParams->R2C){
-					hipfftPlanMany(&plan, FFTdim, dims, iembed, istride, idist*2, oembed, ostride, odist, HIPFFT_D2Z, userParams->B);
-					hipfftPlanMany(&plan2, FFTdim, dims, iembed, istride, idist, oembed, ostride, odist*2, HIPFFT_Z2D, userParams->B);
+					hipfftPlanMany(&plan, FFTdim, dims,iembed[0], istride[0], idist[0], oembed[0], ostride[0], odist[0],  HIPFFT_D2Z, userParams->B);
+					hipfftPlanMany(&plan2, FFTdim, dims, iembed[1], istride[1], idist[1], oembed[1], ostride[1], odist[1], HIPFFT_Z2D, userParams->B);
 				}else
-					hipfftPlanMany(&plan, FFTdim, dims, iembed, istride, idist, oembed, ostride, odist, HIPFFT_Z2Z, userParams->B);
+					hipfftPlanMany(&plan, FFTdim, dims, iembed[0], istride[0], idist[0], oembed[0], ostride[0], odist[0],  HIPFFT_Z2Z, userParams->B);
 				break;
 			}
 

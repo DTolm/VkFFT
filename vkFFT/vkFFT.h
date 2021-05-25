@@ -10091,8 +10091,8 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 		sc->tempLen = sprintf(sc->tempStr, "	tf.y = -tf.y;\n");
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
-		if (sc->inverse) {
-			res = VkMulComplexNumber(sc, "tf", "tf", "2");
+		if (sc->inverse) { 
+			res = VkMulComplexNumber(sc, "tf", "tf", "2"); 
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		if (sc->outputBufferBlockNum == 1)
@@ -10406,9 +10406,9 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 	sc->disableThreadsStart[0] = 0;
 	sc->disableThreadsEnd[0] = 0;
 	res = appendVersion(sc);
-	if (res != VKFFT_SUCCESS) {
-		freeShaderGenVkFFT(sc);
-		return res;
+	if (res != VKFFT_SUCCESS) { 
+		freeShaderGenVkFFT(sc); 
+		return res; 
 	}
 	res = appendExtensions(sc, floatType, floatTypeInputMemory, floatTypeOutputMemory, floatTypeKernelMemory);
 	if (res != VKFFT_SUCCESS) {
@@ -14070,7 +14070,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 	descriptorSetLayoutBindings = (VkDescriptorSetLayoutBinding*)malloc(axis->numBindings * sizeof(VkDescriptorSetLayoutBinding));
 	if (!descriptorSetLayoutBindings) {
 		deleteVkFFT(app);
-		return VKFFT_ERROR_MALLOC_FAILED;
+		return VKFFT_ERROR_MALLOC_FAILED; 
 	}
 	for (uint64_t i = 0; i < axis->numBindings; ++i) {
 		descriptorSetLayoutBindings[i].binding = (uint32_t)i;
@@ -14152,6 +14152,10 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		axis->specializationConstants.matrixConvolution = app->configuration.matrixConvolution;
 		if ((app->configuration.FFTdim == 1) && (app->configuration.size[1] == 1) && (app->configuration.numberBatches > 1) && (!app->configuration.performConvolution) && (app->configuration.coordinateFeatures == 1)) {
 			app->configuration.size[1] = app->configuration.numberBatches;
+			app->configuration.numberBatches = 1;
+		}
+		if ((app->configuration.FFTdim == 2) && (app->configuration.size[2] == 1) && (app->configuration.numberBatches > 1) && (!app->configuration.performConvolution) && (app->configuration.coordinateFeatures == 1)) {
+			app->configuration.size[2] = app->configuration.numberBatches;
 			app->configuration.numberBatches = 1;
 		}
 		axis->specializationConstants.numBatches = app->configuration.numberBatches;
@@ -15858,6 +15862,10 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			app->configuration.size[1] = app->configuration.numberBatches;
 			app->configuration.numberBatches = 1;
 		}
+		if ((app->configuration.FFTdim == 2) && (app->configuration.size[2] == 1) && (app->configuration.numberBatches > 1) && (!app->configuration.performConvolution) && (app->configuration.coordinateFeatures == 1)) {
+			app->configuration.size[2] = app->configuration.numberBatches;
+			app->configuration.numberBatches = 1;
+		}
 		axis->specializationConstants.numBatches = app->configuration.numberBatches;
 		axis->specializationConstants.numKernels = app->configuration.numberKernels;
 		axis->specializationConstants.sharedMemSize = app->configuration.sharedMemorySize;
@@ -16554,9 +16562,9 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		return VKFFT_ERROR_INVALID_DEVICE;
 	}
 	app->configuration.device = inputLaunchConfiguration.device;
-	if (inputLaunchConfiguration.queue == 0) {
+	if (inputLaunchConfiguration.queue == 0) { 
 		deleteVkFFT(app);
-		return VKFFT_ERROR_INVALID_QUEUE;
+		return VKFFT_ERROR_INVALID_QUEUE; 
 	}
 	app->configuration.queue = inputLaunchConfiguration.queue;
 	if (inputLaunchConfiguration.commandPool == 0) {
@@ -16884,9 +16892,9 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		if (inputLaunchConfiguration.tempBufferNum == 0)	app->configuration.tempBufferNum = 1;
 		else app->configuration.tempBufferNum = inputLaunchConfiguration.tempBufferNum;
 
-		if (inputLaunchConfiguration.tempBufferSize == 0) {
-			deleteVkFFT(app);
-			return VKFFT_ERROR_EMPTY_tempBufferSize;
+		if (inputLaunchConfiguration.tempBufferSize == 0) { 
+			deleteVkFFT(app); 
+			return VKFFT_ERROR_EMPTY_tempBufferSize; 
 		}
 		app->configuration.tempBufferSize = inputLaunchConfiguration.tempBufferSize;
 		app->configuration.tempBuffer = inputLaunchConfiguration.tempBuffer;
