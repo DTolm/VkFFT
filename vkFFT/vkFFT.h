@@ -17528,7 +17528,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j + 1] = sin(angle);
 				}
 			}
-			if ((app->configuration.performDCT == 4)) {
+			if (app->configuration.performDCT == 4) {
 				for (uint64_t j = 0; j < axis->specializationConstants.fftDim / 2 + 2; j++) {
 					double angle = (double_PI / 2.0 / (double)(axis->specializationConstants.fftDim)) * j;
 					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j] = cos(angle);
@@ -17705,7 +17705,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j + 1] = (float)sin(angle);
 				}
 			}
-			if ((app->configuration.performDCT == 4)) {
+			if (app->configuration.performDCT == 4) {
 				for (uint64_t j = 0; j < axis->specializationConstants.fftDim / 2 + 2; j++) {
 					double angle = (double_PI / 2.0 / (double)(axis->specializationConstants.fftDim)) * j;
 					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j] = (float)cos(angle);
