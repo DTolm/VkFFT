@@ -57,7 +57,11 @@
 #include "sample_13_precision_VkFFT_half.h"
 #include "sample_14_precision_VkFFT_single_nonPow2.h"
 #include "sample_15_precision_VkFFT_single_r2c.h"
+#include "sample_16_precision_VkFFT_single_dct.h"
+#include "sample_17_precision_VkFFT_double_dct.h"
 #endif
+#include "sample_100_benchmark_VkFFT_single_nd_dct.h"
+#include "sample_101_benchmark_VkFFT_double_nd_dct.h"
 #include "sample_1000_VkFFT_single_2_4096.h"
 #include "sample_1001_benchmark_VkFFT_double_2_4096.h"
 #include "sample_1003_benchmark_VkFFT_single_3d_2_512.h"
@@ -146,13 +150,13 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
-	hipInit(0);
+	res = hipInit(0);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
-	hipSetDevice((int)vkGPU->device_id);
+	res = hipSetDevice((int)vkGPU->device_id);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID;
-	hipDeviceGet(&vkGPU->device, (int)vkGPU->device_id);
+	res = hipDeviceGet(&vkGPU->device, (int)vkGPU->device_id);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
-	hipCtxCreate(&vkGPU->context, 0, (int)vkGPU->device);
+	res = hipCtxCreate(&vkGPU->context, 0, (int)vkGPU->device);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
 #elif(VKFFT_BACKEND==3)
 	cl_int res = CL_SUCCESS;
@@ -281,14 +285,54 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 		resFFT = sample_15_precision_VkFFT_single_r2c(vkGPU, file_output, output, isCompilerInitialized);
 		break;
 	}
+	case 16:
+	{
+		resFFT = sample_16_precision_VkFFT_single_dct(vkGPU, file_output, output, isCompilerInitialized);
+		break;
+	}
+	case 17:
+	{
+		resFFT = sample_17_precision_VkFFT_double_dct(vkGPU, file_output, output, isCompilerInitialized);
+		break;
+	}
 #endif
-	case 100: case 101:
+	case 120:
+	{
+		resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 2);
+		break;
+	}
+	case 130:
+	{
+		resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 3);
+		break;
+	}
+	case 140:
+	{
+		resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 4);
+		break;
+	}
+	case 121:
+	{
+		resFFT = sample_101_benchmark_VkFFT_double_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 2);
+		break;
+	}
+	case 131:
+	{
+		resFFT = sample_101_benchmark_VkFFT_double_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 3);
+		break;
+	}
+	case 141:
+	{
+		resFFT = sample_101_benchmark_VkFFT_double_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 4);
+		break;
+	}
+	case 200: case 201:
 	{
 		resFFT = user_benchmark_VkFFT(vkGPU, file_output, output, isCompilerInitialized, userParams);
 		break;
 	}
 #if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
-	case 102:
+	case 202:
 	{
 		resFFT = user_benchmark_VkFFT(vkGPU, file_output, output, isCompilerInitialized, userParams);
 		break;
@@ -318,9 +362,9 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	vkDestroyInstance(vkGPU->instance, NULL);
 	glslang_finalize_process();//destroy compiler after use
 #elif(VKFFT_BACKEND==1)
-	cuCtxDestroy(vkGPU->context);
+	res = cuCtxDestroy(vkGPU->context);
 #elif(VKFFT_BACKEND==2)
-	hipCtxDestroy(vkGPU->context);
+	res = hipCtxDestroy(vkGPU->context);
 #elif(VKFFT_BACKEND==3)
 	res = clReleaseCommandQueue(vkGPU->commandQueue);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
@@ -360,7 +404,7 @@ int main(int argc, char* argv[])
 		version_decomposed[0] = version / 10000;
 		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
 		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
-		printf("VkFFT v%d.%d.%d (23-05-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
+		printf("VkFFT v%d.%d.%d (19-06-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
@@ -415,8 +459,17 @@ int main(int argc, char* argv[])
 #endif
 		printf("		14 - VkFFT / FFTW C2C power 3 / 5 / 7 / 11 / 13 precision test in single precision\n");
 		printf("		15 - VkFFT / FFTW R2C+C2R precision test in single precision\n");
+		printf("		16 - VkFFT / FFTW R2R DCT-II, III and IV precision test in single precision\n");
+		printf("		17 - VkFFT / FFTW R2R DCT-II, III and IV precision test in double precision\n");
 #endif
 #endif
+		printf("		120 - VkFFT FFT + iFFT R2R DCT-2 multidimensional benchmark in single precision\n");
+		printf("		121 - VkFFT FFT + iFFT R2R DCT-2 multidimensional benchmark in double precision\n");
+		printf("		130 - VkFFT FFT + iFFT R2R DCT-3 multidimensional benchmark in single precision\n");
+		printf("		131 - VkFFT FFT + iFFT R2R DCT-3 multidimensional benchmark in double precision\n");
+		printf("		140 - VkFFT FFT + iFFT R2R DCT-4 multidimensional benchmark in single precision\n");
+		printf("		141 - VkFFT FFT + iFFT R2R DCT-4 multidimensional benchmark in double precision\n");
+
 		printf("		1000 - FFT + iFFT C2C benchmark 1D batched in single precision: all supported systems from 2 to 4096\n");
 		printf("		1001 - FFT + iFFT C2C benchmark 1D batched in double precision: all supported systems from 2 to 4096\n");
 		printf("		1003 - FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
@@ -519,6 +572,7 @@ int main(int argc, char* argv[])
 		userParams.B = 1;
 		userParams.N = 1;
 		userParams.R2C = 0;
+		userParams.DCT = 0;
 		if (findFlag(argv, argv + argc, "-X"))
 		{
 			char* value = getFlagValue(argv, argv + argc, "-X");
@@ -628,8 +682,23 @@ int main(int argc, char* argv[])
 				return 1;
 			}
 		}
+		if (findFlag(argv, argv + argc, "-DCT"))
+		{
+			char* value = getFlagValue(argv, argv + argc, "-DCT");
+			if (value != 0) {
+				sscanf_res = sscanf(value, "%" PRIu64 "", &userParams.DCT);
+				if (sscanf_res <= 0) {
+					printf("sscanf failed\n");
+					return 1;
+				}
+			}
+			else {
+				printf("No DCT parameter is selected with -DCT flag\n");
+				return 1;
+			}
+		}
 		if (findFlag(argv, argv + argc, "-benchmark_vkfft")) {
-			VkFFTResult resFFT = launchVkFFT(&vkGPU, 100 + userParams.P, file_output, output, &userParams);
+			VkFFTResult resFFT = launchVkFFT(&vkGPU, 200 + userParams.P, file_output, output, &userParams);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 		}
 		else {

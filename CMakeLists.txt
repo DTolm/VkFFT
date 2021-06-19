@@ -41,6 +41,10 @@ if(build_VkFFT_FFTW_precision)
 		benchmark_scripts/vkFFT_scripts/src/sample_13_precision_VkFFT_half.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_14_precision_VkFFT_single_nonPow2.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_15_precision_VkFFT_single_r2c.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_16_precision_VkFFT_single_dct.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_17_precision_VkFFT_double_dct.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_100_benchmark_VkFFT_single_nd_dct.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_101_benchmark_VkFFT_double_nd_dct.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_1000_VkFFT_single_2_4096.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_1001_benchmark_VkFFT_double_2_4096.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_1003_benchmark_VkFFT_single_3d_2_512.cpp)
@@ -59,6 +63,8 @@ else()
 		benchmark_scripts/vkFFT_scripts/src/sample_8_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_9_convolution_VkFFT_single_2d_batched_r2c.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_10_benchmark_VkFFT_single_multipleBuffers.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_100_benchmark_VkFFT_single_nd_dct.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_101_benchmark_VkFFT_double_nd_dct.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_1000_VkFFT_single_2_4096.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_1001_benchmark_VkFFT_double_2_4096.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_1003_benchmark_VkFFT_single_3d_2_512.cpp)

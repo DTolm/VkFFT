@@ -2,7 +2,7 @@
 # VkFFT - Vulkan/CUDA/HIP/OpenCL Fast Fourier Transform library
 VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan/CUDA/HIP/OpenCL projects. VkFFT aims to provide community with an open-source alternative to Nvidia's cuFFT library, while achieving better performance. VkFFT is written in C language and supports Vulkan, CUDA, HIP and OpenCL as backends.
 
-## Join my panel at Nvidia's GTC 2021 in Higher Education and Research category on April 13th, 2021: https://gtc21.event.nvidia.com/
+## Check out my panel at Nvidia's GTC 2021 in Higher Education and Research category: https://gtc21.event.nvidia.com/
 
 ## Python interface to VkFFT can be found here: https://github.com/vincefn/pyvkfft
 
@@ -18,7 +18,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - Single, double and half precision support. Double precision uses CPU generated LUT tables. Half precision still does all computations in single and only uses half precision to store data.
   - All transformations are performed in-place with no performance loss. Out-of-place transforms are supported by selecting different input/output buffers.
   - No additional transposition uploads. Note: data can be reshuffled after the four step FFT algorithm with additional buffer (for big sequences). Doesn't matter for convolutions - they return to the input ordering (saves memory).
-  - Complex to complex (C2C), real to complex (R2C) and complex to real (C2R) transformations. R2C and C2R are optimized to run up to 2x times faster than C2C and take 2x less memory
+  - Complex to complex (C2C), real to complex (R2C), complex to real (C2R) transformations and real to real (R2R) Discrete Cosine Transformations of types II, III and IV. R2R, R2C and C2R are optimized to run up to 2x times faster than C2C and take 2x less memory
   - 1x1, 2x2, 3x3 convolutions with symmetric or nonsymmetric kernel (no register overutilization)
   - Native zero padding to model open systems (up to 2x faster than simply padding input array with zeros). Can specify the range of sequences filled with zeros and the direction where zeropadding is applied (read or write stage)
   - WHDCN layout - data is stored in the following order (sorted by increase in strides): the width, the height, the depth, the coordinate (the number of feature maps), the batch number
@@ -37,7 +37,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
 
 ## Installation
 Vulkan version:
-Include the vkFFT.h file and glslang compiler. Provide the library with correctly chosen VKFFT_BACKEND definition (VKFFT_BACKEND=0 for Vulkan). Sample CMakeLists.txt file configures project based on Vulkan_FFT.cpp file, which contains examples on how to use VkFFT to perform FFT, iFFT and convolution calculations, use zero padding, multiple feature/batch convolutions, C2C FFTs of big systems, R2C/C2R transforms, double precision FFTs, half precision FFTs.\
+Include the vkFFT.h file and glslang compiler. Provide the library with correctly chosen VKFFT_BACKEND definition (VKFFT_BACKEND=0 for Vulkan). Sample CMakeLists.txt file configures project based on Vulkan_FFT.cpp file, which contains examples on how to use VkFFT to perform FFT, iFFT and convolution calculations, use zero padding, multiple feature/batch convolutions, C2C FFTs of big systems, R2C/C2R transforms, R2R DCT-II, III and IV, double precision FFTs, half precision FFTs.\
 For single and double precision, Vulkan 1.0 is required. For half precision, Vulkan 1.1 is required.
 
 CUDA/HIP:
@@ -53,7 +53,7 @@ VkFFT has a command-line interface with the following set of commands:\
 -devices: print the list of available GPU devices\
 -d X: select GPU device (default 0)\
 -o NAME: specify output file path\
--vkfft X: launch VkFFT sample X (0-15, 1000-1003) (if FFTW is enabled in CMakeLists.txt)\
+-vkfft X: launch VkFFT sample X (0-17, 100, 101, 200, 201, 1000-1003) (if FFTW is enabled in CMakeLists.txt)\
 -cufft X: launch cuFFT sample X (0-4, 1000-1003) (if enabled in CMakeLists.txt)\
 -rocfft X: launch rocFFT sample X (0-4, 1000-1003) (if enabled in CMakeLists.txt)\
 -test: (or no other keys) launch all VkFFT and cuFFT benchmarks\

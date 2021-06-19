@@ -238,7 +238,7 @@ VkResult createDevice(VkGPU* vkGPU, uint64_t sample_id) {
 	VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	VkPhysicalDeviceFeatures deviceFeatures = {};
 	switch (sample_id) {
-	case 1: case 12: case 101: case 1001: {
+	case 1: case 12: case 17: case 101: case 201: case 1001: {
 		deviceFeatures.shaderFloat64 = true;
 		deviceCreateInfo.enabledExtensionCount = (uint32_t)vkGPU->enabledDeviceExtensions.size();
 		deviceCreateInfo.ppEnabledExtensionNames = vkGPU->enabledDeviceExtensions.data();

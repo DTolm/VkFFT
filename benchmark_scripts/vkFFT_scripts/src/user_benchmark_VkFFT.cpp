@@ -88,6 +88,7 @@ VkFFTResult user_benchmark_VkFFT(VkGPU* vkGPU, uint64_t file_output, FILE* outpu
 			if (userParams->Z > 1) configuration.FFTdim++;
 			configuration.numberBatches = userParams->B;
 			configuration.performR2C = userParams->R2C;
+			configuration.performDCT = userParams->DCT;
 			if (userParams->P == 1) configuration.doublePrecision = 1;
 			if (userParams->P == 2) configuration.halfPrecision = 1;
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
@@ -103,7 +104,18 @@ VkFFTResult user_benchmark_VkFFT(VkGPU* vkGPU, uint64_t file_output, FILE* outpu
 			configuration.context = &vkGPU->context;
 #endif
 			//Allocate buffer for the input data.
-			uint64_t bufferSize = (userParams->R2C) ? (uint64_t) (storageComplexSize/2) * (configuration.size[0]+2) * configuration.size[1] * configuration.size[2]* configuration.numberBatches : (uint64_t)storageComplexSize * configuration.size[0] * configuration.size[1] * configuration.size[2]* configuration.numberBatches;
+			uint64_t bufferSize = 0;
+			if (userParams->R2C) {
+				bufferSize = (uint64_t)(storageComplexSize / 2) * (configuration.size[0] + 2) * configuration.size[1] * configuration.size[2] * configuration.numberBatches;
+			}
+			else {
+				if (userParams->DCT) {
+					bufferSize = (uint64_t)(storageComplexSize / 2) * configuration.size[0] * configuration.size[1] * configuration.size[2] * configuration.numberBatches;
+				}
+				else {
+					bufferSize = (uint64_t)storageComplexSize * configuration.size[0] * configuration.size[1] * configuration.size[2] * configuration.numberBatches;
+				}
+			}
 #if(VKFFT_BACKEND==0)
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};

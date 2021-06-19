@@ -39,6 +39,7 @@ typedef struct {
 	uint64_t B;
 	uint64_t N;
 	uint64_t R2C;
+	uint64_t DCT;
 } VkFFTUserSystemParameters;//an example structure used to pass user-defined system for benchmarking
 
 #if(VKFFT_BACKEND==0)
