@@ -20164,21 +20164,32 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	app->configuration.commandQueue = launchParams->commandQueue;
 #endif
 	uint64_t localSize0[3];
-	if (app->configuration.performR2C == 1) {
-		localSize0[0] = app->localFFTPlan->actualFFTSizePerAxis[0][0] / 2 + 1;
-		localSize0[1] = app->localFFTPlan->actualFFTSizePerAxis[1][0] / 2 + 1;
-		localSize0[2] = app->localFFTPlan->actualFFTSizePerAxis[2][0] / 2 + 1;
-	}
-	else {
-		localSize0[0] = app->localFFTPlan->actualFFTSizePerAxis[0][0];
-		localSize0[1] = app->localFFTPlan->actualFFTSizePerAxis[1][0];
-		localSize0[2] = app->localFFTPlan->actualFFTSizePerAxis[2][0];
-	}//used in axes 1 and 2
 	if ((inverse != 1) && (app->configuration.makeInversePlanOnly)) return VKFFT_ERROR_ONLY_INVERSE_FFT_INITIALIZED;
 	if ((inverse == 1) && (app->configuration.makeForwardPlanOnly)) return VKFFT_ERROR_ONLY_FORWARD_FFT_INITIALIZED;
 	if ((inverse != 1) && (!app->configuration.makeInversePlanOnly) && (!app->localFFTPlan)) return VKFFT_ERROR_PLAN_NOT_INITIALIZED;
 	if ((inverse == 1) && (!app->configuration.makeForwardPlanOnly) && (!app->localFFTPlan_inverse)) return VKFFT_ERROR_PLAN_NOT_INITIALIZED;
-
+	if (app->configuration.performR2C == 1) {
+		if (inverse == 1){
+			localSize0[0] = app->localFFTPlan_inverse->actualFFTSizePerAxis[0][0] / 2 + 1;
+			localSize0[1] = app->localFFTPlan_inverse->actualFFTSizePerAxis[1][0] / 2 + 1;
+			localSize0[2] = app->localFFTPlan_inverse->actualFFTSizePerAxis[2][0] / 2 + 1;
+		}else{
+			localSize0[0] = app->localFFTPlan->actualFFTSizePerAxis[0][0] / 2 + 1;
+			localSize0[1] = app->localFFTPlan->actualFFTSizePerAxis[1][0] / 2 + 1;
+			localSize0[2] = app->localFFTPlan->actualFFTSizePerAxis[2][0] / 2 + 1;
+		}
+	}
+	else {
+		if (inverse == 1){
+			localSize0[0] = app->localFFTPlan_inverse->actualFFTSizePerAxis[0][0];
+			localSize0[1] = app->localFFTPlan_inverse->actualFFTSizePerAxis[1][0];
+			localSize0[2] = app->localFFTPlan_inverse->actualFFTSizePerAxis[2][0];
+		}else{
+			localSize0[0] = app->localFFTPlan->actualFFTSizePerAxis[0][0];
+			localSize0[1] = app->localFFTPlan->actualFFTSizePerAxis[1][0];
+			localSize0[2] = app->localFFTPlan->actualFFTSizePerAxis[2][0];
+		}
+	}//used in axes 1 and 2
 	resFFT = VkFFTCheckUpdateBufferSet(app, 0, 0, launchParams);
 	if (resFFT != VKFFT_SUCCESS) {
 		return resFFT;
