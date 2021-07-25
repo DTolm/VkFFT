@@ -1,0 +1,1 @@
+void sample_7_benchmark_cuFFT_single_Bluestein(bool file_output, FILE* output);

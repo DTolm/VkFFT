@@ -81,6 +81,8 @@ VkFFTResult user_benchmark_VkFFT(VkGPU* vkGPU, uint64_t file_output, FILE* outpu
 			//FFT + iFFT sample code.
 			//Setting up FFT configuration for forward and inverse FFT.
 			configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
+			//if (n == 1) configuration.keepShaderCode = 1;
+
 			configuration.size[0] = userParams->X;
 			configuration.size[1] = userParams->Y;
 			configuration.size[2] = userParams->Z;

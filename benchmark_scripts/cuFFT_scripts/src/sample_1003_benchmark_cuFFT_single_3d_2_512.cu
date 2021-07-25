@@ -45,14 +45,14 @@ const int num_runs = 3;
 			if (n == 1) dims[0] = 512;
 			uint64_t temp = dims[0];
 
-			for (uint64_t j = 2; j < 14; j++)
+			/*for (uint64_t j = 2; j < 14; j++)
 			{
 				if (temp % j == 0) {
 					temp /= j;
 					j = 1;
 				}
 			}
-			if (temp != 1) break;
+			if (temp != 1) break;*/
 			dims[1] = dims[0];
 			dims[2] = dims[0];
 			

@@ -1,0 +1,1 @@
+void sample_8_benchmark_rocFFT_double_Bluestein(bool file_output, FILE* output);

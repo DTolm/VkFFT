@@ -41,7 +41,7 @@
 #include "vkFFT.h"
 #include "utils_VkFFT.h"
 
-VkFFTResult sample_9_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint64_t file_output, FILE* output, uint64_t isCompilerInitialized)
+VkFFTResult sample_52_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint64_t file_output, FILE* output, uint64_t isCompilerInitialized)
 {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
@@ -54,8 +54,8 @@ VkFFTResult sample_9_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint6
 	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
-		fprintf(output, "9 - VkFFT batched convolution example with identitiy kernel\n");
-	printf("9 - VkFFT batched convolution example with identitiy kernel\n");
+		fprintf(output, "52 - VkFFT batched convolution example with identitiy kernel\n");
+	printf("52 - VkFFT batched convolution example with identitiy kernel\n");
 	//Configuration + FFT application.
 	VkFFTConfiguration configuration = {};
 	VkFFTConfiguration convolution_configuration = {};

@@ -45,14 +45,14 @@ void sample_1001_benchmark_cuFFT_double_2_4096(bool file_output, FILE* output)
 			if (n == 1) dims[0] = 4096;
 			uint64_t temp = dims[0];
 
-			for (uint64_t j = 2; j < 14; j++)
+			/*for (uint64_t j = 2; j < 14; j++)
 			{
 				if (temp % j == 0) {
 					temp /= j;
 					j = 1;
 				}
 			}
-			if (temp != 1) break;
+			if (temp != 1) break;*/
 			dims[1] = pow(2, (uint64_t)log2(64 * 32 * pow(2, 16) / dims[0]));
 			if (dims[1] < 1) dims[1] = 1;
 			dims[2] = 1;

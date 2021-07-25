@@ -47,9 +47,8 @@
 #include "sample_4_benchmark_VkFFT_single_3d_zeropadding.h"
 #include "sample_5_benchmark_VkFFT_single_disableReorderFourStep.h"
 #include "sample_6_benchmark_VkFFT_single_r2c.h"
-#include "sample_7_convolution_VkFFT_single_1d_matrix.h"
-#include "sample_8_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.h"
-#include "sample_9_convolution_VkFFT_single_2d_batched_r2c.h"
+#include "sample_7_benchmark_VkFFT_single_Bluestein.h"
+#include "sample_8_benchmark_VkFFT_double_Bluestein.h"
 #include "sample_10_benchmark_VkFFT_single_multipleBuffers.h"
 #ifdef USE_FFTW
 #include "sample_11_precision_VkFFT_single.h"
@@ -59,7 +58,12 @@
 #include "sample_15_precision_VkFFT_single_r2c.h"
 #include "sample_16_precision_VkFFT_single_dct.h"
 #include "sample_17_precision_VkFFT_double_dct.h"
+#include "sample_18_precision_VkFFT_double_nonPow2.h"
 #endif
+#include "sample_50_convolution_VkFFT_single_1d_matrix.h"
+#include "sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.h"
+#include "sample_52_convolution_VkFFT_single_2d_batched_r2c.h"
+
 #include "sample_100_benchmark_VkFFT_single_nd_dct.h"
 #include "sample_101_benchmark_VkFFT_double_nd_dct.h"
 #include "sample_1000_VkFFT_single_2_4096.h"
@@ -73,6 +77,8 @@
 #include "sample_2_benchmark_cuFFT_half.h"
 #include "sample_3_benchmark_cuFFT_single_3d.h"
 #include "sample_6_benchmark_cuFFT_single_r2c.h"
+#include "sample_7_benchmark_cuFFT_single_Bluestein.h"
+#include "sample_8_benchmark_cuFFT_double_Bluestein.h"
 #include "sample_1000_benchmark_cuFFT_single_2_4096.h"
 #include "sample_1001_benchmark_cuFFT_double_2_4096.h"
 #include "sample_1003_benchmark_cuFFT_single_3d_2_512.h"
@@ -83,6 +89,8 @@
 #include "sample_1_benchmark_rocFFT_double.h"
 #include "sample_3_benchmark_rocFFT_single_3d.h"
 #include "sample_6_benchmark_rocFFT_single_r2c.h"
+#include "sample_7_benchmark_rocFFT_single_Bluestein.h"
+#include "sample_8_benchmark_rocFFT_double_Bluestein.h"
 #include "sample_1000_benchmark_rocFFT_single_2_4096.h"
 #include "sample_1001_benchmark_rocFFT_double_2_4096.h"
 #include "sample_1003_benchmark_rocFFT_single_3d_2_512.h"
@@ -237,17 +245,12 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	}
 	case 7:
 	{
-		resFFT = sample_7_convolution_VkFFT_single_1d_matrix(vkGPU, file_output, output, isCompilerInitialized);
+		resFFT = sample_7_benchmark_VkFFT_single_Bluestein(vkGPU, file_output, output, isCompilerInitialized);
 		break;
 	}
 	case 8:
 	{
-		resFFT = sample_8_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 9:
-	{
-		resFFT = sample_9_convolution_VkFFT_single_2d_batched_r2c(vkGPU, file_output, output, isCompilerInitialized);
+		resFFT = sample_8_benchmark_VkFFT_double_Bluestein(vkGPU, file_output, output, isCompilerInitialized);
 		break;
 	}
 #if(VKFFT_BACKEND==0)
@@ -295,7 +298,27 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 		resFFT = sample_17_precision_VkFFT_double_dct(vkGPU, file_output, output, isCompilerInitialized);
 		break;
 	}
+	case 18:
+	{
+		resFFT = sample_18_precision_VkFFT_double_nonPow2(vkGPU, file_output, output, isCompilerInitialized);
+		break;
+	}
 #endif
+	case 50:
+	{
+		resFFT = sample_50_convolution_VkFFT_single_1d_matrix(vkGPU, file_output, output, isCompilerInitialized);
+		break;
+	}
+	case 51:
+	{
+		resFFT = sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(vkGPU, file_output, output, isCompilerInitialized);
+		break;
+	}
+	case 52:
+	{
+		resFFT = sample_52_convolution_VkFFT_single_2d_batched_r2c(vkGPU, file_output, output, isCompilerInitialized);
+		break;
+	}
 	case 120:
 	{
 		resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 2);
@@ -404,7 +427,7 @@ int main(int argc, char* argv[])
 		version_decomposed[0] = version / 10000;
 		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
 		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
-		printf("VkFFT v%d.%d.%d (28-06-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
+		printf("VkFFT v%d.%d.%d (25-07-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
@@ -428,9 +451,8 @@ int main(int argc, char* argv[])
 		printf("		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
 		printf("		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n");
 		printf("		6 - FFT + iFFT R2C / C2R benchmark\n");
-		printf("		7 - convolution example with identitiy kernel\n");
-		printf("		8 - zeropadding convolution example with identitiy kernel\n");
-		printf("		9 - batched convolution example with identitiy kernel\n");
+		printf("		7 - FFT + iFFT C2C Bluestein benchmark in single precision\n");
+		printf("		8 - FFT + iFFT C2C Bluestein benchmark in double precision\n");
 #if (VKFFT_BACKEND==0)
 		printf("		10 - multiple buffer(4 by default) split version of benchmark 0\n");
 #endif
@@ -441,28 +463,38 @@ int main(int argc, char* argv[])
 #if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
 		printf("		13 - VkFFT / cuFFT / FFTW C2C precision test in half precision\n");
 #endif
-		printf("		14 - VkFFT / FFTW C2C power 3 / 5 / 7 / 11 / 13 precision test in single precision\n");
+		printf("		14 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in single precision\n");
 		printf("		15 - VkFFT / cuFFT / FFTW R2C+C2R precision test in single precision\n");
+		printf("		16 - VkFFT / FFTW R2R DCT-II, III and IV precision test in single precision\n");
+		printf("		17 - VkFFT / FFTW R2R DCT-II, III and IV precision test in double precision\n");
+		printf("		18 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in double precision\n");
 #elif USE_rocFFT
 		printf("		11 - VkFFT / rocFFT / FFTW C2C precision test in single precision\n");
 		printf("		12 - VkFFT / rocFFT / FFTW C2C precision test in double precision\n");
 #if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
 		printf("		13 - VkFFT / FFTW C2C precision test in half precision\n");
 #endif
-		printf("		14 - VkFFT / FFTW C2C power 3 / 5 / 7 / 11 / 13 precision test in single precision\n");
+		printf("		14 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in single precision\n");
 		printf("		15 - VkFFT / rocFFT / FFTW R2C+C2R precision test in single precision\n");
+		printf("		16 - VkFFT / FFTW R2R DCT-II, III and IV precision test in single precision\n");
+		printf("		17 - VkFFT / FFTW R2R DCT-II, III and IV precision test in double precision\n");
+		printf("		18 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in double precision\n");
 #else
 		printf("		11 - VkFFT / FFTW C2C precision test in single precision\n");
 		printf("		12 - VkFFT / FFTW C2C precision test in double precision\n");
 #if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
 		printf("		13 - VkFFT / FFTW C2C precision test in half precision\n");
 #endif
-		printf("		14 - VkFFT / FFTW C2C power 3 / 5 / 7 / 11 / 13 precision test in single precision\n");
+		printf("		14 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in single precision\n");
 		printf("		15 - VkFFT / FFTW R2C+C2R precision test in single precision\n");
 		printf("		16 - VkFFT / FFTW R2R DCT-II, III and IV precision test in single precision\n");
 		printf("		17 - VkFFT / FFTW R2R DCT-II, III and IV precision test in double precision\n");
+		printf("		18 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in double precision\n");
 #endif
 #endif
+		printf("		50 - convolution example with identitiy kernel\n");
+		printf("		51 - zeropadding convolution example with identitiy kernel\n");
+		printf("		52 - batched convolution example with identitiy kernel\n");
 		printf("		120 - VkFFT FFT + iFFT R2R DCT-2 multidimensional benchmark in single precision\n");
 		printf("		121 - VkFFT FFT + iFFT R2R DCT-2 multidimensional benchmark in double precision\n");
 		printf("		130 - VkFFT FFT + iFFT R2R DCT-3 multidimensional benchmark in single precision\n");
@@ -493,6 +525,8 @@ int main(int argc, char* argv[])
 		printf("		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n");
 		printf("		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n");
 		printf("		6 - FFT + iFFT R2C / C2R benchmark\n");
+		printf("		7 - FFT + iFFT C2C big prime benchmark in single precision (similar to VkFFT Bluestein)\n");
+		printf("		8 - FFT + iFFT C2C big prime benchmark in double precision (similar to VkFFT Bluestein)\n");
 		printf("		1000 - FFT + iFFT C2C benchmark 1D batched in single precision: all supported systems from 2 to 4096\n");
 		printf("		1001 - FFT + iFFT C2C benchmark 1D batched in double precision: all supported systems from 2 to 4096\n");
 		printf("		1003 - FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
@@ -509,6 +543,8 @@ int main(int argc, char* argv[])
 		printf("		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n");
 		printf("		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n");
 		printf("		6 - FFT + iFFT R2C / C2R benchmark\n");
+		printf("		7 - FFT + iFFT C2C big prime benchmark in single precision (similar to VkFFT Bluestein)\n");
+		printf("		8 - FFT + iFFT C2C big prime benchmark in double precision (similar to VkFFT Bluestein)\n");
 		printf("		1000 - FFT + iFFT C2C benchmark 1D batched in single precision: all supported systems from 2 to 4096\n");
 		printf("		1001 - FFT + iFFT C2C benchmark 1D batched in double precision: all supported systems from 2 to 4096\n");
 		printf("		1003 - FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
@@ -765,6 +801,12 @@ int main(int argc, char* argv[])
 			case 6:
 				sample_6_benchmark_cuFFT_single_r2c(file_output, output);
 				break;
+			case 7:
+				sample_7_benchmark_cuFFT_single_Bluestein(file_output, output);
+				break;
+			case 8:
+				sample_8_benchmark_cuFFT_double_Bluestein(file_output, output);
+				break;
 			case 1000:
 				sample_1000_benchmark_cuFFT_single_2_4096(file_output, output);
 				break;
@@ -806,6 +848,12 @@ int main(int argc, char* argv[])
 			case 6:
 				sample_6_benchmark_rocFFT_single_r2c(file_output, output);
 				break;
+			case 7:
+				sample_7_benchmark_rocFFT_single_Bluestein(file_output, output);
+				break;
+			case 8:
+				sample_8_benchmark_rocFFT_double_Bluestein(file_output, output);
+				break;
 			case 1000:
 				sample_1000_benchmark_rocFFT_single_2_4096(file_output, output);
 				break;
@@ -829,7 +877,7 @@ int main(int argc, char* argv[])
 			file_output = true;
 			output = fopen("result.txt", "a");
 		}
-		for (uint64_t i = 0; i < 7; i++) {
+		for (uint64_t i = 0; i < 9; i++) {
 #if((VKFFT_BACKEND>0) || (VK_API_VERSION == 10))
 			if (i == 2) i++;
 #endif
@@ -842,11 +890,15 @@ int main(int argc, char* argv[])
 		sample_2_benchmark_cuFFT_half(file_output, output);
 		sample_3_benchmark_cuFFT_single_3d(file_output, output);
 		sample_6_benchmark_cuFFT_single_r2c(file_output, output);
+		sample_7_benchmark_cuFFT_single_Bluestein(file_output, output);
+		sample_8_benchmark_cuFFT_double_Bluestein(file_output, output);
 #elif USE_rocFFT
 		sample_0_benchmark_rocFFT_single(file_output, output);
 		sample_1_benchmark_rocFFT_double(file_output, output);
 		sample_3_benchmark_rocFFT_single_3d(file_output, output);
 		sample_6_benchmark_rocFFT_single_r2c(file_output, output);
+		sample_7_benchmark_rocFFT_single_Bluestein(file_output, output);
+		sample_8_benchmark_rocFFT_double_Bluestein(file_output, output);
 #endif
 	}
 	return 0;

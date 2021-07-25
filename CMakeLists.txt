@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.10)
 project(Vulkan_FFT)
-set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
-set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+#set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
+#set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
 set(VKFFT_BACKEND 0 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL")
 
 if(${VKFFT_BACKEND} EQUAL 1)
-	option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" ON)
+	option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" OFF)
 else()
 	option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" OFF)
 endif()
@@ -16,7 +16,7 @@ else()
 	option(build_VkFFT_rocFFT_benchmark "Build VkFFT rocFFT benchmark" OFF)
 endif()
 
-option(build_VkFFT_FFTW_precision "Build VkFFT FFTW precision comparison" OFF)
+option(build_VkFFT_FFTW_precision "Build VkFFT FFTW precision comparison" ON)
 if (MSVC)
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
 	add_definitions(-D_CRT_SECURE_NO_WARNINGS)
@@ -32,9 +32,8 @@ if(build_VkFFT_FFTW_precision)
 		benchmark_scripts/vkFFT_scripts/src/sample_4_benchmark_VkFFT_single_3d_zeropadding.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_5_benchmark_VkFFT_single_disableReorderFourStep.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_6_benchmark_VkFFT_single_r2c.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_7_convolution_VkFFT_single_1d_matrix.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_8_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_9_convolution_VkFFT_single_2d_batched_r2c.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_7_benchmark_VkFFT_single_Bluestein.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_8_benchmark_VkFFT_double_Bluestein.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_10_benchmark_VkFFT_single_multipleBuffers.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_11_precision_VkFFT_single.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_12_precision_VkFFT_double.cpp
@@ -43,6 +42,10 @@ if(build_VkFFT_FFTW_precision)
 		benchmark_scripts/vkFFT_scripts/src/sample_15_precision_VkFFT_single_r2c.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_16_precision_VkFFT_single_dct.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_17_precision_VkFFT_double_dct.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_18_precision_VkFFT_double_nonPow2.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_50_convolution_VkFFT_single_1d_matrix.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_52_convolution_VkFFT_single_2d_batched_r2c.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_100_benchmark_VkFFT_single_nd_dct.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_101_benchmark_VkFFT_double_nd_dct.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_1000_VkFFT_single_2_4096.cpp
@@ -59,10 +62,12 @@ else()
 		benchmark_scripts/vkFFT_scripts/src/sample_4_benchmark_VkFFT_single_3d_zeropadding.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_5_benchmark_VkFFT_single_disableReorderFourStep.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_6_benchmark_VkFFT_single_r2c.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_7_convolution_VkFFT_single_1d_matrix.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_8_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_9_convolution_VkFFT_single_2d_batched_r2c.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_7_benchmark_VkFFT_single_Bluestein.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_8_benchmark_VkFFT_double_Bluestein.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_10_benchmark_VkFFT_single_multipleBuffers.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_50_convolution_VkFFT_single_1d_matrix.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_52_convolution_VkFFT_single_2d_batched_r2c.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_100_benchmark_VkFFT_single_nd_dct.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_101_benchmark_VkFFT_double_nd_dct.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_1000_VkFFT_single_2_4096.cpp
@@ -108,6 +113,7 @@ elseif(${VKFFT_BACKEND} EQUAL 2)
 elseif(${VKFFT_BACKEND} EQUAL 3)
 	find_package(OpenCL REQUIRED)
 endif()
+
 target_compile_definitions(${PROJECT_NAME} PUBLIC -DVK_API_VERSION=11)#10 - Vulkan 1.0, 11 - Vulkan 1.1, 12 - Vulkan 1.2 
 if(${VKFFT_BACKEND} EQUAL 0)
 	target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glslang-master/glslang/Include/)
@@ -136,8 +142,8 @@ endif()
 
 if(build_VkFFT_FFTW_precision)
 	add_definitions(-DUSE_FFTW)
-	set(FFTW3_LIB_DIR "/usr/lib/x86_64-linux-gnu/")
-	set(FFTW3_INCLUDE_DIR "/usr/include/")
+	set(FFTW3_LIB_DIR "C:/Users/dtolm/Documents/FFTW")
+	set(FFTW3_INCLUDE_DIR "C:/Users/dtolm/Documents/FFTW")
 	find_library(
 		FFTW_LIB
 		NAMES "libfftw3-3" "fftw3"
@@ -169,6 +175,8 @@ if(build_VkFFT_cuFFT_benchmark)
 		benchmark_scripts/cuFFT_scripts/src/sample_2_benchmark_cuFFT_half.cu
 		benchmark_scripts/cuFFT_scripts/src/sample_3_benchmark_cuFFT_single_3d.cu
 		benchmark_scripts/cuFFT_scripts/src/sample_6_benchmark_cuFFT_single_r2c.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_7_benchmark_cuFFT_single_Bluestein.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_8_benchmark_cuFFT_double_Bluestein.cu
 		benchmark_scripts/cuFFT_scripts/src/sample_1000_benchmark_cuFFT_single_2_4096.cu
 		benchmark_scripts/cuFFT_scripts/src/sample_1001_benchmark_cuFFT_double_2_4096.cu
 		benchmark_scripts/cuFFT_scripts/src/sample_1003_benchmark_cuFFT_single_3d_2_512.cu
@@ -184,6 +192,8 @@ if(build_VkFFT_cuFFT_benchmark)
 		benchmark_scripts/cuFFT_scripts/src/sample_2_benchmark_cuFFT_half.cu
 		benchmark_scripts/cuFFT_scripts/src/sample_3_benchmark_cuFFT_single_3d.cu
 		benchmark_scripts/cuFFT_scripts/src/sample_6_benchmark_cuFFT_single_r2c.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_7_benchmark_cuFFT_single_Bluestein.cu
+		benchmark_scripts/cuFFT_scripts/src/sample_8_benchmark_cuFFT_double_Bluestein.cu
 		benchmark_scripts/cuFFT_scripts/src/sample_1000_benchmark_cuFFT_single_2_4096.cu
 		benchmark_scripts/cuFFT_scripts/src/sample_1001_benchmark_cuFFT_double_2_4096.cu
 		benchmark_scripts/cuFFT_scripts/src/sample_1003_benchmark_cuFFT_single_3d_2_512.cu)
@@ -215,6 +225,8 @@ if(build_VkFFT_rocFFT_benchmark)
 		benchmark_scripts/rocFFT_scripts/src/sample_1_benchmark_rocFFT_double.cpp
 		benchmark_scripts/rocFFT_scripts/src/sample_3_benchmark_rocFFT_single_3d.cpp
 		benchmark_scripts/rocFFT_scripts/src/sample_6_benchmark_rocFFT_single_r2c.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_7_benchmark_rocFFT_single_Bluestein.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_8_benchmark_rocFFT_double_Bluestein.cpp
 		benchmark_scripts/rocFFT_scripts/src/sample_1000_benchmark_rocFFT_single_2_4096.cpp
 		benchmark_scripts/rocFFT_scripts/src/sample_1001_benchmark_rocFFT_double_2_4096.cpp
 		benchmark_scripts/rocFFT_scripts/src/sample_1003_benchmark_rocFFT_single_3d_2_512.cpp
@@ -228,6 +240,8 @@ if(build_VkFFT_rocFFT_benchmark)
 		benchmark_scripts/rocFFT_scripts/src/sample_1_benchmark_rocFFT_double.cpp
 		benchmark_scripts/rocFFT_scripts/src/sample_3_benchmark_rocFFT_single_3d.cpp
 		benchmark_scripts/rocFFT_scripts/src/sample_6_benchmark_rocFFT_single_r2c.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_7_benchmark_rocFFT_single_Bluestein.cpp
+		benchmark_scripts/rocFFT_scripts/src/sample_8_benchmark_rocFFT_double_Bluestein.cpp
 		benchmark_scripts/rocFFT_scripts/src/sample_1000_benchmark_rocFFT_single_2_4096.cpp
 		benchmark_scripts/rocFFT_scripts/src/sample_1001_benchmark_rocFFT_double_2_4096.cpp
 		benchmark_scripts/rocFFT_scripts/src/sample_1003_benchmark_rocFFT_single_3d_2_512.cpp)

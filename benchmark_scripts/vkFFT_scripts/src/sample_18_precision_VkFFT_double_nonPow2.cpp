@@ -47,7 +47,7 @@
 #ifdef USE_rocFFT
 #include "precision_rocFFT_single.h"
 #endif	
-VkFFTResult sample_14_precision_VkFFT_single_nonPow2(VkGPU* vkGPU, uint64_t file_output, FILE* output, uint64_t isCompilerInitialized)
+VkFFTResult sample_18_precision_VkFFT_double_nonPow2(VkGPU* vkGPU, uint64_t file_output, FILE* output, uint64_t isCompilerInitialized)
 {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
@@ -60,8 +60,8 @@ VkFFTResult sample_14_precision_VkFFT_single_nonPow2(VkGPU* vkGPU, uint64_t file
 	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
-		fprintf(output, "14 - VkFFT/FFTW C2C radix 3/5/7/11/13/Bluestein precision test in single precision\n");
-	printf("14 - VkFFT/FFTW C2C radix 3/5/7/11/13/Bluestein precision test in single precision\n");
+		fprintf(output, "18 - VkFFT/FFTW C2C radix 3/5/7/11/13/Bluestein precision test in double precision\n");
+	printf("18 - VkFFT/FFTW C2C radix 3/5/7/11/13/Bluestein precision test in double precision\n");
 
 	const int num_benchmark_samples = 277;
 	const int num_runs = 1;
@@ -95,19 +95,19 @@ VkFFTResult sample_14_precision_VkFFT_single_nonPow2(VkGPU* vkGPU, uint64_t file
 	for (int n = 0; n < num_benchmark_samples; n++) {
 		for (int r = 0; r < 1; r++) {
 
-			fftwf_complex* inputC;
+			fftw_complex* inputC;
 			fftw_complex* inputC_double;
 			uint64_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
 			
-			inputC = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * dims[0] * dims[1] * dims[2]));
+			inputC = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
 			if (!inputC) return VKFFT_ERROR_MALLOC_FAILED;
 			inputC_double = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
 			if (!inputC_double) return VKFFT_ERROR_MALLOC_FAILED;
 			for (uint64_t l = 0; l < dims[2]; l++) {
 				for (uint64_t j = 0; j < dims[1]; j++) {
 					for (uint64_t i = 0; i < dims[0]; i++) {
-						inputC[i + j * dims[0] + l * dims[0] * dims[1]][0] = (float)(2 * ((double)rand()) / RAND_MAX - 1.0);
-						inputC[i + j * dims[0] + l * dims[0] * dims[1]][1] = (float)(2 * ((double)rand()) / RAND_MAX - 1.0);
+						inputC[i + j * dims[0] + l * dims[0] * dims[1]][0] = (double)(2 * ((double)rand()) / RAND_MAX - 1.0);
+						inputC[i + j * dims[0] + l * dims[0] * dims[1]][1] = (double)(2 * ((double)rand()) / RAND_MAX - 1.0);
 						inputC_double[i + j * dims[0] + l * dims[0] * dims[1]][0] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]][0];
 						inputC_double[i + j * dims[0] + l * dims[0] * dims[1]][1] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]][1];
 					}
@@ -143,7 +143,8 @@ VkFFTResult sample_14_precision_VkFFT_single_nonPow2(VkGPU* vkGPU, uint64_t file
 			configuration.size[0] = benchmark_dimensions[n][0]; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 			configuration.size[1] = benchmark_dimensions[n][1];
 			configuration.size[2] = benchmark_dimensions[n][2];
-			//configuration.keepShaderCode = 1;
+			configuration.doublePrecision = 1;
+			
 			//configuration.disableReorderFourStep = 1;
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 			configuration.device = &vkGPU->device;
@@ -165,7 +166,7 @@ VkFFTResult sample_14_precision_VkFFT_single_nonPow2(VkGPU* vkGPU, uint64_t file
 			if (!bufferSize) return VKFFT_ERROR_MALLOC_FAILED;
 			for (uint64_t i = 0; i < numBuf; i++) {
 				bufferSize[i] = {};
-				bufferSize[i] = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2] / numBuf;
+				bufferSize[i] = (uint64_t)sizeof(double) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2] / numBuf;
 			}
 #if(VKFFT_BACKEND==0)
 			VkBuffer* buffer = (VkBuffer*)malloc(numBuf * sizeof(VkBuffer));
@@ -213,7 +214,7 @@ VkFFTResult sample_14_precision_VkFFT_single_nonPow2(VkGPU* vkGPU, uint64_t file
 			uint64_t shift = 0;
 			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
-				resFFT = transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftwf_complex)), &buffer[i], bufferSize[i]);
+				resFFT = transferDataFromCPU(vkGPU, (inputC + shift / sizeof(fftw_complex)), &buffer[i], bufferSize[i]);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
 				res = cudaMemcpy(buffer, inputC, bufferSize[i], cudaMemcpyHostToDevice);
@@ -245,13 +246,13 @@ VkFFTResult sample_14_precision_VkFFT_single_nonPow2(VkGPU* vkGPU, uint64_t file
 #endif
 			resFFT = performVulkanFFT(vkGPU, &app, &launchParams, -1, num_iter);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
-			fftwf_complex* output_VkFFT = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * dims[0] * dims[1] * dims[2]));
+			fftw_complex* output_VkFFT = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
 			if (!output_VkFFT) return VKFFT_ERROR_MALLOC_FAILED;
 			//Transfer data from GPU using staging buffer.
 			shift = 0;
 			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
-				resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftwf_complex)), &buffer[i], sizeof(fftwf_complex) * dims[0] * dims[1] * dims[2]);
+				resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(fftw_complex)), &buffer[i], sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
 #elif(VKFFT_BACKEND==1)
 				res = cudaMemcpy(output_VkFFT, buffer, bufferSize[i], cudaMemcpyDeviceToHost);
@@ -300,8 +301,8 @@ VkFFTResult sample_14_precision_VkFFT_single_nonPow2(VkGPU* vkGPU, uint64_t file
 			avg_difference[1] /= (dims[0] * dims[1] * dims[2]);
 			avg_eps[1] /= (dims[0] * dims[1] * dims[2]);
 			if (file_output)
-				fprintf(output, "VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
-			printf("VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+				fprintf(output, "VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+			printf("VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
 			free(output_VkFFT);
 			for (uint64_t i = 0; i < numBuf; i++) {
 

@@ -78,14 +78,14 @@ VkFFTResult sample_1000_VkFFT_single_2_4096(VkGPU* vkGPU, uint64_t file_output, 
 			if (n == 1) configuration.size[0] = 4096;
 			uint64_t temp = configuration.size[0];
 
-			for (uint64_t j = 2; j < 14; j++)
+			/*for (uint64_t j = 2; j < 14; j++)
 			{
 				if (temp % j == 0) {
 					temp /= j;
 					j = 1;
 				}
 			}
-			if (temp != 1) break;
+			if (temp != 1) break;*/
 			configuration.size[1] = (uint64_t)pow(2, (uint64_t)log2((uint64_t)64 * 32 * (uint64_t)pow(2, 16) / configuration.size[0]));
 			if (configuration.size[1] < 1) configuration.size[1] = 1;
 			configuration.size[2] = 1;
