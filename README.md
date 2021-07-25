@@ -15,7 +15,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - Forward and inverse directions of FFT
   - Support for big FFT dimension sizes. Current limits: C2C or even C2R/R2C - (2^32, 2^32, 2^32).  Odd C2R/R2C - (2^12, 2^32, 2^32). R2R - (2^12, 2^12, 2^12). Depends on the amount of shared memory on device. (will be increased later).
   - Radix-2/3/4/5/7/8/11/13 FFT. Sequences using radix 3, 5, 7, 11 and 13 have comparable performance to that of powers of 2.
-  - Bluestein FFT algorithm for all other sequences. Full coverage of C2C range, single upload (2^12, 2^12, 2^12) for R2C/C2R/R2R. Optimized to have as few memory transfers as possible by using zeropadding and merged convolution support of VkFFT
+  - Bluestein's FFT algorithm for all other sequences. Full coverage of C2C range, single upload (2^12, 2^12, 2^12) for R2C/C2R/R2R. Optimized to have as few memory transfers as possible by using zeropadding and merged convolution support of VkFFT
   - Single, double and half precision support. Double precision uses CPU generated LUT tables. Half precision still does all computations in single and only uses half precision to store data.
   - All transformations are performed in-place with no performance loss. Out-of-place transforms are supported by selecting different input/output buffers.
   - No additional transposition uploads. Note: data can be reshuffled after the four step FFT algorithm with additional buffer (for big sequences). Doesn't matter for convolutions - they return to the input ordering (saves memory).

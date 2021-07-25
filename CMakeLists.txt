@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.10)
 project(Vulkan_FFT)
-#set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
-#set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
+set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
 set(VKFFT_BACKEND 0 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL")
 
 if(${VKFFT_BACKEND} EQUAL 1)
-	option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" OFF)
+	option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" ON)
 else()
 	option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" OFF)
 endif()
@@ -16,7 +16,7 @@ else()
 	option(build_VkFFT_rocFFT_benchmark "Build VkFFT rocFFT benchmark" OFF)
 endif()
 
-option(build_VkFFT_FFTW_precision "Build VkFFT FFTW precision comparison" ON)
+option(build_VkFFT_FFTW_precision "Build VkFFT FFTW precision comparison" OFF)
 if (MSVC)
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
 	add_definitions(-D_CRT_SECURE_NO_WARNINGS)
@@ -142,8 +142,8 @@ endif()
 
 if(build_VkFFT_FFTW_precision)
 	add_definitions(-DUSE_FFTW)
-	set(FFTW3_LIB_DIR "C:/Users/dtolm/Documents/FFTW")
-	set(FFTW3_INCLUDE_DIR "C:/Users/dtolm/Documents/FFTW")
+	set(FFTW3_LIB_DIR "/usr/lib/x86_64-linux-gnu/")
+	set(FFTW3_INCLUDE_DIR "/usr/include/")
 	find_library(
 		FFTW_LIB
 		NAMES "libfftw3-3" "fftw3"
