@@ -336,7 +336,7 @@ typedef enum VkFFTResult {
 typedef struct {
 	uint64_t size[3];
 	uint64_t localSize[3];
-	uint64_t bluesteinNormalizeSize;
+	uint64_t sourceFFTSize;
 	uint64_t fftDim;
 	uint64_t inverse;
 	uint64_t actualInverse;
@@ -8491,10 +8491,10 @@ static inline VkFFTResult appendRadixStage(VkFFTSpecializationConstantsLayout* s
 
 static inline VkFFTResult appendRegisterBoostShuffle(VkFFTSpecializationConstantsLayout* sc, const char* floatType, uint64_t stageSize, uint64_t stageRadixPrev, uint64_t stageRadix, double stageAngle) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle > 0))) {
+	/*if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle > 0))) {
 		uint64_t bluesteinInverseNormalize = 1;
 		if ((sc->useBluesteinFFT) && (stageAngle > 0) && (stageSize == 1) && (sc->normalize) && (sc->axis_upload_id == 0)) bluesteinInverseNormalize = sc->bluesteinNormalizeSize;
-		char stageNormalization[10] = "";
+		char stageNormalization[50] = "";
 		if ((stageSize == 1) && (sc->performDCT) && (sc->actualInverse)) {
 			if (sc->performDCT == 4)
 				sprintf(stageNormalization, "%" PRIu64 "", stageRadixPrev * stageRadix * 4 * bluesteinInverseNormalize);
@@ -8510,40 +8510,49 @@ static inline VkFFTResult appendRegisterBoostShuffle(VkFFTSpecializationConstant
 				if (res != VKFFT_SUCCESS) return res;
 			}
 		}
-	}
+	}*/
 	return res;
 }
 
 static inline VkFFTResult appendRadixShuffleNonStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageRadixNext) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	char vecType[30];
+	char LFending[4] = "";
+	if (!strcmp(floatType, "float")) sprintf(LFending, "f");
 #if(VKFFT_BACKEND==0)
 	if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
+	if (!strcmp(floatType, "double")) sprintf(LFending, "LF");
 #elif(VKFFT_BACKEND==1)
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+	if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #elif(VKFFT_BACKEND==2)
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+	if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #elif(VKFFT_BACKEND==3)
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 #endif
-	char stageNormalization[10] = "";
-	if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle > 0))) {
-		uint64_t bluesteinInverseNormalize = 1;
-		if ((sc->useBluesteinFFT) && (stageAngle > 0) && (stageSize == 1) && (sc->normalize) && (sc->axis_upload_id == 0)) bluesteinInverseNormalize = sc->bluesteinNormalizeSize;
-		if ((stageSize == 1) && (sc->performDCT) && (sc->actualInverse)) {
+	char stageNormalization[50] = "";
+	uint64_t normalizationValue = 1;
+	if ((((sc->actualInverse) && (sc->normalize)) || (sc->convolutionStep && (stageAngle > 0))) && (stageSize == 1) && (sc->axis_upload_id == 0)&&(!(sc->useBluesteinFFT&& (stageAngle < 0)))) {
+		if ((sc->performDCT) && (sc->actualInverse)) {
 			if (sc->performDCT == 4)
-				sprintf(stageNormalization, "%" PRIu64 "", stageRadix * 4 * bluesteinInverseNormalize);
+				normalizationValue = sc->sourceFFTSize * 4;
 			else
-				sprintf(stageNormalization, "%" PRIu64 "", stageRadix * 2 * bluesteinInverseNormalize);
+				normalizationValue = sc->sourceFFTSize * 2;
 		}
 		else
-			sprintf(stageNormalization, "%" PRIu64 "", stageRadix * bluesteinInverseNormalize);
+			normalizationValue = sc->sourceFFTSize;
 	}
-
+	if (sc->useBluesteinFFT && (stageAngle > 0) && (stageSize == 1) && (sc->axis_upload_id == 0)) {
+		normalizationValue *= sc->fft_dim_full;
+	}
+	if (normalizationValue != 1) {
+		sprintf(stageNormalization, "%.17f%s", 1.0 / (double)(normalizationValue), LFending);
+	}
 	char tempNum[50] = "";
 
 	uint64_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
@@ -8649,7 +8658,7 @@ static inline VkFFTResult appendRadixShuffleNonStrided(VkFFTSpecializationConsta
 
 								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + inoutID + ((%" PRIu64 "+tshuffle) %% (%" PRIu64 "))*%" PRIu64 "", i, logicalRegistersPerThread, stageSize);
 								if (strcmp(stageNormalization, "")) {
-									res = VkDivComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], stageNormalization);
+									res = VkMulComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], stageNormalization);
 									if (res != VKFFT_SUCCESS) return res;
 								}
 								res = VkSharedStore(sc, sc->sdataID, sc->regIDs[id]);
@@ -8698,7 +8707,7 @@ static inline VkFFTResult appendRadixShuffleNonStrided(VkFFTSpecializationConsta
 								}
 								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "", i * stageSize);
 								if (strcmp(stageNormalization, "")) {
-									res = VkDivComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], stageNormalization);
+									res = VkMulComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], stageNormalization);
 									if (res != VKFFT_SUCCESS) return res;
 								}
 								res = VkSharedStore(sc, sc->sdataID, sc->regIDs[id]);
@@ -8856,7 +8865,9 @@ static inline VkFFTResult appendRadixShuffleNonStrided(VkFFTSpecializationConsta
 		}
 		if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle > 0))) {
 			for (uint64_t i = 0; i < logicalStoragePerThread; i++) {
-				res = VkDivComplexNumber(sc, sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], stageNormalization);
+				if (strcmp(stageNormalization, "")) {
+					res = VkMulComplexNumber(sc, sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], stageNormalization);
+				}
 				if (res != VKFFT_SUCCESS) return res;
 				/*sc->tempLen = sprintf(sc->tempStr, "\
 	temp%s = temp%s%s;\n", sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], stageNormalization);*/
@@ -8878,21 +8889,25 @@ static inline VkFFTResult appendRadixShuffleNonStrided(VkFFTSpecializationConsta
 static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageRadixNext) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	char vecType[30];
+	char LFending[4] = "";
+	if (!strcmp(floatType, "float")) sprintf(LFending, "f");
 #if(VKFFT_BACKEND==0)
 	if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
+	if (!strcmp(floatType, "double")) sprintf(LFending, "LF");
 #elif(VKFFT_BACKEND==1)
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+	if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #elif(VKFFT_BACKEND==2)
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+	if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #elif(VKFFT_BACKEND==3)
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 #endif
 
-	char stageNormalization[10] = "";
 	char tempNum[50] = "";
 
 	uint64_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
@@ -8902,17 +8917,23 @@ static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstants
 
 	uint64_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
 	uint64_t logicalGroupSizeNext = sc->fftDim / logicalStoragePerThreadNext;
-	if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle > 0))) {
-		uint64_t bluesteinInverseNormalize = 1;
-		if ((sc->useBluesteinFFT) && (stageAngle > 0) && (stageSize == 1) && (sc->normalize) && (sc->axis_upload_id == 0)) bluesteinInverseNormalize = sc->bluesteinNormalizeSize;
-		if ((stageSize == 1) && (sc->performDCT) && (sc->actualInverse)) {
+	char stageNormalization[50] = "";
+	uint64_t normalizationValue = 1;
+	if ((((sc->actualInverse) && (sc->normalize)) || (sc->convolutionStep && (stageAngle > 0))) && (stageSize == 1) && (sc->axis_upload_id == 0) && (!(sc->useBluesteinFFT && (stageAngle < 0)))) {
+		if ((sc->performDCT) && (sc->actualInverse)) {
 			if (sc->performDCT == 4)
-				sprintf(stageNormalization, "%" PRIu64 "", stageRadix * 4 * bluesteinInverseNormalize);
+				normalizationValue = sc->sourceFFTSize * 4;
 			else
-				sprintf(stageNormalization, "%" PRIu64 "", stageRadix * 2 * bluesteinInverseNormalize);
+				normalizationValue = sc->sourceFFTSize * 2;
 		}
 		else
-			sprintf(stageNormalization, "%" PRIu64 "", stageRadix * bluesteinInverseNormalize);
+			normalizationValue = sc->sourceFFTSize;
+	}
+	if (sc->useBluesteinFFT && (stageAngle > 0) && (stageSize == 1) && (sc->axis_upload_id == 0)) {
+		normalizationValue *= sc->fft_dim_full;
+	}
+	if (normalizationValue != 1) {
+		sprintf(stageNormalization, "%.17f%s", 1.0 / (double)(normalizationValue), LFending);
 	}
 	if (((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)) || (sc->performDCT))
 	{
@@ -9003,7 +9024,7 @@ static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstants
 							if (res != VKFFT_SUCCESS) return res;
 							//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "", i * stageSize);
 							if (strcmp(stageNormalization, "")) {
-								res = VkDivComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], stageNormalization);
+								res = VkMulComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], stageNormalization);
 								if (res != VKFFT_SUCCESS) return res;
 							}
 							res = VkSharedStore(sc, sc->sdataID, sc->regIDs[id]);
@@ -9153,7 +9174,9 @@ static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstants
 		}
 		if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle > 0))) {
 			for (uint64_t i = 0; i < logicalRegistersPerThread; i++) {
-				res = VkDivComplexNumber(sc, sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], stageNormalization);
+				if (strcmp(stageNormalization, "")) {
+					res = VkMulComplexNumber(sc, sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], sc->regIDs[(i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread], stageNormalization);
+				}
 				if (res != VKFFT_SUCCESS) return res;
 			}
 		}
@@ -9518,60 +9541,42 @@ static inline VkFFTResult appendCoordinateRegisterStore(VkFFTSpecializationConst
 }
 static inline VkFFTResult appendCoordinateRegisterPull(VkFFTSpecializationConstantsLayout* sc, uint64_t readType) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	switch (readType) {
-	case 0: case 5: case 6: case 120: case 130: case 140: case 142://single_c2c
-	{
-		res = appendBarrierVkFFT(sc, 1);
-		if (res != VKFFT_SUCCESS) return res;
-		res = appendZeropadStart(sc);
-		if (res != VKFFT_SUCCESS) return res;
-		res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
-		if (res != VKFFT_SUCCESS) return res;
-		if (sc->matrixConvolution == 1) {
-			sc->tempLen = sprintf(sc->tempStr, "\
-			sdata[sharedStride * %s + %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
-			res = VkAppendLine(sc);
+	if (!sc->readToRegisters) {
+		switch (readType) {
+		case 0: case 5: case 6: case 120: case 130: case 140: case 142://single_c2c
+		{
+			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
-			for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
+			res = appendZeropadStart(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
+			if (res != VKFFT_SUCCESS) return res;
+			if (sc->matrixConvolution == 1) {
 				sc->tempLen = sprintf(sc->tempStr, "\
-			sdata[sharedStride * %s + %s + %" PRIu64 " * %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x, sc->regIDs[i]);
+			sdata[sharedStride * %s + %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
+				for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+			sdata[sharedStride * %s + %s + %" PRIu64 " * %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x, sc->regIDs[i]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				//appendBarrierVkFFT(sc, 3);
 			}
-			//appendBarrierVkFFT(sc, 3);
-		}
-		else {
-			sc->tempLen = sprintf(sc->tempStr, "\
+			else {
+				sc->tempLen = sprintf(sc->tempStr, "\
 		switch (coordinate) {\n\
 		case 0:\n");
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "\
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "\
 			sdata[sharedStride * %s + %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-			sdata[sharedStride * %s + %s + %" PRIu64 " * %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x, sc->regIDs[i]);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-			}
-			//appendBarrierVkFFT(sc, 3);
-			sc->tempLen = sprintf(sc->tempStr, "			break;\n");
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			for (uint64_t i = 1; i < sc->matrixConvolution; i++) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-		case %" PRIu64 ":\n", i);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "\
-			sdata[sharedStride * %s + %s] = %s_%" PRIu64 ";\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0], i);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				for (uint64_t j = 1; j < sc->min_registers_per_thread; j++) {
+				for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sc->tempLen = sprintf(sc->tempStr, "\
-			sdata[sharedStride * %s + %s + %" PRIu64 " * %s] = %s_%" PRIu64 ";\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, j, sc->gl_WorkGroupSize_x, sc->regIDs[j], i);
+			sdata[sharedStride * %s + %s + %" PRIu64 " * %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x, sc->regIDs[i]);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
@@ -9579,70 +9584,70 @@ static inline VkFFTResult appendCoordinateRegisterPull(VkFFTSpecializationConsta
 				sc->tempLen = sprintf(sc->tempStr, "			break;\n");
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-			}
-			sc->tempLen = sprintf(sc->tempStr, "		}\n");
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-		}
-		res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
-		if (res != VKFFT_SUCCESS) return res;
-		res = appendZeropadEnd(sc);
-		if (res != VKFFT_SUCCESS) return res;
-		break;
-	}
-	case 1: case 121: case 131: case 141: case 143://grouped_c2c
-	{
-		res = appendBarrierVkFFT(sc, 1);
-		if (res != VKFFT_SUCCESS) return res;
-		res = appendZeropadStart(sc);
-		if (res != VKFFT_SUCCESS) return res;
-		res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
-		if (res != VKFFT_SUCCESS) return res;
-		if (sc->matrixConvolution == 1) {
-			sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s*(%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s*(%s+%" PRIu64 "*%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[i]);
+				for (uint64_t i = 1; i < sc->matrixConvolution; i++) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		case %" PRIu64 ":\n", i);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "\
+			sdata[sharedStride * %s + %s] = %s_%" PRIu64 ";\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0], i);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					for (uint64_t j = 1; j < sc->min_registers_per_thread; j++) {
+						sc->tempLen = sprintf(sc->tempStr, "\
+			sdata[sharedStride * %s + %s + %" PRIu64 " * %s] = %s_%" PRIu64 ";\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, j, sc->gl_WorkGroupSize_x, sc->regIDs[j], i);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					//appendBarrierVkFFT(sc, 3);
+					sc->tempLen = sprintf(sc->tempStr, "			break;\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				sc->tempLen = sprintf(sc->tempStr, "		}\n");
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
-			//appendBarrierVkFFT(sc, 3);
+			res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendZeropadEnd(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			break;
 		}
-		else {
-			sc->tempLen = sprintf(sc->tempStr, "\
+		case 1: case 121: case 131: case 141: case 143://grouped_c2c
+		{
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendZeropadStart(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
+			if (res != VKFFT_SUCCESS) return res;
+			if (sc->matrixConvolution == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+		sdata[%s*(%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		sdata[%s*(%s+%" PRIu64 "*%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[i]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				//appendBarrierVkFFT(sc, 3);
+			}
+			else {
+				sc->tempLen = sprintf(sc->tempStr, "\
 	switch (coordinate) {\n\
 	case 0:\n");
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "\
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "\
 		sdata[%s*(%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0]);
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s*(%s+%" PRIu64 "*%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[i]);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-			}
-			//appendBarrierVkFFT(sc, 3);
-			sc->tempLen = sprintf(sc->tempStr, "			break;\n");
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			for (uint64_t i = 1; i < sc->matrixConvolution; i++) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-	case %" PRIu64 ":\n", i);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s*(%s)+%s] = %s_%" PRIu64 ";\n", sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0], i);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				for (uint64_t j = 1; j < sc->min_registers_per_thread; j++) {
+				for (uint64_t i = 1; i < sc->min_registers_per_thread; i++) {
 					sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s*(%s+%" PRIu64 "*%s)+%s] = %s_%" PRIu64 ";\n", sc->sharedStride, sc->gl_LocalInvocationID_y, j, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[j], i);
+		sdata[%s*(%s+%" PRIu64 "*%s)+%s] = %s;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, i, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[i]);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
@@ -9650,17 +9655,37 @@ static inline VkFFTResult appendCoordinateRegisterPull(VkFFTSpecializationConsta
 				sc->tempLen = sprintf(sc->tempStr, "			break;\n");
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
+				for (uint64_t i = 1; i < sc->matrixConvolution; i++) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+	case %" PRIu64 ":\n", i);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "\
+		sdata[%s*(%s)+%s] = %s_%" PRIu64 ";\n", sc->sharedStride, sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->regIDs[0], i);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					for (uint64_t j = 1; j < sc->min_registers_per_thread; j++) {
+						sc->tempLen = sprintf(sc->tempStr, "\
+		sdata[%s*(%s+%" PRIu64 "*%s)+%s] = %s_%" PRIu64 ";\n", sc->sharedStride, sc->gl_LocalInvocationID_y, j, sc->gl_WorkGroupSize_y, sc->gl_LocalInvocationID_x, sc->regIDs[j], i);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					//appendBarrierVkFFT(sc, 3);
+					sc->tempLen = sprintf(sc->tempStr, "			break;\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				sc->tempLen = sprintf(sc->tempStr, "		}\n");
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
 			}
-			sc->tempLen = sprintf(sc->tempStr, "		}\n");
-			res = VkAppendLine(sc);
+			res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
 			if (res != VKFFT_SUCCESS) return res;
+			res = appendZeropadEnd(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			break;
 		}
-		res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
-		if (res != VKFFT_SUCCESS) return res;
-		res = appendZeropadEnd(sc);
-		if (res != VKFFT_SUCCESS) return res;
-		break;
-	}
+		}
 	}
 	return res;
 }
@@ -9742,16 +9767,6 @@ static inline VkFFTResult appendBluesteinConvolution(VkFFTSpecializationConstant
 		if (res != VKFFT_SUCCESS) return res;
 	}
 	for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
-		if (i > 0) {
-			for (uint64_t j = 0; j < sc->matrixConvolution; j++) {
-				sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " = 0;\n", j);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " = 0;\n", j);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-		}
 		switch (dataType) {
 		case 0: case 5: case 6: case 120: case 130: case 140: case 142:
 		{
@@ -9786,17 +9801,17 @@ static inline VkFFTResult appendBluesteinConvolution(VkFFTSpecializationConstant
 		char kernelName[100] = "";
 		sprintf(kernelName, "BluesteinConvolutionKernel");
 		if ((sc->inverseBluestein) && (sc->fftDim == sc->fft_dim_full))
-			sc->tempLen = sprintf(sc->tempStr, "		temp_real0 += %s[inoutID].x * %s%s.x + %s[inoutID].y * %s%s.y;\n", kernelName, sc->regIDs[i], separateRegisterStore, kernelName, sc->regIDs[i], separateRegisterStore);
+			sc->tempLen = sprintf(sc->tempStr, "		temp_real0 = %s[inoutID].x * %s%s.x + %s[inoutID].y * %s%s.y;\n", kernelName, sc->regIDs[i], separateRegisterStore, kernelName, sc->regIDs[i], separateRegisterStore);
 		else
-			sc->tempLen = sprintf(sc->tempStr, "		temp_real0 += %s[inoutID].x * %s%s.x - %s[inoutID].y * %s%s.y;\n", kernelName, sc->regIDs[i], separateRegisterStore, kernelName, sc->regIDs[i], separateRegisterStore);
+			sc->tempLen = sprintf(sc->tempStr, "		temp_real0 = %s[inoutID].x * %s%s.x - %s[inoutID].y * %s%s.y;\n", kernelName, sc->regIDs[i], separateRegisterStore, kernelName, sc->regIDs[i], separateRegisterStore);
 
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 
 		if ((sc->inverseBluestein) && (sc->fftDim == sc->fft_dim_full))
-			sc->tempLen = sprintf(sc->tempStr, "		temp_imag0 += %s[inoutID].x * %s%s.y - %s[inoutID].y * %s%s.x;\n", kernelName, sc->regIDs[i], separateRegisterStore, kernelName, sc->regIDs[i], separateRegisterStore);
+			sc->tempLen = sprintf(sc->tempStr, "		temp_imag0 = %s[inoutID].x * %s%s.y - %s[inoutID].y * %s%s.x;\n", kernelName, sc->regIDs[i], separateRegisterStore, kernelName, sc->regIDs[i], separateRegisterStore);
 		else
-			sc->tempLen = sprintf(sc->tempStr, "		temp_imag0 += %s[inoutID].x * %s%s.y + %s[inoutID].y * %s%s.x;\n", kernelName, sc->regIDs[i], separateRegisterStore, kernelName, sc->regIDs[i], separateRegisterStore);
+			sc->tempLen = sprintf(sc->tempStr, "		temp_imag0 = %s[inoutID].x * %s%s.y + %s[inoutID].y * %s%s.x;\n", kernelName, sc->regIDs[i], separateRegisterStore, kernelName, sc->regIDs[i], separateRegisterStore);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		sc->tempLen = sprintf(sc->tempStr, "		%s.x = temp_real0;\n", sc->regIDs[i]);
@@ -11313,7 +11328,7 @@ if (%s==%" PRIu64 ") \n\
 						}
 						if (sc->axisSwapped) {
 							if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], (uint64_t)ceil(sc->size[1] / (double)mult));
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
@@ -11321,7 +11336,7 @@ if (%s==%" PRIu64 ") \n\
 						}
 						else {
 							if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], (uint64_t)ceil(sc->size[1] / (double)mult));
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
@@ -11682,7 +11697,7 @@ if (%s==%" PRIu64 ") \n\
 						}
 						if (sc->axisSwapped) {
 							if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[0], (uint64_t)ceil(sc->size[1] / (double)mult));
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
@@ -11694,7 +11709,7 @@ if (%s==%" PRIu64 ") \n\
 						}
 						else {
 							if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[1], (uint64_t)ceil(sc->size[1] / (double)mult));
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
@@ -14941,8 +14956,1380 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 		}
 	}
 }
-static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t axis_id, uint64_t supportAxis) {
+static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t* loc_multipliers, uint64_t* registers_per_thread_per_radix, uint64_t* registers_per_thread, uint64_t* min_registers_per_thread, uint64_t* isGoodSequence) {
+	for (uint64_t i = 0; i < 14; i++) {
+		registers_per_thread_per_radix[i] = 0;
+	}
+	registers_per_thread[0] = 0;
+	min_registers_per_thread[0] = -1;
 
+	if (loc_multipliers[2] > 0) {
+		if (loc_multipliers[3] > 0) {
+			if (loc_multipliers[5] > 0) {
+				if (loc_multipliers[7] > 0) {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 15;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							case 3:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 16;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							}
+							registers_per_thread_per_radix[5] = 15;
+							registers_per_thread_per_radix[7] = 14;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 15;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							case 3:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 16;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							}
+							registers_per_thread_per_radix[5] = 15;
+							registers_per_thread_per_radix[7] = 14;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 15;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							case 3:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 16;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							}
+							registers_per_thread_per_radix[5] = 15;
+							registers_per_thread_per_radix[7] = 14;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 13;
+
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 15;
+
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							case 3:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 16;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							}
+							registers_per_thread_per_radix[5] = 15;
+							registers_per_thread_per_radix[7] = 14;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+				}
+				else {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 15;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							}
+							registers_per_thread_per_radix[5] = 10;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 15;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							}
+							registers_per_thread_per_radix[5] = 10;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 15;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								break;
+							}
+							registers_per_thread_per_radix[5] = 10;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 6;
+								registers_per_thread_per_radix[3] = 6;
+								registers_per_thread_per_radix[5] = 5;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 10;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 10;
+								break;
+							}
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 0;
+
+						}
+					}
+				}
+			}
+			else
+			{
+				if (loc_multipliers[7] > 0) {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 22;
+								registers_per_thread_per_radix[3] = 21;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 21;
+								registers_per_thread_per_radix[11] = 22;
+								registers_per_thread_per_radix[13] = 26;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							}
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 22;
+								registers_per_thread_per_radix[3] = 21;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 21;
+								registers_per_thread_per_radix[11] = 22;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							}
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 26;
+								registers_per_thread_per_radix[3] = 21;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 21;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 26;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							}
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 6;
+								registers_per_thread_per_radix[3] = 6;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 7;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 6;
+								registers_per_thread_per_radix[3] = 6;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 7;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 6;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 7;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							}
+						}
+					}
+				}
+				else {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 6;
+								registers_per_thread_per_radix[3] = 6;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							}
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 6;
+								registers_per_thread_per_radix[3] = 6;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							}
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 6;
+								registers_per_thread_per_radix[3] = 6;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							}
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 6;
+								registers_per_thread_per_radix[3] = 6;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 12;
+								registers_per_thread_per_radix[3] = 12;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+		else {
+			if (loc_multipliers[5] > 0) {
+				if (loc_multipliers[7] > 0) {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							case 3:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 16;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							}
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 3:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 16;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							}
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							case 3:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 16;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							}
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 7;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 7;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 7;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							}
+						}
+					}
+				}
+				else {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							}
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							}
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							}
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 10;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 10;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							}
+						}
+					}
+				}
+			}
+			else
+			{
+				if (loc_multipliers[7] > 0) {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							case 3:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 16;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							}
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 3:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 16;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							}
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							case 3:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 16;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							}
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 3:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							}
+						}
+					}
+				}
+				else {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 22;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 22;
+								registers_per_thread_per_radix[13] = 26;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 22;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 22;
+								registers_per_thread_per_radix[13] = 26;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							}
+						}
+						else {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 22;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 22;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 22;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 22;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							case 3:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+								break;
+							}
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							switch (loc_multipliers[2]) {
+							case 1:
+								registers_per_thread_per_radix[2] = 26;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 26;
+								break;
+							case 2:
+								registers_per_thread_per_radix[2] = 26;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 26;
+								break;
+							default:
+								registers_per_thread_per_radix[2] = 8;
+								registers_per_thread_per_radix[3] = 0;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+								break;
+							}
+						}
+						else {
+							registers_per_thread_per_radix[2] = (loc_multipliers[2] > 2) ? 8 : (uint64_t)pow(2, loc_multipliers[2]);
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 0;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+				}
+			}
+		}
+	}
+	else {
+		if (loc_multipliers[3] > 0) {
+			if (loc_multipliers[5] > 0) {
+				if (loc_multipliers[7] > 0) {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 15;
+							registers_per_thread_per_radix[5] = 15;
+							registers_per_thread_per_radix[7] = 21;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 15;
+							registers_per_thread_per_radix[5] = 15;
+							registers_per_thread_per_radix[7] = 21;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 15;
+							registers_per_thread_per_radix[5] = 15;
+							registers_per_thread_per_radix[7] = 21;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 15;
+							registers_per_thread_per_radix[5] = 15;
+							registers_per_thread_per_radix[7] = 21;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+				}
+				else {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 15;
+							registers_per_thread_per_radix[5] = 15;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 15;
+							registers_per_thread_per_radix[5] = 15;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 15;
+							registers_per_thread_per_radix[5] = 15;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 15;
+							registers_per_thread_per_radix[5] = 15;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+				}
+			}
+			else
+			{
+				if (loc_multipliers[7] > 0) {
+					if (loc_multipliers[3] == 1) {
+						if (loc_multipliers[11] > 0) {
+							if (loc_multipliers[13] > 0) {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 21;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 21;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+							}
+							else {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 21;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 21;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+							}
+						}
+						else {
+							if (loc_multipliers[13] > 0) {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 21;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 21;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+							}
+							else {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 21;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 21;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+							}
+						}
+					}
+					else {
+						if (loc_multipliers[11] > 0) {
+							if (loc_multipliers[13] > 0) {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 9;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 7;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+							}
+							else {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 9;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 7;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+							}
+						}
+						else {
+							if (loc_multipliers[13] > 0) {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 9;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 7;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+							}
+							else {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 9;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 7;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+							}
+						}
+					}
+				}
+				else {
+					if (loc_multipliers[3] == 1) {
+						if (loc_multipliers[11] > 0) {
+							if (loc_multipliers[13] > 0) {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 33;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 33;
+								registers_per_thread_per_radix[13] = 39;
+							}
+							else {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 33;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 33;
+								registers_per_thread_per_radix[13] = 0;
+							}
+						}
+						else {
+							if (loc_multipliers[13] > 0) {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 39;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 39;
+							}
+							else {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 3;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+							}
+						}
+					}
+					else {
+						if (loc_multipliers[11] > 0) {
+							if (loc_multipliers[13] > 0) {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 9;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 13;
+							}
+							else {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 9;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 11;
+								registers_per_thread_per_radix[13] = 0;
+							}
+						}
+						else {
+							if (loc_multipliers[13] > 0) {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 9;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 13;
+							}
+							else {
+								registers_per_thread_per_radix[2] = 0;
+								registers_per_thread_per_radix[3] = 9;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+							}
+						}
+					}
+				}
+			}
+		}
+		else {
+			if (loc_multipliers[5] > 0) {
+				if (loc_multipliers[7] > 0) {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 5;
+							registers_per_thread_per_radix[7] = 7;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 5;
+							registers_per_thread_per_radix[7] = 7;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 5;
+							registers_per_thread_per_radix[7] = 7;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 5;
+							registers_per_thread_per_radix[7] = 7;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+				}
+				else {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 5;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 5;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 5;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 5;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+				}
+			}
+			else
+			{
+				if (loc_multipliers[7] > 0) {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 0;
+							registers_per_thread_per_radix[7] = 7;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 0;
+							registers_per_thread_per_radix[7] = 7;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 0;
+							registers_per_thread_per_radix[7] = 7;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 0;
+							registers_per_thread_per_radix[7] = 7;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+				}
+				else {
+					if (loc_multipliers[11] > 0) {
+						if (loc_multipliers[13] > 0) {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 0;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 0;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 11;
+							registers_per_thread_per_radix[13] = 0;
+						}
+					}
+					else {
+						if (loc_multipliers[13] > 0) {
+							registers_per_thread_per_radix[2] = 0;
+							registers_per_thread_per_radix[3] = 0;
+							registers_per_thread_per_radix[5] = 0;
+							registers_per_thread_per_radix[7] = 0;
+							registers_per_thread_per_radix[11] = 0;
+							registers_per_thread_per_radix[13] = 13;
+						}
+						else {
+							return VKFFT_ERROR_UNSUPPORTED_RADIX;
+						}
+					}
+				}
+			}
+		}
+
+	}
+	for (uint64_t i = 0; i < 14; i++) {
+		if ((registers_per_thread_per_radix[i] != 0) && (registers_per_thread_per_radix[i] < min_registers_per_thread[0])) min_registers_per_thread[0] = registers_per_thread_per_radix[i];
+		if ((registers_per_thread_per_radix[i] != 0) && (registers_per_thread_per_radix[i] > registers_per_thread[0])) registers_per_thread[0] = registers_per_thread_per_radix[i];
+	}
+	if ((registers_per_thread[0] > 10) || (registers_per_thread[0] >= 2 * min_registers_per_thread[0])) isGoodSequence[0] = 0;
+	else isGoodSequence[0] = 1;
+	return VKFFT_SUCCESS;
+}
+static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t axis_id, uint64_t supportAxis) {
+	VkFFTResult res = VKFFT_SUCCESS;
 	VkFFTAxis* axes = FFTPlan->axes[axis_id];
 
 	uint64_t complexSize;
@@ -14983,20 +16370,55 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		app->configuration.registerBoost = 1;
 		tempSequence = 2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1;
 		uint64_t FFTSizeSelected = 0;
-		while (!FFTSizeSelected) {
-			uint64_t testSequence = tempSequence;
-			for (uint64_t i = 0; i < 20; i++) {
-				multipliers[i] = 0;
+		if (app->configuration.fixMaxRadixBluestein > 0) {
+			while (!FFTSizeSelected) {
+				uint64_t testSequence = tempSequence;
+				for (uint64_t i = 0; i < 20; i++) {
+					multipliers[i] = 0;
+				}
+				for (uint64_t i = 2; i < app->configuration.fixMaxRadixBluestein + 1; i++) {
+					if (testSequence % i == 0) {
+						testSequence /= i;
+						multipliers[i]++;
+						i--;
+					}
+				}
+				if (testSequence == 1) FFTSizeSelected = 1;
+				else tempSequence++;
 			}
-			for (uint64_t i = 2; i < app->configuration.fixMaxRadixBluestein+1; i++) {
-				if (testSequence % i == 0) {
-					testSequence /= i;
-					multipliers[i]++;
-					i--;
+		}
+		else {
+			while (!FFTSizeSelected) {
+				if (axis_id == nonStridedAxisId) {
+					if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemory) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemory))))  tempSequence = (uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence)));
+				}
+				else {
+					uint64_t maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
+					if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemoryStrided_temp) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemoryStrided_temp))))  tempSequence = (uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence)));
+				}
+				uint64_t testSequence = tempSequence;
+				for (uint64_t i = 0; i < 20; i++) {
+					multipliers[i] = 0;
+				}
+				for (uint64_t i = 2; i < 8; i++) {
+					if (testSequence % i == 0) {
+						testSequence /= i;
+						multipliers[i]++;
+						i--;
+					}
+				}
+				if (testSequence != 1) tempSequence++;
+				else {
+					uint64_t registers_per_thread_per_radix[14];
+					uint64_t registers_per_thread = 0;
+					uint64_t min_registers_per_thread = -1;
+					uint64_t isGoodSequence = 0;
+					res = VkFFTGetRegistersPerThread(multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
+					if (res != VKFFT_SUCCESS) return res;
+					if (isGoodSequence) FFTSizeSelected = 1;
+					else tempSequence++;
 				}
 			}
-			if (testSequence == 1) FFTSizeSelected = 1;
-			else tempSequence++;
 		}
 		FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = tempSequence;
 		if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] & (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1)) == 0) {
@@ -15315,7 +16737,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		//printf("sequence length exceeds boundaries\n");
 		return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT;
 	}
-	if ((numPasses > 1) && (app->configuration.performR2C > 0) && (axis_id==0) && (FFTPlan->actualFFTSizePerAxis[0][0] % 2!= 0)) {
+	if ((numPasses > 1) && (app->configuration.performR2C > 0) && (axis_id == 0) && (FFTPlan->actualFFTSizePerAxis[0][0] % 2 != 0)) {
 		//printf("sequence length exceeds boundaries\n");
 		return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
 	}
@@ -15345,7 +16767,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	FFTPlan->numAxisUploads[axis_id] = numPasses;
 	for (uint64_t k = 0; k < numPasses; k++) {
 		tempSequence = locAxisSplit[k];
-		uint64_t loc_multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };//split the smaller sequence
+		uint64_t loc_multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }; //split the smaller sequence
 		for (uint64_t i = 2; i < 14; i++) {
 			if (tempSequence % i == 0) {
 				tempSequence /= i;
@@ -15353,1370 +16775,12 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				i--;
 			}
 		}
+		uint64_t registers_per_thread_per_radix[14];
 		uint64_t registers_per_thread = 0;
-		uint64_t registers_per_thread_per_radix[14] = { 0 };
 		uint64_t min_registers_per_thread = -1;
-		if (loc_multipliers[2] > 0) {
-			if (loc_multipliers[3] > 0) {
-				if (loc_multipliers[5] > 0) {
-					if (loc_multipliers[7] > 0) {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 15;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								case 3:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 16;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								}
-								registers_per_thread_per_radix[5] = 15;
-								registers_per_thread_per_radix[7] = 14;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 15;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								case 3:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 16;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								}
-								registers_per_thread_per_radix[5] = 15;
-								registers_per_thread_per_radix[7] = 14;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 15;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								case 3:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 16;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								}
-								registers_per_thread_per_radix[5] = 15;
-								registers_per_thread_per_radix[7] = 14;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 13;
-
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 15;
-
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								case 3:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 16;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								}
-								registers_per_thread_per_radix[5] = 15;
-								registers_per_thread_per_radix[7] = 14;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-					}
-					else {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 15;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								}
-								registers_per_thread_per_radix[5] = 10;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 15;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								}
-								registers_per_thread_per_radix[5] = 10;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 15;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									break;
-								}
-								registers_per_thread_per_radix[5] = 10;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 6;
-									registers_per_thread_per_radix[3] = 6;
-									registers_per_thread_per_radix[5] = 5;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 10;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 10;
-									break;
-								}
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 0;
-
-							}
-						}
-					}
-				}
-				else
-				{
-					if (loc_multipliers[7] > 0) {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 22;
-									registers_per_thread_per_radix[3] = 21;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 21;
-									registers_per_thread_per_radix[11] = 22;
-									registers_per_thread_per_radix[13] = 26;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								}
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 22;
-									registers_per_thread_per_radix[3] = 21;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 21;
-									registers_per_thread_per_radix[11] = 22;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								}
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 26;
-									registers_per_thread_per_radix[3] = 21;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 21;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 26;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								}
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 6;
-									registers_per_thread_per_radix[3] = 6;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 7;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 6;
-									registers_per_thread_per_radix[3] = 6;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 7;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 6;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 7;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								}
-							}
-						}
-					}
-					else {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 6;
-									registers_per_thread_per_radix[3] = 6;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								}
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 6;
-									registers_per_thread_per_radix[3] = 6;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								}
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 6;
-									registers_per_thread_per_radix[3] = 6;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								}
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 6;
-									registers_per_thread_per_radix[3] = 6;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 12;
-									registers_per_thread_per_radix[3] = 12;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								}
-							}
-						}
-					}
-				}
-			}
-			else {
-				if (loc_multipliers[5] > 0) {
-					if (loc_multipliers[7] > 0) {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								case 3:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 16;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								}
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 3:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 16;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								}
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								case 3:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 16;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								}
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 7;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 7;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 7;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								}
-							}
-						}
-					}
-					else {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								}
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								}
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								}
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 10;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 10;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								}
-							}
-						}
-					}
-				}
-				else
-				{
-					if (loc_multipliers[7] > 0) {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								case 3:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 16;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								}
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 3:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 16;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								}
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								case 3:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 16;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								}
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 3:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 14;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 14;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								}
-							}
-						}
-					}
-					else {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 22;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 22;
-									registers_per_thread_per_radix[13] = 26;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 22;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 22;
-									registers_per_thread_per_radix[13] = 26;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								}
-							}
-							else {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 22;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 22;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 22;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 22;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								case 3:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-									break;
-								}
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								switch (loc_multipliers[2]) {
-								case 1:
-									registers_per_thread_per_radix[2] = 26;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 26;
-									break;
-								case 2:
-									registers_per_thread_per_radix[2] = 26;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 26;
-									break;
-								default:
-									registers_per_thread_per_radix[2] = 8;
-									registers_per_thread_per_radix[3] = 0;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-									break;
-								}
-							}
-							else {
-								registers_per_thread_per_radix[2] = (loc_multipliers[2] > 2) ? 8 : (uint64_t)pow(2, loc_multipliers[2]);
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 0;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-					}
-				}
-			}
-		}
-		else {
-			if (loc_multipliers[3] > 0) {
-				if (loc_multipliers[5] > 0) {
-					if (loc_multipliers[7] > 0) {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 15;
-								registers_per_thread_per_radix[5] = 15;
-								registers_per_thread_per_radix[7] = 21;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 15;
-								registers_per_thread_per_radix[5] = 15;
-								registers_per_thread_per_radix[7] = 21;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 15;
-								registers_per_thread_per_radix[5] = 15;
-								registers_per_thread_per_radix[7] = 21;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 15;
-								registers_per_thread_per_radix[5] = 15;
-								registers_per_thread_per_radix[7] = 21;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-					}
-					else {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 15;
-								registers_per_thread_per_radix[5] = 15;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 15;
-								registers_per_thread_per_radix[5] = 15;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 15;
-								registers_per_thread_per_radix[5] = 15;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 15;
-								registers_per_thread_per_radix[5] = 15;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-					}
-				}
-				else
-				{
-					if (loc_multipliers[7] > 0) {
-						if (loc_multipliers[3] == 1) {
-							if (loc_multipliers[11] > 0) {
-								if (loc_multipliers[13] > 0) {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 21;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 21;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-								}
-								else {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 21;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 21;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-								}
-							}
-							else {
-								if (loc_multipliers[13] > 0) {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 21;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 21;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-								}
-								else {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 21;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 21;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-								}
-							}
-						}
-						else {
-							if (loc_multipliers[11] > 0) {
-								if (loc_multipliers[13] > 0) {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 9;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 7;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-								}
-								else {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 9;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 7;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-								}
-							}
-							else {
-								if (loc_multipliers[13] > 0) {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 9;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 7;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-								}
-								else {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 9;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 7;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-								}
-							}
-						}
-					}
-					else {
-						if (loc_multipliers[3] == 1) {
-							if (loc_multipliers[11] > 0) {
-								if (loc_multipliers[13] > 0) {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 33;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 33;
-									registers_per_thread_per_radix[13] = 39;
-								}
-								else {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 33;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 33;
-									registers_per_thread_per_radix[13] = 0;
-								}
-							}
-							else {
-								if (loc_multipliers[13] > 0) {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 39;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 39;
-								}
-								else {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 3;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-								}
-							}
-						}
-						else {
-							if (loc_multipliers[11] > 0) {
-								if (loc_multipliers[13] > 0) {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 9;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 13;
-								}
-								else {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 9;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 11;
-									registers_per_thread_per_radix[13] = 0;
-								}
-							}
-							else {
-								if (loc_multipliers[13] > 0) {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 9;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 13;
-								}
-								else {
-									registers_per_thread_per_radix[2] = 0;
-									registers_per_thread_per_radix[3] = 9;
-									registers_per_thread_per_radix[5] = 0;
-									registers_per_thread_per_radix[7] = 0;
-									registers_per_thread_per_radix[11] = 0;
-									registers_per_thread_per_radix[13] = 0;
-								}
-							}
-						}
-					}
-				}
-			}
-			else {
-				if (loc_multipliers[5] > 0) {
-					if (loc_multipliers[7] > 0) {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 5;
-								registers_per_thread_per_radix[7] = 7;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 5;
-								registers_per_thread_per_radix[7] = 7;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 5;
-								registers_per_thread_per_radix[7] = 7;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 5;
-								registers_per_thread_per_radix[7] = 7;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-					}
-					else {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 5;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 5;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 5;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 5;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-					}
-				}
-				else
-				{
-					if (loc_multipliers[7] > 0) {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 0;
-								registers_per_thread_per_radix[7] = 7;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 0;
-								registers_per_thread_per_radix[7] = 7;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 0;
-								registers_per_thread_per_radix[7] = 7;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 0;
-								registers_per_thread_per_radix[7] = 7;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-					}
-					else {
-						if (loc_multipliers[11] > 0) {
-							if (loc_multipliers[13] > 0) {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 0;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 0;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 11;
-								registers_per_thread_per_radix[13] = 0;
-							}
-						}
-						else {
-							if (loc_multipliers[13] > 0) {
-								registers_per_thread_per_radix[2] = 0;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 0;
-								registers_per_thread_per_radix[7] = 0;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 13;
-							}
-							else {
-								return VKFFT_ERROR_UNSUPPORTED_RADIX;
-							}
-						}
-					}
-				}
-			}
-
-		}
-		for (uint64_t i = 0; i < 14; i++) {
-			if ((registers_per_thread_per_radix[i] != 0) && (registers_per_thread_per_radix[i] < min_registers_per_thread)) min_registers_per_thread = registers_per_thread_per_radix[i];
-			if ((registers_per_thread_per_radix[i] != 0) && (registers_per_thread_per_radix[i] > registers_per_thread)) registers_per_thread = registers_per_thread_per_radix[i];
-		}
+		uint64_t isGoodSequence = 0;
+		res = VkFFTGetRegistersPerThread(loc_multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
+		if (res != VKFFT_SUCCESS) return res;
 		registers_per_thread_per_radix[8] = registers_per_thread_per_radix[2];
 		registers_per_thread_per_radix[4] = registers_per_thread_per_radix[2];
 		if ((registerBoost == 4) && (registers_per_thread % 4 != 0)) {
@@ -16854,6 +16918,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 	kernelPreparationConfiguration.size[1] = 1;
 	kernelPreparationConfiguration.size[2] = 1;
 	kernelPreparationConfiguration.doublePrecision = app->configuration.doublePrecision;
+	kernelPreparationConfiguration.useLUT = 1;
 	kernelPreparationConfiguration.registerBoost = 1;
 	kernelPreparationConfiguration.disableReorderFourStep = 1;
 	if (axis_id > 0) kernelPreparationConfiguration.considerAllAxesStrided = 1;
@@ -16973,16 +17038,32 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		}
 #if(VKFFT_BACKEND==0)
 		resFFT = transferDataFromCPU(&kernelPreparationApplication, phaseVectors, &app->bufferBluestein[axis_id], bufferSize);
-		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		if (resFFT != VKFFT_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return resFFT;
+		}
 #elif(VKFFT_BACKEND==1)
 		res = cudaMemcpy(app->bufferBluestein[axis_id], phaseVectors, bufferSize, cudaMemcpyHostToDevice);
-		if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+		if (res != cudaSuccess) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_COPY;
+		}
 #elif(VKFFT_BACKEND==2)
 		res = hipMemcpy(app->bufferBluestein[axis_id], phaseVectors, bufferSize, hipMemcpyHostToDevice);
-		if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+		if (res != hipSuccess) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_COPY;
+		}
 #elif(VKFFT_BACKEND==3)
 		res = clEnqueueWriteBuffer(commandQueue, app->bufferBluestein[axis_id], CL_TRUE, 0, bufferSize, phaseVectors, 0, NULL, NULL);
-		if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+		if (res != CL_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_COPY;
+		}
 #endif
 #if(VKFFT_BACKEND==0)
 		{
@@ -16992,30 +17073,57 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			commandBufferAllocateInfo.commandBufferCount = 1;
 			VkCommandBuffer commandBuffer = {};
 			res = vkAllocateCommandBuffers(kernelPreparationApplication.configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
-			if (res != 0) return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
+			if (res != 0) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
+			}
 			VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 			commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 			res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-			if (res != 0) return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
+			if (res != 0) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
+			}
 			VkFFTLaunchParams launchParams = {};
 			launchParams.commandBuffer = &commandBuffer;
 			launchParams.inputBuffer = &app->bufferBluestein[axis_id];
 			launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
 			//Record commands
 			resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-			if (resFFT != VKFFT_SUCCESS) return resFFT;
-
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
 			res = vkEndCommandBuffer(commandBuffer);
-			if (res != 0) return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+			if (res != 0) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+			}
 			VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
 			submitInfo.commandBufferCount = 1;
 			submitInfo.pCommandBuffers = &commandBuffer;
 			res = vkQueueSubmit(kernelPreparationApplication.configuration.queue[0], 1, &submitInfo, kernelPreparationApplication.configuration.fence[0]);
-			if (res != 0) return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+			if (res != 0) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+			}
 			res = vkWaitForFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence, VK_TRUE, 100000000000);
-			if (res != 0) return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+			if (res != 0) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+			}
 			res = vkResetFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence);
-			if (res != 0) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
+			if (res != 0) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
+			}
 			vkFreeCommandBuffers(kernelPreparationApplication.configuration.device[0], kernelPreparationApplication.configuration.commandPool[0], 1, &commandBuffer);
 		}
 #elif(VKFFT_BACKEND==1)
@@ -17023,26 +17131,50 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
 		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
 		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		if (resFFT != VKFFT_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return resFFT;
+		}
 		res = cudaDeviceSynchronize();
-		if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		if (res != cudaSuccess) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		}
 #elif(VKFFT_BACKEND==2)
 		VkFFTLaunchParams launchParams = {};
 		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
 		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
 		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		if (resFFT != VKFFT_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return resFFT;
+		}
 		res = hipDeviceSynchronize();
-		if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		if (res != hipSuccess) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		}
 #elif(VKFFT_BACKEND==3)
 		VkFFTLaunchParams launchParams = {};
 		launchParams.commandQueue = &commandQueue;
 		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
 		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
 		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		if (resFFT != VKFFT_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return resFFT;
+		}
 		res = clFinish(commandQueue);
-		if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		if (res != CL_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		}
 #endif
 	}
 	if (kernelPreparationConfiguration.doublePrecision) {
@@ -17073,16 +17205,32 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 	}
 #if(VKFFT_BACKEND==0)
 	resFFT = transferDataFromCPU(&kernelPreparationApplication, phaseVectors, &app->bufferBluestein[axis_id], bufferSize);
-	if (resFFT != VKFFT_SUCCESS) return resFFT;
+	if (resFFT != VKFFT_SUCCESS) {
+		free(phaseVectors);
+		deleteVkFFT(&kernelPreparationApplication);
+		return resFFT;
+	}
 #elif(VKFFT_BACKEND==1)
 	res = cudaMemcpy(app->bufferBluestein[axis_id], phaseVectors, bufferSize, cudaMemcpyHostToDevice);
-	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+	if (res != cudaSuccess) {
+		free(phaseVectors);
+		deleteVkFFT(&kernelPreparationApplication);
+		return VKFFT_ERROR_FAILED_TO_COPY;
+	}
 #elif(VKFFT_BACKEND==2)
 	res = hipMemcpy(app->bufferBluestein[axis_id], phaseVectors, bufferSize, hipMemcpyHostToDevice);
-	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
+	if (res != hipSuccess) {
+		free(phaseVectors);
+		deleteVkFFT(&kernelPreparationApplication);
+		return VKFFT_ERROR_FAILED_TO_COPY;
+	}
 #elif(VKFFT_BACKEND==3)
 	res = clEnqueueWriteBuffer(commandQueue, app->bufferBluestein[axis_id], CL_TRUE, 0, bufferSize, phaseVectors, 0, NULL, NULL);
-	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+	if (res != CL_SUCCESS) {
+		free(phaseVectors);
+		deleteVkFFT(&kernelPreparationApplication);
+		return VKFFT_ERROR_FAILED_TO_COPY;
+	}
 #endif
 #if(VKFFT_BACKEND==0)
 	if (!app->configuration.makeInversePlanOnly) {
@@ -17092,30 +17240,57 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		commandBufferAllocateInfo.commandBufferCount = 1;
 		VkCommandBuffer commandBuffer = {};
 		res = vkAllocateCommandBuffers(kernelPreparationApplication.configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
-		if (res != 0) return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
+		if (res != 0) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
+		}
 		VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 		commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 		res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-		if (res != 0) return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
+		if (res != 0) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
+		}
 		VkFFTLaunchParams launchParams = {};
 		launchParams.commandBuffer = &commandBuffer;
 		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
 		launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
 		//Record commands
 		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) return resFFT;
-
+		if (resFFT != VKFFT_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return resFFT;
+		}
 		res = vkEndCommandBuffer(commandBuffer);
-		if (res != 0) return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+		if (res != 0) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+		}
 		VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &commandBuffer;
 		res = vkQueueSubmit(kernelPreparationApplication.configuration.queue[0], 1, &submitInfo, kernelPreparationApplication.configuration.fence[0]);
-		if (res != 0) return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+		if (res != 0) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+		}
 		res = vkWaitForFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence, VK_TRUE, 100000000000);
-		if (res != 0) return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+		if (res != 0) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+		}
 		res = vkResetFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence);
-		if (res != 0) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
+		if (res != 0) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
+		}
 		vkFreeCommandBuffers(kernelPreparationApplication.configuration.device[0], kernelPreparationApplication.configuration.commandPool[0], 1, &commandBuffer);
 	}
 	if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
@@ -17125,30 +17300,57 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		commandBufferAllocateInfo.commandBufferCount = 1;
 		VkCommandBuffer commandBuffer = {};
 		res = vkAllocateCommandBuffers(kernelPreparationApplication.configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
-		if (res != 0) return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
+		if (res != 0) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
+		}
 		VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
 		commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 		res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-		if (res != 0) return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
+		if (res != 0) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
+		}
 		VkFFTLaunchParams launchParams = {};
 		launchParams.commandBuffer = &commandBuffer;
 		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
 		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
 		//Record commands
 		resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) return resFFT;
-
+		if (resFFT != VKFFT_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return resFFT;
+		}
 		res = vkEndCommandBuffer(commandBuffer);
-		if (res != 0) return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+		if (res != 0) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+		}
 		VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &commandBuffer;
 		res = vkQueueSubmit(kernelPreparationApplication.configuration.queue[0], 1, &submitInfo, kernelPreparationApplication.configuration.fence[0]);
-		if (res != 0) return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+		if (res != 0) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+		}
 		res = vkWaitForFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence, VK_TRUE, 100000000000);
-		if (res != 0) return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+		if (res != 0) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+		}
 		res = vkResetFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence);
-		if (res != 0) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
+		if (res != 0) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
+		}
 		vkFreeCommandBuffers(kernelPreparationApplication.configuration.device[0], kernelPreparationApplication.configuration.commandPool[0], 1, &commandBuffer);
 	}
 #elif(VKFFT_BACKEND==1)
@@ -17157,16 +17359,32 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 	if (!app->configuration.makeInversePlanOnly) {
 		launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
 		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		if (resFFT != VKFFT_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return resFFT;
+		}
 		res = cudaDeviceSynchronize();
-		if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		if (res != cudaSuccess) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		}
 	}
 	if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
 		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
 		resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		if (resFFT != VKFFT_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return resFFT;
+		}
 		res = cudaDeviceSynchronize();
-		if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		if (res != cudaSuccess) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		}
 	}
 #elif(VKFFT_BACKEND==2)
 	VkFFTLaunchParams launchParams = {};
@@ -17174,16 +17392,32 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 	if (!app->configuration.makeInversePlanOnly) {
 		launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
 		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		if (resFFT != VKFFT_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return resFFT;
+		}
 		res = hipDeviceSynchronize();
-		if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		if (res != hipSuccess) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		}
 	}
 	if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
 		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
 		resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		if (resFFT != VKFFT_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return resFFT;
+		}
 		res = hipDeviceSynchronize();
-		if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		if (res != hipSuccess) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		}
 	}
 #elif(VKFFT_BACKEND==3)
 	VkFFTLaunchParams launchParams = {};
@@ -17192,16 +17426,32 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 	if (!app->configuration.makeInversePlanOnly) {
 		launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
 		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		if (resFFT != VKFFT_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return resFFT;
+		}
 		res = clFinish(commandQueue);
-		if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		if (res != CL_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		}
 	}
 	if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
 		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
 		resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		if (resFFT != VKFFT_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return resFFT;
+		}
 		res = clFinish(commandQueue);
-		if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		if (res != CL_SUCCESS) {
+			free(phaseVectors);
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		}
 	}
 #endif
 	free(phaseVectors);
@@ -18151,7 +18401,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		axis->specializationConstants.size[2] = app->configuration.size[2];
 
 		axis->specializationConstants.numBatches = app->configuration.numberBatches;
-		if ((app->configuration.FFTdim == 1) && (app->configuration.size[1] == 1) && ((app->configuration.numberBatches > 1) || (app->actualNumBatches > 1)) && (!app->configuration.performConvolution) && (app->configuration.coordinateFeatures == 1)) {
+		/*if ((app->configuration.FFTdim == 1) && (app->configuration.size[1] == 1) && ((app->configuration.numberBatches > 1) || (app->actualNumBatches > 1)) && (!app->configuration.performConvolution) && (app->configuration.coordinateFeatures == 1)) {
 			if (app->configuration.numberBatches > 1) {
 				app->actualNumBatches = app->configuration.numberBatches;
 				app->configuration.numberBatches = 1;
@@ -18162,8 +18412,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				app->actualNumBatches = app->configuration.numberBatches;
 				app->configuration.numberBatches = 1;
 			}
-		}
-		axis->specializationConstants.numBatches = app->configuration.numberBatches;
+		}*/
 		axis->specializationConstants.numKernels = app->configuration.numberKernels;
 		axis->specializationConstants.sharedMemSize = app->configuration.sharedMemorySize;
 		axis->specializationConstants.sharedMemSizePow2 = app->configuration.sharedMemorySizePow2;
@@ -18829,6 +19078,23 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	cl_int res = CL_SUCCESS;
 #endif
 	VkFFTAxis* axis = (reverseBluesteinMultiUpload) ? &FFTPlan->inverseBluesteinAxes[axis_id][axis_upload_id] : &FFTPlan->axes[axis_id][axis_upload_id];
+	
+	axis->specializationConstants.sourceFFTSize = app->configuration.size[axis_id];
+	axis->specializationConstants.numBatches = app->configuration.numberBatches;
+	if ((app->configuration.FFTdim == 1) && (FFTPlan->actualFFTSizePerAxis[axis_id][1] == 1) && ((app->configuration.numberBatches > 1) || (app->actualNumBatches > 1)) && (!app->configuration.performConvolution) && (app->configuration.coordinateFeatures == 1)) {
+		if (app->configuration.numberBatches > 1) {
+			app->actualNumBatches = app->configuration.numberBatches;
+			app->configuration.numberBatches = 1;
+		}
+		FFTPlan->actualFFTSizePerAxis[axis_id][1] = app->actualNumBatches;
+	}
+	if ((app->configuration.FFTdim == 2) && (FFTPlan->actualFFTSizePerAxis[axis_id][2] == 1) && ((app->configuration.numberBatches > 1) || (app->actualNumBatches > 1)) && (!app->configuration.performConvolution) && (app->configuration.coordinateFeatures == 1)) {
+		if (app->configuration.numberBatches > 1) {
+			app->actualNumBatches = app->configuration.numberBatches;
+			app->configuration.numberBatches = 1;
+		}
+		FFTPlan->actualFFTSizePerAxis[axis_id][2] = app->actualNumBatches;
+	}
 	axis->specializationConstants.warpSize = app->configuration.warpSize;
 	axis->specializationConstants.numSharedBanks = app->configuration.numSharedBanks;
 	axis->specializationConstants.useUint64 = app->configuration.useUint64;
@@ -18869,7 +19135,6 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	}
 	if (app->useBluesteinFFT[axis_id]) {
 		axis->specializationConstants.useBluesteinFFT = 1;
-		axis->specializationConstants.bluesteinNormalizeSize = app->configuration.size[axis_id];
 	}
 
 	if (app->configuration.performDCT == 2) {
@@ -19020,7 +19285,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					if (app->configuration.performDCT == 4) {
 						axis->specializationConstants.startDCT3LUT = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim);
 						axis->specializationConstants.startDCT4LUT = (axis->specializationConstants.startDCT3LUT + (app->configuration.size[axis_id] / 4 + 2));
-						axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id]/2) * 2 * sizeof(double);
+						axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id] / 2) * 2 * sizeof(double);
 					}
 					else
 						axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim) * 2 * sizeof(double);
@@ -19035,7 +19300,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					if (app->configuration.performDCT == 4) {
 						axis->specializationConstants.startDCT3LUT = (maxStageSum);
 						axis->specializationConstants.startDCT4LUT = (axis->specializationConstants.startDCT3LUT + (app->configuration.size[axis_id] / 4 + 2));
-						axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id]/2) * 2 * sizeof(double);
+						axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id] / 2) * 2 * sizeof(double);
 
 					}
 					else
@@ -19090,12 +19355,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			}
 			if (app->configuration.performDCT == 4) {
 				for (uint64_t j = 0; j < app->configuration.size[axis_id] / 4 + 2; j++) {
-					double angle = (double_PI / 2.0 / (double)(app->configuration.size[axis_id]/2)) * j;
+					double angle = (double_PI / 2.0 / (double)(app->configuration.size[axis_id] / 2)) * j;
 					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j] = cos(angle);
 					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j + 1] = sin(angle);
 				}
-				for (uint64_t j = 0; j < app->configuration.size[axis_id]/2; j++) {
-					double angle = (-double_PI / 8.0 / (double)(app->configuration.size[axis_id]/2)) * (2 * j + 1);
+				for (uint64_t j = 0; j < app->configuration.size[axis_id] / 2; j++) {
+					double angle = (-double_PI / 8.0 / (double)(app->configuration.size[axis_id] / 2)) * (2 * j + 1);
 					tempLUT[2 * axis->specializationConstants.startDCT4LUT + 2 * j] = cos(angle);
 					tempLUT[2 * axis->specializationConstants.startDCT4LUT + 2 * j + 1] = sin(angle);
 				}
@@ -19119,7 +19384,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					axis->referenceLUT = 1;
 				}
 				else {
-					if (((axis_id == 1) || (axis_id == 2)) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[axis_id] > 1))) && ((axis->specializationConstants.fft_dim_full == FFTPlan->axes[0][0].specializationConstants.fft_dim_full) && (FFTPlan->numAxisUploads[axis_id] == 1) && (axis->specializationConstants.fft_dim_full < maxSingleSizeStrided / axis->specializationConstants.registerBoost))) {
+					if (((axis_id == 1) || (axis_id == 2)) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[axis_id] > 1))) && ((axis->specializationConstants.fft_dim_full == FFTPlan->axes[0][0].specializationConstants.fft_dim_full) && (FFTPlan->numAxisUploads[axis_id] == 1) && (axis->specializationConstants.fft_dim_full < maxSingleSizeStrided / axis->specializationConstants.registerBoost)) && ((!app->configuration.performDCT) || (app->configuration.size[axis_id] == app->configuration.size[0]))) {
 						axis->bufferLUT = FFTPlan->axes[0][axis_upload_id].bufferLUT;
 #if(VKFFT_BACKEND==0)
 						axis->bufferLUTDeviceMemory = FFTPlan->axes[0][axis_upload_id].bufferLUTDeviceMemory;
@@ -19128,7 +19393,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 						axis->referenceLUT = 1;
 					}
 					else {
-						if ((axis_id == 2) && (axis->specializationConstants.fft_dim_full == FFTPlan->axes[1][0].specializationConstants.fft_dim_full)) {
+						if ((axis_id == 2) && (axis->specializationConstants.fft_dim_full == FFTPlan->axes[1][0].specializationConstants.fft_dim_full) && ((!app->configuration.performDCT) || (app->configuration.size[2] == app->configuration.size[1]))) {
 							axis->bufferLUT = FFTPlan->axes[1][axis_upload_id].bufferLUT;
 #if(VKFFT_BACKEND==0)
 							axis->bufferLUTDeviceMemory = FFTPlan->axes[1][axis_upload_id].bufferLUTDeviceMemory;
@@ -19207,8 +19472,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				else {
 					if (app->configuration.performDCT == 4) {
 						axis->specializationConstants.startDCT3LUT = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim);
-						axis->specializationConstants.startDCT4LUT = (axis->specializationConstants.startDCT3LUT + (axis->specializationConstants.fftDim / 2 + 2));
-						axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim + (app->configuration.size[axis_id] / 2 + 2) + app->configuration.size[axis_id]) * 2 * sizeof(float);
+						axis->specializationConstants.startDCT4LUT = (axis->specializationConstants.startDCT3LUT + (axis->specializationConstants.fftDim / 4 + 2));
+						axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id]/2) * 2 * sizeof(float);
 					}
 					else
 						axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim) * 2 * sizeof(float);
@@ -19222,8 +19487,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				else {
 					if (app->configuration.performDCT == 4) {
 						axis->specializationConstants.startDCT3LUT = (maxStageSum);
-						axis->specializationConstants.startDCT4LUT = (axis->specializationConstants.startDCT3LUT + (app->configuration.size[axis_id] / 2 + 1));
-						axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis_id] / 2 + 2) + app->configuration.size[axis_id]) * 2 * sizeof(float);
+						axis->specializationConstants.startDCT4LUT = (axis->specializationConstants.startDCT3LUT + (app->configuration.size[axis_id] / 4 + 2));
+						axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id]/2) * 2 * sizeof(float);
 					}
 					else
 						axis->bufferLUTSize = (maxStageSum) * 2 * sizeof(float);
@@ -19276,13 +19541,13 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				}
 			}
 			if (app->configuration.performDCT == 4) {
-				for (uint64_t j = 0; j < app->configuration.size[axis_id] / 2 + 2; j++) {
-					double angle = (double_PI / 2.0 / (double)(app->configuration.size[axis_id])) * j;
+				for (uint64_t j = 0; j < app->configuration.size[axis_id] / 4 + 2; j++) {
+					double angle = (double_PI / 2.0 / (double)(app->configuration.size[axis_id]/2)) * j;
 					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j] = (float)cos(angle);
 					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j + 1] = (float)sin(angle);
 				}
-				for (uint64_t j = 0; j < app->configuration.size[axis_id]; j++) {
-					double angle = (-double_PI / 8.0 / (double)(app->configuration.size[axis_id])) * (2 * j + 1);
+				for (uint64_t j = 0; j < app->configuration.size[axis_id]/2; j++) {
+					double angle = (-double_PI / 8.0 / (double)(app->configuration.size[axis_id]/2)) * (2 * j + 1);
 					tempLUT[2 * axis->specializationConstants.startDCT4LUT + 2 * j] = (float)cos(angle);
 					tempLUT[2 * axis->specializationConstants.startDCT4LUT + 2 * j + 1] = (float)sin(angle);
 				}
@@ -19306,7 +19571,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					axis->referenceLUT = 1;
 				}
 				else {
-					if (((axis_id == 1) || (axis_id == 2)) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[axis_id] > 1))) && ((axis->specializationConstants.fft_dim_full == FFTPlan->axes[0][0].specializationConstants.fft_dim_full) && (FFTPlan->numAxisUploads[axis_id] == 1) && (axis->specializationConstants.fft_dim_full < maxSingleSizeStrided / axis->specializationConstants.registerBoost))) {
+					if (((axis_id == 1) || (axis_id == 2)) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[axis_id] > 1))) && ((axis->specializationConstants.fft_dim_full == FFTPlan->axes[0][0].specializationConstants.fft_dim_full) && (FFTPlan->numAxisUploads[axis_id] == 1) && (axis->specializationConstants.fft_dim_full < maxSingleSizeStrided / axis->specializationConstants.registerBoost)) && ((!app->configuration.performDCT) || (app->configuration.size[axis_id] == app->configuration.size[0]))) {
 						axis->bufferLUT = FFTPlan->axes[0][axis_upload_id].bufferLUT;
 #if(VKFFT_BACKEND==0)
 						axis->bufferLUTDeviceMemory = FFTPlan->axes[0][axis_upload_id].bufferLUTDeviceMemory;
@@ -19315,7 +19580,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 						axis->referenceLUT = 1;
 					}
 					else {
-						if ((axis_id == 2) && (axis->specializationConstants.fft_dim_full == FFTPlan->axes[1][0].specializationConstants.fft_dim_full)) {
+						if ((axis_id == 2) && (axis->specializationConstants.fft_dim_full == FFTPlan->axes[1][0].specializationConstants.fft_dim_full) && ((!app->configuration.performDCT) || (app->configuration.size[2] == app->configuration.size[1]))) {
 							axis->bufferLUT = FFTPlan->axes[1][axis_upload_id].bufferLUT;
 #if(VKFFT_BACKEND==0)
 							axis->bufferLUTDeviceMemory = FFTPlan->axes[1][axis_upload_id].bufferLUTDeviceMemory;
@@ -19880,7 +20145,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					axis->axisBlock[1] = axis->groupedBatch;
 				else {
 					//axis->axisBlock[1] = (axis->axisBlock[0] < app->configuration.warpSize) ? app->configuration.warpSize / axis->axisBlock[0] : 1;
-					axis->axisBlock[1] = ((axis->axisBlock[0] < app->configuration.aimThreads)) ? app->configuration.aimThreads / axis->axisBlock[0] : 1;
+					axis->axisBlock[1] = ((axis->axisBlock[0] < app->configuration.aimThreads) && ((axis->axisBlock[0] < 32) || ((axis->axisBlock[0] & (axis->axisBlock[0] - 1)) != 0))) ? app->configuration.aimThreads / axis->axisBlock[0] : 1;
 				}
 				uint64_t currentAxisBlock1 = axis->axisBlock[1];
 				for (uint64_t i = currentAxisBlock1; i < 2 * currentAxisBlock1; i++) {
@@ -19912,7 +20177,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				if (axis->axisBlock[1] > app->configuration.maxComputeWorkGroupSize[1]) axis->axisBlock[1] = app->configuration.maxComputeWorkGroupSize[1];
 				if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[1] /= 2;
 				while ((axis->axisBlock[1] * (axis->specializationConstants.fftDim / axis->specializationConstants.registerBoost)) > maxSequenceLengthSharedMemory) axis->axisBlock[1] /= 2;
-				if (((axis->specializationConstants.fftDim % 2 == 0) || (axis->axisBlock[0] < app->configuration.numSharedBanks / 4)) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim < maxSequenceLengthSharedMemoryPow2) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2])))) {
+				if (((axis->specializationConstants.fftDim % 2 == 0) || (axis->axisBlock[0] < app->configuration.numSharedBanks / 4)) && (!(((!axis->specializationConstants.reorderFourStep) || (axis->specializationConstants.useBluesteinFFT)) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim < maxSequenceLengthSharedMemoryPow2) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2])))) {
 #if (VKFFT_BACKEND==0)
 					if (((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) != 0)) {
 						uint64_t temp = axis->axisBlock[1];
@@ -20100,21 +20365,6 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 		axis->specializationConstants.numCoordinates = (app->configuration.matrixConvolution > 1) ? 1 : app->configuration.coordinateFeatures;
 		axis->specializationConstants.matrixConvolution = app->configuration.matrixConvolution;
-		axis->specializationConstants.numBatches = app->configuration.numberBatches;
-		if ((app->configuration.FFTdim == 1) && (FFTPlan->actualFFTSizePerAxis[axis_id][1] == 1) && ((app->configuration.numberBatches > 1) || (app->actualNumBatches > 1)) && (!app->configuration.performConvolution) && (app->configuration.coordinateFeatures == 1)) {
-			if (app->configuration.numberBatches > 1) {
-				app->actualNumBatches = app->configuration.numberBatches;
-				app->configuration.numberBatches = 1;
-			}
-			FFTPlan->actualFFTSizePerAxis[axis_id][1] = app->actualNumBatches;
-		}
-		if ((app->configuration.FFTdim == 2) && (FFTPlan->actualFFTSizePerAxis[axis_id][2] == 1) && ((app->configuration.numberBatches > 1) || (app->actualNumBatches > 1)) && (!app->configuration.performConvolution) && (app->configuration.coordinateFeatures == 1)) {
-			if (app->configuration.numberBatches > 1) {
-				app->actualNumBatches = app->configuration.numberBatches;
-				app->configuration.numberBatches = 1;
-			}
-			FFTPlan->actualFFTSizePerAxis[axis_id][2] = app->actualNumBatches;
-		}
 		axis->specializationConstants.numKernels = app->configuration.numberKernels;
 		axis->specializationConstants.sharedMemSize = app->configuration.sharedMemorySize;
 		axis->specializationConstants.sharedMemSizePow2 = app->configuration.sharedMemorySizePow2;
@@ -21390,10 +21640,6 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	if (inputLaunchConfiguration.inverseReturnToInputBuffer != 0)	app->configuration.inverseReturnToInputBuffer = inputLaunchConfiguration.inverseReturnToInputBuffer;
 
 	if (inputLaunchConfiguration.useLUT != 0)	app->configuration.useLUT = inputLaunchConfiguration.useLUT;
-	app->configuration.fixMaxRadixBluestein = 2;
-#if ((VKFFT_BACKEND==0)||(VKFFT_BACKEND==3))
-	if (app->configuration.size[0]* app->configuration.size[1]* app->configuration.size[2] > 1048576) app->configuration.fixMaxRadixBluestein = 7;
-#endif
 	if (inputLaunchConfiguration.fixMaxRadixBluestein != 0) app->configuration.fixMaxRadixBluestein = inputLaunchConfiguration.fixMaxRadixBluestein;
 
 	if (inputLaunchConfiguration.performR2C != 0) {
@@ -21460,7 +21706,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		if (app->configuration.matrixConvolution > 1) app->configuration.coordinateFeatures = app->configuration.matrixConvolution;
 	}
 	app->firstAxis = 0;
-	app->lastAxis = app->configuration.FFTdim-1;
+	app->lastAxis = app->configuration.FFTdim - 1;
 	if (inputLaunchConfiguration.omitDimension[0] != 0) {
 		app->configuration.omitDimension[0] = inputLaunchConfiguration.omitDimension[0];
 		app->firstAxis++;
@@ -21620,7 +21866,10 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	}
 	for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 		if (app->useBluesteinFFT[i]) {
-			resFFT = VkFFTGeneratePhaseVectors(app, app->localFFTPlan, i, 0);
+			if (!app->configuration.makeInversePlanOnly)
+				resFFT = VkFFTGeneratePhaseVectors(app, app->localFFTPlan, i, 0);
+			else
+				resFFT = VkFFTGeneratePhaseVectors(app, app->localFFTPlan_inverse, i, 0);
 			if (resFFT != VKFFT_SUCCESS) {
 				deleteVkFFT(app);
 				return resFFT;
@@ -22194,7 +22443,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 				else {
 
 					for (uint64_t j = 0; j < app->configuration.numberBatches; j++) {
-						for (int64_t l = (int64_t)app->localFFTPlan->numAxisUploads[1] - 1; l >=0; l--) {
+						for (int64_t l = (int64_t)app->localFFTPlan->numAxisUploads[1] - 1; l >= 0; l--) {
 							VkFFTAxis* axis = &app->localFFTPlan->axes[1][l];
 							resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 1, l, 0);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -22817,6 +23066,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10207; //X.XX.XX format
+	return 10208; //X.XX.XX format
 }
 #endif
