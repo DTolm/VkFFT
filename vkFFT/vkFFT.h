@@ -127,6 +127,11 @@ typedef struct {
 	cl_mem* outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
 	cl_mem* kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
 #endif
+	uint64_t bufferOffset;//specify if VkFFT has to offset the first element position inside the buffer. In bytes. Default 0 
+	uint64_t tempBufferOffset;//specify if VkFFT has to offset the first element position inside the temp buffer. In bytes. Default 0 
+	uint64_t inputBufferOffset;//specify if VkFFT has to offset the first element position inside the input buffer. In bytes. Default 0 
+	uint64_t outputBufferOffset;//specify if VkFFT has to offset the first element position inside the output buffer. In bytes. Default 0
+	uint64_t kernelOffset;//specify if VkFFT has to offset the first element position inside the kernel. In bytes. Default 0
 
 	//optional: (default 0 if not stated otherwise)
 	uint64_t coalescedMemory;//in bits, for Nvidia and AMD is equal to 32, Intel is equal 64, scaled for half precision. Gonna work regardles, but if specified by user correctly, the performance will be higher.
@@ -169,6 +174,8 @@ typedef struct {
 
 	//optional convolution control parameters: (default 0 if not stated otherwise)
 	uint64_t performConvolution; //perform convolution in this application (0 - off, 1 - on). Disables reorderFourStep parameter
+	uint64_t conjugateConvolution;//0 off, 1 - conjugation of the sequence FFT is currently done on, 2 - conjugation of the convolution kernel
+	uint64_t crossPowerSpectrumNormalization;//normalize the FFT x kernel multiplication in frequency domain
 	uint64_t coordinateFeatures; // C - coordinate, or dimension of features vector. In matrix convolution - size of vector
 	uint64_t matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
 	uint64_t symmetricKernel; //specify if kernel in 2x2 or 3x3 matrix convolution is symmetric
@@ -385,6 +392,7 @@ typedef struct {
 	uint64_t numStages;
 	uint64_t stageRadix[20];
 	uint64_t inputOffset;
+	uint64_t kernelOffset;
 	uint64_t outputOffset;
 	uint64_t reorderFourStep;
 	uint64_t performWorkGroupShift[3];
@@ -398,11 +406,16 @@ typedef struct {
 	uint64_t matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
 	uint64_t numBatches;
 	uint64_t numKernels;
+	uint64_t conjugateConvolution;
+	uint64_t crossPowerSpectrumNormalization;
 	uint64_t usedSharedMemory;
 	uint64_t sharedMemSize;
 	uint64_t sharedMemSizePow2;
 	uint64_t normalize;
 	uint64_t complexSize;
+	uint64_t inputNumberByteSize;
+	uint64_t outputNumberByteSize;
+	uint64_t kernelNumberByteSize;
 	uint64_t maxStageSumLUT;
 	uint64_t unroll;
 	uint64_t convolutionStep;
@@ -1198,9 +1211,18 @@ static inline VkFFTResult appendInputLayoutVkFFT(VkFFTSpecializationConstantsLay
 	switch (inputType) {
 	case 0: case 1: case 2: case 3: case 4: case 6: {
 #if(VKFFT_BACKEND==0)
-		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
-		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "vec2");
-		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "dvec2");
+		if (!strcmp(floatTypeMemory, "half")) {
+			sc->inputNumberByteSize = 2 * 2;
+			sprintf(vecType, "f16vec2");
+		}
+		if (!strcmp(floatTypeMemory, "float")) {
+			sc->inputNumberByteSize = 2 * sizeof(float);
+			sprintf(vecType, "vec2");
+		}
+		if (!strcmp(floatTypeMemory, "double")) {
+			sc->inputNumberByteSize = 2 * sizeof(double);
+			sprintf(vecType, "dvec2");
+		}
 		if (sc->inputBufferBlockNum == 1) {
 			sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %" PRIu64 ") buffer DataIn{\n\
@@ -1218,25 +1240,61 @@ layout(std430, binding = %" PRIu64 ") buffer DataIn{\n\
 			if (res != VKFFT_SUCCESS) return res;
 		}
 #elif(VKFFT_BACKEND==1)
-		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
-		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
-		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
+		if (!strcmp(floatTypeMemory, "half")) {
+			sc->inputNumberByteSize = 2 * 2;
+			sprintf(vecType, "f16vec2");
+		}
+		if (!strcmp(floatTypeMemory, "float")) {
+			sc->inputNumberByteSize = 2 * sizeof(float);
+			sprintf(vecType, "float2");
+		}
+		if (!strcmp(floatTypeMemory, "double")) {
+			sc->inputNumberByteSize = 2 * sizeof(double);
+			sprintf(vecType, "double2");
+		}
 #elif(VKFFT_BACKEND==2)
-		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
-		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
-		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
+		if (!strcmp(floatTypeMemory, "half")) {
+			sc->inputNumberByteSize = 2 * 2;
+			sprintf(vecType, "f16vec2");
+		}
+		if (!strcmp(floatTypeMemory, "float")) {
+			sc->inputNumberByteSize = 2 * sizeof(float);
+			sprintf(vecType, "float2");
+	}
+		if (!strcmp(floatTypeMemory, "double")) {
+			sc->inputNumberByteSize = 2 * sizeof(double);
+			sprintf(vecType, "double2");
+		}
 #elif(VKFFT_BACKEND==3)
-		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
-		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
-		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
+		if (!strcmp(floatTypeMemory, "half")) {
+			sc->inputNumberByteSize = 2 * 2;
+			sprintf(vecType, "f16vec2");
+		}
+		if (!strcmp(floatTypeMemory, "float")) {
+			sc->inputNumberByteSize = 2 * sizeof(float);
+			sprintf(vecType, "float2");
+		}
+		if (!strcmp(floatTypeMemory, "double")) {
+			sc->inputNumberByteSize = 2 * sizeof(double);
+			sprintf(vecType, "double2");
+		}
 #endif
 		break;
 	}
 	case 5: case 120: case 121: case 130: case 131: case 140: case 141: case 142: case 143:
 	{
-		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "float16_t");
-		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float");
-		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double");
+		if (!strcmp(floatTypeMemory, "half")) {
+			sc->inputNumberByteSize = 2;
+			sprintf(vecType, "float16_t");
+		}
+		if (!strcmp(floatTypeMemory, "float")) {
+			sc->inputNumberByteSize = sizeof(float);
+			sprintf(vecType, "float");
+		}
+		if (!strcmp(floatTypeMemory, "double")) {
+			sc->inputNumberByteSize = sizeof(double);
+			sprintf(vecType, "double");
+		}
 #if(VKFFT_BACKEND==0)
 		if (sc->inputBufferBlockNum == 1) {
 			sc->tempLen = sprintf(sc->tempStr, "\
@@ -1266,9 +1324,18 @@ static inline VkFFTResult appendOutputLayoutVkFFT(VkFFTSpecializationConstantsLa
 	switch (outputType) {
 	case 0: case 1: case 2: case 3: case 4: case 5: {
 #if(VKFFT_BACKEND==0)
-		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
-		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "vec2");
-		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "dvec2");
+		if (!strcmp(floatTypeMemory, "half")) {
+			sc->outputNumberByteSize = 2 * 2;
+			sprintf(vecType, "f16vec2");
+		}
+		if (!strcmp(floatTypeMemory, "float")) {
+			sc->outputNumberByteSize = 2 * sizeof(float);
+			sprintf(vecType, "vec2");
+		}
+		if (!strcmp(floatTypeMemory, "double")) {
+			sc->outputNumberByteSize = 2 * sizeof(double);
+			sprintf(vecType, "dvec2");
+		}
 		if (sc->outputBufferBlockNum == 1) {
 			sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %" PRIu64 ") buffer DataOut{\n\
@@ -1286,25 +1353,61 @@ layout(std430, binding = %" PRIu64 ") buffer DataOut{\n\
 			if (res != VKFFT_SUCCESS) return res;
 		}
 #elif(VKFFT_BACKEND==1)
-		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
-		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
-		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
+		if (!strcmp(floatTypeMemory, "half")) {
+			sc->outputNumberByteSize = 2 * 2;
+			sprintf(vecType, "f16vec2");
+		}
+		if (!strcmp(floatTypeMemory, "float")) {
+			sc->outputNumberByteSize = 2 * sizeof(float);
+			sprintf(vecType, "float2");
+		}
+		if (!strcmp(floatTypeMemory, "double")) {
+			sc->outputNumberByteSize = 2 * sizeof(double);
+			sprintf(vecType, "double2");
+		}
 #elif(VKFFT_BACKEND==2)
-		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
-		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
-		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
+		if (!strcmp(floatTypeMemory, "half")) {
+			sc->outputNumberByteSize = 2 * 2;
+			sprintf(vecType, "f16vec2");
+		}
+		if (!strcmp(floatTypeMemory, "float")) {
+			sc->outputNumberByteSize = 2 * sizeof(float);
+			sprintf(vecType, "float2");
+		}
+		if (!strcmp(floatTypeMemory, "double")) {
+			sc->outputNumberByteSize = 2 * sizeof(double);
+			sprintf(vecType, "double2");
+		}
 #elif(VKFFT_BACKEND==3)
-		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
-		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
-		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
+		if (!strcmp(floatTypeMemory, "half")) {
+			sc->outputNumberByteSize = 2 * 2;
+			sprintf(vecType, "f16vec2");
+		}
+		if (!strcmp(floatTypeMemory, "float")) {
+			sc->outputNumberByteSize = 2 * sizeof(float);
+			sprintf(vecType, "float2");
+		}
+		if (!strcmp(floatTypeMemory, "double")) {
+			sc->outputNumberByteSize = 2 * sizeof(double);
+			sprintf(vecType, "double2");
+		}
 #endif
 		break;
 	}
 	case 6: case 120: case 121: case 130: case 131: case 140: case 141: case 142: case 143:
 	{
-		if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "float16_t");
-		if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float");
-		if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double");
+		if (!strcmp(floatTypeMemory, "half")) {
+			sc->outputNumberByteSize = 2;
+			sprintf(vecType, "float16_t");
+		}
+		if (!strcmp(floatTypeMemory, "float")) {
+			sc->outputNumberByteSize = sizeof(float);
+			sprintf(vecType, "float");
+		}
+		if (!strcmp(floatTypeMemory, "double")) {
+			sc->outputNumberByteSize = sizeof(double);
+			sprintf(vecType, "double");
+		}
 #if(VKFFT_BACKEND==0)
 		if (sc->outputBufferBlockNum == 1) {
 			sc->tempLen = sprintf(sc->tempStr, "\
@@ -1332,9 +1435,18 @@ static inline VkFFTResult appendKernelLayoutVkFFT(VkFFTSpecializationConstantsLa
 	VkFFTResult res = VKFFT_SUCCESS;
 	char vecType[30];
 #if(VKFFT_BACKEND==0)
-	if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
-	if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "vec2");
-	if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "dvec2");
+	if (!strcmp(floatTypeMemory, "half")) {
+		sc->kernelNumberByteSize = 2 * 2;
+		sprintf(vecType, "f16vec2");
+	}
+	if (!strcmp(floatTypeMemory, "float")) {
+		sc->kernelNumberByteSize = 2 * sizeof(float);
+		sprintf(vecType, "vec2");
+	}
+	if (!strcmp(floatTypeMemory, "double")) {
+		sc->kernelNumberByteSize = 2 * sizeof(double);
+		sprintf(vecType, "dvec2");
+	}
 	if (sc->kernelBlockNum == 1) {
 		sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %" PRIu64 ") buffer Kernel_FFT{\n\
@@ -1352,17 +1464,44 @@ layout(std430, binding = %" PRIu64 ") buffer Kernel_FFT{\n\
 		if (res != VKFFT_SUCCESS) return res;
 	}
 #elif(VKFFT_BACKEND==1)
-	if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
-	if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
-	if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
+	if (!strcmp(floatTypeMemory, "half")) {
+		sc->kernelNumberByteSize = 2 * 2;
+		sprintf(vecType, "f16vec2");
+	}
+	if (!strcmp(floatTypeMemory, "float")) {
+		sc->kernelNumberByteSize = 2 * sizeof(float);
+		sprintf(vecType, "float2");
+	}
+	if (!strcmp(floatTypeMemory, "double")) {
+		sc->kernelNumberByteSize = 2 * sizeof(double);
+		sprintf(vecType, "double2");
+	}
 #elif(VKFFT_BACKEND==2)
-	if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
-	if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
-	if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
+	if (!strcmp(floatTypeMemory, "half")) {
+		sc->kernelNumberByteSize = 2 * 2;
+		sprintf(vecType, "f16vec2");
+	}
+	if (!strcmp(floatTypeMemory, "float")) {
+		sc->kernelNumberByteSize = 2 * sizeof(float);
+		sprintf(vecType, "float2");
+	}
+	if (!strcmp(floatTypeMemory, "double")) {
+		sc->kernelNumberByteSize = 2 * sizeof(double);
+		sprintf(vecType, "double2");
+	}
 #elif(VKFFT_BACKEND==3)
-	if (!strcmp(floatTypeMemory, "half")) sprintf(vecType, "f16vec2");
-	if (!strcmp(floatTypeMemory, "float")) sprintf(vecType, "float2");
-	if (!strcmp(floatTypeMemory, "double")) sprintf(vecType, "double2");
+	if (!strcmp(floatTypeMemory, "half")) {
+		sc->kernelNumberByteSize = 2 * 2;
+		sprintf(vecType, "f16vec2");
+	}
+	if (!strcmp(floatTypeMemory, "float")) {
+		sc->kernelNumberByteSize = 2 * sizeof(float);
+		sprintf(vecType, "float2");
+	}
+	if (!strcmp(floatTypeMemory, "double")) {
+		sc->kernelNumberByteSize = 2 * sizeof(double);
+		sprintf(vecType, "double2");
+	}
 #endif
 	return res;
 }
@@ -1433,7 +1572,7 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 	case 0: case 2: case 3: case 4:case 5: case 6: case 120: case 130: case 140: case 142: {//single_c2c + single_c2c_strided
 		char inputOffset[30] = "";
 		if (sc->inputOffset > 0)
-			sprintf(inputOffset, "%" PRIu64 " + ", sc->inputOffset);
+			sprintf(inputOffset, "%" PRIu64 " + ", sc->inputOffset / sc->inputNumberByteSize);
 		char shiftX[500] = "";
 		if (sc->inputStride[0] == 1)
 			sprintf(shiftX, "(%s)", index_x);
@@ -1493,7 +1632,7 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 	case 1: case 121: case 131: case 141: case 143: {//grouped_c2c
 		char inputOffset[30] = "";
 		if (sc->inputOffset > 0)
-			sprintf(inputOffset, "%" PRIu64 " + ", sc->inputOffset);
+			sprintf(inputOffset, "%" PRIu64 " + ", sc->inputOffset / sc->inputNumberByteSize);
 		char shiftX[500] = "";
 		if (sc->inputStride[0] == 1)
 			sprintf(shiftX, "(%s)", index_x);
@@ -1540,7 +1679,7 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 	case 0: case 2: case 3: case 4: case 5: case 6: case 120: case 130: case 140: case 142: {
 		char outputOffset[30] = "";
 		if (sc->outputOffset > 0)
-			sprintf(outputOffset, "%" PRIu64 " + ", sc->outputOffset);
+			sprintf(outputOffset, "%" PRIu64 " + ", sc->outputOffset / sc->outputNumberByteSize);
 		char shiftX[500] = "";
 		if (sc->numAxisUploads == 1)
 			sprintf(shiftX, "(%s)", index_x);
@@ -1600,7 +1739,7 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 	case 1: case 121: case 131: case 141: case 143: {//grouped_c2c
 		char outputOffset[30] = "";
 		if (sc->outputOffset > 0)
-			sprintf(outputOffset, "%" PRIu64 " + ", sc->outputOffset);
+			sprintf(outputOffset, "%" PRIu64 " + ", sc->outputOffset / sc->outputNumberByteSize);
 		char shiftX[500] = "";
 		if (sc->numAxisUploads == 1)
 			sprintf(shiftX, "(%s)", index_x);
@@ -9541,7 +9680,7 @@ static inline VkFFTResult appendCoordinateRegisterStore(VkFFTSpecializationConst
 }
 static inline VkFFTResult appendCoordinateRegisterPull(VkFFTSpecializationConstantsLayout* sc, uint64_t readType) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	if (!sc->readToRegisters) {
+	if ((!sc->readToRegisters) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)))) {
 		switch (readType) {
 		case 0: case 5: case 6: case 120: case 130: case 140: case 142://single_c2c
 		{
@@ -9888,8 +10027,14 @@ static inline VkFFTResult appendKernelConvolution(VkFFTSpecializationConstantsLa
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 					sprintf(index_x, "(combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->inputStride[0], sc->fftDim, sc->inputStride[1]);
+					uint64_t tempSaveInputOffset = sc->inputOffset;
+					uint64_t tempSaveInputNumberByteSize = sc->inputNumberByteSize;
+					sc->inputOffset = sc->kernelOffset;
+					sc->inputNumberByteSize = sc->kernelNumberByteSize;
 					res = indexInputVkFFT(sc, uintType, dataType, index_x, 0, requestCoordinate, requestBatch);
 					if (res != VKFFT_SUCCESS) return res;
+					sc->inputOffset = tempSaveInputOffset;
+					sc->inputNumberByteSize = tempSaveInputNumberByteSize;
 					sc->tempLen = sprintf(sc->tempStr, ";\n");
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -9900,8 +10045,14 @@ static inline VkFFTResult appendKernelConvolution(VkFFTSpecializationConstantsLa
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 					sprintf(index_x, "(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 "", sc->fftDim, sc->fftDim, sc->inputStride[1]);
+					uint64_t tempSaveInputOffset = sc->inputOffset;
+					uint64_t tempSaveInputNumberByteSize = sc->inputNumberByteSize;
+					sc->inputOffset = sc->kernelOffset;
+					sc->inputNumberByteSize = sc->kernelNumberByteSize;
 					res = indexInputVkFFT(sc, uintType, dataType, index_x, 0, requestCoordinate, requestBatch);
 					if (res != VKFFT_SUCCESS) return res;
+					sc->inputOffset = tempSaveInputOffset;
+					sc->inputNumberByteSize = tempSaveInputNumberByteSize;
 					sc->tempLen = sprintf(sc->tempStr, ";\n");
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -9913,8 +10064,14 @@ static inline VkFFTResult appendKernelConvolution(VkFFTSpecializationConstantsLa
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 				sprintf(index_x, "%s+%" PRIu64 "+%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ")", sc->gl_LocalInvocationID_x, i * sc->localSize[0], sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
+				uint64_t tempSaveInputOffset = sc->inputOffset;
+				uint64_t tempSaveInputNumberByteSize = sc->inputNumberByteSize;
+				sc->inputOffset = sc->kernelOffset;
+				sc->inputNumberByteSize = sc->kernelNumberByteSize;
 				res = indexInputVkFFT(sc, uintType, dataType, index_x, 0, requestCoordinate, requestBatch);
 				if (res != VKFFT_SUCCESS) return res;
+				sc->inputOffset = tempSaveInputOffset;
+				sc->inputNumberByteSize = tempSaveInputNumberByteSize;
 				sc->tempLen = sprintf(sc->tempStr, ";\n");
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
@@ -9929,8 +10086,14 @@ static inline VkFFTResult appendKernelConvolution(VkFFTSpecializationConstantsLa
 			if (res != VKFFT_SUCCESS) return res;
 			sprintf(index_x, "(%s%s) %% (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x);
 			sprintf(index_y, "(%s+%" PRIu64 ")+((%s%s)/%" PRIu64 ")%%(%" PRIu64 ")+((%s%s)/%" PRIu64 ")*(%" PRIu64 ")", sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim);
+			uint64_t tempSaveInputOffset = sc->inputOffset;
+			uint64_t tempSaveInputNumberByteSize = sc->inputNumberByteSize;
+			sc->inputOffset = sc->kernelOffset;
+			sc->inputNumberByteSize = sc->kernelNumberByteSize;
 			res = indexInputVkFFT(sc, uintType, dataType, index_x, index_y, requestCoordinate, requestBatch);
 			if (res != VKFFT_SUCCESS) return res;
+			sc->inputOffset = tempSaveInputOffset;
+			sc->inputNumberByteSize = tempSaveInputNumberByteSize;
 			sc->tempLen = sprintf(sc->tempStr, ";\n");
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
@@ -9950,10 +10113,18 @@ static inline VkFFTResult appendKernelConvolution(VkFFTSpecializationConstantsLa
 					else {
 						k = (j * sc->matrixConvolution + l);
 					}
+					if (sc->conjugateConvolution == 0) {
 					if (l == 0)
 						sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s%s.x - %s[inoutID+%" PRIu64 "].y * %s%s.y;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
 					else
 						sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s_%" PRIu64 "%s.x - %s[inoutID+%" PRIu64 "].y * %s_%" PRIu64 "%s.y;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+					}
+					else {
+						if (l == 0)
+							sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s%s.x + %s[inoutID+%" PRIu64 "].y * %s%s.y;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s_%" PRIu64 "%s.x + %s[inoutID+%" PRIu64 "].y * %s_%" PRIu64 "%s.y;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+					}
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
@@ -9965,28 +10136,86 @@ static inline VkFFTResult appendKernelConvolution(VkFFTSpecializationConstantsLa
 					else {
 						k = (j * sc->matrixConvolution + l);
 					}
+					if (sc->conjugateConvolution == 0) {
 					if (l == 0)
 						sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s%s.y + %s[inoutID+%" PRIu64 "].y * %s%s.x;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
 					else
 						sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s_%" PRIu64 "%s.y + %s[inoutID+%" PRIu64 "].y * %s_%" PRIu64 "%s.x;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+					}
+					else {
+						if (sc->conjugateConvolution == 1) {
+							if (l == 0)
+								sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s[inoutID+%" PRIu64 "].y * %s%s.x - %s[inoutID+%" PRIu64 "].x * %s%s.y ;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s[inoutID+%" PRIu64 "].y * %s_%" PRIu64 "%s.x - %s[inoutID+%" PRIu64 "].x * %s_%" PRIu64 "%s.y;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+						}
+						else {
+							if (l == 0)
+								sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s%s.y - %s[inoutID+%" PRIu64 "].y * %s%s.x;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s_%" PRIu64 "%s.y - %s[inoutID+%" PRIu64 "].y * %s_%" PRIu64 "%s.x;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+						}
+					}
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 
 				}
 			}
+			if (sc->crossPowerSpectrumNormalization) {
+#if(VKFFT_BACKEND==0)
+				sc->tempLen = sprintf(sc->tempStr, "		w.x = inversesqrt(temp_real0*temp_real0+temp_imag0*temp_imag0);\n");
+#elif(VKFFT_BACKEND==1)
+				sc->tempLen = sprintf(sc->tempStr, "		w.x = rsqrt(temp_real0*temp_real0+temp_imag0*temp_imag0);\n");
+#elif(VKFFT_BACKEND==2)
+				sc->tempLen = sprintf(sc->tempStr, "		w.x = rsqrt(temp_real0*temp_real0+temp_imag0*temp_imag0);\n");
+#elif(VKFFT_BACKEND==3)
+				sc->tempLen = sprintf(sc->tempStr, "		w.x = rsqrt(temp_real0*temp_real0+temp_imag0*temp_imag0);\n");
+#endif
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "		%s.x = temp_real0 * w.x;\n", sc->regIDs[i]);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "		%s.y = temp_imag0 * w.x;\n", sc->regIDs[i]);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
 			sc->tempLen = sprintf(sc->tempStr, "		%s.x = temp_real0;\n", sc->regIDs[i]);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			sc->tempLen = sprintf(sc->tempStr, "		%s.y = temp_imag0;\n", sc->regIDs[i]);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
+			}
 			for (uint64_t l = 1; l < sc->matrixConvolution; l++) {
+				if (sc->crossPowerSpectrumNormalization) {
+#if(VKFFT_BACKEND==0)
+					sc->tempLen = sprintf(sc->tempStr, "		w.x = inversesqrt(temp_real%" PRIu64 "*temp_real%" PRIu64 "+temp_imag%" PRIu64 "*temp_imag%" PRIu64 ");\n", l, l, l, l);
+#elif(VKFFT_BACKEND==1)
+					sc->tempLen = sprintf(sc->tempStr, "		w.x = rsqrt(temp_real%" PRIu64 "*temp_real%" PRIu64 "+temp_imag%" PRIu64 "*temp_imag%" PRIu64 ");\n", l, l, l, l);
+#elif(VKFFT_BACKEND==2)
+					sc->tempLen = sprintf(sc->tempStr, "		w.x = rsqrt(temp_real%" PRIu64 "*temp_real%" PRIu64 "+temp_imag%" PRIu64 "*temp_imag%" PRIu64 ");\n", l, l, l, l);
+#elif(VKFFT_BACKEND==3)
+					sc->tempLen = sprintf(sc->tempStr, "		w.x = rsqrt(temp_real%" PRIu64 "*temp_real%" PRIu64 "+temp_imag%" PRIu64 "*temp_imag%" PRIu64 ");\n", l, l, l, l);
+#endif
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		%s_%" PRIu64 ".x = temp_real%" PRIu64 " * w.x;\n", sc->regIDs[i], l, l);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		%s_%" PRIu64 ".y = temp_imag%" PRIu64 " * w.x;\n", sc->regIDs[i], l, l);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
 				sc->tempLen = sprintf(sc->tempStr, "		%s_%" PRIu64 ".x = temp_real%" PRIu64 ";\n", sc->regIDs[i], l, l);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 				sc->tempLen = sprintf(sc->tempStr, "		%s_%" PRIu64 ".y = temp_imag%" PRIu64 ";\n", sc->regIDs[i], l, l);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
+				}
 			}
 		}
 		else {
@@ -13471,6 +13700,7 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 	if (res != VKFFT_SUCCESS) return res;
 	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
 #endif
+	char index_x[2000] = "";
 	char idX[500] = "";
 	if (sc->performWorkGroupShift[0])
 		sprintf(idX, "(%s + consts.workGroupShiftX * %s)", sc->gl_GlobalInvocationID_x, sc->gl_WorkGroupSize_x);
@@ -13490,9 +13720,17 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 	sc->tempLen = sprintf(sc->tempStr, "if (%s < %" PRIu64 "){\n", idX, (sc->size[0] / 4) * sc->size[1] * sc->size[2]);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
-	sc->tempLen = sprintf(sc->tempStr, "%s inoutID = id_x + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", uintType, sc->inputStride[1], sc->inputStride[2]);
+
+	sc->tempLen = sprintf(sc->tempStr, "%s inoutID = ", uintType);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
+	sprintf(index_x, "id_x + id_y*%" PRIu64 " +id_z*%" PRIu64 "", sc->inputStride[1], sc->inputStride[2]);
+	res = indexInputVkFFT(sc, uintType, 0, index_x, 0, 0, 0);
+	if (res != VKFFT_SUCCESS) return res;
+	sc->tempLen = sprintf(sc->tempStr, ";\n");
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+
 	sc->tempLen = sprintf(sc->tempStr, "%s inoutID2;\n", uintType);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
@@ -13512,10 +13750,24 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 		sc->tempLen = sprintf(sc->tempStr, "if (id_x == 0)  {\n");
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
-		sc->tempLen = sprintf(sc->tempStr, "	inoutID2 = %" PRIu64 " + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
+
+		sc->tempLen = sprintf(sc->tempStr, "	inoutID2 = ");
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
-		sc->tempLen = sprintf(sc->tempStr, "	inoutID3 = %" PRIu64 " + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", (sc->size[0] / 4), sc->inputStride[1], sc->inputStride[2]);
+		sprintf(index_x, "%" PRIu64 " + id_y*%" PRIu64 " +id_z*%" PRIu64 "", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
+		res = indexInputVkFFT(sc, uintType, 0, index_x, 0, 0, 0);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, ";\n");
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+
+		sc->tempLen = sprintf(sc->tempStr, "	inoutID3 = ");
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sprintf(index_x, "%" PRIu64 " + id_y*%" PRIu64 " +id_z*%" PRIu64 "", (sc->size[0] / 4), sc->inputStride[1], sc->inputStride[2]);
+		res = indexInputVkFFT(sc, uintType, 0, index_x, 0, 0, 0);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, ";\n");
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		if (sc->inputBufferBlockNum == 1)
@@ -13528,7 +13780,15 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 		sc->tempLen = sprintf(sc->tempStr, "} else {\n");
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
-		sc->tempLen = sprintf(sc->tempStr, "	inoutID2 = (%" PRIu64 "-id_x) + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
+
+		sc->tempLen = sprintf(sc->tempStr, "	inoutID2 = ");
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sprintf(index_x, "(%" PRIu64 "-id_x) + id_y*%" PRIu64 " +id_z*%" PRIu64 "", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
+		res = indexInputVkFFT(sc, uintType, 0, index_x, 0, 0, 0);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, ";\n");
+		
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		sc->tempLen = sprintf(sc->tempStr, "}");
@@ -13536,7 +13796,13 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 		if (res != VKFFT_SUCCESS) return res;
 	}
 	else {
-		sc->tempLen = sprintf(sc->tempStr, "inoutID2 = (%" PRIu64 "-id_x) + id_y*%" PRIu64 " +id_z*%" PRIu64 ";\n", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
+		sc->tempLen = sprintf(sc->tempStr, "inoutID2 = ");
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sprintf(index_x, "(%" PRIu64 "-id_x) + id_y*%" PRIu64 " +id_z*%" PRIu64 "", (sc->size[0] / 2), sc->inputStride[1], sc->inputStride[2]);
+		res = indexInputVkFFT(sc, uintType, 0, index_x, 0, 0, 0);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, ";\n");
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 	}
@@ -17600,7 +17866,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 						descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
 						descriptorBufferInfo.offset = offset * (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
 #endif
-
+						axis->specializationConstants.inputOffset = app->configuration.inputBufferOffset;
 					}
 					else {
 						if ((axis_upload_id == 0) && (app->configuration.numberKernels > 1) && (inverse) && (!app->configuration.performConvolution)) {
@@ -17622,6 +17888,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 							descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
 							descriptorBufferInfo.offset = offset * (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
 #endif
+							axis->specializationConstants.inputOffset = app->configuration.outputBufferOffset;
 						}
 						else {
 							uint64_t bufferId = 0;
@@ -17642,6 +17909,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 #if(VKFFT_BACKEND==0)
 									descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
 #endif
+									axis->specializationConstants.inputOffset = app->configuration.bufferOffset;
 								}
 								else {
 									for (uint64_t l = 0; l < app->configuration.tempBufferNum; ++l) {
@@ -17658,6 +17926,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 #if(VKFFT_BACKEND==0)
 									descriptorBufferInfo.buffer = app->configuration.tempBuffer[bufferId];
 #endif
+									axis->specializationConstants.inputOffset = app->configuration.tempBufferOffset;
 								}
 							}
 							else {
@@ -17675,6 +17944,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 #if(VKFFT_BACKEND==0)
 								descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
 #endif
+								axis->specializationConstants.inputOffset = app->configuration.bufferOffset;
 							}
 #if(VKFFT_BACKEND==0)
 							descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
@@ -17717,6 +17987,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 						descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
 						descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
 #endif
+						axis->specializationConstants.outputOffset = app->configuration.outputBufferOffset;
 					}
 					else {
 						uint64_t bufferId = 0;
@@ -17741,6 +18012,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 #if(VKFFT_BACKEND==0)
 								descriptorBufferInfo.buffer = app->configuration.inputBuffer[bufferId];
 #endif
+								axis->specializationConstants.outputOffset = app->configuration.inputBufferOffset;
 							}
 							else {
 								if (((axis->specializationConstants.reorderFourStep == 1) && (axis_upload_id == 1)) || (app->useBluesteinFFT[axis_id] && (!((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (axis->specializationConstants.reverseBluesteinMultiUpload == 1))))) {
@@ -17758,6 +18030,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 #if(VKFFT_BACKEND==0)
 									descriptorBufferInfo.buffer = app->configuration.tempBuffer[bufferId];
 #endif
+									axis->specializationConstants.outputOffset = app->configuration.tempBufferOffset;
 								}
 								else {
 									for (uint64_t l = 0; l < app->configuration.bufferNum; ++l) {
@@ -17774,6 +18047,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 #if(VKFFT_BACKEND==0)
 									descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
 #endif
+									axis->specializationConstants.outputOffset = app->configuration.bufferOffset;
 								}
 							}
 						}
@@ -17793,6 +18067,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 #if(VKFFT_BACKEND==0)
 								descriptorBufferInfo.buffer = app->configuration.inputBuffer[bufferId];
 #endif
+								axis->specializationConstants.outputOffset = app->configuration.inputBufferOffset;
 							}
 							else {
 								for (uint64_t l = 0; l < app->configuration.bufferNum; ++l) {
@@ -17809,6 +18084,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 #if(VKFFT_BACKEND==0)
 								descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
 #endif
+								axis->specializationConstants.outputOffset = app->configuration.bufferOffset;
 							}
 						}
 #if(VKFFT_BACKEND==0)
@@ -17836,6 +18112,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 					descriptorBufferInfo.range = (axis->specializationConstants.kernelBlockSize * storageComplexSize);
 					descriptorBufferInfo.offset = offset * (axis->specializationConstants.kernelBlockSize * storageComplexSize);
 #endif
+					axis->specializationConstants.kernelOffset = app->configuration.kernelOffset;
 				}
 				if ((i == axis->specializationConstants.LUTBindingID) && (app->configuration.useLUT)) {
 #if(VKFFT_BACKEND==0)
@@ -17916,7 +18193,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 					descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
 					descriptorBufferInfo.offset = offset * (axis->specializationConstants.inputBufferBlockSize * storageComplexSize);
 #endif
-					//descriptorBufferInfo.offset = 0;
+					axis->specializationConstants.inputOffset = app->configuration.bufferOffset;
 				}
 				if (i == 1) {
 					uint64_t bufferId = 0;
@@ -17939,7 +18216,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 					descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
 					descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
 #endif
-					//descriptorBufferInfo.offset = 0;
+					axis->specializationConstants.outputOffset = app->configuration.bufferOffset;
 				}
 				if ((i == 2) && (app->configuration.performConvolution)) {
 					uint64_t bufferId = 0;
@@ -17959,6 +18236,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 					descriptorBufferInfo.range = (axis->specializationConstants.kernelBlockSize * storageComplexSize);
 					descriptorBufferInfo.offset = offset * (axis->specializationConstants.kernelBlockSize * storageComplexSize);
 #endif
+					axis->specializationConstants.kernelOffset = app->configuration.kernelOffset;
 				}
 				if ((i == axis->numBindings - 1) && (app->configuration.useLUT)) {
 #if(VKFFT_BACKEND==0)
@@ -18011,7 +18289,8 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 	axis->specializationConstants.complexSize = complexSize;
 	axis->specializationConstants.supportAxis = 0;
 	axis->specializationConstants.symmetricKernel = app->configuration.symmetricKernel;
-
+	axis->specializationConstants.conjugateConvolution = app->configuration.conjugateConvolution;
+	axis->specializationConstants.crossPowerSpectrumNormalization = app->configuration.crossPowerSpectrumNormalization;
 	axis->specializationConstants.fft_dim_full = app->configuration.size[0];
 
 	//allocate LUT
@@ -18198,10 +18477,6 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 	axisStride[4] = usedStride[4];
 
 	axis->specializationConstants.inverse = inverse;
-
-
-	axis->specializationConstants.inputOffset = 0;
-	axis->specializationConstants.outputOffset = 0;
 
 	uint64_t storageComplexSize;
 	if (app->configuration.doublePrecision)
@@ -19110,6 +19385,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axis->specializationConstants.complexSize = complexSize;
 	axis->specializationConstants.supportAxis = 0;
 	axis->specializationConstants.symmetricKernel = app->configuration.symmetricKernel;
+	axis->specializationConstants.conjugateConvolution = app->configuration.conjugateConvolution;
+	axis->specializationConstants.crossPowerSpectrumNormalization = app->configuration.crossPowerSpectrumNormalization;
+
 	uint64_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
 	uint64_t maxSequenceLengthSharedMemoryPow2 = app->configuration.sharedMemorySizePow2 / complexSize;
 	uint64_t maxSingleSizeStrided = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
@@ -19778,8 +20056,6 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axis->specializationConstants.outputStride[4] = ((app->configuration.numberBatches == 1) && (app->configuration.numberKernels == 1)) ? 0 : axis->specializationConstants.outputStride[3] * app->configuration.coordinateFeatures;
 	*/
 
-	axis->specializationConstants.inputOffset = 0;
-	axis->specializationConstants.outputOffset = 0;
 
 	uint64_t storageComplexSize;
 	if (app->configuration.doublePrecision)
@@ -19960,6 +20236,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	VkDescriptorPoolSize descriptorPoolSize = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 	descriptorPoolSize.descriptorCount = (uint32_t)(axis->specializationConstants.inputBufferBlockNum + axis->specializationConstants.outputBufferBlockNum);
 #endif
+	axis->specializationConstants.convolutionBindingID = -1;
 	if ((axis_id == 0) && (axis_upload_id == 0) && (app->configuration.FFTdim == 1) && (app->configuration.performConvolution)) {
 		axis->specializationConstants.convolutionBindingID = axis->numBindings;
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = axis->specializationConstants.kernelBlockNum;
@@ -21607,6 +21884,12 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		app->configuration.kernel = inputLaunchConfiguration.kernel;
 	}
 
+	if (inputLaunchConfiguration.bufferOffset != 0)	app->configuration.bufferOffset = inputLaunchConfiguration.bufferOffset;
+	if (inputLaunchConfiguration.tempBufferOffset != 0)	app->configuration.tempBufferOffset = inputLaunchConfiguration.tempBufferOffset;
+	if (inputLaunchConfiguration.inputBufferOffset != 0)	app->configuration.inputBufferOffset = inputLaunchConfiguration.inputBufferOffset;
+	if (inputLaunchConfiguration.outputBufferOffset != 0)	app->configuration.outputBufferOffset = inputLaunchConfiguration.outputBufferOffset;
+	if (inputLaunchConfiguration.kernelOffset != 0)	app->configuration.kernelOffset = inputLaunchConfiguration.kernelOffset;
+
 	//set optional parameters:
 	uint64_t checkBufferSizeFor64BitAddressing = 0;
 	for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
@@ -21698,6 +21981,8 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		if (inputLaunchConfiguration.numberKernels != 0)	app->configuration.numberKernels = inputLaunchConfiguration.numberKernels;
 
 		if (inputLaunchConfiguration.symmetricKernel != 0)	app->configuration.symmetricKernel = inputLaunchConfiguration.symmetricKernel;
+		if (inputLaunchConfiguration.conjugateConvolution != 0)	app->configuration.conjugateConvolution = inputLaunchConfiguration.conjugateConvolution;
+		if (inputLaunchConfiguration.crossPowerSpectrumNormalization != 0)	app->configuration.crossPowerSpectrumNormalization = inputLaunchConfiguration.crossPowerSpectrumNormalization;
 
 		app->configuration.reorderFourStep = 0;
 		app->configuration.registerBoost = 1;
@@ -23066,6 +23351,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10208; //X.XX.XX format
+	return 10209; //X.XX.XX format
 }
 #endif
