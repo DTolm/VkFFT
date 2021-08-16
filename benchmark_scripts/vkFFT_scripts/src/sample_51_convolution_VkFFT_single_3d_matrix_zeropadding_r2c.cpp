@@ -83,7 +83,6 @@ VkFFTResult sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(VkGPU* 
 	configuration.performR2C = true; //Perform R2C/C2R transform. Can be combined with all other options. Reduces memory requirements by a factor of 2. Requires special input data alignment: for x*y*z system pad x*y plane to (x+2)*y with last 2*y elements reserved, total array dimensions are (x*y+2y)*z. Memory layout after R2C and before C2R can be found on github.
 	configuration.coordinateFeatures = 9; //Specify dimensionality of the input feature vector (default 1). Each component is stored not as a vector, but as a separate system and padded on it's own according to other options (i.e. for x*y system of 3-vector, first x*y elements correspond to the first dimension, then goes x*y for the second, etc).
 	//coordinateFeatures number is an important constant for convolution. If we perform 1x1 convolution, it is equal to number of features, but matrixConvolution should be equal to 1. For matrix convolution, it must be equal to matrixConvolution parameter. If we perform 2x2 convolution, it is equal to 3 for symmetric kernel (stored as xx, xy, yy) and 4 for nonsymmetric (stored as xx, xy, yx, yy). Similarly, 6 (stored as xx, xy, xz, yy, yz, zz) and 9 (stored as xx, xy, xz, yx, yy, yz, zx, zy, zz) for 3x3 convolutions. 
-
 	configuration.disableReorderFourStep = true;//Set to false if you use convolution routine. Data reordering is not needed - no additional buffer - less memory usage
 
 	//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
@@ -174,7 +173,8 @@ VkFFTResult sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(VkGPU* 
 	//Sample forward FFT command buffer allocation + execution performed on kernel. Second number determines how many times perform application in one submit. FFT can also be appended to user defined command buffers.
 
 	//Uncomment the line below if you want to perform kernel FFT. In this sample we use predefined identitiy kernel.
-	//performVulkanFFT(vkGPU, &app_kernel, -1, 1);
+	//VkFFTLaunchParams launchParams0 = {}; 
+	//performVulkanFFT(vkGPU, &app_kernel, &launchParams0, -1, 1);
 
 	//The kernel has been trasnformed.
 
@@ -187,7 +187,10 @@ VkFFTResult sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(VkGPU* 
 	convolution_configuration.symmetricKernel = false;//Specify if convolution kernel is symmetric. In this case we only pass upper triangle part of it in the form of: (xx, xy, yy) for 2d and (xx, xy, xz, yy, yz, zz) for 3d.
 	convolution_configuration.matrixConvolution = 3; //we do matrix convolution, so kernel is 9 numbers (3x3), but vector dimension is 3
 	convolution_configuration.coordinateFeatures = 3;
-
+	convolution_configuration.conjugateConvolution = 0;
+	convolution_configuration.crossPowerSpectrumNormalization = 0;
+	//convolution_configuration.keepShaderCode = 1;
+	//convolution_configuration.printMemoryLayout = 1;
 #if(VKFFT_BACKEND==0)
 	convolution_configuration.kernel = &kernel;
 #elif(VKFFT_BACKEND==1)
@@ -221,7 +224,7 @@ VkFFTResult sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(VkGPU* 
 	cl_mem buffer = 0;
 	buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
-	configuration.buffer = &buffer;
+	convolution_configuration.buffer = &buffer;
 #endif
 
 	convolution_configuration.bufferSize = &bufferSize;

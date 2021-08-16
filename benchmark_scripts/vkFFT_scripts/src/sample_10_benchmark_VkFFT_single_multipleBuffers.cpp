@@ -76,10 +76,9 @@ VkFFTResult sample_10_benchmark_VkFFT_single_multipleBuffers(VkGPU* vkGPU, uint6
 			configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D (default 1).
 			configuration.size[0] = 4 * (uint64_t)pow(2, n); //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 			if (n == 0) configuration.size[0] = 4096;
-			configuration.size[1] = (uint64_t)64 * 32 * (uint64_t)pow(2, 16) / configuration.size[0];
-			if (configuration.size[1] < 1) configuration.size[1] = 1;
-			//configuration.size[1] = (configuration.size[1] > 32768) ? 32768 : configuration.size[1];
-			configuration.size[2] = 1;
+			configuration.numberBatches = (uint64_t)64 * 32 * (uint64_t)pow(2, 16) / configuration.size[0];
+			if (configuration.numberBatches < 1) configuration.numberBatches = 1;
+			//configuration.numberBatches = (configuration.numberBatches > 32768) ? 32768 : configuration.numberBatches;
 			uint64_t numBuf = 4;
 
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
@@ -95,7 +94,7 @@ VkFFTResult sample_10_benchmark_VkFFT_single_multipleBuffers(VkGPU* vkGPU, uint6
 			if (!bufferSize) return VKFFT_ERROR_MALLOC_FAILED;
 			for (uint64_t i = 0; i < numBuf; i++) {
 				bufferSize[i] = {};
-				bufferSize[i] = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2] / numBuf;
+				bufferSize[i] = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.numberBatches / numBuf;
 			}
 
 			VkBuffer* buffer = (VkBuffer*)malloc(numBuf * sizeof(VkBuffer));
@@ -179,9 +178,9 @@ VkFFTResult sample_10_benchmark_VkFFT_single_multipleBuffers(VkGPU* vkGPU, uint6
 						num_tot_transfers += app.localFFTPlan->numAxisUploads[i];
 					num_tot_transfers *= 4;
 					if (file_output)
-						fprintf(output, "VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.size[1], (numBuf * bufferSize[0]) / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)(numBuf * bufferSize[0]) / 1024) / avg_time), (numBuf * bufferSize[0]) / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+						fprintf(output, "VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.numberBatches, (numBuf * bufferSize[0]) / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)(numBuf * bufferSize[0]) / 1024) / avg_time), (numBuf * bufferSize[0]) / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 
-					printf("VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.size[1], (numBuf * bufferSize[0]) / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)(numBuf * bufferSize[0]) / 1024) / avg_time), (numBuf * bufferSize[0]) / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
+					printf("VkFFT System: %" PRIu64 " %" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", (uint64_t)log2(configuration.size[0]), configuration.size[0], configuration.numberBatches, (numBuf * bufferSize[0]) / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)(numBuf * bufferSize[0]) / 1024) / avg_time), (numBuf * bufferSize[0]) / 1024.0 / 1024.0 / 1.024 * num_tot_transfers / avg_time);
 					benchmark_result += ((double)numBuf * bufferSize[0] / 1024) / avg_time;
 				}
 

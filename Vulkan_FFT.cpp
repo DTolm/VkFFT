@@ -53,7 +53,9 @@
 #ifdef USE_FFTW
 #include "sample_11_precision_VkFFT_single.h"
 #include "sample_12_precision_VkFFT_double.h"
+#if(VKFFT_BACKEND==0)
 #include "sample_13_precision_VkFFT_half.h"
+#endif
 #include "sample_14_precision_VkFFT_single_nonPow2.h"
 #include "sample_15_precision_VkFFT_single_r2c.h"
 #include "sample_16_precision_VkFFT_single_dct.h"
@@ -427,7 +429,7 @@ int main(int argc, char* argv[])
 		version_decomposed[0] = version / 10000;
 		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
 		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
-		printf("VkFFT v%d.%d.%d (05-08-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
+		printf("VkFFT v%d.%d.%d (16-08-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)

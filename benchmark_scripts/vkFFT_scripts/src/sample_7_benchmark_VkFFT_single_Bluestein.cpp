@@ -96,7 +96,7 @@ VkFFTResult sample_7_benchmark_VkFFT_single_Bluestein(VkGPU* vkGPU, uint64_t fil
 			configuration.context = &vkGPU->context;
 #endif
 			//Allocate buffer for the input data.
-			uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2];;
+			uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2];
 #if(VKFFT_BACKEND==0)
 			VkBuffer buffer = {};
 			VkDeviceMemory bufferDeviceMemory = {};
