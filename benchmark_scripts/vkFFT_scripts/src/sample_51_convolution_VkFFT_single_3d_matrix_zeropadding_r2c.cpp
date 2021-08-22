@@ -69,6 +69,7 @@ VkFFTResult sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(VkGPU* 
 	configuration.size[1] = 32;
 	configuration.size[2] = 32;
 
+	configuration.normalize = 1;//normalize iFFT
 	configuration.performZeropadding[0] = true; //Perform padding with zeros on GPU. Still need to properly align input data (no need to fill padding area with meaningful data) but this will increase performance due to the lower amount of the memory reads/writes and omitting sequences only consisting of zeros.
 	configuration.performZeropadding[1] = true;
 	configuration.performZeropadding[2] = true;
