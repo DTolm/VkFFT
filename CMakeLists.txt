@@ -99,17 +99,6 @@ endif()
 elseif(${VKFFT_BACKEND} EQUAL 2)
 	list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
 	find_package(hip)
-    	find_library(HIP_hiprtc_LIBRARY hiprtc
-      		PATHS
-      		ENV ROCM_PATH
-       		ENV HIP_PATH
-      		/opt/rocm
-      		PATH_SUFFIXES lib
-       		NO_DEFAULT_PATH)
-	add_library(hiprt UNKNOWN IMPORTED)
-	set_target_properties(hiprt PROPERTIES
-		INTERFACE_LINK_LIBRARIES ${HIP_hiprtc_LIBRARY}
-	)
 elseif(${VKFFT_BACKEND} EQUAL 3)
 	find_package(OpenCL REQUIRED)
 endif()

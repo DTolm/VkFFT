@@ -429,7 +429,7 @@ int main(int argc, char* argv[])
 		version_decomposed[0] = version / 10000;
 		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
 		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
-		printf("VkFFT v%d.%d.%d (16-08-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
+		printf("VkFFT v%d.%d.%d (22-08-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
@@ -494,9 +494,9 @@ int main(int argc, char* argv[])
 		printf("		18 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in double precision\n");
 #endif
 #endif
-		printf("		50 - convolution example with identitiy kernel\n");
-		printf("		51 - zeropadding convolution example with identitiy kernel\n");
-		printf("		52 - batched convolution example with identitiy kernel\n");
+		printf("		50 - convolution example with identity kernel\n");
+		printf("		51 - zeropadding convolution example with identity kernel\n");
+		printf("		52 - batched convolution example with identity kernel\n");
 		printf("		120 - VkFFT FFT + iFFT R2R DCT-2 multidimensional benchmark in single precision\n");
 		printf("		121 - VkFFT FFT + iFFT R2R DCT-2 multidimensional benchmark in double precision\n");
 		printf("		130 - VkFFT FFT + iFFT R2R DCT-3 multidimensional benchmark in single precision\n");

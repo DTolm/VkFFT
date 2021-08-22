@@ -135,7 +135,7 @@ typedef struct {
 	uint64_t kernelOffset;//specify if VkFFT has to offset the first element position inside the kernel. In bytes. Default 0
 
 	//optional: (default 0 if not stated otherwise)
-	uint64_t coalescedMemory;//in bits, for Nvidia and AMD is equal to 32, Intel is equal 64, scaled for half precision. Gonna work regardles, but if specified by user correctly, the performance will be higher.
+	uint64_t coalescedMemory;//in bytes, for Nvidia and AMD is equal to 32, Intel is equal 64, scaled for half precision. Gonna work regardles, but if specified by user correctly, the performance will be higher.
 	uint64_t aimThreads;//aim at this many threads per block. Default 128
 	uint64_t numSharedBanks;//how many banks shared memory has. Default 32
 	uint64_t inverseReturnToInputBuffer;//return data to the input buffer in inverse transform (0 - off, 1 - on). isInputFormatted must be enabled
@@ -1600,7 +1600,7 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 					sprintf(shiftZ, " + %s * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->inputStride[2]);
 			}
 		}
-		char shiftCoordinate[100] = "";
+		char shiftCoordinate[500] = "";
 		uint64_t maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
 		if (sc->numCoordinates * sc->matrixConvolution > 1) {
 			sprintf(shiftCoordinate, " + ((%s / %" PRIu64 ") %% %" PRIu64 ") * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->dispatchZactualFFTSize, maxCoordinate, sc->inputStride[3]);
@@ -1609,7 +1609,7 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 			maxCoordinate = 1;
 			sprintf(shiftCoordinate, " + %s * %" PRIu64 "", coordinate, sc->inputStride[3]);
 		}
-		char shiftBatch[100] = "";
+		char shiftBatch[500] = "";
 		if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
 			if (sc->convolutionStep && (sc->numKernels > 1)) {
 				sprintf(shiftBatch, " + %s * %" PRIu64 "", batchID, sc->inputStride[4]);
@@ -1651,7 +1651,7 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 					sprintf(shiftZ, " + %s * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->inputStride[2]);
 			}
 		}
-		char shiftCoordinate[100] = "";
+		char shiftCoordinate[500] = "";
 		uint64_t maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
 		if (sc->numCoordinates * sc->matrixConvolution > 1) {
 			sprintf(shiftCoordinate, " + ((%s / %" PRIu64 ") %% %" PRIu64 ") * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->dispatchZactualFFTSize, maxCoordinate, sc->inputStride[3]);
@@ -1660,7 +1660,7 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 			maxCoordinate = 1;
 			sprintf(shiftCoordinate, " + %s * %" PRIu64 "", coordinate, sc->inputStride[3]);
 		}
-		char shiftBatch[100] = "";
+		char shiftBatch[500] = "";
 		if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
 			if (sc->convolutionStep && (sc->numKernels > 1)) {
 				sprintf(shiftBatch, " + %s * %" PRIu64 "", batchID, sc->inputStride[4]);
@@ -1727,7 +1727,7 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 					sprintf(shiftZ, " + %s * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->outputStride[2]);
 			}
 		}
-		char shiftCoordinate[100] = "";
+		char shiftCoordinate[500] = "";
 		uint64_t maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
 		if (sc->numCoordinates * sc->matrixConvolution > 1) {
 			sprintf(shiftCoordinate, " + ((%s / %" PRIu64 ") %% %" PRIu64 ") * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->dispatchZactualFFTSize, maxCoordinate, sc->outputStride[3]);
@@ -1736,7 +1736,7 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 			maxCoordinate = 1;
 			sprintf(shiftCoordinate, " + %s * %" PRIu64 "", coordinate, sc->outputStride[3]);
 		}
-		char shiftBatch[100] = "";
+		char shiftBatch[500] = "";
 		if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
 			if (sc->convolutionStep && (sc->numKernels > 1)) {
 				sprintf(shiftBatch, " + %s * %" PRIu64 "", batchID, sc->outputStride[4]);
@@ -1776,7 +1776,7 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 					sprintf(shiftZ, " + %s * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->outputStride[2]);
 			}
 		}
-		char shiftCoordinate[100] = "";
+		char shiftCoordinate[500] = "";
 		uint64_t maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
 		if (sc->numCoordinates * sc->matrixConvolution > 1) {
 			sprintf(shiftCoordinate, " + ((%s / %" PRIu64 ") %% %" PRIu64 ") * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->dispatchZactualFFTSize, maxCoordinate, sc->outputStride[3]);
@@ -1785,7 +1785,7 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 			maxCoordinate = 1;
 			sprintf(shiftCoordinate, " + %s * %" PRIu64 "", coordinate, sc->outputStride[3]);
 		}
-		char shiftBatch[100] = "";
+		char shiftBatch[500] = "";
 		if ((sc->numBatches > 1) || (sc->numKernels > 1)) {
 			if (sc->convolutionStep && (sc->numKernels > 1)) {
 				sprintf(shiftBatch, " + %s * %" PRIu64 "", batchID, sc->outputStride[4]);
@@ -18898,7 +18898,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 						}
 					}
 					axis->specializationConstants.inputBufferBlockSize = (locBufferNum == 1) ? locBufferSize : (uint64_t)ceil(locPageSize / (double)storageComplexSize);
-					axis->specializationConstants.inputBufferBlockNum = (locBufferNum == 1) ? 1 : (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+					axis->specializationConstants.inputBufferBlockNum = (locBufferNum == 1) ? 1 : (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 					//if (axis->specializationConstants.inputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
 				}
@@ -18946,7 +18946,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					}
 				}
 				axis->specializationConstants.inputBufferBlockSize = (locBufferNum == 1) ? locBufferSize : (uint64_t)ceil(locPageSize / (double)storageComplexSize);
-				axis->specializationConstants.inputBufferBlockSize = (locBufferNum == 1) ? 1 : (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+				axis->specializationConstants.inputBufferBlockSize = (locBufferNum == 1) ? 1 : (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 				//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
 			}
@@ -18963,13 +18963,15 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					}
 				}
 				axis->specializationConstants.inputBufferBlockSize = (locBufferNum == 1) ? locBufferSize : (uint64_t)ceil(locPageSize / (double)storageComplexSize);
-				axis->specializationConstants.inputBufferBlockSize = (locBufferNum == 1) ? 1 : (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+				axis->specializationConstants.inputBufferBlockSize = (locBufferNum == 1) ? 1 : (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 				//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
 			}
 		}
 	}
-
+	initPageSize = -1;
+	locBufferNum = 1;
+	locBufferSize = -1;
 	{
 		if (inverse) {
 			if ((axis_upload_id == 0) && (app->configuration.numberKernels > 1) && (inverse) && (!app->configuration.performConvolution)) {
@@ -20546,13 +20548,13 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 		axisStride[4] = axisStride[3] * app->configuration.coordinateFeatures;
 	}
-	if ((inverse) && (axis_id == 0) && (((!app->useBluesteinFFT[axis_id])&&(axis_upload_id == 0))||((app->useBluesteinFFT[axis_id]) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload == 1))) && (axis->specializationConstants.performR2C) && (!((app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer))) && (!app->configuration.isOutputFormatted)) {
+	if ((inverse) && (axis_id == 0) && (((!app->useBluesteinFFT[axis_id])&&(axis_upload_id == 0))||((app->useBluesteinFFT[axis_id]) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1)))) && (axis->specializationConstants.performR2C) && (!((app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer))) && (!app->configuration.isOutputFormatted)) {
 		axisStride[1] *= 2;
 		axisStride[2] *= 2;
 		axisStride[3] *= 2;
 		axisStride[4] *= 2;
 	}
-	if ((FFTPlan->multiUploadR2C) && (inverse) && (axis_id == 0) && (((!app->useBluesteinFFT[axis_id]) && (axis_upload_id == 0)) || ((app->useBluesteinFFT[axis_id]) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload == 1)))) {
+	if ((FFTPlan->multiUploadR2C) && (inverse) && (axis_id == 0) && (((!app->useBluesteinFFT[axis_id]) && (axis_upload_id == 0)) || ((app->useBluesteinFFT[axis_id]) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1))))) {
 		for (uint64_t i = 1; i < 5; i++) {
 			axisStride[i] /= 2;
 		}
@@ -20636,7 +20638,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				}
 			}
 			axis->specializationConstants.inputBufferBlockSize = (locBufferNum == 1) ? locBufferSize : (uint64_t)ceil(locPageSize / (double)storageComplexSize);
-			axis->specializationConstants.inputBufferBlockNum = (locBufferNum == 1) ? 1 : (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+			axis->specializationConstants.inputBufferBlockNum = (locBufferNum == 1) ? 1 : (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 			//if (axis->specializationConstants.inputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
 		}
@@ -20685,7 +20687,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 		}
 	}
-
+	initPageSize = -1;
+	locBufferNum = 1;
+	locBufferSize = -1;
 	if (((axis_upload_id == 0) && (!app->useBluesteinFFT[axis_id]) && (app->configuration.isOutputFormatted && (
 		((axis_id == app->firstAxis) && (inverse))
 		|| ((axis_id == app->lastAxis) && (!inverse) && (!app->configuration.performConvolution))
@@ -22327,6 +22331,14 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	}
 #endif
 	app->configuration.bufferSize = inputLaunchConfiguration.bufferSize;
+	if (app->configuration.bufferSize != 0) {
+		for (uint64_t i = 0; i < app->configuration.bufferNum; i++) {
+			if (app->configuration.bufferSize[i] == 0) {
+				deleteVkFFT(app);
+				return VKFFT_ERROR_EMPTY_bufferSize;
+			}
+		}
+	}
 	app->configuration.buffer = inputLaunchConfiguration.buffer;
 
 	if (inputLaunchConfiguration.userTempBuffer != 0)	app->configuration.userTempBuffer = inputLaunchConfiguration.userTempBuffer;
@@ -22341,6 +22353,14 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		}
 #endif
 		app->configuration.tempBufferSize = inputLaunchConfiguration.tempBufferSize;
+		if (app->configuration.tempBufferSize != 0) {
+			for (uint64_t i = 0; i < app->configuration.tempBufferNum; i++) {
+				if (app->configuration.tempBufferSize[i] == 0) {
+					deleteVkFFT(app);
+					return VKFFT_ERROR_EMPTY_tempBufferSize;
+				}
+			}
+		}
 		app->configuration.tempBuffer = inputLaunchConfiguration.tempBuffer;
 	}
 	else {
@@ -22364,6 +22384,14 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		}
 #endif
 		app->configuration.inputBufferSize = inputLaunchConfiguration.inputBufferSize;
+		if (app->configuration.inputBufferSize != 0) {
+			for (uint64_t i = 0; i < app->configuration.inputBufferNum; i++) {
+				if (app->configuration.inputBufferSize[i] == 0) {
+					deleteVkFFT(app);
+					return VKFFT_ERROR_EMPTY_inputBufferSize;
+				}
+			}
+		}
 		app->configuration.inputBuffer = inputLaunchConfiguration.inputBuffer;
 	}
 	else {
@@ -22383,6 +22411,14 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		}
 #endif
 		app->configuration.outputBufferSize = inputLaunchConfiguration.outputBufferSize;
+		if (app->configuration.outputBufferSize != 0) {
+			for (uint64_t i = 0; i < app->configuration.outputBufferNum; i++) {
+				if (app->configuration.outputBufferSize[i] == 0) {
+					deleteVkFFT(app);
+					return VKFFT_ERROR_EMPTY_outputBufferSize;
+				}
+			}
+		}
 		app->configuration.outputBuffer = inputLaunchConfiguration.outputBuffer;
 	}
 	else {
@@ -22401,6 +22437,14 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		}
 #endif
 		app->configuration.kernelSize = inputLaunchConfiguration.kernelSize;
+		if (app->configuration.kernelSize != 0) {
+			for (uint64_t i = 0; i < app->configuration.kernelNum; i++) {
+				if (app->configuration.kernelSize[i] == 0) {
+					deleteVkFFT(app);
+					return VKFFT_ERROR_EMPTY_kernelSize;
+				}
+			}
+		}
 		app->configuration.kernel = inputLaunchConfiguration.kernel;
 	}
 
@@ -23637,6 +23681,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10210; //X.XX.XX format
+	return 10211; //X.XX.XX format
 }
 #endif
