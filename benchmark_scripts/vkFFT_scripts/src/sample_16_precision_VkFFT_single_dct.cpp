@@ -115,10 +115,10 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 				switch (t)
 				{
 				case 2:
-					dct_type = FFTW_REDFT01;
+					dct_type = FFTW_REDFT10;
 					break;
 				case 3:
-					dct_type = FFTW_REDFT10;
+					dct_type = FFTW_REDFT01;
 					break;
 				case 4:
 					dct_type = FFTW_REDFT11;
