@@ -59,7 +59,8 @@ VkFFTResult sample_100_benchmark_VkFFT_single_nd_dct(VkGPU* vkGPU, uint64_t file
 
 	const int num_benchmark_samples = 36;
 	const int num_runs = 3;
-	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},  
+	int omitted_systems = 0;
+	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {512, 256, 1, 2},  
 	{720, 480, 1, 2}, {1280, 720, 1, 2}, {300, 300, 1, 2}, {300, 300, 300, 3},{500, 500, 1, 2}, {500, 500, 500, 3},{700, 700, 1, 2}, {700, 700, 100, 3},
 	{(uint64_t)pow(2,6), (uint64_t)pow(2,6), 1, 2},	{(uint64_t)pow(2,7), (uint64_t)pow(2,6), 1, 2}, {(uint64_t)pow(2,7), (uint64_t)pow(2,7), 1, 2},	{(uint64_t)pow(2,8), (uint64_t)pow(2,7), 1, 2},{(uint64_t)pow(2,8), (uint64_t)pow(2,8), 1, 2},
 	{(uint64_t)pow(2,9), (uint64_t)pow(2,8), 1, 2},{(uint64_t)pow(2,9), (uint64_t)pow(2,9), 1, 2},	{(uint64_t)pow(2,10), (uint64_t)pow(2,9), 1, 2},{(uint64_t)pow(2,10), (uint64_t)pow(2,10), 1, 2},	{(uint64_t)pow(2,11), (uint64_t)pow(2,10), 1, 2},{(uint64_t)pow(2,12), (uint64_t)pow(2,10), 1, 2},
@@ -157,6 +158,26 @@ VkFFTResult sample_100_benchmark_VkFFT_single_nd_dct(VkGPU* vkGPU, uint64_t file
 
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 			resFFT = initializeVkFFT(&app, configuration);
+			if (resFFT == VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT) {
+				if (r == num_runs - 1) {
+					omitted_systems++;
+					if (file_output)
+						fprintf(output, "VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " - UNSUPPORTED\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2]);
+					printf("VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " - UNSUPPORTED\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2]);
+				}
+#if(VKFFT_BACKEND==0)
+				vkDestroyBuffer(vkGPU->device, buffer, NULL);
+				vkFreeMemory(vkGPU->device, bufferDeviceMemory, NULL);
+#elif(VKFFT_BACKEND==1)
+				cudaFree(buffer);
+#elif(VKFFT_BACKEND==2)
+				hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+				clReleaseMemObject(buffer);
+#endif
+				deleteVkFFT(&app);
+				continue;
+			}
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 
 			//Submit FFT+iFFT.
@@ -215,7 +236,7 @@ VkFFTResult sample_100_benchmark_VkFFT_single_nd_dct(VkGPU* vkGPU, uint64_t file
 		}
 	}
 	free(buffer_input);
-	benchmark_result /= ((int64_t)num_benchmark_samples - 1);
+	benchmark_result /= ((int64_t)num_benchmark_samples - 1 - omitted_systems);
 
 	if (file_output) {
 		fprintf(output, "Benchmark score VkFFT: %" PRIu64 "\n", (uint64_t)(benchmark_result));

@@ -321,6 +321,11 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 		resFFT = sample_52_convolution_VkFFT_single_2d_batched_r2c(vkGPU, file_output, output, isCompilerInitialized);
 		break;
 	}
+	case 110:
+	{
+		resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 1);
+		break;
+	}
 	case 120:
 	{
 		resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 2);
@@ -334,6 +339,11 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	case 140:
 	{
 		resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 4);
+		break;
+	}
+	case 111:
+	{
+		resFFT = sample_101_benchmark_VkFFT_double_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 1);
 		break;
 	}
 	case 121:
@@ -429,7 +439,7 @@ int main(int argc, char* argv[])
 		version_decomposed[0] = version / 10000;
 		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
 		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
-		printf("VkFFT v%d.%d.%d (22-08-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
+		printf("VkFFT v%d.%d.%d (21-09-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
@@ -467,8 +477,8 @@ int main(int argc, char* argv[])
 #endif
 		printf("		14 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in single precision\n");
 		printf("		15 - VkFFT / cuFFT / FFTW R2C+C2R precision test in single precision\n");
-		printf("		16 - VkFFT / FFTW R2R DCT-II, III and IV precision test in single precision\n");
-		printf("		17 - VkFFT / FFTW R2R DCT-II, III and IV precision test in double precision\n");
+		printf("		16 - VkFFT / FFTW R2R DCT-I, II, III and IV precision test in single precision\n");
+		printf("		17 - VkFFT / FFTW R2R DCT-I, II, III and IV precision test in double precision\n");
 		printf("		18 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in double precision\n");
 #elif USE_rocFFT
 		printf("		11 - VkFFT / rocFFT / FFTW C2C precision test in single precision\n");
@@ -478,8 +488,8 @@ int main(int argc, char* argv[])
 #endif
 		printf("		14 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in single precision\n");
 		printf("		15 - VkFFT / rocFFT / FFTW R2C+C2R precision test in single precision\n");
-		printf("		16 - VkFFT / FFTW R2R DCT-II, III and IV precision test in single precision\n");
-		printf("		17 - VkFFT / FFTW R2R DCT-II, III and IV precision test in double precision\n");
+		printf("		16 - VkFFT / FFTW R2R DCT-I, II, III and IV precision test in single precision\n");
+		printf("		17 - VkFFT / FFTW R2R DCT-I, II, III and IV precision test in double precision\n");
 		printf("		18 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in double precision\n");
 #else
 		printf("		11 - VkFFT / FFTW C2C precision test in single precision\n");
@@ -489,14 +499,16 @@ int main(int argc, char* argv[])
 #endif
 		printf("		14 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in single precision\n");
 		printf("		15 - VkFFT / FFTW R2C+C2R precision test in single precision\n");
-		printf("		16 - VkFFT / FFTW R2R DCT-II, III and IV precision test in single precision\n");
-		printf("		17 - VkFFT / FFTW R2R DCT-II, III and IV precision test in double precision\n");
+		printf("		16 - VkFFT / FFTW R2R DCT-I, II, III and IV precision test in single precision\n");
+		printf("		17 - VkFFT / FFTW R2R DCT-I, II, III and IV precision test in double precision\n");
 		printf("		18 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in double precision\n");
 #endif
 #endif
 		printf("		50 - convolution example with identity kernel\n");
 		printf("		51 - zeropadding convolution example with identity kernel\n");
 		printf("		52 - batched convolution example with identity kernel\n");
+		printf("		110 - VkFFT FFT + iFFT R2R DCT-1 multidimensional benchmark in single precision\n");
+		printf("		111 - VkFFT FFT + iFFT R2R DCT-1 multidimensional benchmark in double precision\n");
 		printf("		120 - VkFFT FFT + iFFT R2R DCT-2 multidimensional benchmark in single precision\n");
 		printf("		121 - VkFFT FFT + iFFT R2R DCT-2 multidimensional benchmark in double precision\n");
 		printf("		130 - VkFFT FFT + iFFT R2R DCT-3 multidimensional benchmark in single precision\n");

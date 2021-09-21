@@ -19,7 +19,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - Single, double and half precision support. Double precision uses CPU-generated LUT tables. Half precision still does all computations in single and only uses half precision to store data.
   - All transformations are performed in-place with no performance loss. Out-of-place transforms are supported by selecting different input/output buffers.
   - No additional transposition uploads. Note: Data can be reshuffled after the Four Step FFT algorithm with an additional buffer (for big sequences). Doesn't matter for convolutions - they return to the input ordering (saves memory).
-  - Complex to complex (C2C), real to complex (R2C), complex to real (C2R) transformations and real to real (R2R) Discrete Cosine Transformations of types II, III and IV. R2R, R2C and C2R are optimized to run up to 2x times faster than C2C and take 2x less memory
+  - Complex to complex (C2C), real to complex (R2C), complex to real (C2R) transformations and real to real (R2R) Discrete Cosine Transformations of types I, II, III and IV. R2R, R2C and C2R are optimized to run up to 2x times faster than C2C and take 2x less memory
   - 1x1, 2x2, 3x3 convolutions with symmetric or nonsymmetric kernel (no register overutilization)
   - Native zero padding to model open systems (up to 2x faster than simply padding input array with zeros). Can specify the range of sequences filled with zeros and the direction where zero padding is applied (read or write stage)
   - WHDCN layout - data is stored in the following order (sorted by increase in strides): the width, the height, the depth, the coordinate (the number of feature maps), the batch number
@@ -38,7 +38,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
 
 ## Installation
 Vulkan version:
-Include the vkFFT.h file and glslang compiler. Provide the library with correctly chosen VKFFT_BACKEND definition (VKFFT_BACKEND=0 for Vulkan). Sample CMakeLists.txt file configures project based on Vulkan_FFT.cpp file, which contains examples on how to use VkFFT to perform FFT, iFFT and convolution calculations, use zero padding, multiple feature/batch convolutions, C2C FFTs of big systems, R2C/C2R transforms, R2R DCT-II, III and IV, double precision FFTs, half precision FFTs.\
+Include the vkFFT.h file and glslang compiler. Provide the library with correctly chosen VKFFT_BACKEND definition (VKFFT_BACKEND=0 for Vulkan). Sample CMakeLists.txt file configures project based on Vulkan_FFT.cpp file, which contains examples on how to use VkFFT to perform FFT, iFFT and convolution calculations, use zero padding, multiple feature/batch convolutions, C2C FFTs of big systems, R2C/C2R transforms, R2R DCT-I, II, III and IV, double precision FFTs, half precision FFTs.\
 For single and double precision, Vulkan 1.0 is required. For half precision, Vulkan 1.1 is required.
 
 CUDA/HIP:

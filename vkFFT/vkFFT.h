@@ -143,6 +143,7 @@ typedef struct {
 	uint64_t useUint64;//use 64-bit addressing mode in generated kernels
 	uint64_t omitDimension[3];//disable FFT for this dimension (0 - FFT enabled, 1 - FFT disabled). Default 0. Doesn't work for R2C dimension 0 for now. Doesn't work with convolutions.
 	uint64_t fixMaxRadixBluestein;//controls the padding of sequences in Bluestein convolution. If specified, padded sequence will be made of up to fixMaxRadixBluestein primes. Default: 2 for CUDA and Vulkan/OpenCL/HIP up to 1048576 combined dimension FFT system, 7 for Vulkan/OpenCL/HIP past after. Min = 2, Max = 13.
+	uint64_t performBandwidthBoost;//try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise 
 
 	uint64_t doublePrecision; //perform calculations in double precision (0 - off, 1 - on).
 	uint64_t halfPrecision; //perform calculations in half precision (0 - off, 1 - on)
@@ -191,7 +192,6 @@ typedef struct {
 
 	//not used techniques:
 	uint64_t swapTo3Stage4Step; //specify at which power of 2 to switch from 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled. Must be at least 17
-	uint64_t performHalfBandwidthBoost;//try to reduce coalsesced number by a factor of 2 to get bigger sequence in one upload
 	uint64_t devicePageSize;//in KB, the size of a page on the GPU. Setting to 0 disables local buffer split in pages
 	uint64_t localPageSize;//in KB, the size to split page into if sequence spans multiple devicePageSize pages
 
@@ -371,6 +371,7 @@ typedef struct {
 	uint64_t performR2C;
 	uint64_t performR2CmultiUpload;
 	uint64_t performDCT;
+	uint64_t performBandwidthBoost;
 	uint64_t frequencyZeropadding;
 	uint64_t performZeropaddingFull[3]; // don't do read/write if full sequence is omitted
 	uint64_t performZeropaddingInput[3]; // don't read if input is zeropadded (0 - off, 1 - on)
@@ -1264,7 +1265,7 @@ layout(std430, binding = %" PRIu64 ") buffer DataIn{\n\
 #endif
 		break;
 	}
-	case 5: case 120: case 121: case 130: case 131: case 140: case 141: case 142: case 143:
+	case 5: case 110: case 111: case 120: case 121: case 130: case 131: case 140: case 141: case 142: case 143: case 144: case 145:
 	{
 		if (!strcmp(floatTypeMemory, "half")) {
 			sc->inputNumberByteSize = 2;
@@ -1377,7 +1378,7 @@ layout(std430, binding = %" PRIu64 ") buffer DataOut{\n\
 #endif
 		break;
 	}
-	case 6: case 120: case 121: case 130: case 131: case 140: case 141: case 142: case 143:
+	case 6: case 110: case 111: case 120: case 121: case 130: case 131: case 140: case 141: case 142: case 143: case 144: case 145:
 	{
 		if (!strcmp(floatTypeMemory, "half")) {
 			sc->outputNumberByteSize = 2;
@@ -1552,7 +1553,7 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataBluesteinMultiplicatio
 static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* uintType, uint64_t inputType, const char* index_x, const char* index_y, const char* coordinate, const char* batchID) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	switch (inputType) {
-	case 0: case 2: case 3: case 4:case 5: case 6: case 120: case 130: case 140: case 142: {//single_c2c + single_c2c_strided
+	case 0: case 2: case 3: case 4:case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144: {//single_c2c + single_c2c_strided
 		char inputOffset[30] = "";
 		if (sc->inputOffset > 0)
 			sprintf(inputOffset, "%" PRIu64 " + ", sc->inputOffset / sc->inputNumberByteSize);
@@ -1622,7 +1623,7 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 		if (res != VKFFT_SUCCESS) return res;
 		break;
 	}
-	case 1: case 121: case 131: case 141: case 143: {//grouped_c2c
+	case 1: case 111: case 121: case 131: case 141: case 143: case 145: {//grouped_c2c
 		char inputOffset[30] = "";
 		if (sc->inputOffset > 0)
 			sprintf(inputOffset, "%" PRIu64 " + ", sc->inputOffset / sc->inputNumberByteSize);
@@ -1679,7 +1680,7 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* uintType, uint64_t outputType, const char* index_x, const char* index_y, const char* coordinate, const char* batchID) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	switch (outputType) {//single_c2c + single_c2c_strided
-	case 0: case 2: case 3: case 4: case 5: case 6: case 120: case 130: case 140: case 142: {
+	case 0: case 2: case 3: case 4: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144: {
 		char outputOffset[30] = "";
 		if (sc->outputOffset > 0)
 			sprintf(outputOffset, "%" PRIu64 " + ", sc->outputOffset / sc->outputNumberByteSize);
@@ -1749,7 +1750,7 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 		if (res != VKFFT_SUCCESS) return res;
 		break;
 	}
-	case 1: case 121: case 131: case 141: case 143: {//grouped_c2c
+	case 1: case 111: case 121: case 131: case 141: case 143: case 145: {//grouped_c2c
 		char outputOffset[30] = "";
 		if (sc->outputOffset > 0)
 			sprintf(outputOffset, "%" PRIu64 " + ", sc->outputOffset / sc->outputNumberByteSize);
@@ -3497,7 +3498,7 @@ static inline VkFFTResult appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLa
 	//maxSequenceSharedMemoryPow2 = sc->sharedMemSizePow2 / vecSize;
 	uint64_t mergeR2C = (sc->mergeSequencesR2C && (sc->axis_id == 0)) ? 2 : 0;
 	switch (sharedType) {
-	case 0: case 5: case 6: case 120: case 130: case 140: case 142://single_c2c + single_r2c
+	case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144://single_c2c + single_r2c
 	{
 		sc->resolveBankConflictFirstStages = 0;
 		sc->sharedStrideBankConflictFirstStages = ((sc->fftDim > sc->numSharedBanks / 2) && ((sc->fftDim & (sc->fftDim - 1)) == 0)) ? sc->fftDim / sc->registerBoost * (sc->numSharedBanks / 2 + 1) / (sc->numSharedBanks / 2) : sc->fftDim / sc->registerBoost;
@@ -3538,11 +3539,11 @@ static inline VkFFTResult appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLa
 		sc->usedSharedMemory = vecSize * sc->localSize[1] * sc->maxSharedStride;
 		break;
 	}
-	case 1: case 2: case 121: case 131: case 141: case 143://grouped_c2c + single_c2c_strided
+	case 1: case 2: case 111: case 121: case 131: case 141: case 143: case 145://grouped_c2c + single_c2c_strided
 	{
 		uint64_t shift = (sc->fftDim < (sc->numSharedBanks / 2)) ? (sc->numSharedBanks / 2) / sc->fftDim : 1;
 		sc->sharedStrideReadWriteConflict = ((sc->axisSwapped) && ((sc->localSize[0] % 4) == 0)) ? sc->localSize[0] + shift : sc->localSize[0];
-		sc->maxSharedStride = ((maxSequenceSharedMemory < sc->sharedStrideReadWriteConflict * sc->fftDim / sc->registerBoost)) ? sc->localSize[0] : sc->sharedStrideReadWriteConflict;
+		sc->maxSharedStride = ((maxSequenceSharedMemory < sc->sharedStrideReadWriteConflict* sc->fftDim / sc->registerBoost)) ? sc->localSize[0] : sc->sharedStrideReadWriteConflict;
 		sc->sharedStrideReadWriteConflict = (sc->maxSharedStride == sc->localSize[0]) ? sc->localSize[0] : sc->sharedStrideReadWriteConflict;
 		sc->tempLen = sprintf(sc->tempStr, "%s sharedStride = %" PRIu64 ";\n", uintType, sc->maxSharedStride);
 		res = VkAppendLine(sc);
@@ -3598,10 +3599,22 @@ static inline VkFFTResult appendInitialization(VkFFTSpecializationConstantsLayou
 			sc->tempLen = sprintf(sc->tempStr, "	%s temp_%" PRIu64 ";\n", vecType, i);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	temp_%" PRIu64 ".x=0;\n", i);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	temp_%" PRIu64 ".y=0;\n", i);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
 		}
 		for (uint64_t j = 1; j < sc->matrixConvolution; j++) {
 			for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 				sc->tempLen = sprintf(sc->tempStr, "	%s temp_%" PRIu64 "_%" PRIu64 ";\n", vecType, i, j);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	temp_%" PRIu64 "_%" PRIu64 ".x=0;\n", i, j);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	temp_%" PRIu64 "_%" PRIu64 ".y=0;\n", i, j);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
@@ -3610,6 +3623,12 @@ static inline VkFFTResult appendInitialization(VkFFTSpecializationConstantsLayou
 	else {
 		for (uint64_t i = 0; i < sc->registers_per_thread; i++) {
 			sc->tempLen = sprintf(sc->tempStr, "	%s temp_%" PRIu64 ";\n", vecType, i);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	temp_%" PRIu64 ".x=0;\n", i);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	temp_%" PRIu64 ".y=0;\n", i);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
@@ -3647,6 +3666,12 @@ static inline VkFFTResult appendInitialization(VkFFTSpecializationConstantsLayou
 				sc->tempLen = sprintf(sc->tempStr, "	%s temp_%" PRIu64 ";\n", vecType, j + i * sc->registers_per_thread);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	temp_%" PRIu64 ".x=0;\n", j + i * sc->registers_per_thread);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	temp_%" PRIu64 ".y=0;\n", j + i * sc->registers_per_thread);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
 			}
 			/*sc->tempLen = sprintf(sc->tempStr, "\
 for(uint i=0; i<%" PRIu64 "; i++)\n\
@@ -3654,6 +3679,12 @@ temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 		}
 	}
 	sc->tempLen = sprintf(sc->tempStr, "	%s w;\n", vecType);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	sc->tempLen = sprintf(sc->tempStr, "	w.x=0;\n");
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	sc->tempLen = sprintf(sc->tempStr, "	w.y=0;\n");
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	sprintf(sc->w, "w");
@@ -3668,6 +3699,12 @@ temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 		sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->locID[i]);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, "	%s.x=0;\n", sc->locID[i]);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, "	%s.y=0;\n", sc->locID[i]);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
 	}
 	sprintf(sc->temp, "%s", sc->locID[0]);
 	uint64_t useRadix8 = 0;
@@ -3679,23 +3716,29 @@ temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 			sc->tempLen = sprintf(sc->tempStr, "	%s iw;\n", vecType);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	iw.x=0;\n");
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	iw.y=0;\n");
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
 			sprintf(sc->iw, "iw");
 		}
 	}
 	//sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->tempReg);
-	sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", uintType, sc->stageInvocationID);
+	sc->tempLen = sprintf(sc->tempStr, "	%s %s=0;\n", uintType, sc->stageInvocationID);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
-	sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", uintType, sc->blockInvocationID);
+	sc->tempLen = sprintf(sc->tempStr, "	%s %s=0;\n", uintType, sc->blockInvocationID);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
-	sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", uintType, sc->sdataID);
+	sc->tempLen = sprintf(sc->tempStr, "	%s %s=0;\n", uintType, sc->sdataID);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
-	sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", uintType, sc->combinedID);
+	sc->tempLen = sprintf(sc->tempStr, "	%s %s=0;\n", uintType, sc->combinedID);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
-	sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", uintType, sc->inoutID);
+	sc->tempLen = sprintf(sc->tempStr, "	%s %s=0;\n", uintType, sc->inoutID);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	if (sc->LUT) {
@@ -4220,7 +4263,7 @@ static inline VkFFTResult appendSetSMToZero(VkFFTSpecializationConstantsLayout* 
 	for (uint64_t k = 0; k < sc->registerBoost; k++) {
 		for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 			switch (readType) {
-			case 0: case 5: case 6: case 120: case 130: case 140: case 142:
+			case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144:
 			{
 				if (sc->localSize[1] == 1)
 					sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
@@ -4247,7 +4290,7 @@ static inline VkFFTResult appendSetSMToZero(VkFFTSpecializationConstantsLayout* 
 				}
 				break;
 			}
-			case 1: case 2: case 121: case 131: case 141: case 143://single_c2c
+			case 1: case 2: case 111: case 121: case 131: case 141: case 143: case 145://single_c2c
 			{
 				sc->tempLen = sprintf(sc->tempStr, "		sdata[%s*(%s+%" PRIu64 ")+%s].x=0;\n", sc->sharedStride, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], sc->gl_LocalInvocationID_x);
 				res = VkAppendLine(sc);
@@ -4267,7 +4310,59 @@ static inline VkFFTResult appendSetSMToZero(VkFFTSpecializationConstantsLayout* 
 	//if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
-
+static inline VkFFTResult setReadToRegisters(VkFFTSpecializationConstantsLayout* sc, uint64_t readType) {
+	VkFFTResult res = VKFFT_SUCCESS;
+	switch (readType) {
+	case 0: //single_c2c
+	{
+		if ((sc->localSize[1] > 1) || ((sc->performR2C) && (sc->actualInverse)) || (sc->localSize[0] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim))
+			sc->readToRegisters = 0;
+		else
+			sc->readToRegisters = 1;
+		break;
+	}
+	case 1: //grouped_c2c
+	{
+		if (sc->localSize[1] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim)
+			sc->readToRegisters = 0;
+		else
+			sc->readToRegisters = 1;
+		break;
+	}
+	case 2: //single_c2c_strided
+	{
+		if (sc->localSize[1] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim)
+			sc->readToRegisters = 0;
+		else
+			sc->readToRegisters = 1;
+		break;
+	}
+	case 5://single_r2c
+	{
+		if ((sc->axisSwapped) || (sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim))
+			sc->readToRegisters = 0;
+		else
+			sc->readToRegisters = 1;
+		break;
+	}
+	case 6: //single_c2r
+	{
+		sc->readToRegisters = 1;
+		break;
+	}
+	case 110: case 111: case 120: case 121: case 130: case 131: case 140: case 141: case 142: case 143:
+	{
+		sc->readToRegisters = 0;
+		break;
+	}
+	case 144: case 145:
+	{
+		sc->readToRegisters = 1;
+		break;
+	}
+	}
+	return res;
+}
 static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint64_t readType) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	double double_PI = 3.1415926535897932384626433832795;
@@ -4309,7 +4404,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	char convTypeLeft[20] = "";
 	char convTypeRight[20] = "";
 	if ((!strcmp(floatType, "float")) && (strcmp(floatTypeMemory, "float"))) {
-		if ((readType == 5) || (readType == 120) || (readType == 121) || (readType == 130) || (readType == 131) || (readType == 140) || (readType == 141) || (readType == 142) || (readType == 143)) {
+		if ((readType == 5) || (readType == 110) || (readType == 111) || (readType == 120) || (readType == 121) || (readType == 130) || (readType == 131) || (readType == 140) || (readType == 141) || (readType == 142) || (readType == 143) || (readType == 144) || (readType == 145)) {
 #if(VKFFT_BACKEND==0)
 			sprintf(convTypeLeft, "float(");
 			sprintf(convTypeRight, ")");
@@ -4341,7 +4436,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		}
 	}
 	if ((!strcmp(floatType, "double")) && (strcmp(floatTypeMemory, "double"))) {
-		if ((readType == 5) || (readType == 120) || (readType == 121) || (readType == 130) || (readType == 131) || (readType == 140) || (readType == 141) || (readType == 142) || (readType == 143)) {
+		if ((readType == 5) || (readType == 110) || (readType == 111) || (readType == 120) || (readType == 121) || (readType == 130) || (readType == 131) || (readType == 140) || (readType == 141) || (readType == 142) || (readType == 143) || (readType == 144) || (readType == 145)) {
 #if(VKFFT_BACKEND==0)
 			sprintf(convTypeLeft, "double(");
 			sprintf(convTypeRight, ")");
@@ -4432,10 +4527,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 			if (res != VKFFT_SUCCESS) return res;
 		}
 
-		if ((sc->localSize[1] > 1) || ((sc->performR2C) && (sc->actualInverse)) || (sc->localSize[0] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim))
-			sc->readToRegisters = 0;
-		else
-			sc->readToRegisters = 1;
 		if (sc->fftDim == sc->fft_dim_full) {
 			for (uint64_t k = 0; k < sc->registerBoost; k++) {
 				for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
@@ -4702,10 +4793,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	}
 	case 1://grouped_c2c
 	{
-		if (sc->localSize[1] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim)
-			sc->readToRegisters = 0;
-		else
-			sc->readToRegisters = 1;
 		char shiftX[500] = "";
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
@@ -4809,10 +4896,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	}
 	case 2://single_c2c_strided
 	{
-		if (sc->localSize[1] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim)
-			sc->readToRegisters = 0;
-		else
-			sc->readToRegisters = 1;
 		char shiftX[500] = "";
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
@@ -4916,10 +4999,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	}
 	case 5://single_r2c
 	{
-		if ((sc->axisSwapped) || (sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim))
-			sc->readToRegisters = 0;
-		else
-			sc->readToRegisters = 1;
 		char shiftX[500] = "";
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX ");
@@ -5178,7 +5257,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 			if (res != VKFFT_SUCCESS) return res;
 		}
 
-		sc->readToRegisters = 0;
 		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		if (sc->fftDim == sc->fft_dim_full) {
 			if (sc->zeropadBluestein[0]) sc->fftDim = sc->fft_zeropad_Bluestein_left_read[sc->axis_id];
@@ -5237,7 +5315,8 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					if (res != VKFFT_SUCCESS) return res;
 					res = appendZeropadStartReadWriteStage(sc, 1);
 					if (res != VKFFT_SUCCESS) return res;
-					if (sc->readToRegisters) {
+					if (0) {
+						//not enabled
 						if (sc->inputBufferBlockNum == 1)
 							sc->tempLen = sprintf(sc->tempStr, "		%s = %s%s[%s]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 						else
@@ -5269,7 +5348,8 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						sc->tempLen = sprintf(sc->tempStr, "		}else{\n");
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						if (sc->readToRegisters) {
+						if (0) {
+							//not enabled
 							sc->tempLen = sprintf(sc->tempStr, "			%s.x =0;%s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -5624,7 +5704,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					}
 				}
 			}
-			sc->readToRegisters = 1;
+			//sc->readToRegisters = 1;
 			if (sc->zeropadBluestein[0]) sc->fftDim = sc->fft_dim_full;
 		}
 		else {
@@ -5635,9 +5715,471 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		if (res != VKFFT_SUCCESS) return res;
 		break;
 	}
+	case 110://DCT-I nonstrided
+	{
+		char shiftX[500] = "";
+		if (sc->performWorkGroupShift[0])
+			sprintf(shiftX, " + consts.workGroupShiftX ");
+		char shiftY[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY, " + consts.workGroupShiftY ");
+		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+		if (sc->fftDim == sc->fft_dim_full) {
+			if (sc->zeropadBluestein[0]) {
+				res = appendSetSMToZero(sc, floatType, floatTypeMemory, uintType, readType);
+				if (res != VKFFT_SUCCESS) return res;
+				res = appendBarrierVkFFT(sc, 1);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->fftDim = sc->fft_zeropad_Bluestein_left_read[sc->axis_id];
+			}
+			sc->fftDim = (sc->fftDim + 2)/2;
+			uint64_t num_in = (sc->axisSwapped) ? (uint64_t)ceil((sc->fftDim) / (double)sc->localSize[1]) : (uint64_t)ceil((sc->fftDim) / (double)sc->localSize[0]);
+			for (uint64_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t i = 0; i < num_in; i++) {
+
+					if (sc->localSize[1] == 1)
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * num_in) * sc->localSize[0]);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * num_in) * sc->localSize[0] * sc->localSize[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->inputStride[0] > 1)
+						sc->tempLen = sprintf(sc->tempStr, "		inoutID = (combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->inputStride[0], sc->fftDim, mult * sc->inputStride[1]);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->fftDim, mult * sc->inputStride[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->axisSwapped) {
+						if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint64_t)ceil(sc->size[1] / (double)mult));
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->zeropadBluestein[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if ((1 + i + k * num_in) * sc->localSize[1] >= (sc->fftDim)) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim) * sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint64_t)ceil(sc->size[1] / (double)mult));
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->zeropadBluestein[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[1]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if ((1 + i + k * num_in) * sc->localSize[0] >= (sc->fftDim)) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim) * sc->localSize[1]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->inputStride[1], sc->fft_zeropad_left_read[sc->axis_id], sc->inputStride[1], sc->fft_zeropad_right_read[sc->axis_id]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					indexInputVkFFT(sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, ";\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					res = appendZeropadStartReadWriteStage(sc, 1);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->axisSwapped) {
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim, sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (sc->inputBufferBlockNum == 1)
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %s%s[%s]%s;\n", convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (sc->mergeSequencesR2C) {
+							sc->tempLen = sprintf(sc->tempStr, "		inoutID += %" PRIu64 ";\n", sc->inputStride[1]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+
+							if (sc->inputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s%s[inoutID]%s;\n", convTypeLeft, inputsStruct, convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							if (sc->inputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")>0)&&((combinedID %% %" PRIu64 ") < %" PRIu64 ")){\n", sc->fftDim, sc->fftDim, sc->fftDim-1);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		inoutID = (%" PRIu64 " - combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ");\n", 2*sc->fftDim - 2, sc->fftDim, sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[inoutID] = sdata[sdataID];\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ")  + (combinedID / %" PRIu64 ") * sharedStride;\n", sc->fftDim, sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->inputBufferBlockNum == 1)
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %s%s[inoutID]%s;\n", convTypeLeft, inputsStruct, convTypeRight);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->mergeSequencesR2C) {
+							sc->tempLen = sprintf(sc->tempStr, "		inoutID += %" PRIu64 ";\n", sc->inputStride[1]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->inputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s%s[inoutID]%s;\n", convTypeLeft, inputsStruct, convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							if (sc->inputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")>0)&&((combinedID %% %" PRIu64 ") < %" PRIu64 ")){\n", sc->fftDim, sc->fftDim, sc->fftDim - 1);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		inoutID = (%" PRIu64 " - combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride;\n", 2 * sc->fftDim - 2, sc->fftDim, sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[inoutID] = sdata[sdataID];\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					res = appendZeropadEndReadWriteStage(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "	}else{\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (sc->axisSwapped) {
+							sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ")  + (combinedID / %" PRIu64 ") * sharedStride;\n", sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->axisSwapped) {
+							sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")>0)&&((combinedID %% %" PRIu64 ") < %" PRIu64 ")){\n", sc->fftDim, sc->fftDim, sc->fftDim - 1);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		inoutID = (%" PRIu64 " - combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ");\n", 2 * sc->fftDim - 2, sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[inoutID] = sdata[sdataID];\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")>0)&&((combinedID %% %" PRIu64 ") < %" PRIu64 ")){\n", sc->fftDim, sc->fftDim, sc->fftDim - 1);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		inoutID = (%" PRIu64 " - combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride;\n", 2 * sc->fftDim - 2, sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[inoutID] = sdata[sdataID];\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sc->tempLen = sprintf(sc->tempStr, "	}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->axisSwapped) {
+						if ((1 + i + k * num_in) * sc->localSize[1] >= (sc->fftDim)) {
+							sc->tempLen = sprintf(sc->tempStr, "		}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		}");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if ((1 + i + k * num_in) * sc->localSize[0] >= (sc->fftDim)) {
+							sc->tempLen = sprintf(sc->tempStr, "		}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		}");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+			}
+			sc->fftDim = 2 * sc->fftDim - 2;
+			if (sc->zeropadBluestein[0]) sc->fftDim = sc->fft_dim_full;
+		}
+		else {
+			//Not implemented
+		}
+		break;
+	}
+	case 111://DCT-I strided
+	{
+		char shiftX[500] = "";
+		if (sc->performWorkGroupShift[0])
+			sprintf(shiftX, " + consts.workGroupShiftX ");
+		char shiftX2[500] = "";
+		if (sc->performWorkGroupShift[0])
+			sprintf(shiftX2, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
+		char shiftY[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY, " + consts.workGroupShiftY ");
+		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+		if (sc->fftDim == sc->fft_dim_full) {
+			if (sc->zeropadBluestein[0]) {
+				res = appendSetSMToZero(sc, floatType, floatTypeMemory, uintType, readType);
+				if (res != VKFFT_SUCCESS) return res;
+				res = appendBarrierVkFFT(sc, 1);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->fftDim = sc->fft_zeropad_Bluestein_left_read[sc->axis_id];
+			}
+			sc->fftDim = (sc->fftDim + 2)/2;
+			uint64_t num_in = (uint64_t)ceil((sc->fftDim) / (double)sc->localSize[1]);
+			for (uint64_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t i = 0; i < num_in; i++) {
+
+					//sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * mult * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+					//res = VkAppendLine(sc);
+					//if (res != VKFFT_SUCCESS) return res;
+
+					if ((uint64_t)ceil(sc->size[0] / (double)mult) % sc->localSize[0] != 0) {
+						sc->tempLen = sprintf(sc->tempStr, "		if ((%s%s) < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, shiftX2, (uint64_t)ceil(sc->size[0] / (double)mult));
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->mergeSequencesR2C)
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 ") / %" PRIu64 ";\n", sc->gl_LocalInvocationID_y, (i + k * num_in) * sc->localSize[1], mult);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 ");\n", sc->gl_LocalInvocationID_y, (i + k * num_in) * sc->localSize[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if((combinedID %% %" PRIu64 ") < %" PRIu64 "){\n", sc->fft_dim_full, sc->fft_zeropad_Bluestein_left_read[sc->axis_id]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if ((1 + i + k * num_in) * sc->localSize[1] >= (sc->fftDim)) {
+						sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim));
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->mergeSequencesR2C)
+						sc->tempLen = sprintf(sc->tempStr, "		//sdataID = (((combinedID %% %" PRIu64 ") %% 2) * %" PRIu64 " + (1-2*((combinedID %% %" PRIu64 ") %% 2)) * ((combinedID %% %" PRIu64 ")/2)) * sharedStride + (%s + ((%s + %" PRIu64 ") %% %" PRIu64 ") * %" PRIu64 ") / %" PRIu64 ";\n", sc->fftDim, sc->fftDim - 1, sc->fftDim, sc->fftDim, sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], mult, sc->localSize[0], mult);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") * sharedStride + %s;\n", sc->fftDim, sc->gl_LocalInvocationID_x);
+
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->mergeSequencesR2C) {
+						sprintf(index_x, "(%s + %" PRIu64 " * ((%s %% %" PRIu64 ") + (%s%s) * %" PRIu64 ")) %% (%" PRIu64 ")", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, mult, sc->gl_WorkGroupID_x, shiftX, mult, sc->fft_dim_x);
+
+						sprintf(index_y, "(%s/%" PRIu64 " + %" PRIu64 ")", sc->gl_LocalInvocationID_y, mult, (i + k * num_in) * sc->localSize[1]);
+					}
+					else {
+						sprintf(index_x, "(%s%s) %% (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX2, sc->fft_dim_x);
+						sprintf(index_y, "(%s + %" PRIu64 ")", sc->gl_LocalInvocationID_y, (i + k * num_in) * sc->localSize[1]);
+					}
+					res = indexInputVkFFT(sc, uintType, readType, index_x, index_y, requestCoordinate, requestBatch);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, ";\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					res = appendZeropadStartReadWriteStage(sc, 1);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if((%s %% %" PRIu64 " < %" PRIu64 ")||(%s %% %" PRIu64 " >= %" PRIu64 ")){\n", index_y, sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], index_y, sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->inputBufferBlockNum == 1)
+						sc->tempLen = sprintf(sc->tempStr, "		%s.x = %s%s[%s]%s;\n", sc->regIDs[0], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		%s.x = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->regIDs[0], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+
+					if (sc->mergeSequencesR2C) {
+						sc->tempLen = sprintf(sc->tempStr, "		if ((%s %% 2) == 0) {\n", sc->gl_LocalInvocationID_x);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %s.x;\n", sc->regIDs[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		} else {\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s.x;\n", sc->regIDs[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %s.x;\n", sc->regIDs[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")>0)&&((combinedID %% %" PRIu64 ") < %" PRIu64 ")){\n", sc->fftDim, sc->fftDim, sc->fftDim - 1);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		inoutID = (%" PRIu64 " - combinedID %% %" PRIu64 ") * sharedStride + %s;\n", 2 * sc->fftDim - 2, sc->fftDim, sc->gl_LocalInvocationID_x);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		sdata[inoutID] = sdata[sdataID];\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		}\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					res = appendZeropadEndReadWriteStage(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "	}else{\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (sc->mergeSequencesR2C) {
+							sc->tempLen = sprintf(sc->tempStr, "		if ((%s %% 2) == 0) {\n", sc->gl_LocalInvocationID_x);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = 0;\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		} else {\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = 0;\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")>0)&&((combinedID %% %" PRIu64 ") < %" PRIu64 ")){\n", sc->fftDim, sc->fftDim, sc->fftDim - 1);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		inoutID = (%" PRIu64 " - combinedID %% %" PRIu64 ") * sharedStride + %s;\n", 2 * sc->fftDim - 2, sc->fftDim, sc->gl_LocalInvocationID_x);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[inoutID] = sdata[sdataID];\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "	}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if ((1 + i + k * num_in) * sc->localSize[1] >= (sc->fftDim)) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if ((uint64_t)ceil(sc->size[0] / (double)mult) % sc->localSize[0] != 0) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+				}
+			}
+			sc->fftDim = 2 * sc->fftDim - 2;
+			if (sc->zeropadBluestein[0]) sc->fftDim = sc->fft_dim_full;
+		}
+		else {
+			//Not implemented
+		}
+		break;
+	}
 	case 120://DCT-II nonstrided
 	{
-		sc->readToRegisters = 0;
 		char shiftX[500] = "";
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX ");
@@ -5828,7 +6370,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	}
 	case 121://DCT-II strided
 	{
-		sc->readToRegisters = 0;
 		char shiftX[500] = "";
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX ");
@@ -5990,7 +6531,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	}
 	case 130://DCT-III nonstrided
 	{
-		sc->readToRegisters = 0;
 		char shiftX[500] = "";
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX ");
@@ -6265,7 +6805,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	}
 	case 131://DCT-III strided
 	{
-		sc->readToRegisters = 0;
 		char shiftX[500] = "";
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX ");
@@ -6539,7 +7078,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0;\n", sc->regIDs[1]);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
-		sc->readToRegisters = 0;
 		if (sc->fftDim == sc->fft_dim_full) {
 			for (uint64_t k = 0; k < sc->registerBoost; k++) {
 				for (uint64_t i = 0; i < (uint64_t)ceil(sc->min_registers_per_thread / 8.0); i++) {
@@ -6817,7 +7355,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	}
 	case 141://DCT-IV strided cast to 8x FFT
 	{
-		sc->readToRegisters = 0;
 		char shiftX[500] = "";
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
@@ -6940,7 +7477,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	}
 	case 142://DCT-IV nonstrided as 2xN/2 DCT-II
 	{
-		sc->readToRegisters = 0;
 		char shiftX[500] = "";
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX ");
@@ -7012,12 +7548,32 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					if (res != VKFFT_SUCCESS) return res;
 					res = appendZeropadStartReadWriteStage(sc, 1);
 					if (res != VKFFT_SUCCESS) return res;
+#if(VKFFT_BACKEND!=3)//OpenCL is not handling barrier with thread-conditional writes to local memory - so this is a work-around
 					if (sc->inputBufferBlockNum == 1)
 						sc->tempLen = sprintf(sc->tempStr, "		%s.x = %s%s[%s]%s;\n", sc->regIDs[0], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 					else
 						sc->tempLen = sprintf(sc->tempStr, "		%s.x = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->regIDs[0], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+#else
+					if (i < sc->min_registers_per_thread) {
+						if (sc->inputBufferBlockNum == 1)
+							sc->tempLen = sprintf(sc->tempStr, "		%s.x = %s%s[%s]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		%s.x = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						if (sc->inputBufferBlockNum == 1)
+							sc->tempLen = sprintf(sc->tempStr, "		%s.y = %s%s[%s]%s;\n", sc->regIDs[i - sc->min_registers_per_thread + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		%s.y = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->regIDs[i - sc->min_registers_per_thread + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+#endif
+#if(VKFFT_BACKEND!=3)//OpenCL is not handling barrier with thread-conditional writes to local memory - so this is a work-around: we do writes in a separate stage
 					if (sc->axisSwapped) {
 						//sc->tempLen = sprintf(sc->tempStr, "		sdataID = (((combinedID %% %" PRIu64 ") %% 2) * %" PRIu64 " + (1-2*((combinedID %% %" PRIu64 ") %% 2)) * ((combinedID %% %" PRIu64 ")/2)) * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim, sc->fftDim - 1, sc->fftDim, sc->fftDim, sc->fftDim);
 						sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID %% %" PRIu64 ")/2) * sharedStride + (combinedID / %" PRIu64 ");\n", 2 * sc->fftDim, 2 * sc->fftDim);
@@ -7028,6 +7584,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					}
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+
 					sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")%%2) == 0) {\n", 2 * sc->fftDim);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -7037,7 +7594,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					sc->tempLen = sprintf(sc->tempStr, "		}\n");
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")%%2) == 1) {\n", 2 * sc->fftDim);//another OpenCL bugfix
+					sc->tempLen = sprintf(sc->tempStr, "		else {\n");
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 					sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s.x;\n", sc->regIDs[0]);
@@ -7046,7 +7603,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					sc->tempLen = sprintf(sc->tempStr, "		}\n");
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-
+#endif
 					res = appendZeropadEndReadWriteStage(sc);
 					if (res != VKFFT_SUCCESS) return res;
 					if (sc->zeropad[0]) {
@@ -7107,6 +7664,295 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					}
 				}
 			}
+#if(VKFFT_BACKEND==3)//OpenCL is not handling barrier with thread-conditional writes to local memory - so this is a work-around
+			for (uint64_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t i = 0; i < 2 * sc->min_registers_per_thread; i++) {
+
+					if (sc->localSize[1] == 1)
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * 2 * sc->min_registers_per_thread) * sc->localSize[0]);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * 2 * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+
+					if (sc->inputStride[0] > 1)
+						sc->tempLen = sprintf(sc->tempStr, "		inoutID = (combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", 2 * sc->fftDim, sc->inputStride[0], 2 * sc->fftDim, sc->inputStride[1]);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", 2 * sc->fftDim, 2 * sc->fftDim, sc->inputStride[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->axisSwapped) {
+						if ((uint64_t)ceil(sc->size[1]) % sc->localSize[0] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", 2 * sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint64_t)ceil(sc->size[1]));
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if ((uint64_t)ceil(sc->size[1]) % sc->localSize[1] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", 2 * sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint64_t)ceil(sc->size[1]));
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", maxBluesteinCutOff);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->inputStride[1], sc->fft_zeropad_left_read[sc->axis_id], sc->inputStride[1], sc->fft_zeropad_right_read[sc->axis_id]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					indexInputVkFFT(sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, ";\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					res = appendZeropadStartReadWriteStage(sc, 1);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->axisSwapped) {
+						//sc->tempLen = sprintf(sc->tempStr, "		sdataID = (((combinedID %% %" PRIu64 ") %% 2) * %" PRIu64 " + (1-2*((combinedID %% %" PRIu64 ") %% 2)) * ((combinedID %% %" PRIu64 ")/2)) * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim, sc->fftDim - 1, sc->fftDim, sc->fftDim, sc->fftDim);
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID %% %" PRIu64 ")/2) * sharedStride + (combinedID / %" PRIu64 ");\n", 2 * sc->fftDim, 2 * sc->fftDim);
+					}
+					else {
+						//sc->tempLen = sprintf(sc->tempStr, "		sdataID = (((combinedID %% %" PRIu64 ") %% 2) * %" PRIu64 " + (1-2*((combinedID %% %" PRIu64 ") %% 2)) * ((combinedID %% %" PRIu64 ")/2))  + (combinedID / %" PRIu64 ") * sharedStride;\n", sc->fftDim, sc->fftDim - 1, sc->fftDim, sc->fftDim, sc->fftDim);
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID %% %" PRIu64 ")/2)  + (combinedID / %" PRIu64 ") * sharedStride;\n", 2 * sc->fftDim, 2 * sc->fftDim);
+					}
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (i < sc->min_registers_per_thread) {
+						sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")%%2) == 0) {\n", 2 * sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %s.x;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")%%2) == 0) {\n", 2 * sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %s.y;\n", sc->regIDs[i - sc->min_registers_per_thread + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					res = appendZeropadEndReadWriteStage(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "	}else{\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (sc->axisSwapped) {
+							//sc->tempLen = sprintf(sc->tempStr, "		sdataID = (((combinedID %% %" PRIu64 ") %% 2) * %" PRIu64 " + (1-2*((combinedID %% %" PRIu64 ") %% 2)) * ((combinedID %% %" PRIu64 ")/2)) * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim, sc->fftDim - 1, sc->fftDim, sc->fftDim, sc->fftDim);
+							sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID %% %" PRIu64 ")/2) * sharedStride + (combinedID / %" PRIu64 ");\n", 2 * sc->fftDim, 2 * sc->fftDim);
+						}
+						else {
+							//sc->tempLen = sprintf(sc->tempStr, "		sdataID = (((combinedID %% %" PRIu64 ") %% 2) * %" PRIu64 " + (1-2*((combinedID %% %" PRIu64 ") %% 2)) * ((combinedID %% %" PRIu64 ")/2))  + (combinedID / %" PRIu64 ") * sharedStride;\n", sc->fftDim, sc->fftDim - 1, sc->fftDim, sc->fftDim, sc->fftDim);
+							sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID %% %" PRIu64 ")/2)  + (combinedID / %" PRIu64 ") * sharedStride;\n", 2 * sc->fftDim, 2 * sc->fftDim);
+						}
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")%%2) == 0) {\n", 2 * sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")%%2) == 1) {\n", 2 * sc->fftDim);//another OpenCL bugfix
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "	}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->axisSwapped) {
+						if ((uint64_t)ceil(sc->size[1]) % sc->localSize[0] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		}");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if ((uint64_t)ceil(sc->size[1]) % sc->localSize[1] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		}");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+			}
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+			for (uint64_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t i = 0; i < 2 * sc->min_registers_per_thread; i++) {
+
+					if (sc->localSize[1] == 1)
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * 2 * sc->min_registers_per_thread) * sc->localSize[0]);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * 2 * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+
+					if (sc->inputStride[0] > 1)
+						sc->tempLen = sprintf(sc->tempStr, "		inoutID = (combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", 2 * sc->fftDim, sc->inputStride[0], 2 * sc->fftDim, sc->inputStride[1]);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", 2 * sc->fftDim, 2 * sc->fftDim, sc->inputStride[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->axisSwapped) {
+						if ((uint64_t)ceil(sc->size[1]) % sc->localSize[0] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", 2 * sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint64_t)ceil(sc->size[1]));
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if ((uint64_t)ceil(sc->size[1]) % sc->localSize[1] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", 2 * sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint64_t)ceil(sc->size[1]));
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", maxBluesteinCutOff);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->inputStride[1], sc->fft_zeropad_left_read[sc->axis_id], sc->inputStride[1], sc->fft_zeropad_right_read[sc->axis_id]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					indexInputVkFFT(sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, ";\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					res = appendZeropadStartReadWriteStage(sc, 1);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->axisSwapped) {
+						//sc->tempLen = sprintf(sc->tempStr, "		sdataID = (((combinedID %% %" PRIu64 ") %% 2) * %" PRIu64 " + (1-2*((combinedID %% %" PRIu64 ") %% 2)) * ((combinedID %% %" PRIu64 ")/2)) * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim, sc->fftDim - 1, sc->fftDim, sc->fftDim, sc->fftDim);
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID %% %" PRIu64 ")/2) * sharedStride + (combinedID / %" PRIu64 ");\n", 2 * sc->fftDim, 2 * sc->fftDim);
+					}
+					else {
+						//sc->tempLen = sprintf(sc->tempStr, "		sdataID = (((combinedID %% %" PRIu64 ") %% 2) * %" PRIu64 " + (1-2*((combinedID %% %" PRIu64 ") %% 2)) * ((combinedID %% %" PRIu64 ")/2))  + (combinedID / %" PRIu64 ") * sharedStride;\n", sc->fftDim, sc->fftDim - 1, sc->fftDim, sc->fftDim, sc->fftDim);
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID %% %" PRIu64 ")/2)  + (combinedID / %" PRIu64 ") * sharedStride;\n", 2 * sc->fftDim, 2 * sc->fftDim);
+					}
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (i < sc->min_registers_per_thread) {
+						sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")%%2) == 1) {\n", 2 * sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s.x;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")%%2) == 1) {\n", 2 * sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s.y;\n", sc->regIDs[i - sc->min_registers_per_thread + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					res = appendZeropadEndReadWriteStage(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "	}else{\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (sc->axisSwapped) {
+							//sc->tempLen = sprintf(sc->tempStr, "		sdataID = (((combinedID %% %" PRIu64 ") %% 2) * %" PRIu64 " + (1-2*((combinedID %% %" PRIu64 ") %% 2)) * ((combinedID %% %" PRIu64 ")/2)) * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim, sc->fftDim - 1, sc->fftDim, sc->fftDim, sc->fftDim);
+							sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID %% %" PRIu64 ")/2) * sharedStride + (combinedID / %" PRIu64 ");\n", 2 * sc->fftDim, 2 * sc->fftDim);
+						}
+						else {
+							//sc->tempLen = sprintf(sc->tempStr, "		sdataID = (((combinedID %% %" PRIu64 ") %% 2) * %" PRIu64 " + (1-2*((combinedID %% %" PRIu64 ") %% 2)) * ((combinedID %% %" PRIu64 ")/2))  + (combinedID / %" PRIu64 ") * sharedStride;\n", sc->fftDim, sc->fftDim - 1, sc->fftDim, sc->fftDim, sc->fftDim);
+							sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID %% %" PRIu64 ")/2)  + (combinedID / %" PRIu64 ") * sharedStride;\n", 2 * sc->fftDim, 2 * sc->fftDim);
+						}
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")%%2) == 0) {\n", 2 * sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if (((combinedID %% %" PRIu64 ")%%2) == 1) {\n", 2 * sc->fftDim);//another OpenCL bugfix
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "	}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->axisSwapped) {
+						if ((uint64_t)ceil(sc->size[1]) % sc->localSize[0] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		}");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if ((uint64_t)ceil(sc->size[1]) % sc->localSize[1] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		}");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					
+				}
+			}
+#endif
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
 			res = appendZeropadStart(sc);
@@ -7184,9 +8030,10 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
-					//sc->tempLen = sprintf(sc->tempStr, "		printf(\" %%f  %%f\\n\", %s.x, %s.y);\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
-					//res = VkAppendLine(sc);
-					//if (res != VKFFT_SUCCESS) return res;
+
+					/*sc->tempLen = sprintf(sc->tempStr, "		printf(\" %%f  %%f  %%d\\n\", %s.x, %s.y, %s);\n", sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], sc->gl_LocalInvocationID_x);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;*/
 				}
 			}
 			res = appendZeropadEnd(sc);
@@ -7223,6 +8070,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %s.x;\n", sc->regIDs[i + k * sc->registers_per_thread]);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+#if(VKFFT_BACKEND!=3)
 					if (sc->axisSwapped) {
 						sc->tempLen = sprintf(sc->tempStr, "		sdataID = (%" PRIu64 " - combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim, sc->fftDim, sc->fftDim);
 					}
@@ -7234,6 +8082,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s.y;\n", sc->regIDs[i + k * sc->registers_per_thread]);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+#endif
 					sc->tempLen = sprintf(sc->tempStr, "		}else{\n");
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -7248,16 +8097,64 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
-#if(VKFFT_BACKEND==3)//OpenCL is not handling barrier with thread-conditional writes to local memory - so this is a work-around
-					res = appendBarrierVkFFT(sc, 1);
-					if (res != VKFFT_SUCCESS) return res;
-#endif
+					/*sc->tempLen = sprintf(sc->tempStr, "		printf(\" %%f  %%f %%d\\n\", sdata[sdataID].x, sdata[sdataID].y, %s);\n", sc->gl_LocalInvocationID_x);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;*/
 				}
 			}
 			res = appendZeropadEnd(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
+#if(VKFFT_BACKEND==3)
+			res = appendZeropadStart(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			for (uint64_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+
+					if (sc->localSize[1] == 1)
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", maxBluesteinCutOff);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					sc->tempLen = sprintf(sc->tempStr, "		if((combinedID %% %" PRIu64 ")>0){\n", sc->fftDim);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->axisSwapped) {
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = (%" PRIu64 " - combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim, sc->fftDim, sc->fftDim);
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = (%" PRIu64 " - combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride;\n", sc->fftDim, sc->fftDim, sc->fftDim);
+					}
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s.y;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		}\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					/*sc->tempLen = sprintf(sc->tempStr, "		printf(\" %%f  %%f %%d\\n\", sdata[sdataID].x, sdata[sdataID].y, %s);\n", sc->gl_LocalInvocationID_x);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;*/
+				}
+			}
+			res = appendZeropadEnd(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+#endif
 			res = appendZeropadStart(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			uint64_t num_in = (sc->axisSwapped) ? (uint64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (uint64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
@@ -7388,7 +8285,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	}
 	case 143://DCT-IV strided as 2xN/2 DCT-II
 	{
-		sc->readToRegisters = 0;
 		char shiftX[500] = "";
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX ");
@@ -7443,12 +8339,32 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 
 					res = appendZeropadStartReadWriteStage(sc, 1);
 					if (res != VKFFT_SUCCESS) return res;
+#if(VKFFT_BACKEND!=3)//OpenCL is not handling barrier with thread-conditional writes to local memory - so this is a work-around
 					if (sc->inputBufferBlockNum == 1)
 						sc->tempLen = sprintf(sc->tempStr, "		%s.x = %s%s[%s]%s;\n", sc->regIDs[0], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
 					else
 						sc->tempLen = sprintf(sc->tempStr, "		%s.x = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->regIDs[0], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+#else
+					if (i < sc->min_registers_per_thread) {
+						if (sc->inputBufferBlockNum == 1)
+							sc->tempLen = sprintf(sc->tempStr, "		%s.x = %s%s[%s]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		%s.x = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->regIDs[i + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						if (sc->inputBufferBlockNum == 1)
+							sc->tempLen = sprintf(sc->tempStr, "		%s.y = %s%s[%s]%s;\n", sc->regIDs[i - sc->min_registers_per_thread + k * sc->registers_per_thread], convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		%s.y = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", sc->regIDs[i - sc->min_registers_per_thread + k * sc->registers_per_thread], convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+#endif
+#if(VKFFT_BACKEND!=3)//OpenCL is not handling barrier with thread-conditional writes to local memory - so this is a work-around: we do writes in a separate stage
 					sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID / %" PRIu64 ")/2) * sharedStride + (combinedID %% %" PRIu64 ");\n", sc->localSize[0], sc->localSize[0]);
 
 					res = VkAppendLine(sc);
@@ -7468,6 +8384,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					sc->tempLen = sprintf(sc->tempStr, "		}\n");
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+#endif
 					res = appendZeropadEndReadWriteStage(sc);
 					if (res != VKFFT_SUCCESS) return res;
 					if (sc->zeropad[0]) {
@@ -7509,6 +8426,218 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					}
 				}
 			}
+#if(VKFFT_BACKEND==3)//OpenCL is not handling barrier with thread-conditional writes to local memory - so this is a work-around
+			for (uint64_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t i = 0; i < 2 * sc->min_registers_per_thread; i++) {
+
+					if (sc->localSize[1] == 1)
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * 2 * sc->min_registers_per_thread) * sc->localSize[0]);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * 2 * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", 2 * sc->fftDim * sc->localSize[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if ((uint64_t)ceil(sc->size[0]) % sc->localSize[0] != 0) {
+						sc->tempLen = sprintf(sc->tempStr, "		if ((%s%s) < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, shiftX2, (uint64_t)ceil(sc->size[0]));
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sprintf(index_x, "(%s%s) %% (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX2, sc->fft_dim_x);
+					sprintf(index_y, "(%s + %" PRIu64 ")", sc->gl_LocalInvocationID_y, (i + k * 2 * sc->min_registers_per_thread) * sc->localSize[1]);
+					res = indexInputVkFFT(sc, uintType, readType, index_x, index_y, requestCoordinate, requestBatch);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, ";\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if((%s %% %" PRIu64 " < %" PRIu64 ")||(%s %% %" PRIu64 " >= %" PRIu64 ")){\n", index_y, sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], index_y, sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+
+					res = appendZeropadStartReadWriteStage(sc, 1);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID / %" PRIu64 ")/2) * sharedStride + (combinedID %% %" PRIu64 ");\n", sc->localSize[0], sc->localSize[0]);
+
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (i < sc->min_registers_per_thread) {
+						sc->tempLen = sprintf(sc->tempStr, "		if ((combinedID / %" PRIu64 ")%%2 == 0) {\n", sc->localSize[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %s.x;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "		if ((combinedID / %" PRIu64 ")%%2 == 0) {\n", sc->localSize[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %s.y;\n", sc->regIDs[i - sc->min_registers_per_thread + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					res = appendZeropadEndReadWriteStage(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "	}else{\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID / %" PRIu64 ")/2) * sharedStride + (combinedID %% %" PRIu64 ");\n", sc->localSize[0], sc->localSize[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((combinedID / %" PRIu64 ")%%2 == 0) {\n", sc->localSize[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		} else {\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "	}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if ((uint64_t)ceil(sc->size[0]) % sc->localSize[0] != 0) {
+						sc->tempLen = sprintf(sc->tempStr, "		}");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+				}
+			}
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+			for (uint64_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t i = 0; i < 2 * sc->min_registers_per_thread; i++) {
+
+					if (sc->localSize[1] == 1)
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * 2 * sc->min_registers_per_thread) * sc->localSize[0]);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * 2 * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", 2 * sc->fftDim * sc->localSize[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if ((uint64_t)ceil(sc->size[0]) % sc->localSize[0] != 0) {
+						sc->tempLen = sprintf(sc->tempStr, "		if ((%s%s) < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, shiftX2, (uint64_t)ceil(sc->size[0]));
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sprintf(index_x, "(%s%s) %% (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX2, sc->fft_dim_x);
+					sprintf(index_y, "(%s + %" PRIu64 ")", sc->gl_LocalInvocationID_y, (i + k * 2 * sc->min_registers_per_thread) * sc->localSize[1]);
+					res = indexInputVkFFT(sc, uintType, readType, index_x, index_y, requestCoordinate, requestBatch);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, ";\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if((%s %% %" PRIu64 " < %" PRIu64 ")||(%s %% %" PRIu64 " >= %" PRIu64 ")){\n", index_y, sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], index_y, sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+
+					res = appendZeropadStartReadWriteStage(sc, 1);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID / %" PRIu64 ")/2) * sharedStride + (combinedID %% %" PRIu64 ");\n", sc->localSize[0], sc->localSize[0]);
+
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (i < sc->min_registers_per_thread) {
+						sc->tempLen = sprintf(sc->tempStr, "		if ((combinedID / %" PRIu64 ")%%2 == 1) {\n", sc->localSize[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s.x;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "		if ((combinedID / %" PRIu64 ")%%2 == 1) {\n", sc->localSize[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s.y;\n", sc->regIDs[i - sc->min_registers_per_thread + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					res = appendZeropadEndReadWriteStage(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "	}else{\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = ((combinedID / %" PRIu64 ")/2) * sharedStride + (combinedID %% %" PRIu64 ");\n", sc->localSize[0], sc->localSize[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((combinedID / %" PRIu64 ")%%2 == 0) {\n", sc->localSize[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		} else {\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "	}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if ((uint64_t)ceil(sc->size[0]) % sc->localSize[0] != 0) {
+						sc->tempLen = sprintf(sc->tempStr, "		}");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+				}
+			}
+#endif
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
 			res = appendZeropadStart(sc);
@@ -7603,6 +8732,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %s.x;\n", sc->regIDs[i + k * sc->registers_per_thread]);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+#if(VKFFT_BACKEND!=3)
 					sc->tempLen = sprintf(sc->tempStr, "		sdataID = (%" PRIu64 " - combinedID / %" PRIu64 ") * sharedStride + (combinedID %% %" PRIu64 ");\n", sc->fftDim, sc->localSize[0], sc->localSize[0]);
 
 					res = VkAppendLine(sc);
@@ -7610,6 +8740,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s.y;\n", sc->regIDs[i + k * sc->registers_per_thread]);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+#endif
 					sc->tempLen = sprintf(sc->tempStr, "		}else{\n");
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -7630,6 +8761,48 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 			if (res != VKFFT_SUCCESS) return res;
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
+#if(VKFFT_BACKEND==3)
+			res = appendZeropadStart(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			for (uint64_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+
+					if (sc->localSize[1] == 1)
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					sc->tempLen = sprintf(sc->tempStr, "		if((combinedID / %" PRIu64 ")>0){\n", sc->localSize[0]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		sdataID = (%" PRIu64 " - combinedID / %" PRIu64 ") * sharedStride + (combinedID %% %" PRIu64 ");\n", sc->fftDim, sc->localSize[0], sc->localSize[0]);
+
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s.y;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		}\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+				}
+			}
+			res = appendZeropadEnd(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+#endif
 			res = appendZeropadStart(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			uint64_t num_in = (uint64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[1]);
@@ -7726,9 +8899,509 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		}
 		break;
 	}
+	case 144://odd DCT-IV nonstrided as N FFT
+	{
+		char shiftX[500] = "";
+		if (sc->performWorkGroupShift[0])
+			sprintf(shiftX, " + consts.workGroupShiftX ");
+		char shiftY[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY, " + consts.workGroupShiftY ");
+		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+		if (sc->fftDim == sc->fft_dim_full) {
+			if (sc->zeropadBluestein[0]) {
+				res = appendSetSMToZero(sc, floatType, floatTypeMemory, uintType, readType);
+				if (res != VKFFT_SUCCESS) return res;
+				res = appendBarrierVkFFT(sc, 1);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->fftDim = sc->fft_zeropad_Bluestein_left_read[sc->axis_id];
+			}
+			for (uint64_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+
+					if (sc->localSize[1] == 1)
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->inputStride[0] > 1)
+						sc->tempLen = sprintf(sc->tempStr, "		inoutID = (combinedID %% %" PRIu64 ") * %" PRIu64 " + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->inputStride[0], sc->fftDim, mult * sc->inputStride[1]);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 ";\n", sc->fftDim, sc->fftDim, mult * sc->inputStride[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->axisSwapped) {
+						if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[0], (uint64_t)ceil(sc->size[1] / (double)mult));
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->zeropadBluestein[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY, sc->localSize[1], (uint64_t)ceil(sc->size[1] / (double)mult));
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->zeropadBluestein[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[1]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->inputStride[1], sc->fft_zeropad_left_read[sc->axis_id], sc->inputStride[1], sc->fft_zeropad_right_read[sc->axis_id]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					indexInputVkFFT(sc, uintType, readType, sc->inoutID, 0, requestCoordinate, requestBatch);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, ";\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					res = appendZeropadStartReadWriteStage(sc, 1);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->axisSwapped) {
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim, sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (sc->inputBufferBlockNum == 1)
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %s%s[%s]%s;\n", convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (sc->mergeSequencesR2C) {
+							sc->tempLen = sprintf(sc->tempStr, "		inoutID += %" PRIu64 ";\n", sc->inputStride[1]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+
+							if (sc->inputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s%s[inoutID]%s;\n", convTypeLeft, inputsStruct, convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							if (sc->inputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride ;\n", sc->fftDim, sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->inputBufferBlockNum == 1)
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %s%s[inoutID]%s;\n", convTypeLeft, inputsStruct, convTypeRight);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->mergeSequencesR2C) {
+							sc->tempLen = sprintf(sc->tempStr, "		inoutID += %" PRIu64 ";\n", sc->inputStride[1]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->inputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %s%s[inoutID]%s;\n", convTypeLeft, inputsStruct, convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = %sinputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "]%s;\n", convTypeLeft, sc->inputBufferBlockSize, inputsStruct, sc->inputBufferBlockSize, convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							if (sc->inputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					res = appendZeropadEndReadWriteStage(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "	}else{\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (sc->axisSwapped) {
+							sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride ;\n", sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "	}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->axisSwapped) {
+						if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		}");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		}");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+			}
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendZeropadStart(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			for (uint64_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+					if (!sc->axisSwapped) {
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->axisSwapped) {
+							if (sc->zeropadBluestein[0]) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[0]);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						else {
+							if (sc->zeropadBluestein[0]) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[1]);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						sc->tempLen = sprintf(sc->tempStr, "		inoutID = %" PRIu64 " + 4 * (combinedID %% %" PRIu64 ");\n", sc->fftDim / 2, sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						sc->tempLen = sprintf(sc->tempStr, "		if (inoutID < %" PRIu64 ") sdataID = inoutID;\n", sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")) sdataID = %" PRIu64 " - inoutID;\n", 2 * sc->fftDim, sc->fftDim, 2 * sc->fftDim - 1);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")) sdataID = inoutID - %" PRIu64 ";\n", 3 * sc->fftDim, 2 * sc->fftDim, 2 * sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")) sdataID = %" PRIu64 " - inoutID;\n", 4 * sc->fftDim, 3 * sc->fftDim, 4 * sc->fftDim - 1);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if (inoutID >= %" PRIu64 ") sdataID = inoutID - %" PRIu64 ";\n", 4 * sc->fftDim, 4 * sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = sdataID  + %s * sharedStride;\n", sc->gl_LocalInvocationID_y);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[sdataID];\n", sc->regIDs[i + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")){ \n\
+			%s.x = -%s.x;\n\
+			%s.y = -%s.y;}\n", 2 * sc->fftDim, sc->fftDim, sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")){ \n\
+			%s.x = -%s.x;\n\
+			%s.y = -%s.y;}\n", 3 * sc->fftDim, 2 * sc->fftDim, sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->zeropadBluestein[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->axisSwapped) {
+							if (sc->zeropadBluestein[0]) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						else {
+							if (sc->zeropadBluestein[0]) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						sc->tempLen = sprintf(sc->tempStr, "		inoutID = %" PRIu64 " + 4 * combinedID;\n", sc->fftDim / 2);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						sc->tempLen = sprintf(sc->tempStr, "		if (inoutID < %" PRIu64 ") sdataID = inoutID;\n", sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")) sdataID = %" PRIu64 " - inoutID;\n", 2 * sc->fftDim, sc->fftDim, 2 * sc->fftDim - 1);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")) sdataID = inoutID - %" PRIu64 ";\n", 3 * sc->fftDim, 2 * sc->fftDim, 2 * sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")) sdataID = %" PRIu64 " - inoutID;\n", 4 * sc->fftDim, 3 * sc->fftDim, 4 * sc->fftDim - 1);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if (inoutID >= %" PRIu64 ") sdataID = inoutID - %" PRIu64 ";\n", 4 * sc->fftDim, 4 * sc->fftDim);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = sdataID * sharedStride + %s;\n", sc->gl_LocalInvocationID_x);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[sdataID];\n", sc->regIDs[i + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")){ \n\
+			%s.x = -%s.x;\n\
+			%s.y = -%s.y;}\n", 2 * sc->fftDim, sc->fftDim, sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")){ \n\
+			%s.x = -%s.x;\n\
+			%s.y = -%s.y;}\n", 3 * sc->fftDim, 2 * sc->fftDim, sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->zeropadBluestein[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+			}
+			res = appendZeropadEnd(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			if (sc->zeropadBluestein[0]) sc->fftDim = sc->fft_dim_full;
+		}
+		else {
+			//Not implemented
+		}
+		break;
 	}
-	//res = appendZeropadEnd(sc);
-	//if (res != VKFFT_SUCCESS) return res;
+	case 145://odd DCT-IV strided as N FFT
+	{
+		char shiftX[500] = "";
+		if (sc->performWorkGroupShift[0])
+			sprintf(shiftX, " + consts.workGroupShiftX ");
+		char shiftX2[500] = "";
+		if (sc->performWorkGroupShift[0])
+			sprintf(shiftX2, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
+		char shiftY[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY, " + consts.workGroupShiftY ");
+		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+		if (sc->fftDim == sc->fft_dim_full) {
+			if (sc->zeropadBluestein[0]) {
+				res = appendSetSMToZero(sc, floatType, floatTypeMemory, uintType, readType);
+				if (res != VKFFT_SUCCESS) return res;
+				res = appendBarrierVkFFT(sc, 1);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->fftDim = sc->fft_zeropad_Bluestein_left_read[sc->axis_id];
+			}
+			for (uint64_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t i = 0; i < mult * sc->min_registers_per_thread; i++) {
+
+					//sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * mult * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+					//res = VkAppendLine(sc);
+					//if (res != VKFFT_SUCCESS) return res;
+
+					if ((uint64_t)ceil(sc->size[0] / (double)mult) % sc->localSize[0] != 0) {
+						sc->tempLen = sprintf(sc->tempStr, "		if ((%s%s) < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, shiftX2, (uint64_t)ceil(sc->size[0] / (double)mult));
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->mergeSequencesR2C)
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 ") / %" PRIu64 ";\n", sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1], mult);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 ");\n", sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if((combinedID %% %" PRIu64 ") < %" PRIu64 "){\n", sc->fft_dim_full, sc->fft_zeropad_Bluestein_left_read[sc->axis_id]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					
+					sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") * sharedStride + %s;\n", sc->fftDim, sc->gl_LocalInvocationID_x);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->mergeSequencesR2C) {
+						sprintf(index_x, "(%s + %" PRIu64 " * ((%s %% %" PRIu64 ") + (%s%s) * %" PRIu64 ")) %% (%" PRIu64 ")", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, mult, sc->gl_WorkGroupID_x, shiftX, mult, sc->fft_dim_x);
+
+						sprintf(index_y, "(%s/%" PRIu64 " + %" PRIu64 ")", sc->gl_LocalInvocationID_y, mult, (i + k * sc->min_registers_per_thread) * sc->localSize[1]);
+					}
+					else {
+						sprintf(index_x, "(%s%s) %% (%" PRIu64 ")", sc->gl_GlobalInvocationID_x, shiftX2, sc->fft_dim_x);
+						sprintf(index_y, "(%s + %" PRIu64 ")", sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1]);
+					}
+					res = indexInputVkFFT(sc, uintType, readType, index_x, index_y, requestCoordinate, requestBatch);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, ";\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					res = appendZeropadStartReadWriteStage(sc, 1);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		if((%s %% %" PRIu64 " < %" PRIu64 ")||(%s %% %" PRIu64 " >= %" PRIu64 ")){\n", index_y, sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], index_y, sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->inputBufferBlockNum == 1)
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %s%s[%s]%s;\n", convTypeLeft, inputsStruct, sc->inoutID, convTypeRight);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = %sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", convTypeLeft, sc->inoutID, sc->inputBufferBlockSize, inputsStruct, sc->inoutID, sc->inputBufferBlockSize, convTypeRight);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					
+					res = appendZeropadEndReadWriteStage(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropad[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "	}else{\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].x = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdata[sdataID].y = 0;\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "	}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					if ((uint64_t)ceil(sc->size[0] / (double)mult) % sc->localSize[0] != 0) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+				}
+			}
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendZeropadStart(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			for (uint64_t k = 0; k < sc->registerBoost; k++) {
+				for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+					sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->axisSwapped) {
+						if (sc->zeropadBluestein[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (sc->zeropadBluestein[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					sc->tempLen = sprintf(sc->tempStr, "		inoutID = %" PRIu64 " + 4 * combinedID;\n", sc->fftDim / 2);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+
+					sc->tempLen = sprintf(sc->tempStr, "		if (inoutID < %" PRIu64 ") sdataID = inoutID;\n", sc->fftDim);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")) sdataID = %" PRIu64 " - inoutID;\n", 2 * sc->fftDim, sc->fftDim, 2 * sc->fftDim - 1);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")) sdataID = inoutID - %" PRIu64 ";\n", 3 * sc->fftDim, 2 * sc->fftDim, 2 * sc->fftDim);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")) sdataID = %" PRIu64 " - inoutID;\n", 4 * sc->fftDim, 3 * sc->fftDim, 4 * sc->fftDim - 1);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		if (inoutID >= %" PRIu64 ") sdataID = inoutID - %" PRIu64 ";\n", 4 * sc->fftDim, 4 * sc->fftDim);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		sdataID = sdataID * sharedStride + %s;\n", sc->gl_LocalInvocationID_x);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[sdataID];\n", sc->regIDs[i + k * sc->registers_per_thread]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")){ \n\
+			%s.x = -%s.x;\n\
+			%s.y = -%s.y;}\n", 2 * sc->fftDim, sc->fftDim, sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		if ((inoutID < %" PRIu64 ")&&(inoutID >= %" PRIu64 ")){ \n\
+			%s.x = -%s.x;\n\
+			%s.y = -%s.y;}\n", 3 * sc->fftDim, 2 * sc->fftDim, sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread], sc->regIDs[i + k * sc->registers_per_thread]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+				}
+			}
+			res = appendZeropadEnd(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			if (sc->zeropadBluestein[0]) sc->fftDim = sc->fft_dim_full;
+		}
+		else {
+			//Not implemented
+		}
+		break;
+	}
+	}
 	return res;
 }
 
@@ -7770,13 +9443,17 @@ static inline VkFFTResult appendReorder4StepRead(VkFFTSpecializationConstantsLay
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
 		if ((sc->stageStartSize > 1) && (!sc->reorderFourStep) && (sc->inverse)) {
-			if (sc->localSize[1] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim) {
+			if (!sc->readToRegisters) {
+				res = appendBarrierVkFFT(sc, 1);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			/*if (sc->localSize[1] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim) {
 				res = appendBarrierVkFFT(sc, 1);
 				if (res != VKFFT_SUCCESS) return res;
 				sc->readToRegisters = 0;
 			}
 			else
-				sc->readToRegisters = 1;
+				sc->readToRegisters = 1;*/
 			res = appendZeropadStart(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
@@ -7860,12 +9537,16 @@ static inline VkFFTResult appendReorder4StepRead(VkFFTSpecializationConstantsLay
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
 		if ((!sc->reorderFourStep) && (sc->inverse)) {
-			if (sc->localSize[1] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim) {
+			if (!sc->readToRegisters) {
+				res = appendBarrierVkFFT(sc, 1);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			/*if (sc->localSize[1] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim) {
 				res = appendBarrierVkFFT(sc, 1);
 				sc->readToRegisters = 0;
 			}
 			else
-				sc->readToRegisters = 1;
+				sc->readToRegisters = 1;*/
 			res = appendZeropadStart(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
@@ -7986,13 +9667,17 @@ static inline VkFFTResult appendReorder4StepWrite(VkFFTSpecializationConstantsLa
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
 		if ((sc->stageStartSize > 1) && (!((sc->stageStartSize > 1) && (!sc->reorderFourStep) && (sc->inverse)))) {
-			if (sc->localSize[1] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) {
+			if (!sc->writeFromRegisters) {
+				res = appendBarrierVkFFT(sc, 1);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			/*if (sc->localSize[1] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) {
 				res = appendBarrierVkFFT(sc, 1);
 				if (res != VKFFT_SUCCESS) return res;
 				sc->writeFromRegisters = 0;
 			}
 			else
-				sc->writeFromRegisters = 1;
+				sc->writeFromRegisters = 1;*/
 			res = appendZeropadStart(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
@@ -8093,13 +9778,17 @@ static inline VkFFTResult appendReorder4StepWrite(VkFFTSpecializationConstantsLa
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
 		if (!((!sc->reorderFourStep) && (sc->inverse))) {
-			if (sc->localSize[1] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) {
+			if (!sc->writeFromRegisters) {
+				res = appendBarrierVkFFT(sc, 1);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			/*if (sc->localSize[1] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) {
 				res = appendBarrierVkFFT(sc, 1);
 				if (res != VKFFT_SUCCESS) return res;
 				sc->writeFromRegisters = 0;
 			}
 			else
-				sc->writeFromRegisters = 1;
+				sc->writeFromRegisters = 1;*/
 			res = appendZeropadStart(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
@@ -8249,7 +9938,7 @@ static inline VkFFTResult appendBluesteinMultiplication(VkFFTSpecializationConst
 	if (res != VKFFT_SUCCESS) return res;
 	for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 		switch (strideType) {
-		case 0: case 2: case 5: case 6: case 120: case 130: case 140: case 142:
+		case 0: case 2: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144:
 		{
 			if (sc->fftDim == sc->fft_dim_full) {
 				sc->tempLen = sprintf(sc->tempStr, "		%s = %s + %" PRIu64 ";\n", sc->inoutID, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
@@ -8266,7 +9955,7 @@ static inline VkFFTResult appendBluesteinMultiplication(VkFFTSpecializationConst
 			}
 			break;
 		}
-		case 1: case 121: case 131: case 141: case 143:
+		case 1: case 111: case 121: case 131: case 141: case 143: case 145:
 		{
 			if (sc->fftDim == sc->fft_dim_full) {
 				sc->tempLen = sprintf(sc->tempStr, "		%s = %s + %" PRIu64 ";\n", sc->inoutID, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
@@ -8296,7 +9985,7 @@ static inline VkFFTResult appendBluesteinMultiplication(VkFFTSpecializationConst
 		if (res != VKFFT_SUCCESS) return res;
 		uint64_t k = 0;
 		if (!((sc->readToRegisters && (pre_or_post_multiplication == 0)) || (sc->writeFromRegisters && (pre_or_post_multiplication == 1)))) {
-			if ((strideType == 0) || (strideType == 5) || (strideType == 6) || (strideType == 110) || (strideType == 120) || (strideType == 130) || (strideType == 140) || (strideType == 142)) {
+			if ((strideType == 0) || (strideType == 5) || (strideType == 6) || (strideType == 110) || (strideType == 120) || (strideType == 130) || (strideType == 140) || (strideType == 142) || (strideType == 144)) {
 				sc->tempLen = sprintf(sc->tempStr, "\
 		%s = sdata[sharedStride * %s + %s + %" PRIu64 " * %s];\n", sc->regIDs[i], sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x);
 				res = VkAppendLine(sc);
@@ -8317,7 +10006,7 @@ static inline VkFFTResult appendBluesteinMultiplication(VkFFTSpecializationConst
 		if (res != VKFFT_SUCCESS) return res;
 
 		if (!((sc->readToRegisters && (pre_or_post_multiplication == 0)) || (sc->writeFromRegisters && (pre_or_post_multiplication == 1)))) {
-			if ((strideType == 0) || (strideType == 5) || (strideType == 6) || (strideType == 110) || (strideType == 120) || (strideType == 130) || (strideType == 140) || (strideType == 142)) {
+			if ((strideType == 0) || (strideType == 5) || (strideType == 6) || (strideType == 110) || (strideType == 120) || (strideType == 130) || (strideType == 140) || (strideType == 142) || (strideType == 144)) {
 				sc->tempLen = sprintf(sc->tempStr, "\
 		sdata[sharedStride * %s + %s + %" PRIu64 " * %s] = %s;\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, i, sc->gl_WorkGroupSize_x, sc->regIDs[i]);
 				res = VkAppendLine(sc);
@@ -8379,7 +10068,7 @@ static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstant
 	uint64_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
 	uint64_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 	uint64_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
-	if ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->localSize[1] > 1) && (!(sc->performR2C && (sc->actualInverse)))) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)) || (sc->performDCT))
+	if ((!((sc->readToRegisters == 1) && (stageSize == 1) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle > 0))))) && ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->localSize[1] > 1) && (!(sc->performR2C && (sc->actualInverse)))) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)) || (sc->performDCT)))
 	{
 		res = appendBarrierVkFFT(sc, 1);
 		if (res != VKFFT_SUCCESS) return res;
@@ -8407,7 +10096,8 @@ static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstant
 				sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17f%s;\n", stageAngle, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			if ((sc->registerBoost == 1) && ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->localSize[1] > 1) && (!(sc->performR2C && (sc->actualInverse)))) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)) || sc->performDCT)) {
+			if ((!((sc->readToRegisters == 1) && (stageSize==1) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle > 0))))) && ((sc->registerBoost == 1) && ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->localSize[1] > 1) && (!(sc->performR2C && (sc->actualInverse)))) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)) || (sc->performDCT)))) {
+			//if(sc->readToRegisters==0){
 				for (uint64_t i = 0; i < stageRadix; i++) {
 					uint64_t id = j + i * logicalRegistersPerThread / stageRadix;
 					id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
@@ -8538,7 +10228,7 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 	uint64_t logicalStoragePerThread = sc->registers_per_thread_per_radix[stageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
 	uint64_t logicalRegistersPerThread = sc->registers_per_thread_per_radix[stageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 	uint64_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
-	if (((sc->axis_id == 0) && (sc->axis_upload_id == 0) && (!(sc->performR2C && (sc->actualInverse)))) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)) || (sc->performDCT))
+	if ((!((sc->readToRegisters == 1) && (stageSize == 1) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle > 0))))) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0) && (!(sc->performR2C && (sc->actualInverse)))) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)) || (sc->performDCT)))
 	{
 		res = appendBarrierVkFFT(sc, 1);
 		if (res != VKFFT_SUCCESS) return res;
@@ -8565,7 +10255,7 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 				sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17f%s;\n", stageAngle, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			if ((sc->registerBoost == 1) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0) && (!(sc->performR2C && (sc->actualInverse)))) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)) || (sc->performDCT))) {
+			if ((!((sc->readToRegisters == 1) && (stageSize == 1) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle > 0))))) && ((sc->registerBoost == 1) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0) && (!(sc->performR2C && (sc->actualInverse)))) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)) || (sc->performDCT)))) {
 				for (uint64_t i = 0; i < stageRadix; i++) {
 					uint64_t id = j + i * logicalRegistersPerThread / stageRadix;
 					id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
@@ -8635,13 +10325,13 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 static inline VkFFTResult appendRadixStage(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t shuffleType) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	switch (shuffleType) {
-	case 0: case 5: case 6: case 120: case 130: case 140: case 142: {
+	case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144: {
 		res = appendRadixStageNonStrided(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, stageRadix);
 		if (res != VKFFT_SUCCESS) return res;
 		//appendBarrierVkFFT(sc, 1);
 		break;
 	}
-	case 1: case 2: case 121: case 131: case 141: case 143: {
+	case 1: case 2: case 111: case 121: case 131: case 141: case 143: case 145: {
 		res = appendRadixStageStrided(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, stageRadix);
 		if (res != VKFFT_SUCCESS) return res;
 		//appendBarrierVkFFT(sc, 1);
@@ -8724,14 +10414,13 @@ static inline VkFFTResult appendRadixShuffleNonStrided(VkFFTSpecializationConsta
 
 	uint64_t logicalGroupSize = sc->fftDim / logicalStoragePerThread;
 	uint64_t logicalGroupSizeNext = sc->fftDim / logicalStoragePerThreadNext;
-	if (((sc->registerBoost == 1) && ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->reorderFourStep) && (sc->fftDim < sc->fft_dim_full) && (sc->localSize[1] > 1)) || (sc->localSize[1] > 1) || ((sc->performR2C) && (!sc->actualInverse) && (sc->axis_id == 0)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)))) || (sc->performDCT))
+	if ((!((sc->writeFromRegisters == 1) && (stageSize == sc->fftDim / stageRadix) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep))&&(stageAngle<0))))) && (((sc->registerBoost == 1) && ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->reorderFourStep) && (sc->fftDim < sc->fft_dim_full) && (sc->localSize[1] > 1)) || (sc->localSize[1] > 1) || ((sc->performR2C) && (!sc->actualInverse) && (sc->axis_id == 0)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)))) || (sc->performDCT)))
 	{
 		res = appendBarrierVkFFT(sc, 1);
 		if (res != VKFFT_SUCCESS) return res;
 	}
-	if ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->reorderFourStep) && (sc->fftDim < sc->fft_dim_full) && (sc->localSize[1] > 1)) || (sc->localSize[1] > 1) || ((sc->performR2C) && (!sc->actualInverse) && (sc->axis_id == 0)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)) || (sc->registerBoost > 1) || (sc->performDCT)) {
-		//appendBarrierVkFFT(sc, 1);
-		sc->writeFromRegisters = 0;
+	//if ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->reorderFourStep) && (sc->fftDim < sc->fft_dim_full) && (sc->localSize[1] > 1)) || (sc->localSize[1] > 1) || ((sc->performR2C) && (!sc->actualInverse) && (sc->axis_id == 0)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)) || (sc->registerBoost > 1) || (sc->performDCT)) {
+	if ((!((sc->writeFromRegisters == 1) && (stageSize == sc->fftDim / stageRadix) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle < 0))))) && ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->reorderFourStep) && (sc->fftDim < sc->fft_dim_full) && (sc->localSize[1] > 1)) || (sc->localSize[1] > 1) || ((sc->performR2C) && (!sc->actualInverse) && (sc->axis_id == 0)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)) || (sc->registerBoost > 1) || (sc->performDCT))) {
 		if (!((sc->registerBoost > 1) && (stageSize * stageRadix == sc->fftDim / sc->stageRadix[sc->numStages - 1]) && (sc->stageRadix[sc->numStages - 1] == sc->registerBoost))) {
 			char** tempID;
 			tempID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
@@ -9014,7 +10703,6 @@ static inline VkFFTResult appendRadixShuffleNonStrided(VkFFTSpecializationConsta
 		}
 	}
 	else {
-		sc->writeFromRegisters = 1;
 		res = appendZeropadStart(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
@@ -9097,7 +10785,7 @@ static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstants
 	if (normalizationValue != 1) {
 		sprintf(stageNormalization, "%.17f%s", 1.0 / (double)(normalizationValue), LFending);
 	}
-	if (((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)) || (sc->performDCT))
+	if ((!((sc->writeFromRegisters == 1) && (stageSize == sc->fftDim / stageRadix) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle < 0))))) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)) || (sc->performDCT)))
 	{
 		res = appendBarrierVkFFT(sc, 2);
 		if (res != VKFFT_SUCCESS) return res;
@@ -9107,9 +10795,9 @@ static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstants
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 	}
-	if (((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)) || (sc->performDCT)) {
+	if ((!((sc->writeFromRegisters == 1)&&(stageSize == sc->fftDim / stageRadix) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle < 0)))))&&(((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)) || (sc->performDCT))) {
+	//if (sc->writeFromRegisters == 0) {
 		//appendBarrierVkFFT(sc, 2);
-		sc->writeFromRegisters = 0;
 		if (!((sc->registerBoost > 1) && (stageSize * stageRadix == sc->fftDim / sc->stageRadix[sc->numStages - 1]) && (sc->stageRadix[sc->numStages - 1] == sc->registerBoost))) {
 			char** tempID;
 			tempID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
@@ -9323,7 +11011,6 @@ static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstants
 		}
 	}
 	else {
-		sc->writeFromRegisters = 1;
 		res = appendZeropadStart(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
@@ -9358,13 +11045,13 @@ static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstants
 static inline VkFFTResult appendRadixShuffle(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageRadixNext, uint64_t shuffleType) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	switch (shuffleType) {
-	case 0: case 5: case 6: case 120: case 130: case 140: case 142: {
+	case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144: {
 		res = appendRadixShuffleNonStrided(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, stageRadix, stageRadixNext);
 		if (res != VKFFT_SUCCESS) return res;
 		//appendBarrierVkFFT(sc, 1);
 		break;
 	}
-	case 1: case 2: case 121: case 131: case 141: case 143: {
+	case 1: case 2: case 111: case 121: case 131: case 141: case 143: case 145: {
 		res = appendRadixShuffleStrided(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, stageRadix, stageRadixNext);
 		if (res != VKFFT_SUCCESS) return res;
 		//appendBarrierVkFFT(sc, 1);
@@ -9377,7 +11064,7 @@ static inline VkFFTResult appendRadixShuffle(VkFFTSpecializationConstantsLayout*
 static inline VkFFTResult appendBoostThreadDataReorder(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t shuffleType, uint64_t start) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	switch (shuffleType) {
-	case 0: case 5: case 6: case 120: case 130: case 140: case 142: {
+	case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144: {
 		uint64_t logicalStoragePerThread;
 		if (start == 1) {
 			logicalStoragePerThread = sc->registers_per_thread_per_radix[sc->stageRadix[0]] * sc->registerBoost;// (sc->registers_per_thread % sc->stageRadix[0] == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
@@ -9462,7 +11149,7 @@ static inline VkFFTResult appendBoostThreadDataReorder(VkFFTSpecializationConsta
 
 		break;
 	}
-	case 1: case 2: case 121: case 131: case 141: case 143: {
+	case 1: case 2: case 111: case 121: case 131: case 141: case 143: case 145: {
 		uint64_t logicalStoragePerThread;
 		if (start == 1) {
 			logicalStoragePerThread = sc->registers_per_thread_per_radix[sc->stageRadix[0]] * sc->registerBoost;// (sc->registers_per_thread % sc->stageRadix[0] == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
@@ -9553,9 +11240,9 @@ static inline VkFFTResult appendBoostThreadDataReorder(VkFFTSpecializationConsta
 
 static inline VkFFTResult appendCoordinateRegisterStore(VkFFTSpecializationConstantsLayout* sc, uint64_t readType) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	if (!sc->writeFromRegisters) {
+	if ((!sc->writeFromRegisters) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)))) {
 		switch (readType) {
-		case 0: case 5: case 6: case 120: case 130: case 140: case 142://single_c2c
+		case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144://single_c2c
 		{
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
@@ -9626,7 +11313,7 @@ static inline VkFFTResult appendCoordinateRegisterStore(VkFFTSpecializationConst
 			if (res != VKFFT_SUCCESS) return res;
 			break;
 		}
-		case 1: case 121: case 131: case 141: case 143://grouped_c2c
+		case 1: case 111: case 121: case 131: case 141: case 143: case 145://grouped_c2c
 		{
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
@@ -9705,7 +11392,7 @@ static inline VkFFTResult appendCoordinateRegisterPull(VkFFTSpecializationConsta
 	VkFFTResult res = VKFFT_SUCCESS;
 	if ((!sc->readToRegisters) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)))) {
 		switch (readType) {
-		case 0: case 5: case 6: case 120: case 130: case 140: case 142://single_c2c
+		case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144://single_c2c
 		{
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
@@ -9776,7 +11463,7 @@ static inline VkFFTResult appendCoordinateRegisterPull(VkFFTSpecializationConsta
 			if (res != VKFFT_SUCCESS) return res;
 			break;
 		}
-		case 1: case 121: case 131: case 141: case 143://grouped_c2c
+		case 1: case 111: case 121: case 131: case 141: case 143: case 145://grouped_c2c
 		{
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
@@ -9930,7 +11617,7 @@ static inline VkFFTResult appendBluesteinConvolution(VkFFTSpecializationConstant
 	}
 	for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 		switch (dataType) {
-		case 0: case 5: case 6: case 120: case 130: case 140: case 142:
+		case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144:
 		{
 			if (sc->fftDim == sc->fft_dim_full) {
 				sc->tempLen = sprintf(sc->tempStr, "		%s = %s + %" PRIu64 ";\n", sc->inoutID, sc->gl_LocalInvocationID_x, i * sc->localSize[0]);
@@ -9945,7 +11632,7 @@ static inline VkFFTResult appendBluesteinConvolution(VkFFTSpecializationConstant
 			}
 			break;
 		}
-		case 1: case 121: case 131: case 141: case 143:
+		case 1: case 111: case 121: case 131: case 141: case 143: case 145:
 		{
 			if (sc->fftDim == sc->fft_dim_full) {
 				sc->tempLen = sprintf(sc->tempStr, "			%s = %s + %" PRIu64 ";\n", sc->inoutID, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
@@ -10305,6 +11992,60 @@ static inline VkFFTResult appendKernelConvolution(VkFFTSpecializationConstantsLa
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
+static inline VkFFTResult setWriteFromRegisters(VkFFTSpecializationConstantsLayout* sc, uint64_t writeType) {
+	VkFFTResult res = VKFFT_SUCCESS; 
+	switch (writeType) {
+	case 0: //single_c2c
+	{
+		if ((sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim)) {
+			sc->writeFromRegisters = 0;
+		}
+		else
+			sc->writeFromRegisters = 1;
+		break;
+	}
+	case 1: //grouped_c2c
+	{
+		if (sc->localSize[1] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) {
+			sc->writeFromRegisters = 0;
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else
+			sc->writeFromRegisters = 1;
+		break;
+	}
+	case 2: //single_c2c_strided
+	{
+		if (sc->localSize[1] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) {
+			sc->writeFromRegisters = 0;
+		}
+		else
+			sc->writeFromRegisters = 1;
+		break;
+	}
+	case 5://single_r2c
+	{
+		sc->writeFromRegisters = 0;
+		break;
+	}
+	case 6: //single_c2r
+	{
+		if ((sc->axisSwapped) || (sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim)) {
+			sc->writeFromRegisters = 0;
+		}
+		else
+			sc->writeFromRegisters = 1;
+		break;
+	}
+	case 110: case 111: case 120: case 121: case 130: case 131: case 140: case 141: case 142: case 143: case 144: case 145:
+	{
+		sc->writeFromRegisters = 0;
+		break;
+	}
+	}
+	return res;
+}
 static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint64_t writeType) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	double double_PI = 3.1415926535897932384626433832795;
@@ -10347,7 +12088,7 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 	char convTypeLeft[20] = "";
 	char convTypeRight[20] = "";
 	if ((!strcmp(floatTypeMemory, "half")) && (strcmp(floatType, "half"))) {
-		if ((writeType == 6) || (writeType == 120) || (writeType == 121) || (writeType == 130) || (writeType == 131) || (writeType == 140) || (writeType == 141) || (writeType == 142) || (writeType == 143)) {
+		if ((writeType == 6) || (writeType == 110) || (writeType == 111) || (writeType == 120) || (writeType == 121) || (writeType == 130) || (writeType == 131) || (writeType == 140) || (writeType == 141) || (writeType == 142) || (writeType == 143) || (writeType == 144) || (writeType == 145)) {
 			sprintf(convTypeLeft, "float16_t(");
 			sprintf(convTypeRight, ")");
 		}
@@ -10357,7 +12098,7 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 		}
 	}
 	if ((!strcmp(floatTypeMemory, "float")) && (strcmp(floatType, "float"))) {
-		if ((writeType == 6) || (writeType == 120) || (writeType == 121) || (writeType == 130) || (writeType == 131) || (writeType == 140) || (writeType == 141) || (writeType == 142) || (writeType == 143)) {
+		if ((writeType == 6) || (writeType == 110) || (writeType == 111) || (writeType == 120) || (writeType == 121) || (writeType == 130) || (writeType == 131) || (writeType == 140) || (writeType == 141) || (writeType == 142) || (writeType == 143) || (writeType == 144) || (writeType == 145)) {
 #if(VKFFT_BACKEND==0)
 			sprintf(convTypeLeft, "float(");
 			sprintf(convTypeRight, ")");
@@ -10389,7 +12130,7 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 		}
 	}
 	if ((!strcmp(floatTypeMemory, "double")) && (strcmp(floatType, "double"))) {
-		if ((writeType == 6) || (writeType == 120) || (writeType == 121) || (writeType == 130) || (writeType == 131) || (writeType == 140) || (writeType == 141) || (writeType == 142) || (writeType == 143)) {
+		if ((writeType == 6) || (writeType == 110) || (writeType == 111) || (writeType == 120) || (writeType == 121) || (writeType == 130) || (writeType == 131) || (writeType == 140) || (writeType == 141) || (writeType == 142) || (writeType == 143) || (writeType == 144) || (writeType == 145)) {
 #if(VKFFT_BACKEND==0)
 			sprintf(convTypeLeft, "double(");
 			sprintf(convTypeRight, ")");
@@ -10438,13 +12179,10 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 	switch (writeType) {
 	case 0: //single_c2c
 	{
-		if ((sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim)) {
-			sc->writeFromRegisters = 0;
+		if (!sc->writeFromRegisters) {
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
 		}
-		else
-			sc->writeFromRegisters = 1;
 		//res = appendZeropadStart(sc);
 		//if (res != VKFFT_SUCCESS) return res;
 		char shiftX[500] = "";
@@ -10874,13 +12612,10 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 	}
 	case 1: //grouped_c2c
 	{
-		if (sc->localSize[1] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) {
-			sc->writeFromRegisters = 0;
+		if (!sc->writeFromRegisters) {
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
 		}
-		else
-			sc->writeFromRegisters = 1;
 		//res = appendZeropadStart(sc);
 		//if (res != VKFFT_SUCCESS) return res;
 		char shiftX[500] = "";
@@ -11013,13 +12748,10 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 	}
 	case 2: //single_c2c_strided
 	{
-		if (sc->localSize[1] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) {
-			sc->writeFromRegisters = 0;
+		if (!sc->writeFromRegisters) {
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
 		}
-		else
-			sc->writeFromRegisters = 1;
 		//res = appendZeropadStart(sc);
 		//if (res != VKFFT_SUCCESS) return res;
 		char shiftX[500] = "";
@@ -11091,9 +12823,10 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 	}
 	case 5://single_r2c
 	{
-		sc->writeFromRegisters = 0;
-		res = appendBarrierVkFFT(sc, 1);
-		if (res != VKFFT_SUCCESS) return res;
+		if (!sc->writeFromRegisters) {
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+		}
 		//res = appendZeropadStart(sc);
 		//if (res != VKFFT_SUCCESS) return res;
 		char shiftX[500] = "";
@@ -11360,13 +13093,11 @@ if (%s==%" PRIu64 ") \n\
 		char shiftY[500] = "";
 		if (sc->performWorkGroupShift[1])
 			sprintf(shiftY, " + consts.workGroupShiftY * %" PRIu64 "", sc->localSize[1]);
-		if ((sc->axisSwapped) || (sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim)) {
-			sc->writeFromRegisters = 0;
+
+		if (!sc->writeFromRegisters) {
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
 		}
-		else
-			sc->writeFromRegisters = 1;
 		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		//res = appendZeropadStart(sc);
 		//if (res != VKFFT_SUCCESS) return res;
@@ -11522,453 +13253,36 @@ if (%s==%" PRIu64 ") \n\
 
 		break;
 	}
-		case 120://DCT-II nonstrided
-		{
-			sc->writeFromRegisters = 0;
+	case 110://DCT-I nonstrided
+	{
+		if (!sc->writeFromRegisters) {
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
-			//res = appendZeropadStart(sc);
-			//if (res != VKFFT_SUCCESS) return res;
-			char shiftX[500] = "";
-			if (sc->performWorkGroupShift[0])
-				sprintf(shiftX, " + consts.workGroupShiftX ");
-			char shiftY[500] = "";
-			if (sc->performWorkGroupShift[1])
-				sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
-			char shiftY2[500] = "";
-			if (sc->performWorkGroupShift[1])
-				sprintf(shiftY2, " + consts.workGroupShiftY ");
-			uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
-			if (sc->reorderFourStep) {
-				//Not implemented
-			}
-			else {
-				//appendBarrierVkFFT(sc, 1);
-				//appendZeropadStart(sc);
-				if (sc->fftDim == sc->fft_dim_full) {
-					if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_zeropad_Bluestein_left_write[sc->axis_id];
-					for (uint64_t k = 0; k < sc->registerBoost; k++) {
-						if (sc->mergeSequencesR2C) {
-							if (sc->axisSwapped) {
-								sc->tempLen = sprintf(sc->tempStr, "\
-	if (%s==0)\n\
-	{\n\
-		sdata[%s + %" PRIu64 "* sharedStride] = sdata[%s];\n\
-	}\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->fftDim, sc->gl_LocalInvocationID_x);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-								//res = appendZeropadEnd(sc);
-								//if (res != VKFFT_SUCCESS) return res;
-								res = appendBarrierVkFFT(sc, 1);
-								if (res != VKFFT_SUCCESS) return res;
-								//res = appendZeropadStart(sc);
-								//if (res != VKFFT_SUCCESS) return res;
-							}
-							else {
-								sc->tempLen = sprintf(sc->tempStr, "\
-	if (%s==0)\n\
-	{\n\
-		sdata[%s * sharedStride + %" PRIu64 "] = sdata[%s * sharedStride];\n\
-	}\n", sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim, sc->gl_LocalInvocationID_y);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-								//res = appendZeropadEnd(sc);
-								//if (res != VKFFT_SUCCESS) return res;
-								res = appendBarrierVkFFT(sc, 1);
-								if (res != VKFFT_SUCCESS) return res;
-								//res = appendZeropadStart(sc);
-								//if (res != VKFFT_SUCCESS) return res;
-							}
-						}
-						uint64_t num_out = (sc->axisSwapped) ? (uint64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (uint64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
-						//num_out = (uint64_t)ceil(num_out / (double)sc->min_registers_per_thread);
-						for (uint64_t i = 0; i < num_out; i++) {
-							if (sc->localSize[1] == 1)
-								sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * num_out) * sc->localSize[0]);
-							else
-								sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * num_out) * sc->localSize[0] * sc->localSize[1]);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-
-							if (!sc->axisSwapped) {
-								sc->tempLen = sprintf(sc->tempStr, "			%s = combinedID %% %" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, mult * sc->outputStride[1]);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
-							else {
-								sc->tempLen = sprintf(sc->tempStr, "			%s = combinedID %% %" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, mult * sc->outputStride[1]);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
-							if (sc->axisSwapped) {
-								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
-									sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[0], (uint64_t)ceil(sc->size[1] / (double)mult));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-								}
-								if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim / 2 + 1) * sc->localSize[0]) {
-									sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim / 2 + 1) * sc->localSize[0]);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-								}
-							}
-							else {
-								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
-									sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[1], (uint64_t)ceil(sc->size[1] / (double)mult));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-								}
-								if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim / 2 + 1) * sc->localSize[1]) {
-									sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim / 2 + 1) * sc->localSize[1]);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-								}
-							}
-							if (sc->zeropad[1]) {
-								sc->tempLen = sprintf(sc->tempStr, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
-							sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-							res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
-							sc->tempLen = sprintf(sc->tempStr, ";\n");
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-							res = appendZeropadStartReadWriteStage(sc, 0);
-							if (res != VKFFT_SUCCESS) return res;
-							if (sc->LUT) {
-								sc->tempLen = sprintf(sc->tempStr, "		mult = twiddleLUT[%" PRIu64 " + combinedID %% %" PRIu64 "];\n", sc->startDCT3LUT, sc->fftDim / 2 + 1);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*mult.x;\n");
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "		mult.y = -2*mult.y;\n");
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
-							else {
-								sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*%s(%.17f%s * (combinedID %% %" PRIu64 ") );\n", cosDef, -double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "		mult.y = 2*%s(%.17f%s * (combinedID %% %" PRIu64 ") );\n", sinDef, -double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
-							if (sc->mergeSequencesR2C) {
-								if (sc->axisSwapped) {
-
-									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y-sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->outputBufferBlockNum == 1)
-										sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
-									else
-										sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-
-
-									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[1], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[1], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-
-									if (sc->outputBufferBlockNum == 1)
-										sc->tempLen = sprintf(sc->tempStr, "		%s[%s+%" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", outputsStruct, sc->inoutID, sc->outputStride[1], convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
-									else
-										sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->zeropad[1]) {
-										sc->tempLen = sprintf(sc->tempStr, "	}\n");
-										res = VkAppendLine(sc);
-										if (res != VKFFT_SUCCESS) return res;
-									}
-									sc->tempLen = sprintf(sc->tempStr, "			if(combinedID %% %" PRIu64 " > 0){\n", sc->fftDim / 2 + 1);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "			%s = (%" PRIu64 " - combinedID %% %" PRIu64 ") + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, mult * sc->outputStride[1]);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
-									sc->tempLen = sprintf(sc->tempStr, ";\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->zeropad[1]) {
-										sc->tempLen = sprintf(sc->tempStr, "	if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
-										res = VkAppendLine(sc);
-										if (res != VKFFT_SUCCESS) return res;
-									}
-									if (sc->outputBufferBlockNum == 1)
-										sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
-									else
-										sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->outputBufferBlockNum == 1)
-										sc->tempLen = sprintf(sc->tempStr, "		%s[%s+%" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", outputsStruct, sc->inoutID, sc->outputStride[1], convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
-									else
-										sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->zeropad[1]) {
-										sc->tempLen = sprintf(sc->tempStr, "	}\n");
-										res = VkAppendLine(sc);
-										if (res != VKFFT_SUCCESS) return res;
-									}
-									sc->tempLen = sprintf(sc->tempStr, "	}\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-								}
-								else {
-									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y-sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->outputBufferBlockNum == 1)
-										sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
-									else
-										sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[1], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[1], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-
-									if (sc->outputBufferBlockNum == 1)
-										sc->tempLen = sprintf(sc->tempStr, "		%s[%s+%" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", outputsStruct, sc->inoutID, sc->outputStride[1], convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
-									else
-										sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->zeropad[1]) {
-										sc->tempLen = sprintf(sc->tempStr, "	}\n");
-										res = VkAppendLine(sc);
-										if (res != VKFFT_SUCCESS) return res;
-									}
-									sc->tempLen = sprintf(sc->tempStr, "			if(combinedID %% %" PRIu64 " > 0){\n", sc->fftDim / 2 + 1);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "			%s = (%" PRIu64 " - combinedID %% %" PRIu64 ") + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, 2 * sc->outputStride[1]);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
-									sc->tempLen = sprintf(sc->tempStr, ";\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->zeropad[1]) {
-										sc->tempLen = sprintf(sc->tempStr, "	if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
-										res = VkAppendLine(sc);
-										if (res != VKFFT_SUCCESS) return res;
-									}
-									if (sc->outputBufferBlockNum == 1)
-										sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
-									else
-										sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->outputBufferBlockNum == 1)
-										sc->tempLen = sprintf(sc->tempStr, "		%s[%s+%" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", outputsStruct, sc->inoutID, sc->outputStride[1], convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
-									else
-										sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->zeropad[1]) {
-										sc->tempLen = sprintf(sc->tempStr, "	}\n");
-										res = VkAppendLine(sc);
-										if (res != VKFFT_SUCCESS) return res;
-									}
-									sc->tempLen = sprintf(sc->tempStr, "	}\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-								}
-							}
-							else {
-								if (!sc->axisSwapped) {
-									sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride;\n", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->outputBufferBlockNum == 1)
-										sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = %s(sdata[sdataID].x*mult.x - sdata[sdataID].y*mult.y)%s;\n", outputsStruct, convTypeLeft, convTypeRight);
-									else
-										sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s(sdata[sdataID].x*mult.x - sdata[sdataID].y*mult.y) %s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->zeropad[1]) {
-										sc->tempLen = sprintf(sc->tempStr, "	}\n");
-										res = VkAppendLine(sc);
-										if (res != VKFFT_SUCCESS) return res;
-									}
-									sc->tempLen = sprintf(sc->tempStr, "			if(combinedID %% %" PRIu64 " > 0){\n", sc->fftDim / 2 + 1);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "			%s = (%" PRIu64 " - combinedID %% %" PRIu64 ") + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
-									sc->tempLen = sprintf(sc->tempStr, ";\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->zeropad[1]) {
-										sc->tempLen = sprintf(sc->tempStr, "	if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
-										res = VkAppendLine(sc);
-										if (res != VKFFT_SUCCESS) return res;
-									}
-									if (sc->outputBufferBlockNum == 1)
-										sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = -%s(sdata[sdataID].y*mult.x + sdata[sdataID].x*mult.y)%s;\n", outputsStruct, convTypeLeft, convTypeRight);
-									else
-										sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = -%s(sdata[sdataID].y*mult.x + sdata[sdataID].x*mult.y) %s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->zeropad[1]) {
-										sc->tempLen = sprintf(sc->tempStr, "	}\n");
-										res = VkAppendLine(sc);
-										if (res != VKFFT_SUCCESS) return res;
-									}
-									sc->tempLen = sprintf(sc->tempStr, "			}\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-								}
-								else {
-									sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->outputBufferBlockNum == 1)
-										sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = %s(sdata[sdataID].x*mult.x -sdata[sdataID].y*mult.y)%s;\n", outputsStruct, convTypeLeft, convTypeRight);
-									else
-										sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s(sdata[sdataID].x*mult.x - sdata[sdataID].y*mult.y)%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->zeropad[1]) {
-										sc->tempLen = sprintf(sc->tempStr, "	}\n");
-										res = VkAppendLine(sc);
-										if (res != VKFFT_SUCCESS) return res;
-									}
-									sc->tempLen = sprintf(sc->tempStr, "			if(combinedID %% %" PRIu64 " > 0){\n", sc->fftDim / 2 + 1);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "			%s = (%" PRIu64 " - combinedID %% %" PRIu64 ") + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
-									sc->tempLen = sprintf(sc->tempStr, ";\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->zeropad[1]) {
-										sc->tempLen = sprintf(sc->tempStr, "	if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
-										res = VkAppendLine(sc);
-										if (res != VKFFT_SUCCESS) return res;
-									}
-									if (sc->outputBufferBlockNum == 1)
-										sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = -%s(sdata[sdataID].y*mult.x +sdata[sdataID].x*mult.y)%s;\n", outputsStruct, convTypeLeft, convTypeRight);
-									else
-										sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = -%s(sdata[sdataID].y*mult.x + sdata[sdataID].x*mult.y)%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									if (sc->zeropad[1]) {
-										sc->tempLen = sprintf(sc->tempStr, "	}\n");
-										res = VkAppendLine(sc);
-										if (res != VKFFT_SUCCESS) return res;
-									}
-									sc->tempLen = sprintf(sc->tempStr, "			}\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-								}
-							}
-							res = appendZeropadEndReadWriteStage(sc);
-							if (res != VKFFT_SUCCESS) return res;
-
-							if (sc->axisSwapped) {
-								if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim / 2 + 1) * sc->localSize[0]) {
-									sc->tempLen = sprintf(sc->tempStr, "	}\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-								}
-							}
-							else {
-								if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim / 2 + 1) * sc->localSize[1])
-								{
-									sc->tempLen = sprintf(sc->tempStr, "	}\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-								}
-							}
-							if (sc->axisSwapped) {
-								if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
-									sc->tempLen = sprintf(sc->tempStr, "		}\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-								}
-							}
-							else {
-								if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
-									sc->tempLen = sprintf(sc->tempStr, "		}\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-								}
-							}
-						}
-					}
-					if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_dim_full;
-				}
-				else {
-
-				}
-			}
-			break;
 		}
-		case 121://DCT-II strided
-		{
-			sc->writeFromRegisters = 0;
-			res = appendBarrierVkFFT(sc, 1);
-			if (res != VKFFT_SUCCESS) return res;
-			//res = appendZeropadStart(sc);
-			//if (res != VKFFT_SUCCESS) return res;
-			char shiftX[500] = "";
-			if (sc->performWorkGroupShift[0])
-				sprintf(shiftX, " + consts.workGroupShiftX*%s ", sc->gl_WorkGroupSize_x);
-			char shiftY[500] = "";
-			if (sc->performWorkGroupShift[1])
-				sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
-			char shiftY2[500] = "";
-			if (sc->performWorkGroupShift[1])
-				sprintf(shiftY2, " + consts.workGroupShiftY ");
-			uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
-			if (sc->reorderFourStep) {
-				//Not implemented
-			}
-			else {
-				//appendBarrierVkFFT(sc, 1);
-				//appendZeropadStart(sc);
-				if (sc->fftDim == sc->fft_dim_full) {
-					if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_zeropad_Bluestein_left_write[sc->axis_id];
-					for (uint64_t k = 0; k < sc->registerBoost; k++) {
-						if (sc->mergeSequencesR2C) {
+		//res = appendZeropadStart(sc);
+		//if (res != VKFFT_SUCCESS) return res;
+		char shiftX[500] = "";
+		if (sc->performWorkGroupShift[0])
+			sprintf(shiftX, " + consts.workGroupShiftX ");
+		char shiftY[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
+		char shiftY2[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY2, " + consts.workGroupShiftY ");
+		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+		if (sc->reorderFourStep) {
+			//Not implemented
+		}
+		else {
+			//appendBarrierVkFFT(sc, 1);
+			//appendZeropadStart(sc);
+			if (sc->fftDim == sc->fft_dim_full) {
+				if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_zeropad_Bluestein_left_write[sc->axis_id];
+				sc->fftDim = (sc->fftDim + 2) / 2;
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
+					if (sc->mergeSequencesR2C) {
+						if (sc->axisSwapped) {
 							sc->tempLen = sprintf(sc->tempStr, "\
 	if (%s==0)\n\
 	{\n\
@@ -11983,18 +13297,455 @@ if (%s==%" PRIu64 ") \n\
 							//res = appendZeropadStart(sc);
 							//if (res != VKFFT_SUCCESS) return res;
 						}
-						uint64_t num_out = (uint64_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]);
-						//num_out = (uint64_t)ceil(num_out / (double)sc->min_registers_per_thread);
-						for (uint64_t i = 0; i < num_out; i++) {
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "\
+	if (%s==0)\n\
+	{\n\
+		sdata[%s * sharedStride + %" PRIu64 "] = sdata[%s * sharedStride];\n\
+	}\n", sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim, sc->gl_LocalInvocationID_y);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//res = appendZeropadEnd(sc);
+							//if (res != VKFFT_SUCCESS) return res;
+							res = appendBarrierVkFFT(sc, 1);
+							if (res != VKFFT_SUCCESS) return res;
+							//res = appendZeropadStart(sc);
+							//if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					uint64_t num_out = (sc->axisSwapped) ? (uint64_t)ceil((sc->fftDim) / (double)sc->localSize[1]) : (uint64_t)ceil((sc->fftDim) / (double)sc->localSize[0]);
+					//num_out = (uint64_t)ceil(num_out / (double)sc->min_registers_per_thread);
+					for (uint64_t i = 0; i < num_out; i++) {
+						if (sc->localSize[1] == 1)
+							sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * num_out) * sc->localSize[0]);
+						else
 							sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * num_out) * sc->localSize[0] * sc->localSize[1]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (!sc->axisSwapped) {
+							sc->tempLen = sprintf(sc->tempStr, "			%s = combinedID %% %" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim, sc->fftDim, mult * sc->outputStride[1]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "			%s = combinedID %% %" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim, sc->fftDim, mult * sc->outputStride[1]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->axisSwapped) {
+							if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", (sc->fftDim), sc->gl_WorkGroupID_y, sc->localSize[0], (uint64_t)ceil(sc->size[1] / (double)mult));
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim) * sc->localSize[0]) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim) * sc->localSize[0]);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						else {
+							if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", (sc->fftDim), sc->gl_WorkGroupID_y, sc->localSize[1], (uint64_t)ceil(sc->size[1] / (double)mult));
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim) * sc->localSize[1]) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim) * sc->localSize[1]);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						if (sc->zeropad[1]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
+						sc->tempLen = sprintf(sc->tempStr, ";\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						res = appendZeropadStartReadWriteStage(sc, 0);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->mergeSequencesR2C) {
+							if (sc->axisSwapped) {
+
+								sc->tempLen = sprintf(sc->tempStr, "		%s = (sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")]);\n", sc->regIDs[0], sc->fftDim, sc->fftDim);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->outputBufferBlockNum == 1)
+									sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = %s(%s.x)%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], convTypeRight);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s(%s.x)%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+
+								if (sc->outputBufferBlockNum == 1)
+									sc->tempLen = sprintf(sc->tempStr, "		%s[%s+%" PRIu64 "] = %s(%s.y)%s;\n", outputsStruct, sc->inoutID, sc->outputStride[1], convTypeLeft, sc->regIDs[0], convTypeRight);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = %s(%s.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->zeropad[1]) {
+									sc->tempLen = sprintf(sc->tempStr, "	}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+							}
+							else {
+								sc->tempLen = sprintf(sc->tempStr, "		%s = (sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride]);\n", sc->regIDs[0],  sc->fftDim, sc->fftDim);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->outputBufferBlockNum == 1)
+									sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = %s(%s.x)%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], convTypeRight);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s(%s.x)%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->outputBufferBlockNum == 1)
+									sc->tempLen = sprintf(sc->tempStr, "		%s[%s+%" PRIu64 "] = %s(%s.y)%s;\n", outputsStruct, sc->inoutID, sc->outputStride[1], convTypeLeft, sc->regIDs[0],  convTypeRight);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = %s(%s.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], convTypeRight);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->zeropad[1]) {
+									sc->tempLen = sprintf(sc->tempStr, "	}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+							}
+						}
+						else {
+							if (!sc->axisSwapped) {
+								sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride;\n", sc->fftDim, sc->fftDim);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->outputBufferBlockNum == 1)
+									sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = %s(sdata[sdataID].x)%s;\n", outputsStruct, convTypeLeft, convTypeRight);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s(sdata[sdataID].x) %s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->zeropad[1]) {
+									sc->tempLen = sprintf(sc->tempStr, "	}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+							}
+							else {
+								sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim, sc->fftDim);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->outputBufferBlockNum == 1)
+									sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = %s(sdata[sdataID].x)%s;\n", outputsStruct, convTypeLeft, convTypeRight);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s(sdata[sdataID].x)%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->zeropad[1]) {
+									sc->tempLen = sprintf(sc->tempStr, "	}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+							}
+						}
+						res = appendZeropadEndReadWriteStage(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (sc->axisSwapped) {
+							if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim) * sc->localSize[0]) {
+								sc->tempLen = sprintf(sc->tempStr, "	}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						else {
+							if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim) * sc->localSize[1])
+							{
+								sc->tempLen = sprintf(sc->tempStr, "	}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						if (sc->axisSwapped) {
+							if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
+								sc->tempLen = sprintf(sc->tempStr, "		}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						else {
+							if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
+								sc->tempLen = sprintf(sc->tempStr, "		}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+					}
+				}
+				sc->fftDim = 2*sc->fftDim -2;
+				if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_dim_full;
+			}
+			else {
+
+			}
+		}
+		break;
+	}
+	case 111://DCT-II strided
+	{
+		if (!sc->writeFromRegisters) {
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		//res = appendZeropadStart(sc);
+		//if (res != VKFFT_SUCCESS) return res;
+		char shiftX[500] = "";
+		if (sc->performWorkGroupShift[0])
+			sprintf(shiftX, " + consts.workGroupShiftX*%s ", sc->gl_WorkGroupSize_x);
+		char shiftY[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
+		char shiftY2[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY2, " + consts.workGroupShiftY ");
+		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+		if (sc->reorderFourStep) {
+			//Not implemented
+		}
+		else {
+			//appendBarrierVkFFT(sc, 1);
+			//appendZeropadStart(sc);
+			if (sc->fftDim == sc->fft_dim_full) {
+				if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_zeropad_Bluestein_left_write[sc->axis_id];
+				sc->fftDim = (sc->fftDim + 2)/2;
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
+					if (sc->mergeSequencesR2C) {
+						sc->tempLen = sprintf(sc->tempStr, "\
+	if (%s==0)\n\
+	{\n\
+		sdata[%s + %" PRIu64 "* sharedStride] = sdata[%s];\n\
+	}\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->fftDim, sc->gl_LocalInvocationID_x);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						//res = appendZeropadEnd(sc);
+						//if (res != VKFFT_SUCCESS) return res;
+						res = appendBarrierVkFFT(sc, 1);
+						if (res != VKFFT_SUCCESS) return res;
+						//res = appendZeropadStart(sc);
+						//if (res != VKFFT_SUCCESS) return res;
+					}
+					uint64_t num_out = (uint64_t)ceil(mult * (sc->fftDim) / (double)sc->localSize[1]);
+					//num_out = (uint64_t)ceil(num_out / (double)sc->min_registers_per_thread);
+					for (uint64_t i = 0; i < num_out; i++) {
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * num_out) * sc->localSize[0] * sc->localSize[1]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						sc->tempLen = sprintf(sc->tempStr, "			%s = %s%s + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->gl_GlobalInvocationID_x, shiftX, sc->localSize[0], sc->outputStride[1]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->size[0] % sc->localSize[0] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID %% %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", sc->localSize[0], sc->gl_WorkGroupID_x, sc->localSize[0], sc->size[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim) * sc->localSize[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim) * sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->zeropad[1]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(((combinedID/%" PRIu64 ") %% %" PRIu64 " < %" PRIu64 ")||((combinedID/%" PRIu64 ") %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->localSize[0], sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->localSize[0], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
+						sc->tempLen = sprintf(sc->tempStr, ";\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						res = appendZeropadStartReadWriteStage(sc, 0);
+						if (res != VKFFT_SUCCESS) return res;
+						
+						if (sc->mergeSequencesR2C) {
+							sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, sc->localSize[0], sc->localSize[0], sc->fftDim, sc->localSize[0], sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].y-sdata[(%" PRIu64 "-combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, sc->localSize[0], sc->localSize[0], sc->fftDim, sc->localSize[0], sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->outputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 
-							sc->tempLen = sprintf(sc->tempStr, "			%s = %s%s + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->gl_GlobalInvocationID_x, shiftX, sc->localSize[0], sc->outputStride[1]);
+
+							sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].y+sdata[(%" PRIu64 "-combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].y);\n", sc->regIDs[1], LFending, sc->localSize[0], sc->localSize[0], sc->fftDim, sc->localSize[0], sc->localSize[0]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
-							if (sc->size[0] % sc->localSize[0] != 0) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID %% %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", sc->localSize[0], sc->gl_WorkGroupID_x, sc->localSize[0], sc->size[0]);
+							sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].x);\n", sc->regIDs[1], LFending, sc->localSize[0], sc->localSize[0], sc->fftDim, sc->localSize[0], sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+
+							if (sc->outputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		%s[%s+%" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", outputsStruct, sc->inoutID, sc->outputStride[1], convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "			if(combinedID / %" PRIu64 " > 0){\n", sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "			%s = (%" PRIu64 " - combinedID / %" PRIu64 ") + %s%s * %" PRIu64 ";\n", sc->inoutID, sc->fftDim, sc->localSize[0], sc->gl_GlobalInvocationID_x, shiftX, 2 * sc->outputStride[1]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+
+							if (sc->outputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->outputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		%s[%s+%" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", outputsStruct, sc->inoutID, sc->outputStride[1], convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "			}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride;\n", sc->localSize[0], sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->outputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = %s(sdata[sdataID].x)%s;\n", outputsStruct, convTypeLeft, convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s(sdata[sdataID].x)%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->zeropad[1]) {
+								sc->tempLen = sprintf(sc->tempStr, "	}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						res = appendZeropadEndReadWriteStage(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim) * sc->localSize[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "	}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->size[0] % sc->localSize[0] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+				sc->fftDim = 2 * sc->fftDim - 2;
+				if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_dim_full;
+			}
+			else {
+
+			}
+		}
+		break;
+	}
+	case 120://DCT-II nonstrided
+	{
+		if (!sc->writeFromRegisters) {
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		//res = appendZeropadStart(sc);
+		//if (res != VKFFT_SUCCESS) return res;
+		char shiftX[500] = "";
+		if (sc->performWorkGroupShift[0])
+			sprintf(shiftX, " + consts.workGroupShiftX ");
+		char shiftY[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
+		char shiftY2[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY2, " + consts.workGroupShiftY ");
+		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+		if (sc->reorderFourStep) {
+			//Not implemented
+		}
+		else {
+			//appendBarrierVkFFT(sc, 1);
+			//appendZeropadStart(sc);
+			if (sc->fftDim == sc->fft_dim_full) {
+				if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_zeropad_Bluestein_left_write[sc->axis_id];
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
+					if (sc->mergeSequencesR2C) {
+						if (sc->axisSwapped) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+	if (%s==0)\n\
+	{\n\
+		sdata[%s + %" PRIu64 "* sharedStride] = sdata[%s];\n\
+	}\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->fftDim, sc->gl_LocalInvocationID_x);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//res = appendZeropadEnd(sc);
+							//if (res != VKFFT_SUCCESS) return res;
+							res = appendBarrierVkFFT(sc, 1);
+							if (res != VKFFT_SUCCESS) return res;
+							//res = appendZeropadStart(sc);
+							//if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "\
+	if (%s==0)\n\
+	{\n\
+		sdata[%s * sharedStride + %" PRIu64 "] = sdata[%s * sharedStride];\n\
+	}\n", sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim, sc->gl_LocalInvocationID_y);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//res = appendZeropadEnd(sc);
+							//if (res != VKFFT_SUCCESS) return res;
+							res = appendBarrierVkFFT(sc, 1);
+							if (res != VKFFT_SUCCESS) return res;
+							//res = appendZeropadStart(sc);
+							//if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					uint64_t num_out = (sc->axisSwapped) ? (uint64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (uint64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
+					//num_out = (uint64_t)ceil(num_out / (double)sc->min_registers_per_thread);
+					for (uint64_t i = 0; i < num_out; i++) {
+						if (sc->localSize[1] == 1)
+							sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * num_out) * sc->localSize[0]);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * num_out) * sc->localSize[0] * sc->localSize[1]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (!sc->axisSwapped) {
+							sc->tempLen = sprintf(sc->tempStr, "			%s = combinedID %% %" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, mult * sc->outputStride[1]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "			%s = combinedID %% %" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, mult * sc->outputStride[1]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->axisSwapped) {
+							if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[0], (uint64_t)ceil(sc->size[1] / (double)mult));
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
@@ -12003,45 +13754,59 @@ if (%s==%" PRIu64 ") \n\
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
-							if (sc->zeropad[1]) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(((combinedID/%" PRIu64 ") %% %" PRIu64 " < %" PRIu64 ")||((combinedID/%" PRIu64 ") %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->localSize[0], sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->localSize[0], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+						}
+						else {
+							if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", (sc->fftDim / 2 + 1), sc->gl_WorkGroupID_y, sc->localSize[1], (uint64_t)ceil(sc->size[1] / (double)mult));
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
-							sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+							if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim / 2 + 1) * sc->localSize[1]) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim / 2 + 1) * sc->localSize[1]);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						if (sc->zeropad[1]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
-							res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
-							sc->tempLen = sprintf(sc->tempStr, ";\n");
+						}
+						sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
+						sc->tempLen = sprintf(sc->tempStr, ";\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						res = appendZeropadStartReadWriteStage(sc, 0);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->LUT) {
+							sc->tempLen = sprintf(sc->tempStr, "		mult = twiddleLUT[%" PRIu64 " + combinedID %% %" PRIu64 "];\n", sc->startDCT3LUT, sc->fftDim / 2 + 1);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
-							res = appendZeropadStartReadWriteStage(sc, 0);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*mult.x;\n");
+							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
-							if (sc->LUT) {
-								sc->tempLen = sprintf(sc->tempStr, "		mult = twiddleLUT[%" PRIu64 " + combinedID / %" PRIu64 "];\n", sc->startDCT3LUT, sc->localSize[0]);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*mult.x;\n");
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "		mult.y = -2*mult.y;\n");
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
-							else {
-								sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*%s(%.17f%s * (combinedID / %" PRIu64 ") );\n", cosDef, -double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "		mult.y = 2*%s(%.17f%s * (combinedID / %" PRIu64 ") );\n", sinDef, -double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
+							sc->tempLen = sprintf(sc->tempStr, "		mult.y = -2*mult.y;\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*%s(%.17f%s * (combinedID %% %" PRIu64 ") );\n", cosDef, -double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		mult.y = 2*%s(%.17f%s * (combinedID %% %" PRIu64 ") );\n", sinDef, -double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->mergeSequencesR2C) {
+							if (sc->axisSwapped) {
 
-							if (sc->mergeSequencesR2C) {
-								sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, sc->localSize[0], sc->localSize[0], sc->fftDim, sc->localSize[0], sc->localSize[0]);
+								sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].y-sdata[(%" PRIu64 "-combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, sc->localSize[0], sc->localSize[0], sc->fftDim, sc->localSize[0], sc->localSize[0]);
+								sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y-sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 								if (sc->outputBufferBlockNum == 1)
@@ -12052,10 +13817,10 @@ if (%s==%" PRIu64 ") \n\
 								if (res != VKFFT_SUCCESS) return res;
 
 
-								sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].y+sdata[(%" PRIu64 "-combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].y);\n", sc->regIDs[1], LFending, sc->localSize[0], sc->localSize[0], sc->fftDim, sc->localSize[0], sc->localSize[0]);
+								sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[1], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].x);\n", sc->regIDs[1], LFending, sc->localSize[0], sc->localSize[0], sc->fftDim, sc->localSize[0], sc->localSize[0]);
+								sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[1], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 
@@ -12065,13 +13830,29 @@ if (%s==%" PRIu64 ") \n\
 									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "			if(combinedID / %" PRIu64 " > 0){\n", sc->localSize[0]);
+								if (sc->zeropad[1]) {
+									sc->tempLen = sprintf(sc->tempStr, "	}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								sc->tempLen = sprintf(sc->tempStr, "			if(combinedID %% %" PRIu64 " > 0){\n", sc->fftDim / 2 + 1);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "			%s = (%" PRIu64 " - combinedID / %" PRIu64 ") + %s%s * %" PRIu64 ";\n", sc->inoutID, sc->fftDim, sc->localSize[0], sc->gl_GlobalInvocationID_x, shiftX, 2 * sc->outputStride[1]);
+								sc->tempLen = sprintf(sc->tempStr, "			%s = (%" PRIu64 " - combinedID %% %" PRIu64 ") + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, mult * sc->outputStride[1]);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
-
+								sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
+								sc->tempLen = sprintf(sc->tempStr, ";\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->zeropad[1]) {
+									sc->tempLen = sprintf(sc->tempStr, "	if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
 								if (sc->outputBufferBlockNum == 1)
 									sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
 								else
@@ -12084,12 +13865,137 @@ if (%s==%" PRIu64 ") \n\
 									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
+								if (sc->zeropad[1]) {
+									sc->tempLen = sprintf(sc->tempStr, "	}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								sc->tempLen = sprintf(sc->tempStr, "	}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							else {
+								sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y-sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->outputBufferBlockNum == 1)
+									sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[1], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[1], LFending, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, (sc->fftDim / 2 + 1));
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+
+								if (sc->outputBufferBlockNum == 1)
+									sc->tempLen = sprintf(sc->tempStr, "		%s[%s+%" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", outputsStruct, sc->inoutID, sc->outputStride[1], convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->zeropad[1]) {
+									sc->tempLen = sprintf(sc->tempStr, "	}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								sc->tempLen = sprintf(sc->tempStr, "			if(combinedID %% %" PRIu64 " > 0){\n", sc->fftDim / 2 + 1);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								sc->tempLen = sprintf(sc->tempStr, "			%s = (%" PRIu64 " - combinedID %% %" PRIu64 ") + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, 2 * sc->outputStride[1]);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
+								sc->tempLen = sprintf(sc->tempStr, ";\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->zeropad[1]) {
+									sc->tempLen = sprintf(sc->tempStr, "	if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								if (sc->outputBufferBlockNum == 1)
+									sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->outputBufferBlockNum == 1)
+									sc->tempLen = sprintf(sc->tempStr, "		%s[%s+%" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", outputsStruct, sc->inoutID, sc->outputStride[1], convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->zeropad[1]) {
+									sc->tempLen = sprintf(sc->tempStr, "	}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								sc->tempLen = sprintf(sc->tempStr, "	}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						else {
+							if (!sc->axisSwapped) {
+								sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride;\n", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->outputBufferBlockNum == 1)
+									sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = %s(sdata[sdataID].x*mult.x - sdata[sdataID].y*mult.y)%s;\n", outputsStruct, convTypeLeft, convTypeRight);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s(sdata[sdataID].x*mult.x - sdata[sdataID].y*mult.y) %s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->zeropad[1]) {
+									sc->tempLen = sprintf(sc->tempStr, "	}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								sc->tempLen = sprintf(sc->tempStr, "			if(combinedID %% %" PRIu64 " > 0){\n", sc->fftDim / 2 + 1);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								sc->tempLen = sprintf(sc->tempStr, "			%s = (%" PRIu64 " - combinedID %% %" PRIu64 ") + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
+								sc->tempLen = sprintf(sc->tempStr, ";\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->zeropad[1]) {
+									sc->tempLen = sprintf(sc->tempStr, "	if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								if (sc->outputBufferBlockNum == 1)
+									sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = -%s(sdata[sdataID].y*mult.x + sdata[sdataID].x*mult.y)%s;\n", outputsStruct, convTypeLeft, convTypeRight);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = -%s(sdata[sdataID].y*mult.x + sdata[sdataID].x*mult.y) %s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+								if (sc->zeropad[1]) {
+									sc->tempLen = sprintf(sc->tempStr, "	}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
 								sc->tempLen = sprintf(sc->tempStr, "			}\n");
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
 							else {
-								sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride;\n", sc->localSize[0], sc->localSize[0]);
+								sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ");\n", sc->fftDim / 2 + 1, sc->fftDim / 2 + 1);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 								if (sc->outputBufferBlockNum == 1)
@@ -12103,10 +14009,10 @@ if (%s==%" PRIu64 ") \n\
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
 								}
-								sc->tempLen = sprintf(sc->tempStr, "			if((combinedID/ %" PRIu64 ")> 0){\n", sc->localSize[0]);
+								sc->tempLen = sprintf(sc->tempStr, "			if(combinedID %% %" PRIu64 " > 0){\n", sc->fftDim / 2 + 1);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "			%s = (%" PRIu64 " - combinedID / %" PRIu64 ") * %" PRIu64 " + %s%s;\n", sc->inoutID, sc->fftDim, sc->localSize[0], sc->outputStride[1], sc->gl_GlobalInvocationID_x, shiftX);
+								sc->tempLen = sprintf(sc->tempStr, "			%s = (%" PRIu64 " - combinedID %% %" PRIu64 ") + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim, sc->fftDim / 2 + 1, sc->fftDim / 2 + 1, sc->outputStride[1]);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 								sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
@@ -12117,7 +14023,7 @@ if (%s==%" PRIu64 ") \n\
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 								if (sc->zeropad[1]) {
-									sc->tempLen = sprintf(sc->tempStr, "		if(( (%" PRIu64 " - combinedID / %" PRIu64 ") %% %" PRIu64 " < %" PRIu64 ")||( (%" PRIu64 " - combinedID / %" PRIu64 ") %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->fftDim, sc->localSize[0], sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fftDim, sc->localSize[0], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+									sc->tempLen = sprintf(sc->tempStr, "	if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
 								}
@@ -12136,33 +14042,272 @@ if (%s==%" PRIu64 ") \n\
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
-							res = appendZeropadEndReadWriteStage(sc);
-							if (res != VKFFT_SUCCESS) return res;
+						}
+						res = appendZeropadEndReadWriteStage(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (sc->axisSwapped) {
 							if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim / 2 + 1) * sc->localSize[0]) {
 								sc->tempLen = sprintf(sc->tempStr, "	}\n");
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
-							if (sc->size[0] % sc->localSize[0] != 0) {
+						}
+						else {
+							if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim / 2 + 1) * sc->localSize[1])
+							{
+								sc->tempLen = sprintf(sc->tempStr, "	}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						if (sc->axisSwapped) {
+							if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
+								sc->tempLen = sprintf(sc->tempStr, "		}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						else {
+							if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
 								sc->tempLen = sprintf(sc->tempStr, "		}\n");
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
 						}
 					}
-					if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_dim_full;
 				}
-				else {
-
-				}
+				if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_dim_full;
 			}
-			break;
+			else {
+
+			}
 		}
+		break;
+	}
+	case 121://DCT-II strided
+	{
+		if (!sc->writeFromRegisters) {
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		//res = appendZeropadStart(sc);
+		//if (res != VKFFT_SUCCESS) return res;
+		char shiftX[500] = "";
+		if (sc->performWorkGroupShift[0])
+			sprintf(shiftX, " + consts.workGroupShiftX*%s ", sc->gl_WorkGroupSize_x);
+		char shiftY[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
+		char shiftY2[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY2, " + consts.workGroupShiftY ");
+		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+		if (sc->reorderFourStep) {
+			//Not implemented
+		}
+		else {
+			//appendBarrierVkFFT(sc, 1);
+			//appendZeropadStart(sc);
+			if (sc->fftDim == sc->fft_dim_full) {
+				if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_zeropad_Bluestein_left_write[sc->axis_id];
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
+					if (sc->mergeSequencesR2C) {
+						sc->tempLen = sprintf(sc->tempStr, "\
+	if (%s==0)\n\
+	{\n\
+		sdata[%s + %" PRIu64 "* sharedStride] = sdata[%s];\n\
+	}\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->fftDim, sc->gl_LocalInvocationID_x);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						//res = appendZeropadEnd(sc);
+						//if (res != VKFFT_SUCCESS) return res;
+						res = appendBarrierVkFFT(sc, 1);
+						if (res != VKFFT_SUCCESS) return res;
+						//res = appendZeropadStart(sc);
+						//if (res != VKFFT_SUCCESS) return res;
+					}
+					uint64_t num_out = (uint64_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]);
+					//num_out = (uint64_t)ceil(num_out / (double)sc->min_registers_per_thread);
+					for (uint64_t i = 0; i < num_out; i++) {
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * num_out) * sc->localSize[0] * sc->localSize[1]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						sc->tempLen = sprintf(sc->tempStr, "			%s = %s%s + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->gl_GlobalInvocationID_x, shiftX, sc->localSize[0], sc->outputStride[1]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->size[0] % sc->localSize[0] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID %% %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", sc->localSize[0], sc->gl_WorkGroupID_x, sc->localSize[0], sc->size[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim / 2 + 1) * sc->localSize[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim / 2 + 1) * sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->zeropad[1]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(((combinedID/%" PRIu64 ") %% %" PRIu64 " < %" PRIu64 ")||((combinedID/%" PRIu64 ") %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->localSize[0], sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->localSize[0], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
+						sc->tempLen = sprintf(sc->tempStr, ";\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						res = appendZeropadStartReadWriteStage(sc, 0);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->LUT) {
+							sc->tempLen = sprintf(sc->tempStr, "		mult = twiddleLUT[%" PRIu64 " + combinedID / %" PRIu64 "];\n", sc->startDCT3LUT, sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*mult.x;\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		mult.y = -2*mult.y;\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*%s(%.17f%s * (combinedID / %" PRIu64 ") );\n", cosDef, -double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		mult.y = 2*%s(%.17f%s * (combinedID / %" PRIu64 ") );\n", sinDef, -double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+
+						if (sc->mergeSequencesR2C) {
+							sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, sc->localSize[0], sc->localSize[0], sc->fftDim, sc->localSize[0], sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].y-sdata[(%" PRIu64 "-combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, sc->localSize[0], sc->localSize[0], sc->fftDim, sc->localSize[0], sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->outputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+
+
+							sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].y+sdata[(%" PRIu64 "-combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].y);\n", sc->regIDs[1], LFending, sc->localSize[0], sc->localSize[0], sc->fftDim, sc->localSize[0], sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID / %" PRIu64 ")* sharedStride + (combinedID %% %" PRIu64 ")].x);\n", sc->regIDs[1], LFending, sc->localSize[0], sc->localSize[0], sc->fftDim, sc->localSize[0], sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+
+							if (sc->outputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		%s[%s+%" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", outputsStruct, sc->inoutID, sc->outputStride[1], convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = %s(%s.x*mult.x-%s.y*mult.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "			if(combinedID / %" PRIu64 " > 0){\n", sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "			%s = (%" PRIu64 " - combinedID / %" PRIu64 ") + %s%s * %" PRIu64 ";\n", sc->inoutID, sc->fftDim, sc->localSize[0], sc->gl_GlobalInvocationID_x, shiftX, 2 * sc->outputStride[1]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+
+							if (sc->outputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", sc->inoutID, sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[0], sc->regIDs[0], convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->outputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		%s[%s+%" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", outputsStruct, sc->inoutID, sc->outputStride[1], convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[(%s %" PRIu64 ")/ %" PRIu64 "]%s[(%s+%" PRIu64 ") %% %" PRIu64 "] = -%s(%s.y*mult.x+%s.x*mult.y)%s;\n", sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, outputsStruct, sc->inoutID, sc->outputStride[1], sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], sc->regIDs[1], convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "			}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "		sdataID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride;\n", sc->localSize[0], sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->outputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = %s(sdata[sdataID].x*mult.x -sdata[sdataID].y*mult.y)%s;\n", outputsStruct, convTypeLeft, convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s(sdata[sdataID].x*mult.x - sdata[sdataID].y*mult.y)%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->zeropad[1]) {
+								sc->tempLen = sprintf(sc->tempStr, "	}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							sc->tempLen = sprintf(sc->tempStr, "			if((combinedID/ %" PRIu64 ")> 0){\n", sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "			%s = (%" PRIu64 " - combinedID / %" PRIu64 ") * %" PRIu64 " + %s%s;\n", sc->inoutID, sc->fftDim, sc->localSize[0], sc->outputStride[1], sc->gl_GlobalInvocationID_x, shiftX);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
+							sc->tempLen = sprintf(sc->tempStr, ";\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->zeropad[1]) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(( (%" PRIu64 " - combinedID / %" PRIu64 ") %% %" PRIu64 " < %" PRIu64 ")||( (%" PRIu64 " - combinedID / %" PRIu64 ") %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->fftDim, sc->localSize[0], sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fftDim, sc->localSize[0], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							if (sc->outputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = -%s(sdata[sdataID].y*mult.x +sdata[sdataID].x*mult.y)%s;\n", outputsStruct, convTypeLeft, convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = -%s(sdata[sdataID].y*mult.x + sdata[sdataID].x*mult.y)%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->zeropad[1]) {
+								sc->tempLen = sprintf(sc->tempStr, "	}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							sc->tempLen = sprintf(sc->tempStr, "			}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						res = appendZeropadEndReadWriteStage(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if ((1 + i + k * num_out) * sc->localSize[0] * sc->localSize[1] >= (sc->fftDim / 2 + 1) * sc->localSize[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "	}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->size[0] % sc->localSize[0] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+				if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_dim_full;
+			}
+			else {
+
+			}
+		}
+		break;
+	}
 	case 130://DCT-III nonstrided
 	{
-		sc->writeFromRegisters = 0;
-		res = appendBarrierVkFFT(sc, 1);
-		if (res != VKFFT_SUCCESS) return res;
+		if (!sc->writeFromRegisters) {
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+		}
 		//res = appendZeropadStart(sc);
 		//if (res != VKFFT_SUCCESS) return res;
 		char shiftX[500] = "";
@@ -12335,9 +14480,10 @@ if (%s==%" PRIu64 ") \n\
 	}
 	case 131://DCT-III strided
 	{
-		sc->writeFromRegisters = 0;
-		res = appendBarrierVkFFT(sc, 1);
-		if (res != VKFFT_SUCCESS) return res;
+		if (!sc->writeFromRegisters) {
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+		}
 		//res = appendZeropadStart(sc);
 		//if (res != VKFFT_SUCCESS) return res;
 		char shiftX[500] = "";
@@ -12507,9 +14653,10 @@ if (%s==%" PRIu64 ") \n\
 	}
 	case 140: //DCT-IV nonstrided as 8N DFT
 	{
-		sc->writeFromRegisters = 0;
-		res = appendBarrierVkFFT(sc, 1);
-		if (res != VKFFT_SUCCESS) return res;
+		if (!sc->writeFromRegisters) {
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+		}
 		res = appendZeropadStart(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		char shiftX[500] = "";
@@ -12906,9 +15053,10 @@ if (%s==%" PRIu64 ") \n\
 	}
 	case 141: //DCT-IV strided as 8N DFT
 	{
-		sc->writeFromRegisters = 0;
-		res = appendBarrierVkFFT(sc, 1);
-		if (res != VKFFT_SUCCESS) return res;
+		if (!sc->writeFromRegisters) {
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+		}
 		res = appendZeropadStart(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		char shiftX[500] = "";
@@ -13018,9 +15166,10 @@ if (%s==%" PRIu64 ") \n\
 	}
 	case 142://DCT-IV nonstrided as 2xN/2 DCT-II
 	{
-		sc->writeFromRegisters = 0;
-		res = appendBarrierVkFFT(sc, 1);
-		if (res != VKFFT_SUCCESS) return res;
+		if (!sc->writeFromRegisters) {
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+		}
 		//res = appendZeropadStart(sc);
 		//if (res != VKFFT_SUCCESS) return res;
 		char shiftX[500] = "";
@@ -13222,9 +15371,10 @@ if (%s==%" PRIu64 ") \n\
 	}
 	case 143://DCT-IV strided as 2xN/2 DCT-II
 	{
-		sc->writeFromRegisters = 0;
-		res = appendBarrierVkFFT(sc, 1);
-		if (res != VKFFT_SUCCESS) return res;
+		if (!sc->writeFromRegisters) {
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+		}
 		//res = appendZeropadStart(sc);
 		//if (res != VKFFT_SUCCESS) return res;
 		char shiftX[500] = "";
@@ -13381,6 +15531,730 @@ if (%s==%" PRIu64 ") \n\
 							if (res != VKFFT_SUCCESS) return res;
 						}
 						if (sc->zeropadBluestein[1]) {
+							sc->tempLen = sprintf(sc->tempStr, "		}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+				if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_dim_full;
+			}
+			else {
+
+			}
+		}
+		break;
+	}
+	case 144://odd DCT-IV nonstrided as N FFT
+	{
+		if (!sc->writeFromRegisters) {
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		//res = appendZeropadStart(sc);
+		//if (res != VKFFT_SUCCESS) return res;
+		char shiftX[500] = "";
+		if (sc->performWorkGroupShift[0])
+			sprintf(shiftX, " + consts.workGroupShiftX ");
+		char shiftY[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
+		char shiftY2[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY2, " + consts.workGroupShiftY ");
+		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+		if (sc->reorderFourStep) {
+			//Not implemented
+		}
+		else {
+			//appendBarrierVkFFT(sc, 1);
+			//appendZeropadStart(sc);
+			if (sc->fftDim == sc->fft_dim_full) {
+				if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_zeropad_Bluestein_left_write[sc->axis_id];
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
+					if (sc->mergeSequencesR2C) {
+						if (sc->axisSwapped) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+	if (%s==0)\n\
+	{\n\
+		sdata[%s + %" PRIu64 "* sharedStride] = sdata[%s];\n\
+	}\n", sc->gl_LocalInvocationID_y, sc->gl_LocalInvocationID_x, sc->fftDim, sc->gl_LocalInvocationID_x);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//res = appendZeropadEnd(sc);
+							//if (res != VKFFT_SUCCESS) return res;
+							res = appendBarrierVkFFT(sc, 1);
+							if (res != VKFFT_SUCCESS) return res;
+							//res = appendZeropadStart(sc);
+							//if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "\
+	if (%s==0)\n\
+	{\n\
+		sdata[%s * sharedStride + %" PRIu64 "] = sdata[%s * sharedStride];\n\
+	}\n", sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->fftDim, sc->gl_LocalInvocationID_y);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//res = appendZeropadEnd(sc);
+							//if (res != VKFFT_SUCCESS) return res;
+							res = appendBarrierVkFFT(sc, 1);
+							if (res != VKFFT_SUCCESS) return res;
+							//res = appendZeropadStart(sc);
+							//if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					//uint64_t num_out = (sc->axisSwapped) ? (uint64_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[1]) : (uint64_t)ceil(mult * (sc->fftDim / 2 + 1) / (double)sc->localSize[0]);
+					//num_out = (uint64_t)ceil(num_out / (double)sc->min_registers_per_thread);
+					for (uint64_t i = 0; i < mult*sc->min_registers_per_thread; i++) {
+						if (sc->localSize[1] == 1)
+							sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						sc->tempLen = sprintf(sc->tempStr, "			%s = combinedID %% %" PRIu64 " + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->fftDim, sc->fftDim, sc->outputStride[1]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						if (sc->axisSwapped) {
+							if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", mult * sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], (uint64_t)ceil(sc->size[1] / (double)mult));
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							if ((1 + i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1] >= mult * sc->fftDim * sc->localSize[0]) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", mult * sc->fftDim * sc->localSize[0]);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						else {
+							if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", mult * sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], (uint64_t)ceil(sc->size[1] / (double)mult));
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							if ((1 + i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1] >= mult * sc->fftDim * sc->localSize[1]) {
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", mult * sc->fftDim * sc->localSize[1]);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						if (sc->zeropad[1]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->outputStride[1], sc->fft_zeropad_left_write[sc->axis_id], sc->outputStride[1], sc->fft_zeropad_right_write[sc->axis_id]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
+						sc->tempLen = sprintf(sc->tempStr, ";\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						res = appendZeropadStartReadWriteStage(sc, 0);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->writeFromRegisters) {
+							//not working yet
+							if (sc->outputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = %s%s%s;\n", outputsStruct, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[i + k * sc->registers_per_thread], convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "		sdataID = combinedID %% %" PRIu64 ";\n", sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		if(sdataID < %" PRIu64 "){\n", sc->fftDim/4);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->mergeSequencesR2C) {
+								if (sc->axisSwapped) {
+									sc->tempLen = sprintf(sc->tempStr, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(2*sdataID+1) * sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 "- (2*sdataID+1)) * sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, mult*sc->fftDim, sc->fftDim, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(2*sdataID+1) * sharedStride + (combinedID / %" PRIu64 ")].y-sdata[(%" PRIu64 "- (2*sdataID+1)) * sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, mult * sc->fftDim, sc->fftDim, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}else{\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(2*sdataID+1) * sharedStride + (combinedID / %" PRIu64 ")].y+sdata[(%" PRIu64 "- (2*sdataID+1)) * sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, mult * sc->fftDim, sc->fftDim, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(2*sdataID+1) * sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 "- (2*sdataID+1)) * sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, mult * sc->fftDim, sc->fftDim, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								else {
+									sc->tempLen = sprintf(sc->tempStr, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(2*sdataID+1) + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 "- (2*sdataID+1)) + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, mult * sc->fftDim, sc->fftDim, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(2*sdataID+1) + (combinedID / %" PRIu64 ") * sharedStride].y-sdata[(%" PRIu64 "- (2*sdataID+1)) + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, mult * sc->fftDim, sc->fftDim, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}else{\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(2*sdataID+1) + (combinedID / %" PRIu64 ") * sharedStride].y+sdata[(%" PRIu64 "- (2*sdataID+1)) + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, mult * sc->fftDim, sc->fftDim, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(2*sdataID+1) + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 "- (2*sdataID+1)) + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, mult * sc->fftDim, sc->fftDim, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+							}
+							else {
+								if (!sc->axisSwapped)
+									sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(2*sdataID+1) + (combinedID / %" PRIu64 ") * sharedStride];\n", sc->regIDs[0], sc->fftDim);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(2*sdataID+1) * sharedStride + (combinedID / %" PRIu64 ")];\n", sc->regIDs[0], sc->fftDim);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID + 1)/2) %% 2) != 0) \n\
+			%s.x = -%s.x;\n\
+		else\n\
+			%s.x = %s.x;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID)/2) %% 2) != 0) \n\
+			%s.x += %s.y;\n\
+		else\n\
+			%s.x -= %s.y;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		}\n\n");
+
+
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		if((sdataID < %" PRIu64 ")&&(sdataID >= %" PRIu64 ")){\n", sc->fftDim/2, sc->fftDim/4);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->mergeSequencesR2C) {
+								if (sc->axisSwapped) {
+									sc->tempLen = sprintf(sc->tempStr, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 " + 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim - 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].y-sdata[(%" PRIu64 " + 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim - 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}else{\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].y+sdata[(%" PRIu64 " + 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim - 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 " + 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim - 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								else {
+									sc->tempLen = sprintf(sc->tempStr, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 " + 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim - 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].y-sdata[(%" PRIu64 " + 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim - 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}else{\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].y+sdata[(%" PRIu64 " + 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim - 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 " + 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim - 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+							}
+							else {
+								if (!sc->axisSwapped)
+									sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride];\n", sc->regIDs[0], 2 * (sc->fftDim / 2), sc->fftDim);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")];\n", sc->regIDs[0], 2 * (sc->fftDim / 2), sc->fftDim);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID+1)/2) %% 2) != 0) \n\
+			%s.x = -%s.x;\n\
+		else\n\
+			%s.x = %s.x;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID)/2) %% 2) != 0) \n\
+			%s.x -= %s.y;\n\
+		else\n\
+			%s.x += %s.y;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		}\n\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+
+
+							sc->tempLen = sprintf(sc->tempStr, "		if((sdataID < %" PRIu64 ")&&(sdataID >= %" PRIu64 ")){\n", 3 * sc->fftDim / 4, sc->fftDim / 2);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->mergeSequencesR2C) {
+								if (sc->axisSwapped) {
+									sc->tempLen = sprintf(sc->tempStr, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(2*sdataID - %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim + 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(2*sdataID - %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].y-sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim + 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}else{\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(2*sdataID - %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].y+sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim + 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(2*sdataID - %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim + 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								else {
+									sc->tempLen = sprintf(sc->tempStr, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(2*sdataID - %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim + 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(2*sdataID - %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y-sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim + 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}else{\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(2*sdataID - %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y+sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim + 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(2*sdataID - %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, 2 * (sc->fftDim / 2), mult * sc->fftDim, sc->fftDim + 2 * (sc->fftDim / 2), mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+							}
+							else {
+								if (!sc->axisSwapped)
+									sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(2*sdataID - %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride];\n", sc->regIDs[0], 2 * (sc->fftDim / 2), sc->fftDim);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(2*sdataID - %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")];\n", sc->regIDs[0], 2 * (sc->fftDim / 2), sc->fftDim);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID+1)/2) %% 2) != 0) \n\
+			%s.x = -%s.x;\n\
+		else\n\
+			%s.x = %s.x;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID)/2) %% 2) != 0) \n\
+			%s.x += %s.y;\n\
+		else\n\
+			%s.x -= %s.y;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		}\n\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+
+
+							sc->tempLen = sprintf(sc->tempStr, "		if((sdataID >= %" PRIu64 ")){\n", 3*sc->fftDim / 4);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->mergeSequencesR2C) {
+								if (sc->axisSwapped) {
+									sc->tempLen = sprintf(sc->tempStr, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(2*sdataID - %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, 2 * sc->fftDim - 1, mult * sc->fftDim, sc->fftDim - 1, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].y-sdata[(2*sdataID - %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, 2 * sc->fftDim - 1, mult * sc->fftDim, sc->fftDim - 1, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}else{\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].y+sdata[(2*sdataID - %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, 2 * sc->fftDim - 1, mult * sc->fftDim, sc->fftDim - 1, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(2*sdataID - %" PRIu64 ") * sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, 2 * sc->fftDim - 1, mult * sc->fftDim, sc->fftDim - 1, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								else {
+									sc->tempLen = sprintf(sc->tempStr, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(2*sdataID - %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, 2 * sc->fftDim - 1, mult * sc->fftDim, sc->fftDim - 1, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].y-sdata[(2*sdataID - %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, 2 * sc->fftDim - 1, mult * sc->fftDim, sc->fftDim - 1, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}else{\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].y+sdata[(2*sdataID - %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, 2 * sc->fftDim - 1, mult * sc->fftDim, sc->fftDim - 1, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(2*sdataID - %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, 2 * sc->fftDim - 1, mult * sc->fftDim, sc->fftDim - 1, mult * sc->fftDim);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+									sc->tempLen = sprintf(sc->tempStr, "}\n");
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+							}
+							else {
+								if (!sc->axisSwapped)
+									sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(%" PRIu64 " - 2*sdataID) + (combinedID / %" PRIu64 ") * sharedStride];\n", sc->regIDs[0], 2 * sc->fftDim - 1, sc->fftDim);
+								else
+									sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + (combinedID / %" PRIu64 ")];\n", sc->regIDs[0], 2 * sc->fftDim - 1, sc->fftDim);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID+1)/2) %% 2) != 0) \n\
+			%s.x = -%s.x;\n\
+		else\n\
+			%s.x = %s.x;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID)/2) %% 2) != 0) \n\
+			%s.x -= %s.y;\n\
+		else\n\
+			%s.x += %s.y;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		}\n\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		%s.x *= 1.41421356237309504880%s;\n", sc->regIDs[1], LFending);
+							res = VkAppendLine(sc);                               
+							if (res != VKFFT_SUCCESS) return res;
+							if (sc->outputBufferBlockNum == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = %s%s.x%s;\n", outputsStruct, convTypeLeft, sc->regIDs[1], convTypeRight);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s.x%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], convTypeRight);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						res = appendZeropadEndReadWriteStage(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->zeropad[1]) {
+							sc->tempLen = sprintf(sc->tempStr, "	}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->axisSwapped) {
+							if ((1 + i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1] >= mult * sc->fftDim * sc->localSize[0]) {
+								sc->tempLen = sprintf(sc->tempStr, "	}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						else {
+							if ((1 + i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1] >= mult * sc->fftDim * sc->localSize[1])
+							{
+								sc->tempLen = sprintf(sc->tempStr, "	}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						if (sc->axisSwapped) {
+							if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0) {
+								sc->tempLen = sprintf(sc->tempStr, "		}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						else {
+							if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0) {
+								sc->tempLen = sprintf(sc->tempStr, "		}\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+					}
+				}
+				if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_dim_full;
+				/*for (uint64_t k = 0; k < sc->registerBoost; k++) {
+					for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+						if (sc->localSize[1] == 1)
+							sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if(%s + %" PRIu64 " < %" PRIu64 "){\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0], (sc->fftDim-1)/2);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->axisSwapped) {
+							sc->tempLen = sprintf(sc->tempStr, "		w = sdata[(2*(combinedID %% %" PRIu64 ")+1)* sharedStride + (combinedID / %" PRIu64 ")];\n",sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(2*(combinedID %% %" PRIu64 ")+2)* sharedStride + (combinedID / %" PRIu64 ")];\n", sc->regIDs[i + k * sc->min_registers_per_thread], sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "		w = sdata[(2*(combinedID %% %" PRIu64 ")+1) + (combinedID / %" PRIu64 ") * sharedStride];\n", sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(2*(combinedID %% %" PRIu64 ")+2) + (combinedID / %" PRIu64 ") * sharedStride];\n", sc->regIDs[i + k * sc->min_registers_per_thread], sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sc->tempLen = sprintf(sc->tempStr, "		}else{\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->axisSwapped) {
+							sc->tempLen = sprintf(sc->tempStr, "		w = sdata[(2*(%" PRIu64 " - combinedID %% %" PRIu64 ")-1)* sharedStride + (combinedID / %" PRIu64 ")];\n", sc->fftDim, sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(2*(%" PRIu64 " - combinedID %% %" PRIu64 "))* sharedStride + (combinedID / %" PRIu64 ")];\n", sc->regIDs[i + k * sc->min_registers_per_thread], sc->fftDim, sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "		w = sdata[(2*(%" PRIu64 " - combinedID %% %" PRIu64 ")-1) + (combinedID / %" PRIu64 ")* sharedStride];\n", sc->fftDim, sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(2*(%" PRIu64 " - combinedID %% %" PRIu64 ")) + (combinedID / %" PRIu64 ")* sharedStride];\n", sc->regIDs[i + k * sc->min_registers_per_thread], sc->fftDim, sc->fftDim, sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+					}
+				}*/
+				
+			}
+			else {
+
+			}
+		}
+		break;
+	}
+	case 145://odd DCT-IV strided as N FFT
+	{
+		if (!sc->writeFromRegisters) {
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		//res = appendZeropadStart(sc);
+		//if (res != VKFFT_SUCCESS) return res;
+		char shiftX[500] = "";
+		if (sc->performWorkGroupShift[0])
+			sprintf(shiftX, " + consts.workGroupShiftX*%s ", sc->gl_WorkGroupSize_x);
+		char shiftY[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
+		char shiftY2[500] = "";
+		if (sc->performWorkGroupShift[1])
+			sprintf(shiftY2, " + consts.workGroupShiftY ");
+		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+		if (sc->reorderFourStep) {
+			//Not implemented
+		}
+		else {
+			//appendBarrierVkFFT(sc, 1);
+			//appendZeropadStart(sc);
+			if (sc->fftDim == sc->fft_dim_full) {
+				if (sc->zeropadBluestein[1])  sc->fftDim = sc->fft_zeropad_Bluestein_left_write[sc->axis_id];
+				for (uint64_t k = 0; k < sc->registerBoost; k++) {
+					for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+						sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+						sc->tempLen = sprintf(sc->tempStr, "			%s = %s%s + ((combinedID/%" PRIu64 ") * %" PRIu64 ");\n", sc->inoutID, sc->gl_GlobalInvocationID_x, shiftX, sc->localSize[0], sc->outputStride[1]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->size[0] % sc->localSize[0] != 0) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID %% %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", sc->localSize[0], sc->gl_WorkGroupID_x, sc->localSize[0], sc->size[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if ((1 + i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1] >= sc->fftDim * sc->localSize[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[0]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->zeropad[1]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(((combinedID/%" PRIu64 ") %% %" PRIu64 " < %" PRIu64 ")||((combinedID/%" PRIu64 ") %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->localSize[0], sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->localSize[0], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						res = indexOutputVkFFT(sc, uintType, writeType, sc->inoutID, 0, requestCoordinate, requestBatch);
+						sc->tempLen = sprintf(sc->tempStr, ";\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						res = appendZeropadStartReadWriteStage(sc, 0);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		sdataID = combinedID / %" PRIu64 ";\n", sc->localSize[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if(sdataID < %" PRIu64 "){\n", sc->fftDim / 4);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(2*sdataID+1) * sharedStride + %s];\n", sc->regIDs[0], sc->gl_LocalInvocationID_x);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID + 1)/2) %% 2) != 0) \n\
+			%s.x = -%s.x;\n\
+		else\n\
+			%s.x = %s.x;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID)/2) %% 2) != 0) \n\
+			%s.x += %s.y;\n\
+		else\n\
+			%s.x -= %s.y;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n\n");
+
+
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if((sdataID < %" PRIu64 ")&&(sdataID >= %" PRIu64 ")){\n", sc->fftDim / 2, sc->fftDim / 4);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + %s];\n", sc->regIDs[0], 2 * (sc->fftDim / 2), sc->gl_LocalInvocationID_x);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID+1)/2) %% 2) != 0) \n\
+			%s.x = -%s.x;\n\
+		else\n\
+			%s.x = %s.x;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID)/2) %% 2) != 0) \n\
+			%s.x -= %s.y;\n\
+		else\n\
+			%s.x += %s.y;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+
+						sc->tempLen = sprintf(sc->tempStr, "		if((sdataID < %" PRIu64 ")&&(sdataID >= %" PRIu64 ")){\n", 3 * sc->fftDim / 4, sc->fftDim / 2);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(2*sdataID - %" PRIu64 ") * sharedStride + %s];\n", sc->regIDs[0], 2 * (sc->fftDim / 2), sc->gl_LocalInvocationID_x);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID+1)/2) %% 2) != 0) \n\
+			%s.x = -%s.x;\n\
+		else\n\
+			%s.x = %s.x;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID)/2) %% 2) != 0) \n\
+			%s.x += %s.y;\n\
+		else\n\
+			%s.x -= %s.y;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+
+
+						sc->tempLen = sprintf(sc->tempStr, "		if((sdataID >= %" PRIu64 ")){\n", 3 * sc->fftDim / 4);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(%" PRIu64 " - 2*sdataID) * sharedStride + %s];\n", sc->regIDs[0], 2 * sc->fftDim - 1, sc->gl_LocalInvocationID_x);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID+1)/2) %% 2) != 0) \n\
+			%s.x = -%s.x;\n\
+		else\n\
+			%s.x = %s.x;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		if ((((sdataID)/2) %% 2) != 0) \n\
+			%s.x -= %s.y;\n\
+		else\n\
+			%s.x += %s.y;\n", sc->regIDs[1], sc->regIDs[0], sc->regIDs[1], sc->regIDs[0]);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		}\n\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "		%s.x *= 1.41421356237309504880%s;\n", sc->regIDs[1], LFending);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->outputBufferBlockNum == 1)
+							sc->tempLen = sprintf(sc->tempStr, "		%s[inoutID] = %s%s.x%s;\n", outputsStruct, convTypeLeft, sc->regIDs[1], convTypeRight);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		outputBlocks[inoutID / %" PRIu64 "]%s[inoutID %% %" PRIu64 "] = %s%s.x%s;\n", sc->outputBufferBlockSize, outputsStruct, sc->outputBufferBlockSize, convTypeLeft, sc->regIDs[1], convTypeRight);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if (sc->zeropad[1]) {
+							sc->tempLen = sprintf(sc->tempStr, "	}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						
+						res = appendZeropadEndReadWriteStage(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						if ((1 + i + k * sc->min_registers_per_thread) * sc->localSize[0] * sc->localSize[1] >= sc->fftDim * sc->localSize[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "	}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (sc->size[0] % sc->localSize[0] != 0) {
 							sc->tempLen = sprintf(sc->tempStr, "		}\n");
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -14280,7 +17154,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 			appendRadixKernelVkFFT(sc, floatType, uintType, sc->stageRadix[i]);
 		}
 	}*/
-	uint64_t locType = (((type == 0) || (type == 5) || (type == 6) || (type == 120) || (type == 130) || (type == 140) || (type == 142)) && (sc->axisSwapped)) ? 1 : type;
+	uint64_t locType = (((type == 0) || (type == 5) || (type == 6) || (type == 110) || (type == 120) || (type == 130) || (type == 140) || (type == 142) || (type == 144)) && (sc->axisSwapped)) ? 1 : type;
 #if(VKFFT_BACKEND==0)
 	res = appendSharedMemoryVkFFT(sc, floatType, uintType, locType);
 	if (res != VKFFT_SUCCESS) {
@@ -14315,6 +17189,16 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 	case 6:
 	{
 		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", vecTypeInput, floatTypeOutputMemory);
+		break;
+	}
+	case 110:
+	{
+		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		break;
+	}
+	case 111:
+	{
+		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
 	}
 	case 120:
@@ -14353,6 +17237,16 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		break;
 	}
 	case 143:
+	{
+		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		break;
+	}
+	case 144:
+	{
+		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		break;
+	}
+	case 145:
 	{
 		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
@@ -14437,6 +17331,16 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", vecTypeInput, floatTypeOutputMemory);
 		break;
 	}
+	case 110:
+	{
+		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		break;
+	}
+	case 111:
+	{
+		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		break;
+	}
 	case 120:
 	{
 		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
@@ -14473,6 +17377,16 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		break;
 	}
 	case 143:
+	{
+		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		break;
+	}
+	case 144:
+	{
+		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		break;
+	}
+	case 145:
 	{
 		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
@@ -14550,6 +17464,16 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", vecTypeInput, floatTypeOutputMemory);
 		break;
 	}
+	case 110:
+	{
+		sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		break;
+	}
+	case 111:
+	{
+		sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		break;
+	}
 	case 120:
 	{
 		sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
@@ -14586,6 +17510,16 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		break;
 	}
 	case 143:
+	{
+		sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		break;
+	}
+	case 144:
+	{
+		sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		break;
+	}
+	case 145:
 	{
 		sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
@@ -14654,6 +17588,16 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 #endif
 	//if (type==0) sc->tempLen = sprintf(sc->tempStr, "return;\n");
 	res = appendInitialization(sc, floatType, uintType, type);
+	if (res != VKFFT_SUCCESS) {
+		freeShaderGenVkFFT(sc);
+		return res;
+	}
+	res = setReadToRegisters(sc, type);
+	if (res != VKFFT_SUCCESS) {
+		freeShaderGenVkFFT(sc);
+		return res;
+	}
+	res = setWriteFromRegisters(sc, type);
 	if (res != VKFFT_SUCCESS) {
 		freeShaderGenVkFFT(sc);
 		return res;
@@ -16641,12 +19585,19 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		FFTPlan->actualPerformR2CPerAxis[axis_id] = 0;
 		FFTPlan->multiUploadR2C = 1;
 	}
-	if (app->configuration.performDCT == 4) {
+	if (app->configuration.performDCT == 1) {
+		FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = 2 * app->configuration.size[axis_id] - 2; // now in actualFFTSize - modified dimension size for R2C/DCT
+	}
+	if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) {
 		FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
 		//FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] * 8; // now in actualFFTSize - modified dimension size for R2C/DCT
 	}
 	if ((axis_id > 0) && (app->configuration.performR2C)) {
 		FFTPlan->actualFFTSizePerAxis[axis_id][0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] / 2 + 1;
+	}
+	if (axis_id != nonStridedAxisId) {
+		if (app->configuration.performBandwidthBoost > 0)
+			axes->specializationConstants.performBandwidthBoost = app->configuration.performBandwidthBoost;
 	}
 	uint64_t multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };//split the sequence
 	uint64_t tempSequence = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
@@ -16659,6 +19610,10 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	}
 	if (tempSequence != 1) {
 		app->useBluesteinFFT[axis_id] = 1;
+		if (axis_id != nonStridedAxisId) {
+			if (app->configuration.performBandwidthBoost == 0)
+				axes->specializationConstants.performBandwidthBoost = 2;
+		}
 		app->configuration.registerBoost = 1;
 		tempSequence = 2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1;
 		uint64_t FFTSizeSelected = 0;
@@ -16841,8 +19796,8 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	maxSingleSizeNonStrided = maxSequenceLengthSharedMemory * registerBoost;
 	maxSingleSizeStrided = maxSequenceLengthSharedMemoryStrided * registerBoost;
 	uint64_t maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
-	if ((app->configuration.performHalfBandwidthBoost)) {
-		maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / 2 > complexSize) ? app->configuration.sharedMemorySizePow2 / (app->configuration.coalescedMemory / 2) : app->configuration.sharedMemorySizePow2 / complexSize;
+	if ((axes->specializationConstants.performBandwidthBoost)) {
+		maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / axes->specializationConstants.performBandwidthBoost > complexSize) ? app->configuration.sharedMemorySizePow2 / (app->configuration.coalescedMemory / axes->specializationConstants.performBandwidthBoost) : app->configuration.sharedMemorySizePow2 / complexSize;
 		temp = (axis_id == nonStridedAxisId) ? (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeNonStrided) : (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
 		//temp = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / maxSingleSizeNonStrided;
 		if (temp > 1) {//more passes than two
@@ -17290,6 +20245,8 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 	kernelPreparationConfiguration.useLUT = 1;
 	kernelPreparationConfiguration.registerBoost = 1;
 	kernelPreparationConfiguration.disableReorderFourStep = 1;
+	kernelPreparationConfiguration.performBandwidthBoost = (app->configuration.performBandwidthBoost>0) ? app->configuration.performBandwidthBoost : 2;
+	if (axis_id == 0) kernelPreparationConfiguration.performBandwidthBoost = 0;
 	if (axis_id > 0) kernelPreparationConfiguration.considerAllAxesStrided = 1;
 	if (app->configuration.tempBuffer) {
 		kernelPreparationConfiguration.userTempBuffer = 1;
@@ -17377,7 +20334,8 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		deleteVkFFT(app);
 		return VKFFT_ERROR_MALLOC_FAILED;
 	}
-	uint64_t phaseVectorsNonZeroSize = ((app->configuration.performDCT == 4)||(FFTPlan->multiUploadR2C)) ? app->configuration.size[axis_id] / 2 : app->configuration.size[axis_id];
+	uint64_t phaseVectorsNonZeroSize = (((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) || (FFTPlan->multiUploadR2C)) ? app->configuration.size[axis_id] / 2 : app->configuration.size[axis_id];
+	if (app->configuration.performDCT == 1) phaseVectorsNonZeroSize = 2 * app->configuration.size[axis_id] - 2;
 	if ((FFTPlan->numAxisUploads[axis_id] > 1) && (!app->configuration.makeForwardPlanOnly)) {
 		if (kernelPreparationConfiguration.doublePrecision) {
 			double* phaseVectors_cast = (double*)phaseVectors;
@@ -18024,7 +20982,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 									axis->specializationConstants.inputOffset = app->configuration.bufferOffset;
 								}
 								else {
-									if (app->configuration.tempBufferSize){
+									if (app->configuration.tempBufferSize) {
 										for (uint64_t l = 0; l < app->configuration.tempBufferNum; ++l) {
 											if (offset >= (uint64_t)ceil(app->configuration.tempBufferSize[l] / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize))) {
 												bufferId++;
@@ -18805,10 +21763,10 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 	//configure strides
 	uint64_t* axisStride = axis->specializationConstants.inputStride;
 	uint64_t* usedStride = 0;
-	if (app->useBluesteinFFT[0] && (FFTPlan->numAxisUploads[0]>1)) {
-		if (inverse) 
+	if (app->useBluesteinFFT[0] && (FFTPlan->numAxisUploads[0] > 1)) {
+		if (inverse)
 			usedStride = FFTPlan->axes[0][FFTPlan->numAxisUploads[0] - 1].specializationConstants.inputStride;
-		else 
+		else
 			usedStride = FFTPlan->inverseBluesteinAxes[0][FFTPlan->numAxisUploads[0] - 1].specializationConstants.outputStride;
 	}
 	else {
@@ -19183,8 +22141,8 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		axis->axisBlock[2] = 1;
 
 		uint64_t tempSize[3] = { (uint64_t)ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0])), 1, 1 };
-		tempSize[2] *= app->configuration.numberKernels*app->configuration.numberBatches * app->configuration.coordinateFeatures;
-		
+		tempSize[2] *= app->configuration.numberKernels * app->configuration.numberBatches * app->configuration.coordinateFeatures;
+
 		if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
 		else  axis->specializationConstants.performWorkGroupShift[0] = 0;
 		if (tempSize[1] > app->configuration.maxComputeWorkGroupCount[1]) axis->specializationConstants.performWorkGroupShift[1] = 1;
@@ -19206,7 +22164,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		if ((app->configuration.FFTdim == 1) && (app->configuration.size[1] == 1) && ((app->configuration.numberBatches == 1) && (app->actualNumBatches > 1)) && (!app->configuration.performConvolution) && (app->configuration.coordinateFeatures == 1)) {
 			axis->specializationConstants.numBatches = app->actualNumBatches;
 		}
-		
+
 		axis->specializationConstants.numKernels = app->configuration.numberKernels;
 		axis->specializationConstants.sharedMemSize = app->configuration.sharedMemorySize;
 		axis->specializationConstants.sharedMemSizePow2 = app->configuration.sharedMemorySizePow2;
@@ -19882,7 +22840,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		}
 		FFTPlan->actualFFTSizePerAxis[axis_id][1] = app->actualNumBatches;
 	}
-	
+
 	axis->specializationConstants.warpSize = app->configuration.warpSize;
 	axis->specializationConstants.numSharedBanks = app->configuration.numSharedBanks;
 	axis->specializationConstants.useUint64 = app->configuration.useUint64;
@@ -19912,7 +22870,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 
 	axis->specializationConstants.firstStageStartSize = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / FFTPlan->axisSplit[axis_id][FFTPlan->numAxisUploads[axis_id] - 1];
-	axis->specializationConstants.dispatchZactualFFTSize = (axis_id<2) ? FFTPlan->actualFFTSizePerAxis[axis_id][2] : FFTPlan->actualFFTSizePerAxis[axis_id][1];
+	axis->specializationConstants.dispatchZactualFFTSize = (axis_id < 2) ? FFTPlan->actualFFTSizePerAxis[axis_id][2] : FFTPlan->actualFFTSizePerAxis[axis_id][1];
 	if (axis_id == 0) {
 		//configure radix stages
 		axis->specializationConstants.fft_dim_x = axis->specializationConstants.stageStartSize;
@@ -19975,7 +22933,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		axis->specializationConstants.performDCT = app->configuration.performDCT;
 	}
 	if ((axis->specializationConstants.performR2CmultiUpload) && (app->configuration.size[0] % 2 != 0)) return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
-	axis->specializationConstants.mergeSequencesR2C = ((axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory) && ((FFTPlan->actualFFTSizePerAxis[axis_id][1] % 2) == 0) && ((FFTPlan->actualPerformR2CPerAxis[axis_id]) || (((app->configuration.performDCT == 3) || (app->configuration.performDCT == 2)) && (axis_id == 0)))) ? (1 - app->configuration.disableMergeSequencesR2C) : 0;
+	axis->specializationConstants.mergeSequencesR2C = ((axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory) && ((FFTPlan->actualFFTSizePerAxis[axis_id][1] % 2) == 0) && ((FFTPlan->actualPerformR2CPerAxis[axis_id]) || (((app->configuration.performDCT == 3) || (app->configuration.performDCT == 2) || (app->configuration.performDCT == 1) || ((app->configuration.performDCT == 4)&&((app->configuration.size[axis_id]%2) != 0))) && (axis_id == 0)))) ? (1 - app->configuration.disableMergeSequencesR2C) : 0;
 	//uint64_t passID = FFTPlan->numAxisUploads[axis_id] - 1 - axis_upload_id;
 	axis->specializationConstants.fft_dim_full = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 	if ((FFTPlan->numAxisUploads[axis_id] > 1) && (axis->specializationConstants.reorderFourStep || app->useBluesteinFFT[axis_id]) && (!app->configuration.userTempBuffer) && (app->configuration.allocateTempBuffer == 0)) {
@@ -20070,7 +23028,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim + (app->configuration.size[axis_id] / 2 + 2)) * 2 * sizeof(double);
 				}
 				else {
-					if (app->configuration.performDCT == 4) {
+					if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) {
 						axis->specializationConstants.startDCT3LUT = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim);
 						axis->specializationConstants.startDCT4LUT = (axis->specializationConstants.startDCT3LUT + (app->configuration.size[axis_id] / 4 + 2));
 						axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id] / 2) * 2 * sizeof(double);
@@ -20085,7 +23043,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis_id] / 2 + 2)) * 2 * sizeof(double);
 				}
 				else {
-					if (app->configuration.performDCT == 4) {
+					if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) {
 						axis->specializationConstants.startDCT3LUT = (maxStageSum);
 						axis->specializationConstants.startDCT4LUT = (axis->specializationConstants.startDCT3LUT + (app->configuration.size[axis_id] / 4 + 2));
 						axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id] / 2) * 2 * sizeof(double);
@@ -20141,7 +23099,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j + 1] = sin(angle);
 				}
 			}
-			if (app->configuration.performDCT == 4) {
+			if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) {
 				for (uint64_t j = 0; j < app->configuration.size[axis_id] / 4 + 2; j++) {
 					double angle = (double_PI / 2.0 / (double)(app->configuration.size[axis_id] / 2)) * j;
 					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j] = cos(angle);
@@ -20258,7 +23216,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim + (app->configuration.size[axis_id] / 2 + 2)) * 2 * sizeof(float);
 				}
 				else {
-					if (app->configuration.performDCT == 4) {
+					if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) {
 						axis->specializationConstants.startDCT3LUT = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim);
 						axis->specializationConstants.startDCT4LUT = (axis->specializationConstants.startDCT3LUT + (axis->specializationConstants.fftDim / 4 + 2));
 						axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id] / 2) * 2 * sizeof(float);
@@ -20273,7 +23231,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis_id] / 2 + 2)) * 2 * sizeof(float);
 				}
 				else {
-					if (app->configuration.performDCT == 4) {
+					if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) {
 						axis->specializationConstants.startDCT3LUT = (maxStageSum);
 						axis->specializationConstants.startDCT4LUT = (axis->specializationConstants.startDCT3LUT + (app->configuration.size[axis_id] / 4 + 2));
 						axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id] / 2) * 2 * sizeof(float);
@@ -20328,7 +23286,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j + 1] = (float)sin(angle);
 				}
 			}
-			if (app->configuration.performDCT == 4) {
+			if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) {
 				for (uint64_t j = 0; j < app->configuration.size[axis_id] / 4 + 2; j++) {
 					double angle = (double_PI / 2.0 / (double)(app->configuration.size[axis_id] / 2)) * j;
 					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j] = (float)cos(angle);
@@ -20548,7 +23506,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 		axisStride[4] = axisStride[3] * app->configuration.coordinateFeatures;
 	}
-	if ((inverse) && (axis_id == 0) && (((!app->useBluesteinFFT[axis_id])&&(axis_upload_id == 0))||((app->useBluesteinFFT[axis_id]) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1)))) && (axis->specializationConstants.performR2C) && (!((app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer))) && (!app->configuration.isOutputFormatted)) {
+	if ((inverse) && (axis_id == 0) && (((!app->useBluesteinFFT[axis_id]) && (axis_upload_id == 0)) || ((app->useBluesteinFFT[axis_id]) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1)))) && (axis->specializationConstants.performR2C) && (!((app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer))) && (!app->configuration.isOutputFormatted)) {
 		axisStride[1] *= 2;
 		axisStride[2] *= 2;
 		axisStride[3] *= 2;
@@ -20559,7 +23517,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			axisStride[i] /= 2;
 		}
 	}
-	
+
 	/*axis->specializationConstants.inputStride[3] = (app->configuration.coordinateFeatures == 1) ? 0 : axis->specializationConstants.inputStride[3];
 	axis->specializationConstants.outputStride[3] = (app->configuration.coordinateFeatures == 1) ? 0 : axis->specializationConstants.outputStride[3];
 
@@ -20608,7 +23566,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	*/
 	if ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted) && (!axis->specializationConstants.reverseBluesteinMultiUpload) && (
 		((axis_id == app->firstAxis) && (!inverse))
-		|| ((axis_id == app->lastAxis) && (inverse) &&(!((axis_id==0)&&(axis->specializationConstants.performR2CmultiUpload))) && (!app->configuration.performConvolution) && (!app->configuration.inverseReturnToInputBuffer)))
+		|| ((axis_id == app->lastAxis) && (inverse) && (!((axis_id == 0) && (axis->specializationConstants.performR2CmultiUpload))) && (!app->configuration.performConvolution) && (!app->configuration.inverseReturnToInputBuffer)))
 		) {
 		uint64_t totalSize = 0;
 		uint64_t locPageSize = initPageSize;
@@ -21126,14 +24084,16 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			axis->specializationConstants.zeropadBluestein[0] = 1;
 			axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id] = app->configuration.size[axis_id];
 			if (FFTPlan->multiUploadR2C) axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id] /= 2;
-			if (app->configuration.performDCT == 4) axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id] /= 2;
+			if (app->configuration.performDCT == 1) axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id] = 2 * axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id]-2;
+			if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id] /= 2;
 			axis->specializationConstants.fft_zeropad_Bluestein_right_read[axis_id] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 		}
 		if (axis->specializationConstants.useBluesteinFFT && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1))) {
 			axis->specializationConstants.zeropadBluestein[1] = 1;
 			axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id] = app->configuration.size[axis_id];
 			if (FFTPlan->multiUploadR2C) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id] /= 2;
-			if (app->configuration.performDCT == 4) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id] /= 2;
+			if (app->configuration.performDCT == 1) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id] = 2 * axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id] - 2;
+			if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id] /= 2;
 			axis->specializationConstants.fft_zeropad_Bluestein_right_write[axis_id] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 		}
 		if ((inverse)) {
@@ -21325,14 +24285,18 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		//if ((axis->specializationConstants.fftDim == 8 * maxSequenceLengthSharedMemory) && (app->configuration.registerBoost >= 8)) axis->specializationConstants.registerBoost = 8;
 		if ((axis_id == 0) && (!axis->specializationConstants.actualInverse) && (FFTPlan->actualPerformR2CPerAxis[axis_id])) type = 5;
 		if ((axis_id == 0) && (axis->specializationConstants.actualInverse) && (FFTPlan->actualPerformR2CPerAxis[axis_id])) type = 6;
+		if ((axis_id == 0) && (app->configuration.performDCT == 1)) type = 110;
+		if ((axis_id != 0) && (app->configuration.performDCT == 1)) type = 111;
 		if ((axis_id == 0) && (((app->configuration.performDCT == 2) && (!inverse)) || ((app->configuration.performDCT == 3) && (inverse)))) type = 120;
 		if ((axis_id != 0) && (((app->configuration.performDCT == 2) && (!inverse)) || ((app->configuration.performDCT == 3) && (inverse)))) type = 121;
 		if ((axis_id == 0) && (((app->configuration.performDCT == 2) && (inverse)) || ((app->configuration.performDCT == 3) && (!inverse)))) type = 130;
 		if ((axis_id != 0) && (((app->configuration.performDCT == 2) && (inverse)) || ((app->configuration.performDCT == 3) && (!inverse)))) type = 131;
-		if ((axis_id == 0) && (app->configuration.performDCT == 4)) type = 142;
-		if ((axis_id != 0) && (app->configuration.performDCT == 4)) type = 143;
+		if ((axis_id == 0) && (app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) == 0)) type = 142;
+		if ((axis_id == 0) && (app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) == 1)) type = 144;
+		if ((axis_id != 0) && (app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) == 0)) type = 143;
+		if ((axis_id != 0) && (app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) == 1)) type = 145;
 #if(VKFFT_BACKEND==0)
-		axis->specializationConstants.cacheShuffle = ((FFTPlan->numAxisUploads[axis_id] > 1) && ((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) == 0) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory) && ((type == 0) || (type == 5) || (type == 6))) ? 1 : 0;
+		axis->specializationConstants.cacheShuffle = ((FFTPlan->numAxisUploads[axis_id] > 1) && ((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) == 0) && (!app->configuration.doublePrecision) && (!axis->specializationConstants.useBluesteinFFT) && (!app->configuration.doublePrecisionFloatMemory) && ((type == 0) || (type == 5) || (type == 6))) ? 1 : 0;
 #elif(VKFFT_BACKEND==1)
 		axis->specializationConstants.cacheShuffle = 0;
 #elif(VKFFT_BACKEND==2)
@@ -22605,7 +25569,8 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 
 	if (inputLaunchConfiguration.halfThreads != 0)	app->configuration.halfThreads = inputLaunchConfiguration.halfThreads;
 	if (inputLaunchConfiguration.swapTo3Stage4Step != 0)	app->configuration.swapTo3Stage4Step = inputLaunchConfiguration.swapTo3Stage4Step;
-	if (inputLaunchConfiguration.performHalfBandwidthBoost != 0)	app->configuration.performHalfBandwidthBoost = inputLaunchConfiguration.performHalfBandwidthBoost;
+	if (app->configuration.performDCT > 0) app->configuration.performBandwidthBoost = -1;
+	if (inputLaunchConfiguration.performBandwidthBoost != 0)	app->configuration.performBandwidthBoost = inputLaunchConfiguration.performBandwidthBoost;
 	if (inputLaunchConfiguration.devicePageSize != 0)	app->configuration.devicePageSize = inputLaunchConfiguration.devicePageSize;
 	if (inputLaunchConfiguration.localPageSize != 0)	app->configuration.localPageSize = inputLaunchConfiguration.localPageSize;
 	if (inputLaunchConfiguration.keepShaderCode != 0)	app->configuration.keepShaderCode = inputLaunchConfiguration.keepShaderCode;
@@ -23050,13 +26015,13 @@ static inline void printDebugInformation(VkFFTApplication* app, VkFFTAxis* axis)
 			printf("read: buffer\n");
 		if (axis->inputBuffer == app->configuration.tempBuffer)
 			printf("read: tempBuffer\n");
-		if ((axis->inputBuffer == app->configuration.outputBuffer) && (app->configuration.outputBuffer!= app->configuration.buffer))
+		if ((axis->inputBuffer == app->configuration.outputBuffer) && (app->configuration.outputBuffer != app->configuration.buffer))
 			printf("read: outputBuffer\n");
 		if ((axis->outputBuffer == app->configuration.inputBuffer) && (app->configuration.inputBuffer != app->configuration.buffer))
 			printf("write: inputBuffer\n");
 		if (axis->outputBuffer == app->configuration.buffer)
 			printf("write: buffer\n");
-		if (axis->outputBuffer == app->configuration.tempBuffer) 
+		if (axis->outputBuffer == app->configuration.tempBuffer)
 			printf("write: tempBuffer\n");
 		if ((axis->outputBuffer == app->configuration.outputBuffer) && (app->configuration.outputBuffer != app->configuration.buffer))
 			printf("write: outputBuffer\n");
@@ -23189,14 +26154,14 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 				resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan, axis, 0, 0, 0);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
 				uint64_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
-					
+
 #if(VKFFT_BACKEND==0)
 				vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 				vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
 				uint64_t dispatchBlock[3];
 
-				dispatchBlock[0] = (uint64_t)ceil(((app->configuration.size[0]/2) * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0]));
+				dispatchBlock[0] = (uint64_t)ceil(((app->configuration.size[0] / 2) * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0]));
 				dispatchBlock[1] = 1;
 				dispatchBlock[2] = maxCoordinate * app->configuration.numberBatches;
 				resFFT = dispatchEnhanced(app, axis, dispatchBlock);
@@ -23226,7 +26191,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 						uint64_t dispatchBlock[3];
 						dispatchBlock[0] = (uint64_t)ceil(localSize0[1] / (double)axis->axisBlock[0] * app->localFFTPlan->actualFFTSizePerAxis[1][1] / (double)axis->specializationConstants.fftDim);
 						dispatchBlock[1] = 1;
-						dispatchBlock[2] = app->localFFTPlan->actualFFTSizePerAxis[1][2]* maxCoordinate * app->configuration.numberBatches;
+						dispatchBlock[2] = app->localFFTPlan->actualFFTSizePerAxis[1][2] * maxCoordinate * app->configuration.numberBatches;
 						//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
 						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
 						resFFT = dispatchEnhanced(app, axis, dispatchBlock);
@@ -23239,51 +26204,51 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 				else {
 
 					for (int64_t l = (int64_t)app->localFFTPlan->numAxisUploads[1] - 1; l >= 0; l--) {
-							VkFFTAxis* axis = &app->localFFTPlan->axes[1][l];
-							resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 1, l, 0);
+						VkFFTAxis* axis = &app->localFFTPlan->axes[1][l];
+						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 1, l, 0);
+						if (resFFT != VKFFT_SUCCESS) return resFFT;
+
+#if(VKFFT_BACKEND==0)
+						vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
+						vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
+#endif
+						uint64_t dispatchBlock[3];
+
+						dispatchBlock[0] = (uint64_t)ceil(localSize0[1] / (double)axis->axisBlock[0] * app->localFFTPlan->actualFFTSizePerAxis[1][1] / (double)axis->specializationConstants.fftDim);
+						dispatchBlock[1] = 1;
+						dispatchBlock[2] = app->localFFTPlan->actualFFTSizePerAxis[1][2] * app->configuration.coordinateFeatures * app->configuration.numberBatches;
+						//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
+						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
+						resFFT = dispatchEnhanced(app, axis, dispatchBlock);
+						if (resFFT != VKFFT_SUCCESS) return resFFT;
+						printDebugInformation(app, axis);
+
+						resFFT = VkFFTSync(app);
+						if (resFFT != VKFFT_SUCCESS) return resFFT;
+					}
+					if (app->useBluesteinFFT[1] && (app->localFFTPlan->numAxisUploads[1] > 1)) {
+						for (int64_t l = 1; l < (int64_t)app->localFFTPlan->numAxisUploads[1]; l++) {
+							VkFFTAxis* axis = &app->localFFTPlan->inverseBluesteinAxes[1][l];
+							resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 1, l, 1);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
-				
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 							vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
 #endif
 							uint64_t dispatchBlock[3];
-
 							dispatchBlock[0] = (uint64_t)ceil(localSize0[1] / (double)axis->axisBlock[0] * app->localFFTPlan->actualFFTSizePerAxis[1][1] / (double)axis->specializationConstants.fftDim);
 							dispatchBlock[1] = 1;
-							dispatchBlock[2] = app->localFFTPlan->actualFFTSizePerAxis[1][2]* app->configuration.coordinateFeatures * app->configuration.numberBatches;
-							//if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (uint64_t)ceil(dispatchBlock[0] / 2.0);
+							dispatchBlock[2] = app->localFFTPlan->actualFFTSizePerAxis[1][2] * app->configuration.coordinateFeatures * app->configuration.numberBatches;
+
+							//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = (uint64_t)ceil(dispatchBlock[1] / 2.0);
 							//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
 							resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 							printDebugInformation(app, axis);
-
 							resFFT = VkFFTSync(app);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 						}
-						if (app->useBluesteinFFT[1] && (app->localFFTPlan->numAxisUploads[1] > 1)) {
-							for (int64_t l = 1; l < (int64_t)app->localFFTPlan->numAxisUploads[1]; l++) {
-								VkFFTAxis* axis = &app->localFFTPlan->inverseBluesteinAxes[1][l];
-								resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 1, l, 1);
-								if (resFFT != VKFFT_SUCCESS) return resFFT;
-#if(VKFFT_BACKEND==0)
-								vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
-								vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
-#endif
-								uint64_t dispatchBlock[3];
-								dispatchBlock[0] = (uint64_t)ceil(localSize0[1] / (double)axis->axisBlock[0] * app->localFFTPlan->actualFFTSizePerAxis[1][1] / (double)axis->specializationConstants.fftDim);
-								dispatchBlock[1] = 1;
-								dispatchBlock[2] = app->localFFTPlan->actualFFTSizePerAxis[1][2] * app->configuration.coordinateFeatures * app->configuration.numberBatches;
-
-								//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = (uint64_t)ceil(dispatchBlock[1] / 2.0);
-								//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
-								resFFT = dispatchEnhanced(app, axis, dispatchBlock);
-								if (resFFT != VKFFT_SUCCESS) return resFFT;
-								printDebugInformation(app, axis);
-								resFFT = VkFFTSync(app);
-								if (resFFT != VKFFT_SUCCESS) return resFFT;
-							}
-						}
+					}
 				}
 			}
 		}
@@ -23372,7 +26337,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 					VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[2][l];
 					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 2, l, 1);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
-						
+
 #if(VKFFT_BACKEND==0)
 					vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 					vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -23420,7 +26385,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 					VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[1][l];
 					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 1, l, 1);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
-						
+
 #if(VKFFT_BACKEND==0)
 					vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 					vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -23442,7 +26407,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 				VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[0][l];
 				resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 0, l, 1);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
-					
+
 #if(VKFFT_BACKEND==0)
 				vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 				vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -23484,7 +26449,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 				VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[0][l];
 				resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 0, l, 1);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
-					
+
 #if(VKFFT_BACKEND==0)
 				vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 				vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -23514,7 +26479,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 					VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[2][l];
 					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 2, l, 1);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
-						
+
 #if(VKFFT_BACKEND==0)
 					vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 					vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -23573,7 +26538,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 				VkFFTAxis* axis = &app->localFFTPlan_inverse->R2Cdecomposition;
 				resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan_inverse, axis, 0, 0, 1);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
-					
+
 #if(VKFFT_BACKEND==0)
 				vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 				vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -23637,7 +26602,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 					VkFFTAxis* axis = &app->localFFTPlan_inverse->inverseBluesteinAxes[0][l];
 					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 0, l, 1);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
-						
+
 #if(VKFFT_BACKEND==0)
 					vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 					vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -23681,6 +26646,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10211; //X.XX.XX format
+	return 10212; //X.XX.XX format
 }
 #endif

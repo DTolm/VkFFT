@@ -60,8 +60,8 @@ VkFFTResult sample_17_precision_VkFFT_double_dct(VkGPU* vkGPU, uint64_t file_out
 	cl_int res = CL_SUCCESS;
 #endif
 	if (file_output)
-		fprintf(output, "17 - VkFFT/FFTW R2R DCT-II, III and IV precision test in double precision\n");
-	printf("17 - VkFFT/FFTW R2R DCT-II, III and IV precision test in double precision\n");
+		fprintf(output, "17 - VkFFT/FFTW R2R DCT-I, II, III and IV precision test in double precision\n");
+	printf("17 - VkFFT/FFTW R2R DCT-I, II, III and IV precision test in double precision\n");
 
 	const int num_benchmark_samples = 172;
 	const int num_runs = 1;
@@ -81,16 +81,10 @@ VkFFTResult sample_17_precision_VkFFT_double_dct(VkGPU* vkGPU, uint64_t file_out
 
 	for (int n = 0; n < num_benchmark_samples; n++) {
 		for (int r = 0; r < num_runs; r++) {
-			for (int t = 2; t < 5; t++) {
+			for (int t = 1; t < 5; t++) {
 				double* inputC;
 				double* inputC_double;
 				uint64_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
-
-				if (t == 4) {
-					if ((benchmark_dimensions[n][0] > 1) && ((benchmark_dimensions[n][0] % 2) != 0)) continue;
-					if ((benchmark_dimensions[n][1] > 1) && ((benchmark_dimensions[n][1] % 2) != 0)) continue;
-					if ((benchmark_dimensions[n][2] > 1) && ((benchmark_dimensions[n][2] % 2) != 0)) continue;
-				}
 
 				inputC = (double*)(malloc(sizeof(double) * dims[0] * dims[1] * dims[2]));
 				if (!inputC) return VKFFT_ERROR_MALLOC_FAILED;
@@ -113,6 +107,9 @@ VkFFTResult sample_17_precision_VkFFT_double_dct(VkGPU* vkGPU, uint64_t file_out
 				enum fftw_r2r_kind_do_not_use_me dct_type;
 				switch (t)
 				{
+				case 1:
+					dct_type = FFTW_REDFT00;
+					break;
 				case 2:
 					dct_type = FFTW_REDFT10;
 					break;
@@ -238,6 +235,37 @@ VkFFTResult sample_17_precision_VkFFT_double_dct(VkGPU* vkGPU, uint64_t file_out
 				}
 				//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 				resFFT = initializeVkFFT(&app, configuration);
+				if (resFFT == VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT) {
+					if (file_output)
+						fprintf(output, "VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " - UNSUPPORTED\n", t, dims[0], dims[1], dims[2]);
+					printf("VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " - UNSUPPORTED\n", t, dims[0], dims[1], dims[2]);
+					for (uint64_t i = 0; i < numBuf; i++) {
+
+#if(VKFFT_BACKEND==0)
+						vkDestroyBuffer(vkGPU->device, buffer[i], NULL);
+						vkFreeMemory(vkGPU->device, bufferDeviceMemory[i], NULL);
+#elif(VKFFT_BACKEND==1)
+						cudaFree(buffer);
+#elif(VKFFT_BACKEND==2)
+						hipFree(buffer);
+#elif(VKFFT_BACKEND==3)
+						clReleaseMemObject(buffer);
+#endif
+
+					}
+#if(VKFFT_BACKEND==0)
+					free(buffer);
+					free(bufferDeviceMemory);
+#endif
+					free(bufferSize);
+					deleteVkFFT(&app);
+					free(inputC);
+					fftw_destroy_plan(p);
+					free(inputC_double);
+					free(output_FFTW);
+					continue;
+				}
+
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
 				//Submit FFT+iFFT.
 				//num_iter = 1;
