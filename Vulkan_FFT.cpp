@@ -439,7 +439,7 @@ int main(int argc, char* argv[])
 		version_decomposed[0] = version / 10000;
 		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
 		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
-		printf("VkFFT v%d.%d.%d (21-09-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
+		printf("VkFFT v%d.%d.%d (19-10-2021). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
@@ -531,7 +531,8 @@ int main(int argc, char* argv[])
 		printf("\
 		-B uint - number of batched systems (default 1)\n\
 		-N uint - number of consecutive FFT+iFFT iterations (default 1)\n\
-		-R2C uint - use R2C (0 - off, 1 - on) (default 0)\n");
+		-R2C uint - use R2C (0 - off, 1 - on) (default 0)\n\
+		-DCT uint - perform DCT (0 - off, else type: 1, 2, 3 or 4) (default 0)\n");
 #ifdef USE_cuFFT
 		printf("	-cufft X: launch cuFFT sample X:\n");
 		printf("		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n");

@@ -10391,8 +10391,8 @@ static inline VkFFTResult appendRadixShuffleNonStrided(VkFFTSpecializationConsta
 	uint64_t normalizationValue = 1;
 	if ((((sc->actualInverse) && (sc->normalize)) || (sc->convolutionStep && (stageAngle > 0))) && (stageSize == 1) && (sc->axis_upload_id == 0) && (!(sc->useBluesteinFFT && (stageAngle < 0)))) {
 		if ((sc->performDCT) && (sc->actualInverse)) {
-			if (sc->performDCT == 4)
-				normalizationValue = sc->sourceFFTSize * 4;
+			if (sc->performDCT == 1)
+				normalizationValue = (sc->sourceFFTSize-1) * 2;
 			else
 				normalizationValue = sc->sourceFFTSize * 2;
 		}
@@ -10771,8 +10771,8 @@ static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstants
 	uint64_t normalizationValue = 1;
 	if ((((sc->actualInverse) && (sc->normalize)) || (sc->convolutionStep && (stageAngle > 0))) && (stageSize == 1) && (sc->axis_upload_id == 0) && (!(sc->useBluesteinFFT && (stageAngle < 0)))) {
 		if ((sc->performDCT) && (sc->actualInverse)) {
-			if (sc->performDCT == 4)
-				normalizationValue = sc->sourceFFTSize * 4;
+			if (sc->performDCT == 1)
+				normalizationValue = (sc->sourceFFTSize-1) * 2;
 			else
 				normalizationValue = sc->sourceFFTSize * 2;
 		}
@@ -23920,7 +23920,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		if (axis->groupedBatch > app->configuration.warpSize) axis->groupedBatch = (axis->groupedBatch / app->configuration.warpSize) * app->configuration.warpSize;
 		if (axis->groupedBatch > 2 * maxBatchCoalesced) axis->groupedBatch = (axis->groupedBatch / (2 * maxBatchCoalesced)) * (2 * maxBatchCoalesced);
 		if (axis->groupedBatch > 4 * maxBatchCoalesced) axis->groupedBatch = (axis->groupedBatch / (4 * maxBatchCoalesced)) * (2 * maxBatchCoalesced);
-		uint64_t maxThreadNum = maxSequenceLengthSharedMemory / (axis->specializationConstants.min_registers_per_thread * axis->specializationConstants.registerBoost);
+		uint64_t maxThreadNum = maxSequenceLengthSharedMemory / (axis->specializationConstants.registers_per_thread * axis->specializationConstants.registerBoost);
+		if (maxThreadNum > app->configuration.maxThreadsNum) maxThreadNum = app->configuration.maxThreadsNum;
 		axis->specializationConstants.axisSwapped = 0;
 		uint64_t r2cmult = (axis->specializationConstants.mergeSequencesR2C) ? 2 : 1;
 		if (axis_id == 0) {
@@ -23963,7 +23964,17 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				if ((FFTPlan->numAxisUploads[0] == 1) && ((uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][1] / (double)r2cmult) < axis->axisBlock[1])) axis->axisBlock[1] = (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][1] / (double)r2cmult);
 
 				if (axis->axisBlock[1] > app->configuration.maxComputeWorkGroupSize[1]) axis->axisBlock[1] = app->configuration.maxComputeWorkGroupSize[1];
-				if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[1] /= 2;
+				//if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[1] /= 2;
+				if (axis->axisBlock[0] * axis->axisBlock[1] > maxThreadNum) {
+					for (uint64_t i = 1; i <= axis->axisBlock[1]; i++) {
+						if ((axis->axisBlock[1] / i) * axis->axisBlock[1] <= maxThreadNum)
+						{
+							axis->axisBlock[1] /= i;
+							i = axis->axisBlock[1] + 1;
+						}
+
+					}
+				}
 				while ((axis->axisBlock[1] * (axis->specializationConstants.fftDim / axis->specializationConstants.registerBoost)) > maxSequenceLengthSharedMemory) axis->axisBlock[1] /= 2;
 				if (((axis->specializationConstants.fftDim % 2 == 0) || (axis->axisBlock[0] < app->configuration.numSharedBanks / 4)) && (!(((!axis->specializationConstants.reorderFourStep) || (axis->specializationConstants.useBluesteinFFT)) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim < maxSequenceLengthSharedMemoryPow2) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2])))) {
 #if (VKFFT_BACKEND==0)
@@ -23989,9 +24000,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				if (scale > 1) axis->groupedBatch *= scale;
 				axis->axisBlock[0] = (axis->specializationConstants.stageStartSize > axis->groupedBatch) ? axis->groupedBatch : axis->specializationConstants.stageStartSize;
 				if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
-				if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) {
+				if (axis->axisBlock[0] * axis->axisBlock[1] > maxThreadNum) {
 					for (uint64_t i = 1; i <= axis->axisBlock[0]; i++) {
-						if ((axis->axisBlock[0] / i) * axis->axisBlock[1] <= app->configuration.maxThreadsNum)
+						if ((axis->axisBlock[0] / i) * axis->axisBlock[1] <= maxThreadNum)
 						{
 							axis->axisBlock[0] /= i;
 							i = axis->axisBlock[0] + 1;
@@ -24010,9 +24021,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 			axis->axisBlock[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axis->groupedBatch) ? axis->groupedBatch : FFTPlan->actualFFTSizePerAxis[axis_id][0];
 			if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
-			if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) {
+			if (axis->axisBlock[0] * axis->axisBlock[1] > maxThreadNum) {
 				for (uint64_t i = 1; i <= axis->axisBlock[0]; i++) {
-					if ((axis->axisBlock[0] / i) * axis->axisBlock[1] <= app->configuration.maxThreadsNum)
+					if ((axis->axisBlock[0] / i) * axis->axisBlock[1] <= maxThreadNum)
 					{
 						axis->axisBlock[0] /= i;
 						i = axis->axisBlock[0] + 1;
@@ -24030,9 +24041,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			axis->axisBlock[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axis->groupedBatch) ? axis->groupedBatch : FFTPlan->actualFFTSizePerAxis[axis_id][0];
 
 			if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
-			if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) {
+			if (axis->axisBlock[0] * axis->axisBlock[1] > maxThreadNum) {
 				for (uint64_t i = 1; i <= axis->axisBlock[0]; i++) {
-					if ((axis->axisBlock[0] / i) * axis->axisBlock[1] <= app->configuration.maxThreadsNum)
+					if ((axis->axisBlock[0] / i) * axis->axisBlock[1] <= maxThreadNum)
 					{
 						axis->axisBlock[0] /= i;
 						i = axis->axisBlock[0] + 1;
@@ -26646,6 +26657,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10212; //X.XX.XX format
+	return 10213; //X.XX.XX format
 }
 #endif
