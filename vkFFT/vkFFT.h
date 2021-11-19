@@ -915,10 +915,12 @@ static inline VkFFTResult appendExtensions(VkFFTSpecializationConstantsLayout* s
 	}
 #elif(VKFFT_BACKEND==1)
 #elif(VKFFT_BACKEND==2)
+#ifdef VKFFT_OLD_ROCM
 	sc->tempLen = sprintf(sc->tempStr, "\
 #include <hip/hip_runtime.h>\n");
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
+#endif
 #elif(VKFFT_BACKEND==3)
 	if ((!strcmp(floatType, "double")) || (sc->useUint64)) {
 		sc->tempLen = sprintf(sc->tempStr, "\
@@ -16920,6 +16922,10 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 	return res;
 }
 static inline void freeShaderGenVkFFT(VkFFTSpecializationConstantsLayout* sc) {
+	if (sc->tempStr) {
+		free(sc->tempStr);
+		sc->tempStr = 0;
+	}
 	if (sc->disableThreadsStart) {
 		free(sc->disableThreadsStart);
 		sc->disableThreadsStart = 0;
@@ -22294,7 +22300,12 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
-		shaderGenVkFFT_R2C_decomposition(code0, &axis->specializationConstants, floatType, floatTypeInputMemory, floatTypeOutputMemory, floatTypeKernelMemory, uintType, type);
+		resFFT = shaderGenVkFFT_R2C_decomposition(code0, &axis->specializationConstants, floatType, floatTypeInputMemory, floatTypeOutputMemory, floatTypeKernelMemory, uintType, type);
+		freeShaderGenVkFFT(&axis->specializationConstants);
+		if (resFFT != VKFFT_SUCCESS) {
+			deleteVkFFT(app);
+			return resFFT;
+		}
 #if(VKFFT_BACKEND==0)
 		const glslang_resource_t default_resource = {
 			/* .MaxLights = */ 32,
@@ -23967,7 +23978,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				//if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[1] /= 2;
 				if (axis->axisBlock[0] * axis->axisBlock[1] > maxThreadNum) {
 					for (uint64_t i = 1; i <= axis->axisBlock[1]; i++) {
-						if ((axis->axisBlock[1] / i) * axis->axisBlock[1] <= maxThreadNum)
+						if ((axis->axisBlock[1] / i) * axis->axisBlock[0] <= maxThreadNum)
 						{
 							axis->axisBlock[1] /= i;
 							i = axis->axisBlock[1] + 1;
@@ -24324,7 +24335,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
-		shaderGenVkFFT(code0, &axis->specializationConstants, floatType, floatTypeInputMemory, floatTypeOutputMemory, floatTypeKernelMemory, uintType, type);
+		resFFT = shaderGenVkFFT(code0, &axis->specializationConstants, floatType, floatTypeInputMemory, floatTypeOutputMemory, floatTypeKernelMemory, uintType, type);
+		freeShaderGenVkFFT(&axis->specializationConstants);
+		if (resFFT != VKFFT_SUCCESS) {
+			deleteVkFFT(app);
+			return resFFT;
+		}
 #if(VKFFT_BACKEND==0)
 		const glslang_resource_t default_resource = {
 			/* .MaxLights = */ 32,
@@ -24897,13 +24913,14 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	VkPhysicalDeviceProperties physicalDeviceProperties = { 0 };
 	vkGetPhysicalDeviceProperties(app->configuration.physicalDevice[0], &physicalDeviceProperties);
 	app->configuration.maxThreadsNum = physicalDeviceProperties.limits.maxComputeWorkGroupInvocations;
+	if (physicalDeviceProperties.vendorID == 0x8086) app->configuration.maxThreadsNum = 256; //Intel fix
 	app->configuration.maxComputeWorkGroupCount[0] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[0];
 	app->configuration.maxComputeWorkGroupCount[1] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[1];
 	app->configuration.maxComputeWorkGroupCount[2] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[2];
 	app->configuration.maxComputeWorkGroupSize[0] = physicalDeviceProperties.limits.maxComputeWorkGroupSize[0];
 	app->configuration.maxComputeWorkGroupSize[1] = physicalDeviceProperties.limits.maxComputeWorkGroupSize[1];
 	app->configuration.maxComputeWorkGroupSize[2] = physicalDeviceProperties.limits.maxComputeWorkGroupSize[2];
-	if ((physicalDeviceProperties.vendorID == 0x8086) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
+	//if ((physicalDeviceProperties.vendorID == 0x8086) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
 	app->configuration.sharedMemorySize = physicalDeviceProperties.limits.maxComputeSharedMemorySize;
 	app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(physicalDeviceProperties.limits.maxComputeSharedMemorySize));
 	switch (physicalDeviceProperties.vendorID) {
@@ -25182,7 +25199,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	app->configuration.maxComputeWorkGroupCount[0] = UINT64_MAX;
 	app->configuration.maxComputeWorkGroupCount[1] = UINT64_MAX;
 	app->configuration.maxComputeWorkGroupCount[2] = UINT64_MAX;
-	if ((vendorID == 0x8086) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
+	//if ((vendorID == 0x8086) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
 	cl_ulong sharedMemorySize;
 	res = clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_LOCAL_MEM_SIZE, sizeof(cl_ulong), &sharedMemorySize, 0);
 	if (res != 0) {
@@ -26657,6 +26674,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10213; //X.XX.XX format
+	return 10214; //X.XX.XX format
 }
 #endif

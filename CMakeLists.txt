@@ -87,6 +87,7 @@ else()
 endif()
 	set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 35 60 70 75 80 86)
 	target_compile_options(${PROJECT_NAME} PUBLIC "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:
+	-std=c++11
 	-DVKFFT_BACKEND=${VKFFT_BACKEND}
 	-gencode arch=compute_35,code=compute_35
 	-gencode arch=compute_60,code=compute_60
@@ -99,6 +100,7 @@ endif()
 elseif(${VKFFT_BACKEND} EQUAL 2)
 	list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
 	find_package(hip)
+	#target_compile_definitions(${PROJECT_NAME} PUBLIC -DVKFFT_OLD_ROCM) #ROCm versions before 4.5 needed kernel include of hiprtc
 elseif(${VKFFT_BACKEND} EQUAL 3)
 	find_package(OpenCL REQUIRED)
 endif()
@@ -190,6 +192,7 @@ if(build_VkFFT_cuFFT_benchmark)
 	set_property(TARGET cuFFT_scripts PROPERTY CUDA_ARCHITECTURES 35 60 70 75 80 86)
 	CUDA_ADD_CUFFT_TO_TARGET(cuFFT_scripts)
 	target_compile_options(cuFFT_scripts PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:
+	-std=c++11
 	-gencode arch=compute_35,code=compute_35
 	-gencode arch=compute_60,code=compute_60
 	-gencode arch=compute_70,code=compute_70 
@@ -205,7 +208,7 @@ if(build_VkFFT_rocFFT_benchmark)
 	add_definitions(-DUSE_rocFFT)
 	list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
 	find_package(hip)
-    	find_package(rocfft)
+    find_package(hipfft)
 
 	if(build_VkFFT_FFTW_precision)
 		add_library(rocFFT_scripts STATIC
@@ -236,6 +239,6 @@ if(build_VkFFT_rocFFT_benchmark)
 		benchmark_scripts/rocFFT_scripts/src/sample_1003_benchmark_rocFFT_single_3d_2_512.cpp)
 	endif()
 	target_include_directories(rocFFT_scripts PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/rocFFT_scripts/include)
-	target_link_libraries(rocFFT_scripts PRIVATE hip::host roc::rocfft)
+	target_link_libraries(rocFFT_scripts PRIVATE hip::host hip::hipfft)
 	target_link_libraries(${PROJECT_NAME} PUBLIC rocFFT_scripts)
 endif()
