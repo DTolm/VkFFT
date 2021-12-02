@@ -20970,8 +20970,6 @@ static inline VkFFTResult VkFFTCheckUpdateBufferSet(VkFFTApplication* app, VkFFT
 				app->configuration.kernelOffset = launchParams->kernelOffset;
 				performOffsetUpdate = 1;
 			}
-			if (app->configuration.inputBufferOffset == 0) app->configuration.inputBufferOffset = app->configuration.bufferOffset;
-			if (app->configuration.outputBufferOffset == 0) app->configuration.outputBufferOffset = app->configuration.bufferOffset;
 		}
 	}
 	if (planStage) {
