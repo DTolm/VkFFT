@@ -1,7 +1,8 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.11)
 project(Vulkan_FFT)
 set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+include(FetchContent)
 set(VKFFT_BACKEND 0 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL")
 
 if(${VKFFT_BACKEND} EQUAL 1)
@@ -107,6 +108,15 @@ endif()
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC -DVK_API_VERSION=11)#10 - Vulkan 1.0, 11 - Vulkan 1.1, 12 - Vulkan 1.2 
 if(${VKFFT_BACKEND} EQUAL 0)
+	FetchContent_Declare(
+		glslang-master
+		GIT_REPOSITORY https://github.com/KhronosGroup/glslang
+		SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/glslang-master
+	)
+	FetchContent_GetProperties(glslang-master)
+	if(NOT glslang-master_POPULATED)
+		FetchContent_Populate(glslang-master)
+	endif()
 	target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glslang-master/glslang/Include/)
 	add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-master)
 endif()
