@@ -26170,8 +26170,8 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
 		}
 		if (app->configuration.performR2C) {
-			return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
 			deleteVkFFT(app);
+			return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
 		}
 	}
 	if (inputLaunchConfiguration.omitDimension[2] != 0) {
