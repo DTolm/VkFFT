@@ -23,6 +23,7 @@
 #ifndef VKFFT_H
 #define VKFFT_H
 
+#include <locale.h>
 #include <memory.h>
 #include <math.h>
 #include <stdio.h>
@@ -497,6 +498,7 @@ typedef struct {
 	int64_t currentLen;
 	int64_t maxCodeLength;
 	int64_t maxTempLength;
+	const char * oldloc;
 } VkFFTSpecializationConstantsLayout;
 typedef struct {
 	uint32_t dataUint32[10];
@@ -17030,10 +17032,15 @@ static inline void freeShaderGenVkFFT(VkFFTSpecializationConstantsLayout* sc) {
 		free(sc->regIDs);
 		sc->regIDs = 0;
 	}
+	if (sc->oldloc)
+	{
+		setlocale(LC_ALL, sc->oldloc);
+	}
 }
 static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint64_t type) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	//appendLicense(output);
+	sc->oldloc = setlocale(LC_ALL, "C");
 	sc->output = output;
 	sc->tempStr = (char*)malloc(sizeof(char) * sc->maxTempLength);
 	if (!sc->tempStr) return VKFFT_ERROR_MALLOC_FAILED;
