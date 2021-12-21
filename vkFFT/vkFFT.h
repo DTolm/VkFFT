@@ -25486,7 +25486,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	if (!inputLaunchConfiguration.isCompilerInitialized) {
 		if (!app->configuration.isCompilerInitialized) {
 			int resGlslangInitialize = glslang_initialize_process();
-			if (resGlslangInitialize) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+			if (!resGlslangInitialize) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
 			app->configuration.isCompilerInitialized = 1;
 		}
 	}
