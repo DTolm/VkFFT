@@ -498,7 +498,7 @@ typedef struct {
 	int64_t currentLen;
 	int64_t maxCodeLength;
 	int64_t maxTempLength;
-	const char * oldloc;
+	const char * oldLocale;
 } VkFFTSpecializationConstantsLayout;
 typedef struct {
 	uint32_t dataUint32[10];
@@ -16365,6 +16365,8 @@ if (%s==%" PRIu64 ") \n\
 static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint64_t type) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	//appendLicense(output);
+	sc->oldLocale = setlocale( LC_ALL, NULL );
+	setlocale( LC_ALL, "C" );
 	sc->output = output;
 	sc->tempStr = (char*)malloc(sizeof(char) * sc->maxTempLength);
 	if (!sc->tempStr) return VKFFT_ERROR_MALLOC_FAILED;
@@ -17032,15 +17034,16 @@ static inline void freeShaderGenVkFFT(VkFFTSpecializationConstantsLayout* sc) {
 		free(sc->regIDs);
 		sc->regIDs = 0;
 	}
-	if (sc->oldloc)
+	if (sc->oldLocale )
 	{
-		setlocale(LC_ALL, sc->oldloc);
+		setlocale(LC_ALL, sc->oldLocale );
 	}
 }
 static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint64_t type) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	//appendLicense(output);
-	sc->oldloc = setlocale(LC_ALL, "C");
+	sc->oldLocale = setlocale(LC_ALL, NULL);
+	setlocale(LC_ALL, "C");
 	sc->output = output;
 	sc->tempStr = (char*)malloc(sizeof(char) * sc->maxTempLength);
 	if (!sc->tempStr) return VKFFT_ERROR_MALLOC_FAILED;
