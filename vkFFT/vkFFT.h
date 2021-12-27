@@ -23,6 +23,7 @@
 #ifndef VKFFT_H
 #define VKFFT_H
 
+#include <locale.h>
 #include <memory.h>
 #include <math.h>
 #include <stdio.h>
@@ -497,6 +498,7 @@ typedef struct {
 	int64_t currentLen;
 	int64_t maxCodeLength;
 	int64_t maxTempLength;
+	const char * oldLocale;
 } VkFFTSpecializationConstantsLayout;
 typedef struct {
 	uint32_t dataUint32[10];
@@ -16363,6 +16365,8 @@ if (%s==%" PRIu64 ") \n\
 static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint64_t type) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	//appendLicense(output);
+	sc->oldLocale = setlocale( LC_ALL, NULL );
+	setlocale( LC_ALL, "C" );
 	sc->output = output;
 	sc->tempStr = (char*)malloc(sizeof(char) * sc->maxTempLength);
 	if (!sc->tempStr) return VKFFT_ERROR_MALLOC_FAILED;
@@ -17030,10 +17034,16 @@ static inline void freeShaderGenVkFFT(VkFFTSpecializationConstantsLayout* sc) {
 		free(sc->regIDs);
 		sc->regIDs = 0;
 	}
+	if (sc->oldLocale )
+	{
+		setlocale(LC_ALL, sc->oldLocale );
+	}
 }
 static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint64_t type) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	//appendLicense(output);
+	sc->oldLocale = setlocale(LC_ALL, NULL);
+	setlocale(LC_ALL, "C");
 	sc->output = output;
 	sc->tempStr = (char*)malloc(sizeof(char) * sc->maxTempLength);
 	if (!sc->tempStr) return VKFFT_ERROR_MALLOC_FAILED;
@@ -25486,7 +25496,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	if (!inputLaunchConfiguration.isCompilerInitialized) {
 		if (!app->configuration.isCompilerInitialized) {
 			int resGlslangInitialize = glslang_initialize_process();
-			if (resGlslangInitialize) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+			if (!resGlslangInitialize) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
 			app->configuration.isCompilerInitialized = 1;
 		}
 	}
