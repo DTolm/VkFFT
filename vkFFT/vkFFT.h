@@ -498,7 +498,7 @@ typedef struct {
 	int64_t currentLen;
 	int64_t maxCodeLength;
 	int64_t maxTempLength;
-	const char * oldLocale;
+	const char* oldLocale;
 } VkFFTSpecializationConstantsLayout;
 typedef struct {
 	uint32_t dataUint32[10];
@@ -16365,8 +16365,8 @@ if (%s==%" PRIu64 ") \n\
 static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint64_t type) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	//appendLicense(output);
-	sc->oldLocale = setlocale( LC_ALL, NULL );
-	setlocale( LC_ALL, "C" );
+	sc->oldLocale = setlocale(LC_ALL, NULL);
+	setlocale(LC_ALL, "C");
 	sc->output = output;
 	sc->tempStr = (char*)malloc(sizeof(char) * sc->maxTempLength);
 	if (!sc->tempStr) return VKFFT_ERROR_MALLOC_FAILED;
@@ -17034,9 +17034,9 @@ static inline void freeShaderGenVkFFT(VkFFTSpecializationConstantsLayout* sc) {
 		free(sc->regIDs);
 		sc->regIDs = 0;
 	}
-	if (sc->oldLocale )
+	if (sc->oldLocale)
 	{
-		setlocale(LC_ALL, sc->oldLocale );
+		setlocale(LC_ALL, sc->oldLocale);
 	}
 }
 static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint64_t type) {
@@ -19679,7 +19679,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t* loc_multipliers, 
 		if ((registers_per_thread_per_radix[i] != 0) && (registers_per_thread_per_radix[i] < min_registers_per_thread[0])) min_registers_per_thread[0] = registers_per_thread_per_radix[i];
 		if ((registers_per_thread_per_radix[i] != 0) && (registers_per_thread_per_radix[i] > registers_per_thread[0])) registers_per_thread[0] = registers_per_thread_per_radix[i];
 	}
-	if ((registers_per_thread[0] > 10) || (registers_per_thread[0] >= 2 * min_registers_per_thread[0])) isGoodSequence[0] = 0;
+	if ((registers_per_thread[0] > 16) || (registers_per_thread[0] >= 2 * min_registers_per_thread[0])) isGoodSequence[0] = 0;
 	else isGoodSequence[0] = 1;
 	return VKFFT_SUCCESS;
 }
@@ -20274,12 +20274,12 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			}
 			min_registers_per_thread *= scaleRegistersNum;
 			uint64_t temp_scaleRegistersNum = scaleRegistersNum;
-			while ((maxBatchCoalesced * locAxisSplit[k] / (registers_per_thread * registerBoost)) % temp_scaleRegistersNum != 0) temp_scaleRegistersNum++;
+			while ((locAxisSplit[k] / (registers_per_thread * registerBoost)) % temp_scaleRegistersNum != 0) temp_scaleRegistersNum++;
 			registers_per_thread *= temp_scaleRegistersNum;
 			for (uint64_t i = 2; i < 14; i++) {
 				if (registers_per_thread_per_radix[i] != 0) {
 					temp_scaleRegistersNum = scaleRegistersNum;
-					while ((maxBatchCoalesced * locAxisSplit[k] / (registers_per_thread_per_radix[i] * registerBoost)) % temp_scaleRegistersNum != 0) temp_scaleRegistersNum++;
+					while ((locAxisSplit[k] / (registers_per_thread_per_radix[i] * registerBoost)) % temp_scaleRegistersNum != 0) temp_scaleRegistersNum++;
 					registers_per_thread_per_radix[i] *= temp_scaleRegistersNum;
 				}
 			}
@@ -20295,6 +20295,14 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				}
 				if ((registers_per_thread_per_radix[i] > 0) && (registers_per_thread_per_radix[i] < min_registers_per_thread)) {
 					min_registers_per_thread = registers_per_thread_per_radix[i];
+				}
+			}
+			if ((loc_multipliers[3] >= 2) && (((registers_per_thread / min_registers_per_thread) % 3) == 0)) {
+				registers_per_thread /= 3;
+				for (uint64_t i = 2; i < 14; i++) {
+					if (registers_per_thread_per_radix[i] % 9 == 0) {
+						registers_per_thread_per_radix[i] /= 3;
+					}
 				}
 			}
 		}
@@ -27024,7 +27032,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 			if (app->useBluesteinFFT[0] && (app->localFFTPlan->numAxisUploads[0] > 1)) {
 				for (int64_t l = 1; l < (int64_t)app->localFFTPlan->numAxisUploads[0]; l++) {
 					VkFFTAxis* axis = &app->localFFTPlan->inverseBluesteinAxes[0][l];
-					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 0, l, 1);
+					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 0, l, 0);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
 					uint64_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
 #if(VKFFT_BACKEND==0)
@@ -27143,7 +27151,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 					if (app->useBluesteinFFT[1] && (app->localFFTPlan->numAxisUploads[1] > 1)) {
 						for (int64_t l = 1; l < (int64_t)app->localFFTPlan->numAxisUploads[1]; l++) {
 							VkFFTAxis* axis = &app->localFFTPlan->inverseBluesteinAxes[1][l];
-							resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 1, l, 1);
+							resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 1, l, 0);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
@@ -27217,7 +27225,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 					if (app->useBluesteinFFT[2] && (app->localFFTPlan->numAxisUploads[2] > 1)) {
 						for (int64_t l = 1; l < (int64_t)app->localFFTPlan->numAxisUploads[2]; l++) {
 							VkFFTAxis* axis = &app->localFFTPlan->inverseBluesteinAxes[2][l];
-							resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 2, l, 1);
+							resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 2, l, 0);
 							if (resFFT != VKFFT_SUCCESS) return resFFT;
 #if(VKFFT_BACKEND==0)
 							vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
@@ -27389,7 +27397,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 		if (app->configuration.FFTdim > 2) {
 			if (!app->configuration.omitDimension[2]) {
 				for (int64_t l = (int64_t)app->localFFTPlan_inverse->numAxisUploads[2] - 1; l >= 0; l--) {
-					if ((!app->configuration.reorderFourStep) && (!app->useBluesteinFFT[2])) l = app->localFFTPlan_inverse->numAxisUploads[2] - 1 - l;
+					//if ((!app->configuration.reorderFourStep) && (!app->useBluesteinFFT[2])) l = app->localFFTPlan_inverse->numAxisUploads[2] - 1 - l;
 					VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[2][l];
 					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 2, l, 1);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -27411,7 +27419,30 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 					printDebugInformation(app, axis);
 					resFFT = VkFFTSync(app);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
-					if ((!app->configuration.reorderFourStep) && (!app->useBluesteinFFT[2])) l = app->localFFTPlan_inverse->numAxisUploads[2] - 1 - l;
+					//if ((!app->configuration.reorderFourStep) && (!app->useBluesteinFFT[2])) l = app->localFFTPlan_inverse->numAxisUploads[2] - 1 - l;
+				}
+				if (app->useBluesteinFFT[2] && (app->localFFTPlan_inverse->numAxisUploads[2] > 1)) {
+					for (int64_t l = 1; l < (int64_t)app->localFFTPlan_inverse->numAxisUploads[2]; l++) {
+						VkFFTAxis* axis = &app->localFFTPlan_inverse->inverseBluesteinAxes[2][l];
+						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 2, l, 1);
+						if (resFFT != VKFFT_SUCCESS) return resFFT;
+#if(VKFFT_BACKEND==0)
+						vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
+						vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
+#endif
+						uint64_t dispatchBlock[3];
+						dispatchBlock[0] = (uint64_t)ceil(localSize0[2] / (double)axis->axisBlock[0] * app->localFFTPlan_inverse->actualFFTSizePerAxis[2][2] / (double)axis->specializationConstants.fftDim);
+						dispatchBlock[1] = 1;
+						dispatchBlock[2] = app->localFFTPlan_inverse->actualFFTSizePerAxis[2][1] * app->configuration.coordinateFeatures * app->configuration.numberBatches;
+
+						//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = (uint64_t)ceil(dispatchBlock[1] / 2.0);
+						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
+						resFFT = dispatchEnhanced(app, axis, dispatchBlock);
+						if (resFFT != VKFFT_SUCCESS) return resFFT;
+						printDebugInformation(app, axis);
+						resFFT = VkFFTSync(app);
+						if (resFFT != VKFFT_SUCCESS) return resFFT;
+					}
 				}
 			}
 		}
@@ -27420,7 +27451,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 			//FFT axis 1
 			if (!app->configuration.omitDimension[1]) {
 				for (int64_t l = (int64_t)app->localFFTPlan_inverse->numAxisUploads[1] - 1; l >= 0; l--) {
-					if ((!app->configuration.reorderFourStep) && (!app->useBluesteinFFT[1])) l = app->localFFTPlan_inverse->numAxisUploads[1] - 1 - l;
+					//if ((!app->configuration.reorderFourStep) && (!app->useBluesteinFFT[1])) l = app->localFFTPlan_inverse->numAxisUploads[1] - 1 - l;
 					VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[1][l];
 					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 1, l, 1);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -27440,9 +27471,32 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 					resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
 					printDebugInformation(app, axis);
-					if ((!app->configuration.reorderFourStep) && (!app->useBluesteinFFT[1])) l = app->localFFTPlan_inverse->numAxisUploads[1] - 1 - l;
+					//if ((!app->configuration.reorderFourStep) && (!app->useBluesteinFFT[1])) l = app->localFFTPlan_inverse->numAxisUploads[1] - 1 - l;
 					resFFT = VkFFTSync(app);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
+				}
+				if (app->useBluesteinFFT[1] && (app->localFFTPlan_inverse->numAxisUploads[1] > 1)) {
+					for (int64_t l = 1; l < (int64_t)app->localFFTPlan_inverse->numAxisUploads[1]; l++) {
+						VkFFTAxis* axis = &app->localFFTPlan_inverse->inverseBluesteinAxes[1][l];
+						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 1, l, 1);
+						if (resFFT != VKFFT_SUCCESS) return resFFT;
+#if(VKFFT_BACKEND==0)
+						vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
+						vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
+#endif
+						uint64_t dispatchBlock[3];
+						dispatchBlock[0] = (uint64_t)ceil(localSize0[1] / (double)axis->axisBlock[0] * app->localFFTPlan_inverse->actualFFTSizePerAxis[1][1] / (double)axis->specializationConstants.fftDim);
+						dispatchBlock[1] = 1;
+						dispatchBlock[2] = app->localFFTPlan_inverse->actualFFTSizePerAxis[1][2] * app->configuration.coordinateFeatures * app->configuration.numberBatches;
+
+						//if (app->configuration.performZeropadding[1]) dispatchBlock[1] = (uint64_t)ceil(dispatchBlock[1] / 2.0);
+						//if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (uint64_t)ceil(dispatchBlock[2] / 2.0);
+						resFFT = dispatchEnhanced(app, axis, dispatchBlock);
+						if (resFFT != VKFFT_SUCCESS) return resFFT;
+						printDebugInformation(app, axis);
+						resFFT = VkFFTSync(app);
+						if (resFFT != VKFFT_SUCCESS) return resFFT;
+					}
 				}
 			}
 		}
@@ -27471,7 +27525,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 			}
 			//FFT axis 0
 			for (int64_t l = (int64_t)app->localFFTPlan_inverse->numAxisUploads[0] - 1; l >= 0; l--) {
-				if ((!app->configuration.reorderFourStep) && (!app->useBluesteinFFT[0])) l = app->localFFTPlan_inverse->numAxisUploads[0] - 1 - l;
+				//if ((!app->configuration.reorderFourStep) && (!app->useBluesteinFFT[0])) l = app->localFFTPlan_inverse->numAxisUploads[0] - 1 - l;
 				VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[0][l];
 				resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 0, l, 1);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -27507,7 +27561,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 				resFFT = dispatchEnhanced(app, axis, dispatchBlock);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
 				printDebugInformation(app, axis);
-				if ((!app->configuration.reorderFourStep) && (!app->useBluesteinFFT[0])) l = app->localFFTPlan_inverse->numAxisUploads[0] - 1 - l;
+				//if ((!app->configuration.reorderFourStep) && (!app->useBluesteinFFT[0])) l = app->localFFTPlan_inverse->numAxisUploads[0] - 1 - l;
 				resFFT = VkFFTSync(app);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
 			}
@@ -27560,6 +27614,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10215; //X.XX.XX format
+	return 10216; //X.XX.XX format
 }
 #endif
