@@ -2026,16 +2026,16 @@ if (res != VKFFT_SUCCESS) return res;
 		}
 		else {
 			if (!strcmp(floatType, "float")) {
-				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 4.0 / 3.0, LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 4.0 / 3.0, LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 4.0 / 3.0, LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 4.0 / 3.0, LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 4.0 / 3.0, 4.0 / 3.0);
+				//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 4.0 / 3.0, 4.0 / 3.0);
 			}
 			if (!strcmp(floatType, "double")) {
-				sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17f%s);\n", w, 4.0 / 3.0, LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 4.0 / 3.0, LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
@@ -2056,16 +2056,16 @@ loc_2.y = temp%s.y * w.x + temp%s.x * w.y;\n", regID[2], regID[2], regID[2], reg
 		}
 		else {
 			if (!strcmp(floatType, "float")) {
-				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 / 3.0, LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 / 3.0, LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 / 3.0, LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 / 3.0, LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 / 3.0, 2.0 / 3.0);
+				//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 / 3.0, 2.0 / 3.0);
 			}
 			if (!strcmp(floatType, "double")) {
-				sc->tempLen = sprintf(sc->tempStr, "	%s=sincos_20(angle*%.17f%s);\n", w, 2.0 / 3.0, LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s=sincos_20(angle*%.17e%s);\n", w, 2.0 / 3.0, LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
@@ -2318,16 +2318,16 @@ if (res != VKFFT_SUCCESS) return res;
 				}
 				else {
 					if (!strcmp(floatType, "float")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 					}
 					if (!strcmp(floatType, "double")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -2346,16 +2346,16 @@ if (res != VKFFT_SUCCESS) return res;
 				}
 				else {
 					if (!strcmp(floatType, "float")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 					}
 					if (!strcmp(floatType, "double")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -2532,16 +2532,16 @@ if (res != VKFFT_SUCCESS) return res;
 				}
 				else {
 					if (!strcmp(floatType, "float")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 					}
 					if (!strcmp(floatType, "double")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -2560,16 +2560,16 @@ if (res != VKFFT_SUCCESS) return res;
 				}
 				else {
 					if (!strcmp(floatType, "float")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 					}
 					if (!strcmp(floatType, "double")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -3080,16 +3080,16 @@ temp%s = temp;\n\
 				}
 				else {
 					if (!strcmp(floatType, "float")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 					}
 					if (!strcmp(floatType, "double")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -3108,16 +3108,16 @@ temp%s = temp;\n\
 				}
 				else {
 					if (!strcmp(floatType, "float")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 					}
 					if (!strcmp(floatType, "double")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -3343,16 +3343,16 @@ temp%s = temp;\n\
 				}
 				else {
 					if (!strcmp(floatType, "float")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 					}
 					if (!strcmp(floatType, "double")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -3371,16 +3371,16 @@ temp%s = temp;\n\
 				}
 				else {
 					if (!strcmp(floatType, "float")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17f%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17f%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17f), sin(angle*%.17f));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 					}
 					if (!strcmp(floatType, "double")) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17f%s);\n", w, 2.0 * i / radix, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -6693,10 +6693,10 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						if (res != VKFFT_SUCCESS) return res;
 					}
 					else {
-						sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17f%s * (combinedID %% %" PRIu64 ") );\n", cosDef, double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+						sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", cosDef, double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17f%s * (combinedID %% %" PRIu64 ") );\n", sinDef, double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+						sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", sinDef, double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -6996,10 +6996,10 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						if (res != VKFFT_SUCCESS) return res;
 					}
 					else {
-						sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17f%s * (combinedID) );\n", cosDef, double_PI / 2 / sc->fftDim, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (combinedID) );\n", cosDef, double_PI / 2 / sc->fftDim, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17f%s * (combinedID) );\n", sinDef, double_PI / 2 / sc->fftDim, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (combinedID) );\n", sinDef, double_PI / 2 / sc->fftDim, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -8276,10 +8276,10 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						if (res != VKFFT_SUCCESS) return res;
 					}
 					else {
-						sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17f%s * (combinedID %% %" PRIu64 ") );\n", cosDef, double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+						sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", cosDef, double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17f%s * (combinedID %% %" PRIu64 ") );\n", sinDef, double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+						sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", sinDef, double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -8916,10 +8916,10 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						if (res != VKFFT_SUCCESS) return res;
 					}
 					else {
-						sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17f%s * (combinedID / %" PRIu64 ") );\n", cosDef, double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
+						sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (combinedID / %" PRIu64 ") );\n", cosDef, double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17f%s * (combinedID / %" PRIu64 ") );\n", sinDef, double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
+						sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (combinedID / %" PRIu64 ") );\n", sinDef, double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -10181,7 +10181,7 @@ static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstant
 			if (sc->LUT)
 				sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID + %" PRIu64 ";\n", stageSizeSum);
 			else
-				sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17f%s;\n", stageAngle, LFending);
+				sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			if ((!((sc->readToRegisters == 1) && (stageSize == 1) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle > 0) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)))))) && ((sc->registerBoost == 1) && ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->localSize[1] > 1) && (!(sc->performR2C && (sc->actualInverse)))) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)) || (sc->performDCT)))) {
@@ -10340,7 +10340,7 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 			if (sc->LUT)
 				sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID + %" PRIu64 ";\n", stageSizeSum);
 			else
-				sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17f%s;\n", stageAngle, LFending);
+				sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			if ((!((sc->readToRegisters == 1) && (stageSize == 1) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle > 0) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)))))) && ((sc->registerBoost == 1) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0) && (!(sc->performR2C && (sc->actualInverse)))) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)) || (sc->performDCT)))) {
@@ -10491,7 +10491,7 @@ static inline VkFFTResult appendRadixShuffleNonStrided(VkFFTSpecializationConsta
 		normalizationValue *= sc->fft_dim_full;
 	}
 	if (normalizationValue != 1) {
-		sprintf(stageNormalization, "%.17f%s", 1.0 / (double)(normalizationValue), LFending);
+		sprintf(stageNormalization, "%.17e%s", 1.0 / (double)(normalizationValue), LFending);
 	}
 	char tempNum[50] = "";
 
@@ -10871,7 +10871,7 @@ static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstants
 		normalizationValue *= sc->fft_dim_full;
 	}
 	if (normalizationValue != 1) {
-		sprintf(stageNormalization, "%.17f%s", 1.0 / (double)(normalizationValue), LFending);
+		sprintf(stageNormalization, "%.17e%s", 1.0 / (double)(normalizationValue), LFending);
 	}
 	if ((!((sc->writeFromRegisters == 1) && (stageSize == sc->fftDim / stageRadix) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle < 0) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)))))) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize < sc->fftDim / stageRadix) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle < 0)) || (sc->performDCT)))
 	{
@@ -13881,10 +13881,10 @@ if (%s==%" PRIu64 ") \n\
 							if (res != VKFFT_SUCCESS) return res;
 						}
 						else {
-							sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*%s(%.17f%s * (combinedID %% %" PRIu64 ") );\n", cosDef, -double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*%s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", cosDef, -double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
-							sc->tempLen = sprintf(sc->tempStr, "		mult.y = 2*%s(%.17f%s * (combinedID %% %" PRIu64 ") );\n", sinDef, -double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.y = 2*%s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", sinDef, -double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
@@ -14261,10 +14261,10 @@ if (%s==%" PRIu64 ") \n\
 							if (res != VKFFT_SUCCESS) return res;
 						}
 						else {
-							sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*%s(%.17f%s * (combinedID / %" PRIu64 ") );\n", cosDef, -double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*%s(%.17e%s * (combinedID / %" PRIu64 ") );\n", cosDef, -double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
-							sc->tempLen = sprintf(sc->tempStr, "		mult.y = 2*%s(%.17f%s * (combinedID / %" PRIu64 ") );\n", sinDef, -double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.y = 2*%s(%.17e%s * (combinedID / %" PRIu64 ") );\n", sinDef, -double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
@@ -15370,10 +15370,10 @@ if (%s==%" PRIu64 ") \n\
 							if (res != VKFFT_SUCCESS) return res;
 						}
 						else {
-							sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17f%s * (2*(combinedID %% %" PRIu64 ")+1) );\n", cosDef, -double_PI / 8 / sc->fftDim, LFending, sc->fftDim);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (2*(combinedID %% %" PRIu64 ")+1) );\n", cosDef, -double_PI / 8 / sc->fftDim, LFending, sc->fftDim);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
-							sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17f%s * (2*(combinedID %% %" PRIu64 ")+1) );\n", sinDef, -double_PI / 8 / sc->fftDim, LFending, sc->fftDim);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (2*(combinedID %% %" PRIu64 ")+1) );\n", sinDef, -double_PI / 8 / sc->fftDim, LFending, sc->fftDim);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
@@ -15557,10 +15557,10 @@ if (%s==%" PRIu64 ") \n\
 							if (res != VKFFT_SUCCESS) return res;
 						}
 						else {
-							sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17f%s * (2*(combinedID / %" PRIu64 ")+1) );\n", cosDef, -double_PI / 8 / sc->fftDim, LFending, sc->localSize[0]);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (2*(combinedID / %" PRIu64 ")+1) );\n", cosDef, -double_PI / 8 / sc->fftDim, LFending, sc->localSize[0]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
-							sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17f%s * (2*(combinedID / %" PRIu64 ")+1) );\n", sinDef, -double_PI / 8 / sc->fftDim, LFending, sc->localSize[0]);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (2*(combinedID / %" PRIu64 ")+1) );\n", sinDef, -double_PI / 8 / sc->fftDim, LFending, sc->localSize[0]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
