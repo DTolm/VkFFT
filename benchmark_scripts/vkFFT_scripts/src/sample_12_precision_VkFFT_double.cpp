@@ -342,6 +342,7 @@ VkFFTResult sample_12_precision_VkFFT_double(VkGPU* vkGPU, uint64_t file_output,
 #if defined(USE_cuFFT) || defined(USE_rocFFT)
 			free(output_extFFT);
 #endif
+			free(bufferSize);
 			deleteVkFFT(&app);
 			free(inputC);
 			fftw_destroy_plan(p);

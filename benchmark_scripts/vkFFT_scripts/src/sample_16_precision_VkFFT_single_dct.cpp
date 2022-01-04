@@ -317,9 +317,9 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 							//if (file_output) fprintf(output, "%.2e %.2e - %.2e %.2e \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
 
 							//printf("%.2e - %.2e \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])]);
-							double current_data_norm = sqrt(output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]] + output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]]);
+							double current_data_norm = sqrt(output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]]);
 
-							double current_diff_norm_VkFFT = (output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]]);
+							double current_diff_norm_VkFFT = sqrt((output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]])*(output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]]));
 							if (current_diff_norm_VkFFT > max_difference[1]) max_difference[1] = current_diff_norm_VkFFT;
 							avg_difference[1] += current_diff_norm_VkFFT;
 							if ((current_diff_norm_VkFFT / current_data_norm > max_eps[1])) {
