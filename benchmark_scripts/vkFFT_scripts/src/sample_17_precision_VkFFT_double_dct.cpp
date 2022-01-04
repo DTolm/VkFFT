@@ -321,10 +321,10 @@ VkFFTResult sample_17_precision_VkFFT_double_dct(VkGPU* vkGPU, uint64_t file_out
 							double current_diff_norm_VkFFT = (output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]]);
 							if (current_diff_norm_VkFFT > max_difference[1]) max_difference[1] = current_diff_norm_VkFFT;
 							avg_difference[1] += current_diff_norm_VkFFT;
-							if ((current_diff_norm_VkFFT / current_data_norm > max_eps[1]) && (current_data_norm > 1e-10)) {
+							if ((current_diff_norm_VkFFT / current_data_norm > max_eps[1])) {
 								max_eps[1] = current_diff_norm_VkFFT / current_data_norm;
 							}
-							avg_eps[1] += (current_data_norm > 1e-10) ? current_diff_norm_VkFFT / current_data_norm : 0;
+							avg_eps[1] += current_diff_norm_VkFFT / current_data_norm;
 				}
 				}
 				}
@@ -333,8 +333,8 @@ VkFFTResult sample_17_precision_VkFFT_double_dct(VkGPU* vkGPU, uint64_t file_out
 				avg_difference[1] /= (dims[0] * dims[1] * dims[2]);
 				avg_eps[1] /= (dims[0] * dims[1] * dims[2]);
 				if (file_output)
-					fprintf(output, "VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", t, dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
-				printf("VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.15f max_difference: %.15f avg_eps: %.15f max_eps: %.15f\n", t, dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+					fprintf(output, "VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.2e max_difference: %.2e avg_eps: %.2e max_eps: %.2e\n", t, dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+				printf("VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.2e max_difference: %.2e avg_eps: %.2e max_eps: %.2e\n", t, dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
 				free(output_VkFFT);
 				for (uint64_t i = 0; i < numBuf; i++) {
 

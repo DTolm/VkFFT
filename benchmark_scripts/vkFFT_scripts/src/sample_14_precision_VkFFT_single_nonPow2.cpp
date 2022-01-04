@@ -135,6 +135,16 @@ VkFFTResult sample_14_precision_VkFFT_single_nonPow2(VkGPU* vkGPU, uint64_t file
 			float totTime = 0;
 			int num_iter = 1;
 
+#ifdef USE_cuFFT
+			fftwf_complex* output_extFFT = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * dims[0] * dims[1] * dims[2]));
+			if (!output_extFFT) return VKFFT_ERROR_MALLOC_FAILED;
+			launch_precision_cuFFT_single(inputC, (void*)output_extFFT, benchmark_dimensions[n]);
+#endif // USE_cuFFT
+#ifdef USE_rocFFT
+			fftwf_complex* output_extFFT = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * dims[0] * dims[1] * dims[2]));
+			if (!output_extFFT) return VKFFT_ERROR_MALLOC_FAILED;
+			launch_precision_rocFFT_single(inputC, (void*)output_extFFT, benchmark_dimensions[n]);
+#endif // USE_rocFFT
 			//VkFFT part
 
 			VkFFTConfiguration configuration = {};
@@ -276,22 +286,32 @@ VkFFTResult sample_14_precision_VkFFT_single_nonPow2(VkGPU* vkGPU, uint64_t file
 						uint64_t loc_j = j;
 						uint64_t loc_l = l;
 
-						//if (file_output) fprintf(output, "%f %f - %f %f \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
+						//if (file_output) fprintf(output, "%.2e %.2e - %.2e %.2e \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
 						//if (i > dims[0] - 10)
-						//printf("%f %f - %f %f \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] , output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
-						//printf("%f %f \n", output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
+						//printf("%.2e %.2e - %.2e %.2e \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] , output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
+						//printf("%.2e %.2e \n", output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
 
 						double current_data_norm = sqrt(output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] + output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
-
+#if defined(USE_cuFFT) || defined(USE_rocFFT)
+						double current_diff_x_extFFT = (output_extFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]][0] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0]);
+						double current_diff_y_extFFT = (output_extFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]][1] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
+						double current_diff_norm_extFFT = sqrt(current_diff_x_extFFT * current_diff_x_extFFT + current_diff_y_extFFT * current_diff_y_extFFT);
+						if (current_diff_norm_extFFT > max_difference[0]) max_difference[0] = current_diff_norm_extFFT;
+						avg_difference[0] += current_diff_norm_extFFT;
+						if ((current_diff_norm_extFFT / current_data_norm > max_eps[0])) {
+							max_eps[0] = current_diff_norm_extFFT / current_data_norm;
+						}
+						avg_eps[0] += current_diff_norm_extFFT / current_data_norm;
+#endif
 						double current_diff_x_VkFFT = (output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]][0] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0]);
 						double current_diff_y_VkFFT = (output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]][1] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1]);
 						double current_diff_norm_VkFFT = sqrt(current_diff_x_VkFFT * current_diff_x_VkFFT + current_diff_y_VkFFT * current_diff_y_VkFFT);
 						if (current_diff_norm_VkFFT > max_difference[1]) max_difference[1] = current_diff_norm_VkFFT;
 						avg_difference[1] += current_diff_norm_VkFFT;
-						if ((current_diff_norm_VkFFT / current_data_norm > max_eps[1]) && (current_data_norm > 1e-10)) {
+						if ((current_diff_norm_VkFFT / current_data_norm > max_eps[1])) {
 							max_eps[1] = current_diff_norm_VkFFT / current_data_norm;
 						}
-						avg_eps[1] += (current_data_norm > 1e-10) ? current_diff_norm_VkFFT / current_data_norm : 0;
+						avg_eps[1] += current_diff_norm_VkFFT / current_data_norm;
 					}
 				}
 			}
@@ -299,9 +319,19 @@ VkFFTResult sample_14_precision_VkFFT_single_nonPow2(VkGPU* vkGPU, uint64_t file
 			avg_eps[0] /= (dims[0] * dims[1] * dims[2]);
 			avg_difference[1] /= (dims[0] * dims[1] * dims[2]);
 			avg_eps[1] /= (dims[0] * dims[1] * dims[2]);
+#ifdef USE_cuFFT
 			if (file_output)
-				fprintf(output, "VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
-			printf("VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %f max_difference: %f avg_eps: %f max_eps: %f\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+				fprintf(output, "cuFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.2e max_difference: %.2e avg_eps: %.2e max_eps: %.2e\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+			printf("cuFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.2e max_difference: %.2e avg_eps: %.2e max_eps: %.2e\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+#endif
+#ifdef USE_rocFFT
+			if (file_output)
+				fprintf(output, "rocFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.2e max_difference: %.2e avg_eps: %.2e max_eps: %.2e\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+			printf("rocFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.2e max_difference: %.2e avg_eps: %.2e max_eps: %.2e\n", dims[0], dims[1], dims[2], avg_difference[0], max_difference[0], avg_eps[0], max_eps[0]);
+#endif
+			if (file_output)
+				fprintf(output, "VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.2e max_difference: %.2e avg_eps: %.2e max_eps: %.2e\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+			printf("VkFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.2e max_difference: %.2e avg_eps: %.2e max_eps: %.2e\n", dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
 			free(output_VkFFT);
 			for (uint64_t i = 0; i < numBuf; i++) {
 
@@ -320,6 +350,9 @@ VkFFTResult sample_14_precision_VkFFT_single_nonPow2(VkGPU* vkGPU, uint64_t file
 #if(VKFFT_BACKEND==0)
 			free(buffer);
 			free(bufferDeviceMemory);
+#endif
+#if defined(USE_cuFFT) || defined(USE_rocFFT)
+			free(output_extFFT);
 #endif
 			free(bufferSize);
 			deleteVkFFT(&app);

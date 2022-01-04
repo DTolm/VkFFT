@@ -3030,41 +3030,41 @@ temp%s = temp;\n\
 			//tf2[i] = (char*)malloc(sizeof(char) * 50);
 			//tf2inv[i] = (char*)malloc(sizeof(char) * 50);
 		}
-		sprintf(tf[0], "-1.100000000000000%s", LFending);
+		sprintf(tf[0], "-1.10000000000000000e+00%s", LFending);
 
-		sprintf(tf[2], "0.253097611605959%s", LFending);
-		sprintf(tf[3], "-1.288200610773679%s", LFending);
-		sprintf(tf[4], "0.304632239669212%s", LFending);
-		sprintf(tf[5], "-0.391339615511917%s", LFending);
-		sprintf(tf[6], "-2.871022253392850%s", LFending);
-		sprintf(tf[7], "1.374907986616384%s", LFending);
-		sprintf(tf[8], "0.817178135341212%s", LFending);
-		sprintf(tf[9], "1.800746506445679%s", LFending);
-		sprintf(tf[10], "-0.859492973614498%s", LFending);
+		sprintf(tf[2], "2.53097611605958783e-01%s", LFending);
+		sprintf(tf[3], "-1.28820061077367898e+00%s", LFending);
+		sprintf(tf[4], "3.04632239669212490e-01%s", LFending);
+		sprintf(tf[5], "-3.91339615511917427e-01%s", LFending);
+		sprintf(tf[6], "-2.87102225339285022e+00%s", LFending);
+		sprintf(tf[7], "1.37490798661638380e+00%s", LFending);
+		sprintf(tf[8], "8.17178135341212419e-01%s", LFending);
+		sprintf(tf[9], "1.80074650644567891e+00%s", LFending);
+		sprintf(tf[10], "-8.59492973614497502e-01%s", LFending);
 
 		if (stageAngle < 0) {
-			sprintf(tf[1], "0.331662479035540%s", LFending);
-			sprintf(tf[11], "-2.373470454748280%s", LFending);
-			sprintf(tf[12], "-0.024836393087493%s", LFending);
-			sprintf(tf[13], "0.474017017512829%s", LFending);
-			sprintf(tf[14], "0.742183927770612%s", LFending);
-			sprintf(tf[15], "1.406473309094609%s", LFending);
-			sprintf(tf[16], "-1.191364552195948%s", LFending);
-			sprintf(tf[17], "0.708088885039503%s", LFending);
-			sprintf(tf[18], "0.258908260614168%s", LFending);
-			sprintf(tf[19], "-0.049929922194110%s", LFending);
+			sprintf(tf[1], "3.31662479035539914e-01%s", LFending);
+			sprintf(tf[11], "-2.37347045474827967e+00%s", LFending);
+			sprintf(tf[12], "-2.48363930874935801e-02%s", LFending);
+			sprintf(tf[13], "4.74017017512828764e-01%s", LFending);
+			sprintf(tf[14], "7.42183927770612595e-01%s", LFending);
+			sprintf(tf[15], "1.40647330909460866e+00%s", LFending);
+			sprintf(tf[16], "-1.19136455219594772e+00%s", LFending);
+			sprintf(tf[17], "7.08088885039503180e-01%s", LFending);
+			sprintf(tf[18], "2.58908260614167995e-01%s", LFending);
+			sprintf(tf[19], "-4.99299221941104307e-02%s", LFending);
 		}
 		else {
-			sprintf(tf[1], "-0.331662479035540%s", LFending);
-			sprintf(tf[11], "2.373470454748280%s", LFending);
-			sprintf(tf[12], "0.024836393087493%s", LFending);
-			sprintf(tf[13], "-0.474017017512829%s", LFending);
-			sprintf(tf[14], "-0.742183927770612%s", LFending);
-			sprintf(tf[15], "-1.406473309094609%s", LFending);
-			sprintf(tf[16], "1.191364552195948%s", LFending);
-			sprintf(tf[17], "-0.708088885039503%s", LFending);
-			sprintf(tf[18], "-0.258908260614168%s", LFending);
-			sprintf(tf[19], "0.049929922194110%s", LFending);
+			sprintf(tf[1], "-3.31662479035539914e-01%s", LFending);
+			sprintf(tf[11], "2.37347045474827967e+00%s", LFending);
+			sprintf(tf[12], "2.48363930874935801e-02%s", LFending);
+			sprintf(tf[13], "-4.74017017512828764e-01%s", LFending);
+			sprintf(tf[14], "-7.42183927770612595e-01%s", LFending);
+			sprintf(tf[15], "-1.40647330909460866e+00%s", LFending);
+			sprintf(tf[16], "1.19136455219594772e+00%s", LFending);
+			sprintf(tf[17], "-7.08088885039503180e-01%s", LFending);
+			sprintf(tf[18], "-2.58908260614167995e-01%s", LFending);
+			sprintf(tf[19], "4.99299221941104307e-02%s", LFending);
 		}
 		for (uint64_t i = radix - 1; i > 0; i--) {
 			if (i == radix - 1) {
@@ -3292,42 +3292,42 @@ temp%s = temp;\n\
 			//tf2[i] = (char*)malloc(sizeof(char) * 50);
 			//tf2inv[i] = (char*)malloc(sizeof(char) * 50);
 		}
-		sprintf(tf[0], "-1.083333333333333%s", LFending);
-		sprintf(tf[1], "-0.300462606288666%s", LFending);
-		sprintf(tf[5], "1.007074065727533%s", LFending);
-		sprintf(tf[6], "0.731245990975348%s", LFending);
-		sprintf(tf[7], "-0.579440018900960%s", LFending);
-		sprintf(tf[8], "0.531932498429674%s", LFending);
-		sprintf(tf[9], "-0.508814921720398%s", LFending);
-		sprintf(tf[10], "-0.007705858903092%s", LFending);
+		sprintf(tf[0], "-1.08333333333333333e+00%s", LFending);
+		sprintf(tf[1], "-3.00462606288665890e-01%s", LFending);
+		sprintf(tf[5], "1.00707406572753300e+00%s", LFending);
+		sprintf(tf[6], "7.31245990975348148e-01%s", LFending);
+		sprintf(tf[7], "-5.79440018900960419e-01%s", LFending);
+		sprintf(tf[8], "5.31932498429674383e-01%s", LFending);
+		sprintf(tf[9], "-5.08814921720397551e-01%s", LFending);
+		sprintf(tf[10], "-7.70585890309231480e-03%s", LFending);
 
 		if (stageAngle < 0) {
-			sprintf(tf[2], "-0.749279330626139%s", LFending);
-			sprintf(tf[3], "0.401002128321867%s", LFending);
-			sprintf(tf[4], "0.174138601152136%s", LFending);
-			sprintf(tf[11], "-2.511393318389568%s", LFending);
-			sprintf(tf[12], "-1.823546408682421%s", LFending);
-			sprintf(tf[13], "1.444979909023996%s", LFending);
-			sprintf(tf[14], "-1.344056915177370%s", LFending);
-			sprintf(tf[15], "-0.975932420775946%s", LFending);
-			sprintf(tf[16], "0.773329778651105%s", LFending);
-			sprintf(tf[17], "1.927725116783469%s", LFending);
-			sprintf(tf[18], "1.399739414729183%s", LFending);
-			sprintf(tf[19], "-1.109154843837551%s", LFending);
+			sprintf(tf[2], "-7.49279330626139051e-01%s", LFending);
+			sprintf(tf[3], "4.01002128321867324e-01%s", LFending);
+			sprintf(tf[4], "1.74138601152135891e-01%s", LFending);
+			sprintf(tf[11], "-2.51139331838956803e+00%s", LFending);
+			sprintf(tf[12], "-1.82354640868242068e+00%s", LFending);
+			sprintf(tf[13], "1.44497990902399609e+00%s", LFending);
+			sprintf(tf[14], "-1.34405691517736958e+00%s", LFending);
+			sprintf(tf[15], "-9.75932420775945109e-01%s", LFending);
+			sprintf(tf[16], "7.73329778651104860e-01%s", LFending);
+			sprintf(tf[17], "1.92772511678346858e+00%s", LFending);
+			sprintf(tf[18], "1.39973941472918284e+00%s", LFending);
+			sprintf(tf[19], "-1.10915484383755047e+00%s", LFending);
 		}
 		else {
-			sprintf(tf[2], "0.749279330626139%s", LFending);
-			sprintf(tf[3], "-0.401002128321867%s", LFending);
-			sprintf(tf[4], "-0.174138601152136%s", LFending);
-			sprintf(tf[11], "2.511393318389568%s", LFending);
-			sprintf(tf[12], "1.823546408682421%s", LFending);
-			sprintf(tf[13], "-1.444979909023996%s", LFending);
-			sprintf(tf[14], "1.344056915177370%s", LFending);
-			sprintf(tf[15], "0.975932420775946%s", LFending);
-			sprintf(tf[16], "-0.773329778651105%s", LFending);
-			sprintf(tf[17], "-1.927725116783469%s", LFending);
-			sprintf(tf[18], "-1.399739414729183%s", LFending);
-			sprintf(tf[19], "1.109154843837551%s", LFending);
+			sprintf(tf[2], "7.49279330626139051e-01%s", LFending);
+			sprintf(tf[3], "-4.01002128321867324e-01%s", LFending);
+			sprintf(tf[4], "-1.74138601152135891e-01%s", LFending);
+			sprintf(tf[11], "2.51139331838956803e+00%s", LFending);
+			sprintf(tf[12], "1.82354640868242068e+00%s", LFending);
+			sprintf(tf[13], "-1.44497990902399609e+00%s", LFending);
+			sprintf(tf[14], "1.34405691517736958e+00%s", LFending);
+			sprintf(tf[15], "9.75932420775945109e-01%s", LFending);
+			sprintf(tf[16], "-7.73329778651104860e-01%s", LFending);
+			sprintf(tf[17], "-1.92772511678346858e+00%s", LFending);
+			sprintf(tf[18], "-1.39973941472918284e+00%s", LFending);
+			sprintf(tf[19], "1.10915484383755047e+00%s", LFending);
 		}
 		for (uint64_t i = radix - 1; i > 0; i--) {
 			if (i == radix - 1) {
@@ -27614,6 +27614,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10216; //X.XX.XX format
+	return 10217; //X.XX.XX format
 }
 #endif
