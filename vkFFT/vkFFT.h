@@ -4781,10 +4781,18 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					sc->tempLen = sprintf(sc->tempStr, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ");\n", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize);
 					*/
 					if (sc->axisSwapped) {
+						if ((sc->fft_dim_full - (sc->firstStageStartSize / sc->fftDim) * ((((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim)) * sc->localSize[0] * sc->fftDim)) / sc->min_registers_per_thread / (sc->firstStageStartSize / sc->fftDim) > sc->localSize[0]) {
 						if (sc->localSize[1] == 1)
 							sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 						else
 							sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 "*numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
+						}
+						else {
+							if (sc->localSize[1] == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 "*numActiveThreads;\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread));
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 "*numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
+						}
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 						sc->tempLen = sprintf(sc->tempStr, "		inoutID = (combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ");\n", sc->fftDim, sc->fftDim, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize);
@@ -20183,7 +20191,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		//printf("sequence length exceeds boundaries\n");
 		return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT;
 	}
-	if ((numPasses > 1) && (app->configuration.performR2C > 0) && (axis_id == 0) && (FFTPlan->actualFFTSizePerAxis[0][0] % 2 != 0)) {
+	if ((numPasses > 1) && (app->configuration.performR2C > 0) && (axis_id == 0) && (app->configuration.size[axis_id] % 2 != 0)) {
 		//printf("sequence length exceeds boundaries\n");
 		return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
 	}
@@ -21913,7 +21921,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
 			for (uint64_t i = 0; i < app->configuration.size[0] / 2; i++) {
-				double angle = double_PI * i / app->configuration.size[0];
+				double angle = double_PI * i / (app->configuration.size[0] / 2);
 				tempLUT[2 * i] = (double)cos(angle);
 				tempLUT[2 * i + 1] = (double)sin(angle);
 			}
@@ -22210,7 +22218,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					}
 				}
 				axis->specializationConstants.inputBufferBlockSize = (locBufferNum == 1) ? locBufferSize : (uint64_t)ceil(locPageSize / (double)storageComplexSize);
-				axis->specializationConstants.inputBufferBlockSize = (locBufferNum == 1) ? 1 : (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+				axis->specializationConstants.outputBufferBlockNum = (locBufferNum == 1) ? 1 : (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 				//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
 			}
@@ -22227,7 +22235,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					}
 				}
 				axis->specializationConstants.inputBufferBlockSize = (locBufferNum == 1) ? locBufferSize : (uint64_t)ceil(locPageSize / (double)storageComplexSize);
-				axis->specializationConstants.inputBufferBlockSize = (locBufferNum == 1) ? 1 : (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
+				axis->specializationConstants.outputBufferBlockNum = (locBufferNum == 1) ? 1 : (uint64_t)ceil(totalSize / (double)(axis->specializationConstants.inputBufferBlockSize * storageComplexSize));
 				//if (axis->specializationConstants.outputBufferBlockNum == 1) axis->specializationConstants.outputBufferBlockSize = totalSize / storageComplexSize;
 
 			}
@@ -27614,6 +27622,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10217; //X.XX.XX format
+	return 10218; //X.XX.XX format
 }
 #endif
