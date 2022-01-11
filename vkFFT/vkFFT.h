@@ -4782,10 +4782,10 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					*/
 					if (sc->axisSwapped) {
 						if ((sc->fft_dim_full - (sc->firstStageStartSize / sc->fftDim) * ((((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim)) * sc->localSize[0] * sc->fftDim)) / sc->min_registers_per_thread / (sc->firstStageStartSize / sc->fftDim) > sc->localSize[0]) {
-						if (sc->localSize[1] == 1)
-							sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
-						else
-							sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 "*numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
+							if (sc->localSize[1] == 1)
+								sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
+							else
+								sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 "*numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread));
 						}
 						else {
 							if (sc->localSize[1] == 1)
@@ -21724,8 +21724,8 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 							}
 						}
 						else {
-								uint64_t bufferId = 0;
-								uint64_t offset = j;
+							uint64_t bufferId = 0;
+							uint64_t offset = j;
 							if (axis->specializationConstants.reorderFourStep == 1) {
 								if (axis->specializationConstants.performBufferSetUpdate) {
 									if (app->configuration.tempBufferSize) {
@@ -21751,27 +21751,27 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 							}
 							else {
 								if (axis->specializationConstants.performBufferSetUpdate) {
-								if (app->configuration.bufferSize) {
-									for (uint64_t l = 0; l < app->configuration.bufferNum; ++l) {
-										if (offset >= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
-											bufferId++;
-											offset -= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
-										}
-										else {
-											l = app->configuration.bufferNum;
-										}
+									if (app->configuration.bufferSize) {
+										for (uint64_t l = 0; l < app->configuration.bufferNum; ++l) {
+											if (offset >= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize))) {
+												bufferId++;
+												offset -= (uint64_t)ceil(app->configuration.bufferSize[l] / (double)(axis->specializationConstants.outputBufferBlockSize * storageComplexSize));
+											}
+											else {
+												l = app->configuration.bufferNum;
+											}
 
+										}
 									}
-								}
-								axis->outputBuffer = app->configuration.buffer;
+									axis->outputBuffer = app->configuration.buffer;
 #if(VKFFT_BACKEND==0)
-								descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
-								descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
-								descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
+									descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
+									descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
+									descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize * storageComplexSize);
 #endif
-							}
-							if (axis->specializationConstants.performOffsetUpdate) {
-								axis->specializationConstants.outputOffset = app->configuration.bufferOffset;
+								}
+								if (axis->specializationConstants.performOffsetUpdate) {
+									axis->specializationConstants.outputOffset = app->configuration.bufferOffset;
 								}
 							}
 						}
@@ -23953,7 +23953,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 		axisStride[4] = axisStride[3] * app->configuration.coordinateFeatures;
 	}
-	if ((!inverse) && (axis_id == 0) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload == 0) && (axis->specializationConstants.performR2C) && (!(app->configuration.isInputFormatted))) {
+	if ((!inverse) && (axis_id == 0) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload == 0) && (axis->specializationConstants.performR2C || FFTPlan->multiUploadR2C) && (!(app->configuration.isInputFormatted))) {
 		axisStride[1] *= 2;
 		axisStride[2] *= 2;
 		axisStride[3] *= 2;
@@ -24012,7 +24012,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 		axisStride[4] = axisStride[3] * app->configuration.coordinateFeatures;
 	}
-	if ((inverse) && (axis_id == 0) && (((!app->useBluesteinFFT[axis_id]) && (axis_upload_id == 0)) || ((app->useBluesteinFFT[axis_id]) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1)))) && (axis->specializationConstants.performR2C) && (!((app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer))) && (!app->configuration.isOutputFormatted)) {
+	if ((inverse) && (axis_id == 0) && (((!app->useBluesteinFFT[axis_id]) && (axis_upload_id == 0)) || ((app->useBluesteinFFT[axis_id]) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1)))) && (axis->specializationConstants.performR2C || FFTPlan->multiUploadR2C) && (!((app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer))) && (!app->configuration.isOutputFormatted)) {
 		axisStride[1] *= 2;
 		axisStride[2] *= 2;
 		axisStride[3] *= 2;
