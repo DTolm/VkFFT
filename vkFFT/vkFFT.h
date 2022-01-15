@@ -20312,6 +20312,14 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 						registers_per_thread_per_radix[i] /= 3;
 					}
 				}
+				for (uint64_t i = 2; i < 14; i++) {
+					if (registers_per_thread_per_radix[i] > registers_per_thread) {
+						registers_per_thread = registers_per_thread_per_radix[i];
+					}
+					if ((registers_per_thread_per_radix[i] > 0) && (registers_per_thread_per_radix[i] < min_registers_per_thread)) {
+						min_registers_per_thread = registers_per_thread_per_radix[i];
+					}
+				}
 			}
 		}
 		uint64_t j = 0;
@@ -27648,6 +27656,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10218; //X.XX.XX format
+	return 10219; //X.XX.XX format
 }
 #endif
