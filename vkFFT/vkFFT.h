@@ -9188,20 +9188,13 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						if (sc->axisSwapped) {
-							if (sc->zeropadBluestein[0]) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[0]);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
+						
+						if (sc->zeropadBluestein[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
 						}
-						else {
-							if (sc->zeropadBluestein[0]) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[1]);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
-						}
+						
 						sc->tempLen = sprintf(sc->tempStr, "		inoutID = %" PRIu64 " + 4 * (combinedID %% %" PRIu64 ");\n", sc->fftDim / 2, sc->fftDim);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
@@ -9247,19 +9240,10 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_y, (i + k * sc->min_registers_per_thread) * sc->localSize[1]);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						if (sc->axisSwapped) {
-							if (sc->zeropadBluestein[0]) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
-						}
-						else {
-							if (sc->zeropadBluestein[0]) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
+						if (sc->zeropadBluestein[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
 						}
 						sc->tempLen = sprintf(sc->tempStr, "		inoutID = %" PRIu64 " + 4 * combinedID;\n", sc->fftDim / 2);
 						res = VkAppendLine(sc);
@@ -17852,6 +17836,11 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 				return res;
 			}
 		}
+		appendBarrierVkFFT(sc, 1);
+		if (res != VKFFT_SUCCESS) {
+			freeShaderGenVkFFT(sc);
+			return res;
+		}
 		if (sc->matrixConvolution > 1) {
 			sc->tempLen = sprintf(sc->tempStr, "	for (%s coordinate=0; coordinate < %" PRIu64 "; coordinate++){\n", uintType, sc->matrixConvolution);
 			res = VkAppendLine(sc);
@@ -17865,7 +17854,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 			freeShaderGenVkFFT(sc);
 			return res;
 		}
-
+		
 		stageSize = 1;
 		stageSizeSum = 0;
 		stageAngle = PI_const;
