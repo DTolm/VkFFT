@@ -213,7 +213,7 @@ typedef struct {
 	uint64_t halfThreads;//Intel fix
 	uint64_t allocateTempBuffer; //buffer allocated by app automatically if needed to reorder Four step algorithm. Parameter to check if it has been allocated
 	uint64_t reorderFourStep; // unshuffle Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on). Default 1.
-	int64_t maxCodeLength; //specify how big can be buffer used for code generation (in char). Default 1000000 chars.
+	int64_t maxCodeLength; //specify how big can be buffer used for code generation (in char). Default 4000000 chars.
 	int64_t maxTempLength; //specify how big can be buffer used for intermediate string sprintfs be (in char). Default 5000 chars. If code segfaults for some reason - try increasing this number.
 #if(VKFFT_BACKEND==0)
 	VkDeviceMemory tempBufferDeviceMemory;//Filled at app creation
@@ -20261,11 +20261,11 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		if (maxBatchCoalesced * locAxisSplit[k] / (min_registers_per_thread * registerBoost) > app->configuration.maxThreadsNum)
 		{
 			uint64_t scaleRegistersNum = 1;
-			while ((maxBatchCoalesced * locAxisSplit[k] / (min_registers_per_thread * registerBoost * scaleRegistersNum)) > app->configuration.maxThreadsNum) {
-				for (uint64_t i = 2; i < 14; i++) {
-					if (locAxisSplit[k] / (min_registers_per_thread * registerBoost * scaleRegistersNum) % i == 0) {
-						scaleRegistersNum *= i;
-						i = 14;
+			if ((maxBatchCoalesced * locAxisSplit[k] / (min_registers_per_thread * registerBoost * scaleRegistersNum)) > app->configuration.maxThreadsNum) {
+				for (uint64_t i = 2; i < locAxisSplit[k]; i++) {
+					if ((locAxisSplit[k] / (min_registers_per_thread * registerBoost * scaleRegistersNum) % i == 0) && ((maxBatchCoalesced * locAxisSplit[k] / (min_registers_per_thread * registerBoost * i)) <= app->configuration.maxThreadsNum)) {
+						scaleRegistersNum = i;
+						i = locAxisSplit[k];
 					}
 				}
 			}
@@ -22957,7 +22957,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				0); // options
 			if (result != NVRTC_SUCCESS) {
 				printf("nvrtcCompileProgram error: %s\n", nvrtcGetErrorString(result));
-				char* log = (char*)malloc(sizeof(char) * 1000000);
+				char* log = (char*)malloc(sizeof(char) * 4000000);
 				if (!log) {
 					free(code0);
 					code0 = 0;
@@ -25155,7 +25155,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				0); // options
 			if (result != NVRTC_SUCCESS) {
 				printf("nvrtcCompileProgram error: %s\n", nvrtcGetErrorString(result));
-				char* log = (char*)malloc(sizeof(char) * 1000000);
+				char* log = (char*)malloc(sizeof(char) * 4000000);
 				if (!log) {
 					free(code0);
 					code0 = 0;
@@ -26245,7 +26245,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
 	}
 	if (inputLaunchConfiguration.reorderFourStep != 0)	app->configuration.reorderFourStep = inputLaunchConfiguration.reorderFourStep;
-	app->configuration.maxCodeLength = 1000000;
+	app->configuration.maxCodeLength = 4000000;
 	if (inputLaunchConfiguration.maxCodeLength != 0) app->configuration.maxCodeLength = inputLaunchConfiguration.maxCodeLength;
 	app->configuration.maxTempLength = 5000;
 	if (inputLaunchConfiguration.maxTempLength != 0) app->configuration.maxTempLength = inputLaunchConfiguration.maxTempLength;
