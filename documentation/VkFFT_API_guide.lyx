@@ -191,7 +191,7 @@ vspace{1cm}
 
 {
 \backslash
-large December 2021, version 1.2.15
+large January 2021, version 1.2.20
 \backslash
 par} 
 \end_layout
@@ -714,6 +714,12 @@ target_compile_definitions(VkFFT INTERFACE -DVKFFT_BACKEND=2)
 
 \begin_layout Plain Layout
 
+#target_compile_definitions(${PROJECT_NAME} PUBLIC -DVKFFT_OLD_ROCM) #ROCm
+ versions before 4.5 needed kernel include of hiprtc
+\end_layout
+
+\begin_layout Plain Layout
+
 \end_layout
 
 \begin_layout Plain Layout
@@ -1170,8 +1176,8 @@ One of the main use-cases of strides comes to solve the R2C/C2R Hermitian
  stage).
  All other strides are done as a multiplication between the previous stride
  and the number of elements in the previous axis.
- These are the default values of R2C/C2R strides in in-place mode if they
- are not explicitly specified.
+ These are the default values of R2C/C2R strides if they are not explicitly
+ specified.
 \end_layout
 
 \begin_layout Standard
@@ -1184,7 +1190,7 @@ It is possible to specify separate sets of strides for all user-defined
 
 \begin_layout Standard
 For an out-of-place R2C FFT, there is no need to pad buffer with real numbers,
- so VkFFT uses natural H stride as default there - 
+ but user must specify H stride there (as it differs to default one) - 
 \begin_inset Formula $N_{x}$
 \end_inset
 
@@ -1211,6 +1217,18 @@ An out-of-place C2R FFT is a more tricky transform.
  Second, use the third buffer, so both input and output buffers have their
  original layouts (complex buffer will be used as inputBuffer, the main
  buffer for calculations is buffer and output real buffer as outputBuffer).
+ If you use inverseReturnToInputBuffer option, where R2C is configured to
+ read from input buffer and C2R is configured to write to the input buffer;
+ C2R will modify the buffer it reads from in some cases (see issue 
+\begin_inset CommandInset href
+LatexCommand href
+name "#58"
+target "https://github.com/DTolm/VkFFT/issues/58#issuecomment-1007205682"
+literal "false"
+
+\end_inset
+
+)
 \end_layout
 
 \begin_layout Subsection
@@ -6609,7 +6627,7 @@ if (configuration.loadApplicationFromString) {
 
 \begin_layout Plain Layout
 
-#if(VKFFT_BACKEND==0)
+#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2))
 \end_layout
 
 \begin_layout Plain Layout
@@ -6712,7 +6730,7 @@ if (configuration.saveApplicationToString) {
 
 \begin_layout Plain Layout
 
-#if(VKFFT_BACKEND==0)
+#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2))
 \end_layout
 
 \begin_layout Plain Layout

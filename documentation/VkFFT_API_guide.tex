@@ -7,6 +7,8 @@
 \usepackage{geometry}
 \geometry{verbose,tmargin=2.5cm,bmargin=2.5cm,lmargin=2.5cm,rmargin=2.5cm}
 \usepackage{stackrel}
+\usepackage[unicode=true]
+ {hyperref}
 
 \makeatletter
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% User specified LaTeX commands.
@@ -42,7 +44,7 @@
 {\Large Dmitrii Tolmachev\par} 	
 	
 \vspace{1cm} 	
-{\large December 2021, version 1.2.15\par} 
+{\large January 2021, version 1.2.20\par} 
 \end{titlepage}
 
 \newpage{}
@@ -156,6 +158,7 @@ find_package(hip)
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/)
 add_library(VkFFT INTERFACE)
 target_compile_definitions(VkFFT INTERFACE -DVKFFT_BACKEND=2)
+#target_compile_definitions(${PROJECT_NAME} PUBLIC -DVKFFT_OLD_ROCM) #ROCm versions before 4.5 needed kernel include of hiprtc
 
 target_link_libraries(${PROJECT_NAME} PUBLIC hip::host VkFFT)
 \end{minted}
@@ -363,8 +366,8 @@ padded to $2\cdot(floor(\frac{N_{x}}{2})+1)$ real elements in H stride
 will not be read so it does not matter what data is there before the
 write stage). All other strides are done as a multiplication between
 the previous stride and the number of elements in the previous axis.
-These are the default values of R2C/C2R strides in in-place mode if
-they are not explicitly specified.
+These are the default values of R2C/C2R strides if they are not explicitly
+specified.
 
 It is possible to specify separate sets of strides for all user-defined
 buffers: bufferStride for the main buffer, inputStride for input buffer,
@@ -372,9 +375,9 @@ outputStride for output buffer (kernel stride is assumed to be the
 same as bufferStride, tempBuffer strides are configured automatically). 
 
 For an out-of-place R2C FFT, there is no need to pad buffer with real
-numbers, so VkFFT uses natural H stride as default there - $N_{x}$
-real elements for real space and $floor(\frac{N_{x}}{2})+1$ complex
-numbers for the frequency space.
+numbers, but user must specify H stride there (as it differs to default
+one) - $N_{x}$ real elements for real space and $floor(\frac{N_{x}}{2})+1$
+complex numbers for the frequency space.
 
 An out-of-place C2R FFT is a more tricky transform. In the multidimensional
 case, the main buffer will be written to and read from multiple times.
@@ -386,6 +389,10 @@ buffer will be used as inputBuffer, real buffer as buffer). Second,
 use the third buffer, so both input and output buffers have their
 original layouts (complex buffer will be used as inputBuffer, the
 main buffer for calculations is buffer and output real buffer as outputBuffer).
+If you use inverseReturnToInputBuffer option, where R2C is configured
+to read from input buffer and C2R is configured to write to the input
+buffer; C2R will modify the buffer it reads from in some cases (see
+issue \href{https://github.com/DTolm/VkFFT/issues/58\#issuecomment-1007205682}{\#58})
 
 \subsection{VkFFT algorithms}
 
@@ -1997,7 +2004,7 @@ configuration.saveApplicationToString = 1;
 if (configuration.loadApplicationFromString) {
 	FILE* kernelCache;
 	uint64_t str_len;
-#if(VKFFT_BACKEND==0)
+#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2))
 	kernelCache = fopen("VkFFT_binary", "rb"); //Vulkan and HIP backends load data as a uint32_t sequence
 #else
 	kernelCache = fopen("VkFFT_binary", "r"); 
@@ -2018,7 +2025,7 @@ if (configuration.loadApplicationFromString)
 
 if (configuration.saveApplicationToString) {
 	FILE* kernelCache;
-#if(VKFFT_BACKEND==0)
+#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2))
 	kernelCache = fopen("VkFFT_binary", "wb"); //Vulkan and HIP backends save data as a uint32_t sequence
 #else
 	kernelCache = fopen("VkFFT_binary", "w"); 
