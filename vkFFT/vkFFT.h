@@ -27645,6 +27645,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10220; //X.XX.XX format
+	return 10221; //X.XX.XX format
 }
 #endif
