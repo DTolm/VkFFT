@@ -9188,13 +9188,13 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * sc->min_registers_per_thread) * sc->localSize[0]);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						
+
 						if (sc->zeropadBluestein[0]) {
 							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						
+
 						sc->tempLen = sprintf(sc->tempStr, "		inoutID = %" PRIu64 " + 4 * (combinedID %% %" PRIu64 ");\n", sc->fftDim / 2, sc->fftDim);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
@@ -17854,7 +17854,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 			freeShaderGenVkFFT(sc);
 			return res;
 		}
-		
+
 		stageSize = 1;
 		stageSizeSum = 0;
 		stageAngle = PI_const;
@@ -24411,7 +24411,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		if (axis->groupedBatch > app->configuration.warpSize) axis->groupedBatch = (axis->groupedBatch / app->configuration.warpSize) * app->configuration.warpSize;
 		if (axis->groupedBatch > 2 * maxBatchCoalesced) axis->groupedBatch = (axis->groupedBatch / (2 * maxBatchCoalesced)) * (2 * maxBatchCoalesced);
 		if (axis->groupedBatch > 4 * maxBatchCoalesced) axis->groupedBatch = (axis->groupedBatch / (4 * maxBatchCoalesced)) * (2 * maxBatchCoalesced);
-		uint64_t maxThreadNum = maxSequenceLengthSharedMemory / (axis->specializationConstants.min_registers_per_thread * axis->specializationConstants.registerBoost);
+		uint64_t maxThreadNum = (axis_id) ? (maxSingleSizeStrided * app->configuration.coalescedMemory / complexSize) / (axis->specializationConstants.min_registers_per_thread * axis->specializationConstants.registerBoost) : maxSequenceLengthSharedMemory / (axis->specializationConstants.min_registers_per_thread * axis->specializationConstants.registerBoost);
 		if (maxThreadNum > app->configuration.maxThreadsNum) maxThreadNum = app->configuration.maxThreadsNum;
 		axis->specializationConstants.axisSwapped = 0;
 		uint64_t r2cmult = (axis->specializationConstants.mergeSequencesR2C) ? 2 : 1;
