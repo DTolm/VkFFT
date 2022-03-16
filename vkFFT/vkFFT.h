@@ -3945,17 +3945,25 @@ static inline VkFFTResult appendZeropadStart(VkFFTSpecializationConstantsLayout*
 		switch (sc->axis_id) {
 		case 0: {
 			char idY[500] = "";
+			uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			if (sc->axisSwapped) {
+				if (mult != 1) {
+					if (sc->performWorkGroupShift[1])
+						sprintf(idY, "((%s + (%s + consts.workGroupShiftY) * %" PRIu64 ")* %" PRIu64 ")", sc->gl_LocalInvocationID_x, sc->gl_WorkGroupID_y, sc->localSize[0], mult);
+					else
+						sprintf(idY, "((%s + %s * %" PRIu64 ")*%" PRIu64 ")", sc->gl_LocalInvocationID_x, sc->gl_WorkGroupID_y, sc->localSize[0],mult);
+				}
+				else {
 				if (sc->performWorkGroupShift[1])
 					sprintf(idY, "(%s + (%s + consts.workGroupShiftY) * %" PRIu64 ")", sc->gl_LocalInvocationID_x, sc->gl_WorkGroupID_y, sc->localSize[0]);
 				else
-					sprintf(idY, "%s + %s * %" PRIu64 "", sc->gl_LocalInvocationID_x, sc->gl_WorkGroupID_y, sc->localSize[0]);
-
+						sprintf(idY, "(%s + %s * %" PRIu64 ")", sc->gl_LocalInvocationID_x, sc->gl_WorkGroupID_y, sc->localSize[0]);
+				}
 				char idZ[500] = "";
 				if (sc->performWorkGroupShift[2])
-					sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
+					sprintf(idZ, "(%s + consts.workGroupShiftZ * %s) %%  %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->size[2]);
 				else
-					sprintf(idZ, "%s", sc->gl_GlobalInvocationID_z);
+					sprintf(idZ, "%s %%  %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->size[2]);
 				if (sc->performZeropaddingFull[1]) {
 					if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1]) {
 						sc->tempLen = sprintf(sc->tempStr, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
@@ -3972,16 +3980,23 @@ static inline VkFFTResult appendZeropadStart(VkFFTSpecializationConstantsLayout*
 				}
 			}
 			else {
+				if (mult != 1) {
+					if (sc->performWorkGroupShift[1])
+						sprintf(idY, "((%s + consts.workGroupShiftY * %s)* %" PRIu64 ")", sc->gl_GlobalInvocationID_y, sc->gl_WorkGroupSize_y, mult);
+					else
+						sprintf(idY, "(%s* %" PRIu64 ")", sc->gl_GlobalInvocationID_y,mult);
+				}
+				else {
 				if (sc->performWorkGroupShift[1])
 					sprintf(idY, "(%s + consts.workGroupShiftY * %s)", sc->gl_GlobalInvocationID_y, sc->gl_WorkGroupSize_y);
 				else
 					sprintf(idY, "%s", sc->gl_GlobalInvocationID_y);
-
+				}
 				char idZ[500] = "";
 				if (sc->performWorkGroupShift[2])
-					sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
+					sprintf(idZ, "(%s + consts.workGroupShiftZ * %s) %%  %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->size[2]);
 				else
-					sprintf(idZ, "%s", sc->gl_GlobalInvocationID_z);
+					sprintf(idZ, "%s %%  %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->size[2]);
 				if (sc->performZeropaddingFull[1]) {
 					if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1]) {
 						sc->tempLen = sprintf(sc->tempStr, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
@@ -4002,9 +4017,9 @@ static inline VkFFTResult appendZeropadStart(VkFFTSpecializationConstantsLayout*
 		case 1: {
 			char idZ[500] = "";
 			if (sc->performWorkGroupShift[2])
-				sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
+				sprintf(idZ, "(%s + consts.workGroupShiftZ * %s) %%  %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z, sc->size[2]);
 			else
-				sprintf(idZ, "%s", sc->gl_GlobalInvocationID_z);
+				sprintf(idZ, "%s %%  %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->size[2]);
 			if (sc->performZeropaddingFull[2]) {
 				if (sc->fft_zeropad_left_full[2] < sc->fft_zeropad_right_full[2]) {
 					sc->tempLen = sprintf(sc->tempStr, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idZ, sc->fft_zeropad_left_full[2], idZ, sc->fft_zeropad_right_full[2]);
@@ -4150,10 +4165,12 @@ static inline VkFFTResult appendZeropadStartReadWriteStage(VkFFTSpecializationCo
 		case 1: {
 			if (!sc->supportAxis) {
 				char idX[500] = "";
-				if (sc->performWorkGroupShift[0])
-					sprintf(idX, "(%s + consts.workGroupShiftX * %s)", sc->gl_GlobalInvocationID_x, sc->gl_WorkGroupSize_x);
-				else
-					sprintf(idX, "%s", sc->gl_GlobalInvocationID_x);
+				if (readStage) {
+					sprintf(idX, "(%s %% %" PRIu64 ")", sc->inoutID, sc->inputStride[1]);
+				}
+				else {
+					sprintf(idX, "(%s %% %" PRIu64 ")", sc->inoutID, sc->outputStride[1]);
+				}
 				if (sc->performZeropaddingFull[0]) {
 					if (sc->fft_zeropad_left_full[0] < sc->fft_zeropad_right_full[0]) {
 						sc->tempLen = sprintf(sc->tempStr, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idX, sc->fft_zeropad_left_full[0], idX, sc->fft_zeropad_right_full[0]);
@@ -4168,16 +4185,16 @@ static inline VkFFTResult appendZeropadStartReadWriteStage(VkFFTSpecializationCo
 		case 2: {
 			if (!sc->supportAxis) {
 				char idY[500] = "";
-				if (sc->performWorkGroupShift[1])//y axis is along z workgroup here
-					sprintf(idY, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
-				else
-					sprintf(idY, "%s", sc->gl_GlobalInvocationID_z);
-
 				char idX[500] = "";
-				if (sc->performWorkGroupShift[0])
-					sprintf(idX, "(%s + consts.workGroupShiftX * %s)", sc->gl_GlobalInvocationID_x, sc->gl_WorkGroupSize_x);
-				else
-					sprintf(idX, "%s", sc->gl_GlobalInvocationID_x);
+				if (readStage) {
+					sprintf(idY, "(%s/%" PRIu64 ") %% %" PRIu64 "", sc->inoutID, sc->inputStride[1], sc->inputStride[2] / sc->inputStride[1]);
+					sprintf(idX, "(%s %% %" PRIu64 ")", sc->inoutID, sc->inputStride[1]);
+				}
+				else {
+					sprintf(idY, "(%s/%" PRIu64 ") %% %" PRIu64 "", sc->inoutID, sc->outputStride[1], sc->outputStride[2] / sc->outputStride[1]);
+					sprintf(idX, "(%s %% %" PRIu64 ")", sc->inoutID, sc->outputStride[1]);
+
+				}
 				if (sc->performZeropaddingFull[0]) {
 					if (sc->fft_zeropad_left_full[0] < sc->fft_zeropad_right_full[0]) {
 						sc->tempLen = sprintf(sc->tempStr, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idX, sc->fft_zeropad_left_full[0], idX, sc->fft_zeropad_right_full[0]);
@@ -4195,10 +4212,12 @@ static inline VkFFTResult appendZeropadStartReadWriteStage(VkFFTSpecializationCo
 			}
 			else {
 				char idY[500] = "";
-				if (sc->performWorkGroupShift[1])//for support axes y is along x workgroup
-					sprintf(idY, "(%s + consts.workGroupShiftX * %s)", sc->gl_GlobalInvocationID_x, sc->gl_WorkGroupSize_x);
-				else
-					sprintf(idY, "%s", sc->gl_GlobalInvocationID_x);
+				if (readStage) {
+					sprintf(idY, "(%s/%" PRIu64 ") %% %" PRIu64 "", sc->inoutID, sc->inputStride[1], sc->inputStride[2] / sc->inputStride[1]);
+				}
+				else {
+					sprintf(idY, "(%s/%" PRIu64 ") %% %" PRIu64 "", sc->inoutID, sc->outputStride[1], sc->outputStride[2] / sc->outputStride[1]);
+				}
 				if (sc->performZeropaddingFull[1]) {
 					if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1]) {
 						sc->tempLen = sprintf(sc->tempStr, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idY, sc->fft_zeropad_left_full[1], idY, sc->fft_zeropad_right_full[1]);
@@ -4244,10 +4263,12 @@ static inline VkFFTResult appendZeropadStartReadWriteStage(VkFFTSpecializationCo
 		}
 		case 1: {
 			char idZ[500] = "";
-			if (sc->performWorkGroupShift[2])
-				sprintf(idZ, "(%s + consts.workGroupShiftZ * %s)", sc->gl_GlobalInvocationID_z, sc->gl_WorkGroupSize_z);
-			else
-				sprintf(idZ, "%s", sc->gl_GlobalInvocationID_z);
+			if (readStage) {
+				sprintf(idZ, "(%s/%" PRIu64 ") %% %" PRIu64 "", sc->inoutID, sc->inputStride[2], sc->inputStride[3] / sc->inputStride[2]);
+			}
+			else {
+				sprintf(idZ, "(%s/%" PRIu64 ") %% %" PRIu64 "", sc->inoutID, sc->outputStride[2], sc->outputStride[3] / sc->outputStride[2]);
+			}
 			if (sc->performZeropaddingFull[2]) {
 				if (sc->fft_zeropad_left_full[2] < sc->fft_zeropad_right_full[2]) {
 					sc->tempLen = sprintf(sc->tempStr, "		if(!((%s >= %" PRIu64 ")&&(%s < %" PRIu64 "))) {\n", idZ, sc->fft_zeropad_left_full[2], idZ, sc->fft_zeropad_right_full[2]);
@@ -5851,13 +5872,13 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (sc->zeropadBluestein[0]) {
-							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[0]);
+						if ((1 + i + k * num_in) * sc->localSize[1] >= (sc->fftDim)) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim) * sc->localSize[0]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if ((1 + i + k * num_in) * sc->localSize[1] >= (sc->fftDim)) {
-							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim) * sc->localSize[0]);
+						if (sc->zeropadBluestein[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[0]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
@@ -5868,13 +5889,13 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (sc->zeropadBluestein[0]) {
-							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[1]);
+						if ((1 + i + k * num_in) * sc->localSize[0] >= (sc->fftDim)) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim) * sc->localSize[1]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if ((1 + i + k * num_in) * sc->localSize[0] >= (sc->fftDim)) {
-							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", (sc->fftDim) * sc->localSize[1]);
+						if (sc->zeropadBluestein[0]) {
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[1]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
@@ -5983,11 +6004,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					}
 					res = appendZeropadEndReadWriteStage(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					if (sc->zeropadBluestein[0]) {
-						sc->tempLen = sprintf(sc->tempStr, "		}\n");
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
 					if (sc->zeropad[0]) {
 						sc->tempLen = sprintf(sc->tempStr, "	}else{\n");
 						res = VkAppendLine(sc);
@@ -6039,6 +6055,11 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 							if (res != VKFFT_SUCCESS) return res;
 						}
 						sc->tempLen = sprintf(sc->tempStr, "	}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+                    if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -6410,11 +6431,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					}
 					res = appendZeropadEndReadWriteStage(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					if (sc->zeropadBluestein[0]) {
-						sc->tempLen = sprintf(sc->tempStr, "		}\n");
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
 					if (sc->zeropad[0]) {
 						sc->tempLen = sprintf(sc->tempStr, "	}else{\n");
 						res = VkAppendLine(sc);
@@ -6438,6 +6454,11 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 						sc->tempLen = sprintf(sc->tempStr, "	}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+                    if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -9131,11 +9152,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					}
 					res = appendZeropadEndReadWriteStage(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					if (sc->zeropadBluestein[0]) {
-						sc->tempLen = sprintf(sc->tempStr, "		}\n");
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
 					if (sc->zeropad[0]) {
 						sc->tempLen = sprintf(sc->tempStr, "	}else{\n");
 						res = VkAppendLine(sc);
@@ -9159,6 +9175,11 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 						sc->tempLen = sprintf(sc->tempStr, "	}\n");
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+                    if (sc->zeropadBluestein[0]) {
+						sc->tempLen = sprintf(sc->tempStr, "		}\n");
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -11759,6 +11780,39 @@ static inline VkFFTResult appendBluesteinConvolution(VkFFTSpecializationConstant
 
 static inline VkFFTResult appendKernelConvolution(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint64_t dataType) {
 	VkFFTResult res = VKFFT_SUCCESS;
+	char convTypeLeft[20] = "";
+	char convTypeRight[20] = "";
+	if ((!strcmp(floatType, "float")) && (strcmp(floatTypeMemory, "float"))) {
+#if(VKFFT_BACKEND==0)
+		sprintf(convTypeLeft, "float(");
+		sprintf(convTypeRight, ")");
+#elif(VKFFT_BACKEND==1)
+		sprintf(convTypeLeft, "(float)");
+		//sprintf(convTypeRight, "");
+#elif(VKFFT_BACKEND==2)
+		sprintf(convTypeLeft, "(float)");
+		//sprintf(convTypeRight, "");
+#elif(VKFFT_BACKEND==3)
+		sprintf(convTypeLeft, "(float)");
+		//sprintf(convTypeRight, "");
+#endif
+	}
+	if ((!strcmp(floatType, "double")) && (strcmp(floatTypeMemory, "double"))) {
+#if(VKFFT_BACKEND==0)
+		sprintf(convTypeLeft, "double(");
+		sprintf(convTypeRight, ")");
+#elif(VKFFT_BACKEND==1)
+		sprintf(convTypeLeft, "(double)");
+		//sprintf(convTypeRight, "");
+#elif(VKFFT_BACKEND==2)
+		sprintf(convTypeLeft, "(double)");
+		//sprintf(convTypeRight, "");
+#elif(VKFFT_BACKEND==3)
+		sprintf(convTypeLeft, "(double)");
+		//sprintf(convTypeRight, "");
+#endif
+	}
+
 	char shiftX[500] = "";
 	if (sc->performWorkGroupShift[0])
 		sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
@@ -11905,15 +11959,15 @@ static inline VkFFTResult appendKernelConvolution(VkFFTSpecializationConstantsLa
 					}
 					if (sc->conjugateConvolution == 0) {
 						if (l == 0)
-							sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s%s.x - %s[inoutID+%" PRIu64 "].y * %s%s.y;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
+							sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %s%s[inoutID+%" PRIu64 "].x%s * %s%s.x - %s%s[inoutID+%" PRIu64 "].y%s * %s%s.y;\n", j, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], separateRegisterStore, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], separateRegisterStore);
 						else
-							sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s_%" PRIu64 "%s.x - %s[inoutID+%" PRIu64 "].y * %s_%" PRIu64 "%s.y;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+							sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %s%s[inoutID+%" PRIu64 "].x%s * %s_%" PRIu64 "%s.x - %s%s[inoutID+%" PRIu64 "].y%s * %s_%" PRIu64 "%s.y;\n", j, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], l, separateRegisterStore, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], l, separateRegisterStore);
 					}
 					else {
 						if (l == 0)
-							sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s%s.x + %s[inoutID+%" PRIu64 "].y * %s%s.y;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
+							sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %s%s[inoutID+%" PRIu64 "].x%s * %s%s.x + %s%s[inoutID+%" PRIu64 "].y%s * %s%s.y;\n", j, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], separateRegisterStore, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], separateRegisterStore);
 						else
-							sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s_%" PRIu64 "%s.x + %s[inoutID+%" PRIu64 "].y * %s_%" PRIu64 "%s.y;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+							sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %s%s[inoutID+%" PRIu64 "].x%s * %s_%" PRIu64 "%s.x + %s%s[inoutID+%" PRIu64 "].y%s * %s_%" PRIu64 "%s.y;\n", j, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], l, separateRegisterStore, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], l, separateRegisterStore);
 					}
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -11928,22 +11982,22 @@ static inline VkFFTResult appendKernelConvolution(VkFFTSpecializationConstantsLa
 					}
 					if (sc->conjugateConvolution == 0) {
 						if (l == 0)
-							sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s%s.y + %s[inoutID+%" PRIu64 "].y * %s%s.x;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
+							sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s%s[inoutID+%" PRIu64 "].x%s * %s%s.y + %s%s[inoutID+%" PRIu64 "].y%s * %s%s.x;\n", j, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], separateRegisterStore, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], separateRegisterStore);
 						else
-							sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s_%" PRIu64 "%s.y + %s[inoutID+%" PRIu64 "].y * %s_%" PRIu64 "%s.x;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+							sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s%s[inoutID+%" PRIu64 "].x%s * %s_%" PRIu64 "%s.y + %s%s[inoutID+%" PRIu64 "].y%s * %s_%" PRIu64 "%s.x;\n", j, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], l, separateRegisterStore, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], l, separateRegisterStore);
 					}
 					else {
 						if (sc->conjugateConvolution == 1) {
 							if (l == 0)
-								sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s[inoutID+%" PRIu64 "].y * %s%s.x - %s[inoutID+%" PRIu64 "].x * %s%s.y ;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
+								sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s%s[inoutID+%" PRIu64 "].y%s * %s%s.x - %s%s[inoutID+%" PRIu64 "].x%s * %s%s.y ;\n", j, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], separateRegisterStore, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], separateRegisterStore);
 							else
-								sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s[inoutID+%" PRIu64 "].y * %s_%" PRIu64 "%s.x - %s[inoutID+%" PRIu64 "].x * %s_%" PRIu64 "%s.y;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+								sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s%s[inoutID+%" PRIu64 "].y%s * %s_%" PRIu64 "%s.x - %s%s[inoutID+%" PRIu64 "].x%s * %s_%" PRIu64 "%s.y;\n", j, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], l, separateRegisterStore, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], l, separateRegisterStore);
 						}
 						else {
 							if (l == 0)
-								sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s%s.y - %s[inoutID+%" PRIu64 "].y * %s%s.x;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], separateRegisterStore);
+								sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s%s[inoutID+%" PRIu64 "].x%s * %s%s.y - %s%s[inoutID+%" PRIu64 "].y%s * %s%s.x;\n", j, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], separateRegisterStore, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], separateRegisterStore);
 							else
-								sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s[inoutID+%" PRIu64 "].x * %s_%" PRIu64 "%s.y - %s[inoutID+%" PRIu64 "].y * %s_%" PRIu64 "%s.x;\n", j, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore, kernelName, k * sc->inputStride[3], sc->regIDs[i], l, separateRegisterStore);
+								sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %s%s[inoutID+%" PRIu64 "].x%s * %s_%" PRIu64 "%s.y - %s%s[inoutID+%" PRIu64 "].y%s * %s_%" PRIu64 "%s.x;\n", j, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], l, separateRegisterStore, convTypeLeft, kernelName, k * sc->inputStride[3], convTypeRight, sc->regIDs[i], l, separateRegisterStore);
 						}
 					}
 					res = VkAppendLine(sc);
@@ -12023,9 +12077,9 @@ static inline VkFFTResult appendKernelConvolution(VkFFTSpecializationConstantsLa
 						k = (j * sc->matrixConvolution + l);
 					}
 					if (l == 0)
-						sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].x * %s%s.x - kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].y * %s%s.y;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore);
+						sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %skernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].x%s * %s%s.x - %skernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].y%s * %s%s.y;\n", j, convTypeLeft, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, convTypeRight, sc->regIDs[i], separateRegisterStore, convTypeLeft, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, convTypeRight, sc->regIDs[i], separateRegisterStore);
 					else
-						sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].x * %s_%" PRIu64 "%s.x - kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].y * %s_%" PRIu64 "%s.y;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore);
+						sc->tempLen = sprintf(sc->tempStr, "		temp_real%" PRIu64 " += %skernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].x%s * %s_%" PRIu64 "%s.x - %skernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].y%s * %s_%" PRIu64 "%s.y;\n", j, convTypeLeft, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, convTypeRight, sc->regIDs[i], l, separateRegisterStore, convTypeLeft, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, convTypeRight, sc->regIDs[i], l, separateRegisterStore);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 
@@ -12043,9 +12097,9 @@ static inline VkFFTResult appendKernelConvolution(VkFFTSpecializationConstantsLa
 						k = (j * sc->matrixConvolution + l);
 					}
 					if (l == 0)
-						sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].x * %s%s.y + kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].y * %s%s.x;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], separateRegisterStore);
+						sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %skernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].x%s * %s%s.y + %skernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].y%s * %s%s.x;\n", j, convTypeLeft, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, convTypeRight, sc->regIDs[i], separateRegisterStore, convTypeLeft, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, convTypeRight, sc->regIDs[i], separateRegisterStore);
 					else
-						sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].x * %s_%" PRIu64 "%s.y + kernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].y * %s_%" PRIu64 "%s.x;\n", j, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, sc->regIDs[i], l, separateRegisterStore);
+						sc->tempLen = sprintf(sc->tempStr, "		temp_imag%" PRIu64 " += %skernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].x%s * %s_%" PRIu64 "%s.y + %skernelBlocks[(inoutID+%" PRIu64 ")/%" PRIu64 "].%s[(inoutID+%" PRIu64 ") %% %" PRIu64 "].y%s * %s_%" PRIu64 "%s.x;\n", j, convTypeLeft, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, convTypeRight, sc->regIDs[i], l, separateRegisterStore, convTypeLeft, k * sc->inputStride[3], sc->kernelBlockSize, kernelName, k * sc->inputStride[3], sc->kernelBlockSize, convTypeRight, sc->regIDs[i], l, separateRegisterStore);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
@@ -13226,8 +13280,6 @@ if (%s==%" PRIu64 ") \n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						res = appendZeropadStartReadWriteStage(sc, 0);
-						if (res != VKFFT_SUCCESS) return res;
 						sc->tempLen = sprintf(sc->tempStr, "			%s = ", sc->inoutID);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
@@ -13236,7 +13288,8 @@ if (%s==%" PRIu64 ") \n\
 						sc->tempLen = sprintf(sc->tempStr, ";\n");
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-
+						res = appendZeropadStartReadWriteStage(sc, 0);
+						if (res != VKFFT_SUCCESS) return res;
 						if (sc->writeFromRegisters) {
 							if (sc->outputBufferBlockNum == 1)
 								sc->tempLen = sprintf(sc->tempStr, "		%s[%s] = %s%s.x%s;\n", outputsStruct, sc->inoutID, convTypeLeft, sc->regIDs[i], convTypeRight);
@@ -27645,6 +27698,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10221; //X.XX.XX format
+	return 10222; //X.XX.XX format
 }
 #endif
