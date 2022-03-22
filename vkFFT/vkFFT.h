@@ -3695,7 +3695,7 @@ static inline VkFFTResult appendInitialization(VkFFTSpecializationConstantsLayou
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		for (uint64_t j = 1; j < sc->matrixConvolution; j++) {
-			for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+			for (uint64_t i = 0; i < sc->registers_per_thread; i++) {
 				sc->tempLen = sprintf(sc->tempStr, "	%s temp_%" PRIu64 "_%" PRIu64 ";\n", vecType, i, j);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
@@ -3951,12 +3951,12 @@ static inline VkFFTResult appendZeropadStart(VkFFTSpecializationConstantsLayout*
 					if (sc->performWorkGroupShift[1])
 						sprintf(idY, "((%s + (%s + consts.workGroupShiftY) * %" PRIu64 ")* %" PRIu64 ")", sc->gl_LocalInvocationID_x, sc->gl_WorkGroupID_y, sc->localSize[0], mult);
 					else
-						sprintf(idY, "((%s + %s * %" PRIu64 ")*%" PRIu64 ")", sc->gl_LocalInvocationID_x, sc->gl_WorkGroupID_y, sc->localSize[0],mult);
+						sprintf(idY, "((%s + %s * %" PRIu64 ")*%" PRIu64 ")", sc->gl_LocalInvocationID_x, sc->gl_WorkGroupID_y, sc->localSize[0], mult);
 				}
 				else {
-				if (sc->performWorkGroupShift[1])
-					sprintf(idY, "(%s + (%s + consts.workGroupShiftY) * %" PRIu64 ")", sc->gl_LocalInvocationID_x, sc->gl_WorkGroupID_y, sc->localSize[0]);
-				else
+					if (sc->performWorkGroupShift[1])
+						sprintf(idY, "(%s + (%s + consts.workGroupShiftY) * %" PRIu64 ")", sc->gl_LocalInvocationID_x, sc->gl_WorkGroupID_y, sc->localSize[0]);
+					else
 						sprintf(idY, "(%s + %s * %" PRIu64 ")", sc->gl_LocalInvocationID_x, sc->gl_WorkGroupID_y, sc->localSize[0]);
 				}
 				char idZ[500] = "";
@@ -3984,13 +3984,13 @@ static inline VkFFTResult appendZeropadStart(VkFFTSpecializationConstantsLayout*
 					if (sc->performWorkGroupShift[1])
 						sprintf(idY, "((%s + consts.workGroupShiftY * %s)* %" PRIu64 ")", sc->gl_GlobalInvocationID_y, sc->gl_WorkGroupSize_y, mult);
 					else
-						sprintf(idY, "(%s* %" PRIu64 ")", sc->gl_GlobalInvocationID_y,mult);
+						sprintf(idY, "(%s* %" PRIu64 ")", sc->gl_GlobalInvocationID_y, mult);
 				}
 				else {
-				if (sc->performWorkGroupShift[1])
-					sprintf(idY, "(%s + consts.workGroupShiftY * %s)", sc->gl_GlobalInvocationID_y, sc->gl_WorkGroupSize_y);
-				else
-					sprintf(idY, "%s", sc->gl_GlobalInvocationID_y);
+					if (sc->performWorkGroupShift[1])
+						sprintf(idY, "(%s + consts.workGroupShiftY * %s)", sc->gl_GlobalInvocationID_y, sc->gl_WorkGroupSize_y);
+					else
+						sprintf(idY, "%s", sc->gl_GlobalInvocationID_y);
 				}
 				char idZ[500] = "";
 				if (sc->performWorkGroupShift[2])
@@ -6058,7 +6058,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
-                    if (sc->zeropadBluestein[0]) {
+					if (sc->zeropadBluestein[0]) {
 						sc->tempLen = sprintf(sc->tempStr, "		}\n");
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
@@ -6457,7 +6457,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
-                    if (sc->zeropadBluestein[0]) {
+					if (sc->zeropadBluestein[0]) {
 						sc->tempLen = sprintf(sc->tempStr, "		}\n");
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
@@ -9178,7 +9178,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
-                    if (sc->zeropadBluestein[0]) {
+					if (sc->zeropadBluestein[0]) {
 						sc->tempLen = sprintf(sc->tempStr, "		}\n");
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
@@ -16740,8 +16740,8 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 		sprintf(idX, "(%s + consts.workGroupShiftX * %s)", sc->gl_GlobalInvocationID_x, sc->gl_WorkGroupSize_x);
 	else
 		sprintf(idX, "%s", sc->gl_GlobalInvocationID_x);
-	res = appendZeropadStart(sc);
-	if (res != VKFFT_SUCCESS) return res;
+	//res = appendZeropadStart(sc);
+	//if (res != VKFFT_SUCCESS) return res;
 	sc->tempLen = sprintf(sc->tempStr, "%s id_x = %s %% %" PRIu64 ";\n", uintType, idX, (uint64_t)ceil(sc->size[0] / 4.0));
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
@@ -17047,8 +17047,8 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 	sc->tempLen = sprintf(sc->tempStr, "}\n");
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
-	res = appendZeropadEnd(sc);
-	if (res != VKFFT_SUCCESS) return res;
+	//res = appendZeropadEnd(sc);
+	//if (res != VKFFT_SUCCESS) return res;
 	sc->tempLen = sprintf(sc->tempStr, "}\n");
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
@@ -22556,15 +22556,15 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			axis->specializationConstants.fft_zeropad_left_full[i] = app->configuration.fft_zeropad_left[i];
 			axis->specializationConstants.fft_zeropad_right_full[i] = app->configuration.fft_zeropad_right[i];
 		}
-		if ((inverse)) {
-			if ((app->configuration.frequencyZeroPadding) && (((!app->configuration.reorderFourStep) && (axis_upload_id == 0)) || ((app->configuration.reorderFourStep) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)))) {
+		/*if ((inverse)) {
+			if ((app->configuration.frequencyZeroPadding) &&  (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) {
 				axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
 				axis->specializationConstants.fft_zeropad_left_read[axis_id] = app->configuration.fft_zeropad_left[axis_id];
 				axis->specializationConstants.fft_zeropad_right_read[axis_id] = app->configuration.fft_zeropad_right[axis_id];
 			}
 			else
 				axis->specializationConstants.zeropad[0] = 0;
-			if ((!app->configuration.frequencyZeroPadding) && (((!app->configuration.reorderFourStep) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) || ((app->configuration.reorderFourStep) && (axis_upload_id == 0)))) {
+			if ((!app->configuration.frequencyZeroPadding) && (axis_upload_id == 0)) {
 				axis->specializationConstants.zeropad[1] = app->configuration.performZeropadding[axis_id];
 				axis->specializationConstants.fft_zeropad_left_write[axis_id] = app->configuration.fft_zeropad_left[axis_id];
 				axis->specializationConstants.fft_zeropad_right_write[axis_id] = app->configuration.fft_zeropad_right[axis_id];
@@ -22587,7 +22587,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			}
 			else
 				axis->specializationConstants.zeropad[1] = 0;
-		}
+		}*/
 		if ((app->configuration.FFTdim - 1 == axis_id) && (axis_upload_id == 0) && (app->configuration.performConvolution)) {
 			axis->specializationConstants.convolutionStep = 1;
 		}
@@ -23959,7 +23959,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	uint64_t* axisStride = axis->specializationConstants.inputStride;
 	uint64_t* usedStride = app->configuration.bufferStride;
 	if ((!inverse) && (axis_id == app->firstAxis) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted)) usedStride = app->configuration.inputBufferStride;
-	if ((inverse) && (axis_id == app->lastAxis) && (((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (axis->specializationConstants.reorderFourStep)) || ((axis_upload_id == 0) && (!axis->specializationConstants.reorderFourStep))) && (app->configuration.isInputFormatted) && (!app->configuration.inverseReturnToInputBuffer)) usedStride = app->configuration.inputBufferStride;
+	if ((inverse) && (axis_id == app->lastAxis) && ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((app->useBluesteinFFT[axis_id] && (reverseBluesteinMultiUpload == 0)) || (!app->useBluesteinFFT[axis_id])) && (!app->configuration.performConvolution)) && (app->configuration.isInputFormatted) && (!app->configuration.inverseReturnToInputBuffer)) usedStride = app->configuration.inputBufferStride;
 
 	axisStride[0] = 1;
 
@@ -24017,7 +24017,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axisStride = axis->specializationConstants.outputStride;
 	usedStride = app->configuration.bufferStride;
 	if ((!inverse) && (axis_id == app->lastAxis) && (axis_upload_id == 0) && (app->configuration.isOutputFormatted)) usedStride = app->configuration.outputBufferStride;
-	if ((inverse) && (axis_id == app->firstAxis) && (((axis_upload_id == 0) && (axis->specializationConstants.reorderFourStep)) || ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (!axis->specializationConstants.reorderFourStep))) && ((app->configuration.isOutputFormatted))) usedStride = app->configuration.outputBufferStride;
+	if ((inverse) && (axis_id == app->firstAxis) && (((axis_upload_id == 0) && (!app->configuration.performConvolution)) || ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((reverseBluesteinMultiUpload == 1) || (app->configuration.performConvolution)))) && ((app->configuration.isOutputFormatted))) usedStride = app->configuration.outputBufferStride;
 	if ((inverse) && (axis_id == app->firstAxis) && (((axis_upload_id == 0) && (app->configuration.isInputFormatted)) || ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (!axis->specializationConstants.reorderFourStep))) && (app->configuration.inverseReturnToInputBuffer)) usedStride = app->configuration.inputBufferStride;
 
 	axisStride[0] = 1;
@@ -24651,34 +24651,35 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id] /= 2;
 			axis->specializationConstants.fft_zeropad_Bluestein_right_write[axis_id] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 		}
+		uint64_t zeropad_r2c_multiupload_scale = ((axis_id == 0) && (axis->specializationConstants.performR2CmultiUpload = 1)) ? 2 : 1;
 		if ((inverse)) {
-			if ((app->configuration.frequencyZeroPadding) && (((!axis->specializationConstants.reorderFourStep) && (axis_upload_id == 0)) || ((axis->specializationConstants.reorderFourStep) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)))) {
+			if ((app->configuration.frequencyZeroPadding) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload != 1)) {
 				axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
-				axis->specializationConstants.fft_zeropad_left_read[axis_id] = app->configuration.fft_zeropad_left[axis_id];
-				axis->specializationConstants.fft_zeropad_right_read[axis_id] = app->configuration.fft_zeropad_right[axis_id];
+				axis->specializationConstants.fft_zeropad_left_read[axis_id] = app->configuration.fft_zeropad_left[axis_id] / zeropad_r2c_multiupload_scale;
+				axis->specializationConstants.fft_zeropad_right_read[axis_id] = app->configuration.fft_zeropad_right[axis_id] / zeropad_r2c_multiupload_scale;
 			}
 			else
 				axis->specializationConstants.zeropad[0] = 0;
-			if ((!app->configuration.frequencyZeroPadding) && (((!axis->specializationConstants.reorderFourStep) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) || ((axis->specializationConstants.reorderFourStep) && (axis_upload_id == 0)))) {
+			if ((!app->configuration.frequencyZeroPadding) && (((axis_upload_id == 0) && (!((axis->specializationConstants.useBluesteinFFT) || (app->configuration.performConvolution)))) || ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1)) || (app->configuration.performConvolution)))))) {
 				axis->specializationConstants.zeropad[1] = app->configuration.performZeropadding[axis_id];
-				axis->specializationConstants.fft_zeropad_left_write[axis_id] = app->configuration.fft_zeropad_left[axis_id];
-				axis->specializationConstants.fft_zeropad_right_write[axis_id] = app->configuration.fft_zeropad_right[axis_id];
+				axis->specializationConstants.fft_zeropad_left_write[axis_id] = app->configuration.fft_zeropad_left[axis_id] / zeropad_r2c_multiupload_scale;
+				axis->specializationConstants.fft_zeropad_right_write[axis_id] = app->configuration.fft_zeropad_right[axis_id] / zeropad_r2c_multiupload_scale;
 			}
 			else
 				axis->specializationConstants.zeropad[1] = 0;
 		}
 		else {
-			if ((!app->configuration.frequencyZeroPadding) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) {
+			if ((!app->configuration.frequencyZeroPadding) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload != 1)) {
 				axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
-				axis->specializationConstants.fft_zeropad_left_read[axis_id] = app->configuration.fft_zeropad_left[axis_id];
-				axis->specializationConstants.fft_zeropad_right_read[axis_id] = app->configuration.fft_zeropad_right[axis_id];
+				axis->specializationConstants.fft_zeropad_left_read[axis_id] = app->configuration.fft_zeropad_left[axis_id] / zeropad_r2c_multiupload_scale;
+				axis->specializationConstants.fft_zeropad_right_read[axis_id] = app->configuration.fft_zeropad_right[axis_id] / zeropad_r2c_multiupload_scale;
 			}
 			else
 				axis->specializationConstants.zeropad[0] = 0;
-			if (((app->configuration.frequencyZeroPadding) && (axis_upload_id == 0)) || (((app->configuration.FFTdim - 1 == axis_id) && (axis_upload_id == 0) && (app->configuration.performConvolution)))) {
+			if (((app->configuration.frequencyZeroPadding) && (((axis_upload_id == 0) && (!axis->specializationConstants.useBluesteinFFT)) || ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (axis->specializationConstants.useBluesteinFFT && ((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1)))))) || (((!app->configuration.frequencyZeroPadding) && (app->configuration.FFTdim - 1 == axis_id) && (axis_upload_id == 0) && (FFTPlan->numAxisUploads[axis_id] == 1) && (app->configuration.performConvolution)))) {
 				axis->specializationConstants.zeropad[1] = app->configuration.performZeropadding[axis_id];
-				axis->specializationConstants.fft_zeropad_left_write[axis_id] = app->configuration.fft_zeropad_left[axis_id];
-				axis->specializationConstants.fft_zeropad_right_write[axis_id] = app->configuration.fft_zeropad_right[axis_id];
+				axis->specializationConstants.fft_zeropad_left_write[axis_id] = app->configuration.fft_zeropad_left[axis_id] / zeropad_r2c_multiupload_scale;
+				axis->specializationConstants.fft_zeropad_right_write[axis_id] = app->configuration.fft_zeropad_right[axis_id] / zeropad_r2c_multiupload_scale;
 			}
 			else
 				axis->specializationConstants.zeropad[1] = 0;
@@ -24781,7 +24782,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 						sprintf(floatTypeInputMemory, "half");
 					else
 						sprintf(floatTypeInputMemory, "float");
-					if ((axis_id == app->firstAxis) && (((!axis->specializationConstants.reorderFourStep) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) || ((axis->specializationConstants.reorderFourStep) && (axis_upload_id == 0))) && (axis->specializationConstants.actualInverse))
+					if ((axis_id == app->firstAxis) && (axis_upload_id == 0) && (axis->specializationConstants.actualInverse))
 						sprintf(floatTypeOutputMemory, "half");
 					else
 						sprintf(floatTypeOutputMemory, "float");
@@ -27409,6 +27410,28 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
 				}
 			}
+			if (app->localFFTPlan_inverse->multiUploadR2C) {
+				//app->configuration.size[0] /= 2;
+				VkFFTAxis* axis = &app->localFFTPlan_inverse->R2Cdecomposition;
+				resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan_inverse, axis, 0, 0, 1);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
+
+#if(VKFFT_BACKEND==0)
+				vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
+				vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
+#endif
+				uint64_t dispatchBlock[3];
+
+				dispatchBlock[0] = (uint64_t)ceil(((app->configuration.size[0] / 2 + 1) * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0]));
+				dispatchBlock[1] = 1;
+				dispatchBlock[2] = app->configuration.coordinateFeatures * app->configuration.numberBatches;
+				resFFT = dispatchEnhanced(app, axis, dispatchBlock);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
+				printDebugInformation(app, axis);
+
+				resFFT = VkFFTSync(app);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
+			}
 			for (int64_t l = 0; l < (int64_t)app->localFFTPlan_inverse->numAxisUploads[0]; l++) {
 				VkFFTAxis* axis = &app->localFFTPlan_inverse->axes[0][l];
 				resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, axis, 0, l, 1);
@@ -27698,6 +27721,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10222; //X.XX.XX format
+	return 10223; //X.XX.XX format
 }
 #endif
