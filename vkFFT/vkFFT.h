@@ -24651,7 +24651,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id] /= 2;
 			axis->specializationConstants.fft_zeropad_Bluestein_right_write[axis_id] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 		}
-		uint64_t zeropad_r2c_multiupload_scale = ((axis_id == 0) && (axis->specializationConstants.performR2CmultiUpload = 1)) ? 2 : 1;
+		uint64_t zeropad_r2c_multiupload_scale = ((axis_id == 0) && (FFTPlan->multiUploadR2C)) ? 2 : 1;
 		if ((inverse)) {
 			if ((app->configuration.frequencyZeroPadding) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload != 1)) {
 				axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
