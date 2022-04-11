@@ -37,6 +37,8 @@
 #else
 #include <CL/cl.h>
 #endif 
+#elif(VKFFT_BACKEND==4)
+#include <ze_api.h>
 #endif
 #include "vkFFT.h"
 #include "utils_VkFFT.h"
@@ -53,6 +55,8 @@ VkFFTResult user_benchmark_VkFFT(VkGPU* vkGPU, uint64_t file_output, FILE* outpu
 	hipError_t res = hipSuccess;
 #elif(VKFFT_BACKEND==3)
 	cl_int res = CL_SUCCESS;
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
 #endif
 	const int num_runs = 3;
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
@@ -93,6 +97,8 @@ VkFFTResult user_benchmark_VkFFT(VkGPU* vkGPU, uint64_t file_output, FILE* outpu
 			configuration.performDCT = userParams->DCT;
 			if (userParams->P == 1) configuration.doublePrecision = 1;
 			if (userParams->P == 2) configuration.halfPrecision = 1;
+			if (userParams->saveApplicationToString && (n==0) && (r==0)) configuration.saveApplicationToString = 1;
+			if (userParams->loadApplicationFromString || (userParams->saveApplicationToString && ((n != 0) || (r != 0)))) configuration.loadApplicationFromString = 1;
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 			configuration.device = &vkGPU->device;
 #if(VKFFT_BACKEND==0)
@@ -102,8 +108,11 @@ VkFFTResult user_benchmark_VkFFT(VkGPU* vkGPU, uint64_t file_output, FILE* outpu
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
 #elif(VKFFT_BACKEND==3)
-			configuration.platform = &vkGPU->platform;
 			configuration.context = &vkGPU->context;
+#elif(VKFFT_BACKEND==4)
+			configuration.context = &vkGPU->context;
+			configuration.commandQueue = &vkGPU->commandQueue;
+			configuration.commandQueueID = vkGPU->commandQueueID;
 #endif
 			//Allocate buffer for the input data.
 			uint64_t bufferSize = 0;
@@ -139,13 +148,55 @@ VkFFTResult user_benchmark_VkFFT(VkGPU* vkGPU, uint64_t file_output, FILE* outpu
 			buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
 			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = &buffer;
+#elif(VKFFT_BACKEND==4)
+			void* buffer = 0;
+			ze_device_mem_alloc_desc_t device_desc = {};
+			device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+			res = zeMemAllocDevice(vkGPU->context, &device_desc, bufferSize, sizeof(float), vkGPU->device, &buffer);
+			if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			configuration.buffer = &buffer;
 #endif
 
 			configuration.bufferSize = &bufferSize;
-
+			if (configuration.loadApplicationFromString) {
+				FILE* kernelCache;
+				uint64_t str_len;
+				char fname[500];
+				int VkFFT_version = VkFFTGetVersion();
+				sprintf(fname, "VkFFT_binary_X%" PRIu64 "_Y%" PRIu64 "_Z%" PRIu64 "_P%" PRIu64 "_B%" PRIu64 "_N%" PRIu64 "_R2C%" PRIu64 "_DCT%" PRIu64 "_ver%d", userParams->X, userParams->Y, userParams->Z, userParams->P, userParams->B, userParams->N, userParams->R2C, userParams->DCT, VkFFT_version);
+#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2) || (VKFFT_BACKEND==4))
+				kernelCache = fopen(fname, "rb"); //Vulkan and HIP backends load data as a uint32_t sequence
+#else
+				kernelCache = fopen(fname, "r");
+#endif
+				if (!kernelCache) return VKFFT_ERROR_EMPTY_FILE;
+				fseek(kernelCache, 0, SEEK_END);
+				str_len = ftell(kernelCache);
+				fseek(kernelCache, 0, SEEK_SET);
+				configuration.loadApplicationString = malloc(str_len);
+				fread(configuration.loadApplicationString, str_len, 1, kernelCache);
+				fclose(kernelCache);
+			}
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 			resFFT = initializeVkFFT(&app, configuration);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
+
+			if (configuration.loadApplicationFromString)
+				free(configuration.loadApplicationString);
+
+			if (configuration.saveApplicationToString) {
+				FILE* kernelCache;
+				char fname[500];
+				int VkFFT_version = VkFFTGetVersion();
+				sprintf(fname, "VkFFT_binary_X%" PRIu64 "_Y%" PRIu64 "_Z%" PRIu64 "_P%" PRIu64 "_B%" PRIu64 "_N%" PRIu64 "_R2C%" PRIu64 "_DCT%" PRIu64 "_ver%d", userParams->X, userParams->Y, userParams->Z, userParams->P, userParams->B, userParams->N, userParams->R2C, userParams->DCT, VkFFT_version);
+#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2) || (VKFFT_BACKEND==4))
+				kernelCache = fopen(fname, "wb"); //Vulkan and HIP backends save data as a uint32_t sequence
+#else
+				kernelCache = fopen(fname, "w");
+#endif
+				fwrite(app.saveApplicationString, app.applicationStringSize, 1, kernelCache);
+				fclose(kernelCache);
+			}
 
 			//Submit FFT+iFFT.
 			
@@ -190,6 +241,8 @@ VkFFTResult user_benchmark_VkFFT(VkGPU* vkGPU, uint64_t file_output, FILE* outpu
 			hipFree(buffer);
 #elif(VKFFT_BACKEND==3)
 			clReleaseMemObject(buffer);
+#elif(VKFFT_BACKEND==4)
+			zeMemFree(vkGPU->context, buffer);
 #endif
 
 			deleteVkFFT(&app);

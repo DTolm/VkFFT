@@ -136,7 +136,8 @@ vspace{1cm}
 \backslash
 scshape
 \backslash
-LARGE VkFFT - Vulkan/CUDA/HIP/OpenCL Fast Fourier Transform library 
+LARGE VkFFT - Vulkan/CUDA/HIP/OpenCL/Level Zero Fast Fourier Transform library
+ 
 \backslash
 par} 		
 \end_layout
@@ -191,7 +192,7 @@ vspace{1cm}
 
 {
 \backslash
-large January 2021, version 1.2.20
+large April 2021, version 1.2.24
 \backslash
 par} 
 \end_layout
@@ -236,8 +237,8 @@ Introduction
 \end_layout
 
 \begin_layout Standard
-This document describes VkFFT - Vulkan/CUDA/HIP/OpenCL Fast Fourier Transform
- library.
+This document describes VkFFT - Vulkan/CUDA/HIP/OpenCL/Level Zero Fast Fourier
+ Transform library.
  It describes the features and current limitations of VkFFT, explains the
  API and compares it to other FFT libraries (like FFTW and cuFFT) on the
  set of examples.
@@ -333,7 +334,7 @@ Copy vkFFT.h file into one of the directories included in the user's project.
 \begin_layout Enumerate
 \noindent
 Define VKFFT_BACKEND as a number corresponding to the API used in the user's
- project: 0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL.
+ project: 0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL, 4 - Level Zero.
  Definition is done like:
 \begin_inset ERT
 status open
@@ -393,7 +394,8 @@ begin{minted}[tabsize=4,obeytabs,breaklines]{cmake}
 
 \begin_layout Plain Layout
 
-set(VKFFT_BACKEND 1 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL")
+set(VKFFT_BACKEND 1 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL,
+ 4 - Level Zero")
 \end_layout
 
 \begin_layout Plain Layout
@@ -819,6 +821,150 @@ end{mdframed}
 
 \end_layout
 
+\begin_layout Enumerate
+Level Zero API: Level Zero; Clang and llvm-spirv must be in the system path
+ (for kernel compilation).
+ Sample CMakeLists can look like this:
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+begin{mdframed}[backgroundcolor=bg]
+\end_layout
+
+\begin_layout Plain Layout
+
+
+\backslash
+begin{minted}[tabsize=4,obeytabs,breaklines]{cmake}
+\end_layout
+
+\begin_layout Plain Layout
+
+set(LevelZero_LIBRARY "/usr/lib/x86_64-linux-gnu/")
+\end_layout
+
+\begin_layout Plain Layout
+
+set(LevelZero_INCLUDE_DIR "/usr/include/")
+\end_layout
+
+\begin_layout Plain Layout
+
+find_library(
+\end_layout
+
+\begin_layout Plain Layout
+
+	LevelZero_LIB
+\end_layout
+
+\begin_layout Plain Layout
+
+	NAMES "ze_loader"
+\end_layout
+
+\begin_layout Plain Layout
+
+	PATHS ${LevelZero_LIBRARY}
+\end_layout
+
+\begin_layout Plain Layout
+
+	PATH_SUFFIXES "lib" "lib64"
+\end_layout
+
+\begin_layout Plain Layout
+
+	NO_DEFAULT_PATH
+\end_layout
+
+\begin_layout Plain Layout
+
+  )
+\end_layout
+
+\begin_layout Plain Layout
+
+find_path(
+\end_layout
+
+\begin_layout Plain Layout
+
+	LevelZero_INCLUDES
+\end_layout
+
+\begin_layout Plain Layout
+
+	NAMES "ze_api.h"
+\end_layout
+
+\begin_layout Plain Layout
+
+	PATHS ${LevelZero_INCLUDE_DIR}
+\end_layout
+
+\begin_layout Plain Layout
+
+	PATH_SUFFIXES "include" 
+\end_layout
+
+\begin_layout Plain Layout
+
+	NO_DEFAULT_PATH
+\end_layout
+
+\begin_layout Plain Layout
+
+  )
+\end_layout
+
+\begin_layout Plain Layout
+
+target_include_directories(${PROJECT_NAME} PUBLIC ${LevelZero_INCLUDES})
+\end_layout
+
+\begin_layout Plain Layout
+
+add_library(VkFFT INTERFACE)
+\end_layout
+
+\begin_layout Plain Layout
+
+target_compile_definitions(VkFFT INTERFACE -DVKFFT_BACKEND=4)
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+target_link_libraries(${PROJECT_NAME} PUBLIC LevelZero VkFFT)
+\end_layout
+
+\begin_layout Plain Layout
+
+
+\backslash
+end{minted}
+\end_layout
+
+\begin_layout Plain Layout
+
+
+\backslash
+end{mdframed}
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
 \end_deeper
 \begin_layout Subsection
 Fourier Transform Setup
@@ -1082,7 +1228,7 @@ VkFFT buffers
 VkFFT allows for explicit control over the data flow, which makes both in-place
  and out-of-place transforms possible.
  Buffers are passed to VkFFT as VkBuffer pointer in Vulkan, as double void
- pointers in CUDA/HIP and as cl_mem pointer in OpenCL.
+ pointers in CUDA/HIP/Level Zero and as cl_mem pointer in OpenCL.
  This is done to maintain a uniform data pattern because some of the buffers
  can be allocated automatically.
  
@@ -1823,6 +1969,11 @@ VKFFT_ERROR_INVALID_PLATFORM = 1009,	// No platform is provided (OpenCL
 
 \begin_layout Plain Layout
 
+VKFFT_ERROR_EMPTY_FILE = 1011,
+\end_layout
+
+\begin_layout Plain Layout
+
 VKFFT_ERROR_EMPTY_FFTdim = 2001,	// Number of dimensions is not provided
  in the configuration
 \end_layout
@@ -2185,7 +2336,22 @@ VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE = 4051,
 
 \begin_layout Plain Layout
 
-VKFFT_ERROR_FAILED_TO_CREATE_EVENT = 4052
+VKFFT_ERROR_FAILED_TO_CREATE_EVENT = 4052,
+\end_layout
+
+\begin_layout Plain Layout
+
+VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST = 4053,
+\end_layout
+
+\begin_layout Plain Layout
+
+VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST = 4054,
+\end_layout
+
+\begin_layout Plain Layout
+
+VKFFT_ERROR_FAILED_TO_SUBMIT_BARRIER = 4055
 \end_layout
 
 \begin_layout Plain Layout
@@ -2458,6 +2624,14 @@ l calls to user-defined cl_command_queue.
  
 \end_layout
 
+\begin_layout Itemize
+Level Zero API: similar to Vulkan, VkFFT appends a sequence of zeCommandListAppe
+ndLaunchKernel calls to user-defined command list ze_command_list_handle_t.
+ They have execution barriers between.
+ ze_command_list_handle_t must be provided as a pointer in VkFFTLaunchParams.
+ 
+\end_layout
+
 \begin_layout Standard
 If VkFFT fails during the VkFFTAppend call, it will not free the application
  and allocated there resources - use a separate call for that.
@@ -2515,7 +2689,7 @@ Performs deallocation of resources used in the provided application.
 \end_layout
 
 \begin_layout Subsubsection
-Funcion VkFFTGetVersion()
+Function VkFFTGetVersion()
 \end_layout
 
 \begin_layout Standard
@@ -2707,8 +2881,7 @@ uint64_t num_streams;	// Try to submit HIP kernels in multiple streams for
 
 \begin_layout Plain Layout
 
-cl_platform_id* platform;	// Pointer to OpenCL platform, obtained from clGetPlat
-formIDs
+cl_platform_id* platform;	// NOT REQUIRED
 \end_layout
 
 \begin_layout Plain Layout
@@ -2719,6 +2892,35 @@ cl_device_id* device;	// Pointer to OpenCL device, obtained from clGetDeviceIDs
 \begin_layout Plain Layout
 
 cl_context* context;	// Pointer to OpenCL context, obtained from clCreateContext
+\end_layout
+
+\begin_layout Plain Layout
+
+#elif(VKFFT_BACKEND==4) //Level Zero API
+\end_layout
+
+\begin_layout Plain Layout
+
+ze_device_handle_t* device;	// Pointer to Level Zero device, obtained from
+ zeDeviceGet
+\end_layout
+
+\begin_layout Plain Layout
+
+ze_context_handle_t* context;	// Pointer to Level Zero context, obtained
+ from zeContextCreate
+\end_layout
+
+\begin_layout Plain Layout
+
+ze_command_queue_handle_t* commandQueue;	// Pointer to Level Zero command
+ queue with compute and copy capabilities, obtained from zeCommandQueueCreate
+\end_layout
+
+\begin_layout Plain Layout
+
+uint32_t commandQueueID;	// ID of the commandQueue with compute and copy
+ capabilities
 \end_layout
 
 \begin_layout Plain Layout
@@ -3342,8 +3544,8 @@ uint64_t registerBoost;	// Specify if register file size is bigger than
  4 to emulate 128KB of shared memory).
  Defaults: Nvidia - 4 in Vulkan/OpenCL, 1 in CUDA backend; AMD - 2 if shared
  memory >= 64KB, else 4 in Vulkan/OpenCL backend, 1 in HIP backend; Intel
- - 1 if shared memory >= 64KB, else 2 in Vulkan/OpenCL backend; Default
- 1
+ - 1 if shared memory >= 64KB, else 2 in Vulkan/OpenCL/Level Zero backends;
+ Default 1
 \end_layout
 
 \begin_layout Plain Layout
@@ -3542,6 +3744,16 @@ cl_command_queue* commandQueue;	// Filled at app creation
 
 \begin_layout Plain Layout
 
+#elif(VKFFT_BACKEND==4)
+\end_layout
+
+\begin_layout Plain Layout
+
+ze_command_list_handle_t* commandList;	// Filled at app creation
+\end_layout
+
+\begin_layout Plain Layout
+
 #endif
 \end_layout
 
@@ -3666,16 +3878,35 @@ OpenCL API will need the following information:
 \end_layout
 
 \begin_layout Itemize
-cl_platform_id* platform - Pointer to OpenCL platform, obtained from clGetPlatfo
-rmIDs() 
-\end_layout
-
-\begin_layout Itemize
 cl_device_id* device - Pointer to OpenCL device, obtained from clGetDeviceIDs()
 \end_layout
 
 \begin_layout Itemize
 cl_context* context - Pointer to OpenCL context, obtained from clCreateContext()
+\end_layout
+
+\begin_layout Standard
+Level Zero API will need the following information:
+\end_layout
+
+\begin_layout Itemize
+ze_device_handle_t* device - Pointer to Level Zero device, obtained from
+ zeDeviceGet()
+\end_layout
+
+\begin_layout Itemize
+ze_context_handle_t* context - Pointer to Level Zero context, obtained from
+ zeContextGet()
+\end_layout
+
+\begin_layout Itemize
+ze_command_queue_handle_t* commandQueue - Pointer to Level Zero command
+ queuewith compute and copy capabilities, obtained from zeCommandQueueCreate()
+\end_layout
+
+\begin_layout Itemize
+uint32_t commandQueueID - ID of the commandQueue with compute and copy capabilit
+ies
 \end_layout
 
 \begin_layout Subsubsection
@@ -3710,8 +3941,8 @@ kernel buffer, used for calculation of convolutions and cross-correlations
 
 \begin_layout Standard
 These buffers must be passed by a pointer: in Vulkan API they are provided
- as VkBuffer*, in CUDA and HIP they are provided as void**, in OpenCL, they
- are provided as cl_mem*.
+ as VkBuffer*, in CUDA, HIP and Level Zero they are provided as void**,
+ in OpenCL, they are provided as cl_mem*.
  Even though the underlying structure (VkBuffer, void*, cl_mem) is not a
  memory but just a number that the driver can use to access corresponding
  allocated memory on the GPU, passing them by a pointer allows for the user
@@ -3856,7 +4087,8 @@ Precision parameters (and some things that can affect it):
 \begin_layout Standard
 uint64_t doublePrecision - perform calculations in double precision.
  Default 0, set to 1 to enable.
- In Vulkan/OpenCL your device must support double-precision functionality.
+ In Vulkan/OpenCL/Level Zero your device must support double-precision functiona
+lity.
  Optional parameter.
 \end_layout
 
@@ -3868,7 +4100,8 @@ uint64_t doublePrecisionFloatMemory - perform calculations in double precision,
  This option increases precision, but not that much to be recommended for
  actual use.
  Default 0, set to 1 to enable.
- In Vulkan/OpenCL your device must support double-precision functionality.
+ In Vulkan/OpenCL/Level Zero your device must support double-precision functiona
+lity.
  Experimental feature.
  Optional parameter.
 \end_layout
@@ -4066,9 +4299,9 @@ String instead of recompiling them (loadApplicationString must be allocated
 \end_layout
 
 \begin_layout Standard
-void* loadApplicationString - memory array (uint32_t* for Vulkan and HIP,
- char* for CUDA/OpenCL) through which user can load VkFFT binaries, must
- be provided by user if loadApplicationFromString = 1.
+void* loadApplicationString - memory array (uint32_t* for Vulkan, HIP and
+ Level Zero, char* for CUDA/OpenCL) through which user can load VkFFT binaries,
+ must be provided by user if loadApplicationFromString = 1.
  
 \end_layout
 
@@ -4199,7 +4432,8 @@ Register overutilization
 
 \begin_layout Standard
 Only works in C2C mode, without convolution support.
- Enabled in Vulkan and OpenCL APIs only (it works in other APIs, but worse).
+ Enabled in Vulkan, OpenCL and Level Zero APIs only (it works in other APIs,
+ but worse).
  Experimental feature.
 \end_layout
 
@@ -4209,11 +4443,11 @@ uint64_t registerBoost - specify if the register file size is bigger than
  file can be used instead of 32KB of shared memory, set this constant to
  4 to emulate 128KB of shared memory).
  Default 1 - no overutilization.
- In Vulkan and OpenCL it is set to 4 on Nvidia GPUs, to 2 if the driver
- shows 64KB or more of shared memory on AMD, to 2 if the driver shows less
- than 64KB of shared memory on AMD, to 1 if the driver shows 64KB or more
- of shared memory on Intel, to 2 if the driver shows less than 64KB of shared
- memory on Intel.
+ In Vulkan, OpenCL and Level Zero it is set to 4 on Nvidia GPUs, to 2 if
+ the driver shows 64KB or more of shared memory on AMD, to 2 if the driver
+ shows less than 64KB of shared memory on AMD, to 1 if the driver shows
+ 64KB or more of shared memory on Intel, to 2 if the driver shows less than
+ 64KB of shared memory on Intel.
  Optional parameter.
 \end_layout
 
@@ -4629,6 +4863,36 @@ cl_context context;
 \begin_layout Plain Layout
 
 cl_command_queue commandQueue;
+\end_layout
+
+\begin_layout Plain Layout
+
+#elif(VKFFT_BACKEND==4) //Level Zero API
+\end_layout
+
+\begin_layout Plain Layout
+
+ze_driver_handle_t driver;
+\end_layout
+
+\begin_layout Plain Layout
+
+ze_device_handle_t device;
+\end_layout
+
+\begin_layout Plain Layout
+
+ze_context_handle_t context;
+\end_layout
+
+\begin_layout Plain Layout
+
+ze_command_queue_handle_t commandQueue;
+\end_layout
+
+\begin_layout Plain Layout
+
+uint32_t commandQueueID;
 \end_layout
 
 \begin_layout Plain Layout
@@ -5229,6 +5493,339 @@ free(platforms);
 
 \begin_layout Plain Layout
 
+#elif(VKFFT_BACKEND==4)
+\end_layout
+
+\begin_layout Plain Layout
+
+	ze_result_t res = ZE_RESULT_SUCCESS;
+\end_layout
+
+\begin_layout Plain Layout
+
+	res = zeInit(0);
+\end_layout
+
+\begin_layout Plain Layout
+
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+\end_layout
+
+\begin_layout Plain Layout
+
+	uint32_t numDrivers = 0;
+\end_layout
+
+\begin_layout Plain Layout
+
+	res = zeDriverGet(&numDrivers, 0);
+\end_layout
+
+\begin_layout Plain Layout
+
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+\end_layout
+
+\begin_layout Plain Layout
+
+	ze_driver_handle_t* drivers = (ze_driver_handle_t*)malloc(numDrivers *
+ sizeof(ze_driver_handle_t));
+\end_layout
+
+\begin_layout Plain Layout
+
+	if (!drivers) return VKFFT_ERROR_MALLOC_FAILED;
+\end_layout
+
+\begin_layout Plain Layout
+
+	res = zeDriverGet(&numDrivers, drivers);
+\end_layout
+
+\begin_layout Plain Layout
+
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+\end_layout
+
+\begin_layout Plain Layout
+
+	uint64_t k = 0;
+\end_layout
+
+\begin_layout Plain Layout
+
+	for (uint64_t j = 0; j < numDrivers; j++) {
+\end_layout
+
+\begin_layout Plain Layout
+
+		uint32_t numDevices = 0;
+\end_layout
+
+\begin_layout Plain Layout
+
+		res = zeDeviceGet(drivers[j], &numDevices, nullptr);
+\end_layout
+
+\begin_layout Plain Layout
+
+		if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+\end_layout
+
+\begin_layout Plain Layout
+
+		ze_device_handle_t* deviceList = (ze_device_handle_t*)malloc(numDevices
+ * sizeof(ze_device_handle_t));
+\end_layout
+
+\begin_layout Plain Layout
+
+		if (!deviceList) return VKFFT_ERROR_MALLOC_FAILED;
+\end_layout
+
+\begin_layout Plain Layout
+
+		res = zeDeviceGet(drivers[j], &numDevices, deviceList);
+\end_layout
+
+\begin_layout Plain Layout
+
+		if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+\end_layout
+
+\begin_layout Plain Layout
+
+		for (uint64_t i = 0; i < numDevices; i++) {
+\end_layout
+
+\begin_layout Plain Layout
+
+			if (k == vkGPU->device_id) {
+\end_layout
+
+\begin_layout Plain Layout
+
+				vkGPU->driver = drivers[j];
+\end_layout
+
+\begin_layout Plain Layout
+
+				vkGPU->device = deviceList[i];
+\end_layout
+
+\begin_layout Plain Layout
+
+				ze_context_desc_t contextDescription = {};
+\end_layout
+
+\begin_layout Plain Layout
+
+				contextDescription.stype = ZE_STRUCTURE_TYPE_CONTEXT_DESC;
+\end_layout
+
+\begin_layout Plain Layout
+
+				res = zeContextCreate(vkGPU->driver, &contextDescription, &vkGPU->context);
+\end_layout
+
+\begin_layout Plain Layout
+
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+				uint32_t queueGroupCount = 0;
+\end_layout
+
+\begin_layout Plain Layout
+
+				res = zeDeviceGetCommandQueueGroupProperties(vkGPU->device, &queueGroupCount
+, 0);
+\end_layout
+
+\begin_layout Plain Layout
+
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QU
+EUE;
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+				ze_command_queue_group_properties_t* cmdqueueGroupProperties = (ze_command_q
+ueue_group_properties_t*) malloc(queueGroupCount * sizeof(ze_command_queue_group
+_properties_t));
+\end_layout
+
+\begin_layout Plain Layout
+
+				if (!cmdqueueGroupProperties) return VKFFT_ERROR_MALLOC_FAILED;
+\end_layout
+
+\begin_layout Plain Layout
+
+				res = zeDeviceGetCommandQueueGroupProperties(vkGPU->device, &queueGroupCount
+, cmdqueueGroupProperties);
+\end_layout
+
+\begin_layout Plain Layout
+
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QU
+EUE;
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+				uint32_t commandQueueID = -1;
+\end_layout
+
+\begin_layout Plain Layout
+
+				for (uint32_t i = 0; i < queueGroupCount; ++i) {
+\end_layout
+
+\begin_layout Plain Layout
+
+					if ((cmdqueueGroupProperties[i].flags && ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLA
+G_COMPUTE) && (cmdqueueGroupProperties[i].flags && ZE_COMMAND_QUEUE_GROUP_PROPERT
+Y_FLAG_COPY)) {
+\end_layout
+
+\begin_layout Plain Layout
+
+						commandQueueID = i;
+\end_layout
+
+\begin_layout Plain Layout
+
+						break;
+\end_layout
+
+\begin_layout Plain Layout
+
+					}
+\end_layout
+
+\begin_layout Plain Layout
+
+				}
+\end_layout
+
+\begin_layout Plain Layout
+
+				if (commandQueueID == -1) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
+\end_layout
+
+\begin_layout Plain Layout
+
+				vkGPU->commandQueueID = commandQueueID;
+\end_layout
+
+\begin_layout Plain Layout
+
+				ze_command_queue_desc_t commandQueueDescription = {};
+\end_layout
+
+\begin_layout Plain Layout
+
+				commandQueueDescription.stype = ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC;
+\end_layout
+
+\begin_layout Plain Layout
+
+				commandQueueDescription.ordinal = commandQueueID;
+\end_layout
+
+\begin_layout Plain Layout
+
+				commandQueueDescription.priority = ZE_COMMAND_QUEUE_PRIORITY_NORMAL;
+\end_layout
+
+\begin_layout Plain Layout
+
+				commandQueueDescription.mode = ZE_COMMAND_QUEUE_MODE_DEFAULT;
+\end_layout
+
+\begin_layout Plain Layout
+
+				res = zeCommandQueueCreate(vkGPU->context, vkGPU->device, &commandQueueDescr
+iption, &vkGPU->commandQueue);
+\end_layout
+
+\begin_layout Plain Layout
+
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QU
+EUE;
+\end_layout
+
+\begin_layout Plain Layout
+
+				free(cmdqueueGroupProperties);
+\end_layout
+
+\begin_layout Plain Layout
+
+				k++;
+\end_layout
+
+\begin_layout Plain Layout
+
+			}
+\end_layout
+
+\begin_layout Plain Layout
+
+			else {
+\end_layout
+
+\begin_layout Plain Layout
+
+				k++;
+\end_layout
+
+\begin_layout Plain Layout
+
+			}
+\end_layout
+
+\begin_layout Plain Layout
+
+		}
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+		free(deviceList);
+\end_layout
+
+\begin_layout Plain Layout
+
+	}
+\end_layout
+
+\begin_layout Plain Layout
+
+	free(drivers);
+\end_layout
+
+\begin_layout Plain Layout
+
 #endif
 \end_layout
 
@@ -5374,12 +5971,27 @@ configuration.isCompilerInitialized = isCompilerInitialized; //glslang compiler
 
 \begin_layout Plain Layout
 
-configuration.platform = &vkGPU->platform; 			
+configuration.context = &vkGPU->context; 
 \end_layout
 
 \begin_layout Plain Layout
 
-configuration.context = &vkGPU->context; 
+#elif(VKFFT_BACKEND==4)
+\end_layout
+
+\begin_layout Plain Layout
+
+configuration.context = &vkGPU->context;
+\end_layout
+
+\begin_layout Plain Layout
+
+configuration.commandQueue = &vkGPU->commandQueue;
+\end_layout
+
+\begin_layout Plain Layout
+
+configuration.commandQueueID = vkGPU->commandQueueID;
 \end_layout
 
 \begin_layout Plain Layout
@@ -5463,6 +6075,16 @@ launchParams.commandBuffer = &commandBuffer;
 \begin_layout Plain Layout
 
 launchParams.commandQueue = &commandQueue;
+\end_layout
+
+\begin_layout Plain Layout
+
+#elif(VKFFT_BACKEND==4) //Level Zero API
+\end_layout
+
+\begin_layout Plain Layout
+
+launchParams->commandList = &commandList;
 \end_layout
 
 \begin_layout Plain Layout
@@ -6627,7 +7249,7 @@ if (configuration.loadApplicationFromString) {
 
 \begin_layout Plain Layout
 
-#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2))
+#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2) || (VKFFT_BACKEND==4))
 \end_layout
 
 \begin_layout Plain Layout
@@ -6730,7 +7352,7 @@ if (configuration.saveApplicationToString) {
 
 \begin_layout Plain Layout
 
-#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2))
+#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2) || (VKFFT_BACKEND==4))
 \end_layout
 
 \begin_layout Plain Layout

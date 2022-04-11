@@ -37,14 +37,14 @@
 \begin{titlepage} 	
 \centering 	
 \vspace{1cm} 	
-{\scshape\LARGE VkFFT - Vulkan/CUDA/HIP/OpenCL Fast Fourier Transform library \par} 		
+{\scshape\LARGE VkFFT - Vulkan/CUDA/HIP/OpenCL/Level Zero Fast Fourier Transform library \par} 		
 \vspace{1.5cm} 	
 {\huge\bfseries API guide with examples\par} 	
 \vspace{2cm} 	
 {\Large Dmitrii Tolmachev\par} 	
 	
 \vspace{1cm} 	
-{\large January 2021, version 1.2.20\par} 
+{\large April 2021, version 1.2.24\par} 
 \end{titlepage}
 
 \newpage{}
@@ -55,12 +55,12 @@
 
 \section{Introduction}
 
-This document describes VkFFT - Vulkan/CUDA/HIP/OpenCL Fast Fourier
-Transform library. It describes the features and current limitations
-of VkFFT, explains the API and compares it to other FFT libraries
-(like FFTW and cuFFT) on the set of examples. It is by no means the
-final version, so if there is something unclear - feel free to contact
-me (dtolm96@gmail.com), so I can update it. 
+This document describes VkFFT - Vulkan/CUDA/HIP/OpenCL/Level Zero
+Fast Fourier Transform library. It describes the features and current
+limitations of VkFFT, explains the API and compares it to other FFT
+libraries (like FFTW and cuFFT) on the set of examples. It is by no
+means the final version, so if there is something unclear - feel free
+to contact me (dtolm96@gmail.com), so I can update it. 
 
 \newpage{}
 
@@ -97,14 +97,14 @@ Copy vkFFT.h file into one of the directories included in the user's
 project.
 \par\end{flushleft}
 \item Define VKFFT\_BACKEND as a number corresponding to the API used in
-the user's project: 0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL. Definition
-is done like:\begin{mdframed}[backgroundcolor=bg]
+the user's project: 0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL, 4 -
+Level Zero. Definition is done like:\begin{mdframed}[backgroundcolor=bg]
 \begin{minted}[tabsize=4,obeytabs,breaklines]{make}
 -DVKFFT_BACKEND=X
 \end{minted}
 \end{mdframed} in GCC or as \begin{mdframed}[backgroundcolor=bg]
 \begin{minted}[tabsize=4,obeytabs,breaklines]{cmake}
-set(VKFFT_BACKEND 1 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL")
+set(VKFFT_BACKEND 1 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL, 4 - Level Zero")
 \end{minted}
 \end{mdframed}in CMake.
 \item Depending on the API backend, the project must use additional libraries
@@ -172,6 +172,32 @@ add_library(VkFFT INTERFACE)
 target_compile_definitions(VkFFT INTERFACE -DVKFFT_BACKEND=3)
 
 target_link_libraries(${PROJECT_NAME} PUBLIC OpenCL::OpenCL VkFFT)
+\end{minted}
+\end{mdframed}
+\item Level Zero API: Level Zero; Clang and llvm-spirv must be in the system
+path (for kernel compilation). Sample CMakeLists can look like this:\begin{mdframed}[backgroundcolor=bg]
+\begin{minted}[tabsize=4,obeytabs,breaklines]{cmake}
+set(LevelZero_LIBRARY "/usr/lib/x86_64-linux-gnu/")
+set(LevelZero_INCLUDE_DIR "/usr/include/")
+find_library(
+	LevelZero_LIB
+	NAMES "ze_loader"
+	PATHS ${LevelZero_LIBRARY}
+	PATH_SUFFIXES "lib" "lib64"
+	NO_DEFAULT_PATH
+  )
+find_path(
+	LevelZero_INCLUDES
+	NAMES "ze_api.h"
+	PATHS ${LevelZero_INCLUDE_DIR}
+	PATH_SUFFIXES "include" 
+	NO_DEFAULT_PATH
+  )
+target_include_directories(${PROJECT_NAME} PUBLIC ${LevelZero_INCLUDES})
+add_library(VkFFT INTERFACE)
+target_compile_definitions(VkFFT INTERFACE -DVKFFT_BACKEND=4)
+
+target_link_libraries(${PROJECT_NAME} PUBLIC LevelZero VkFFT)
 \end{minted}
 \end{mdframed}
 \end{enumerate}
@@ -306,9 +332,9 @@ real numbers, so they don't require stride management, unlike R2C/C2R.
 VkFFT allows for explicit control over the data flow, which makes
 both in-place and out-of-place transforms possible. Buffers are passed
 to VkFFT as VkBuffer pointer in Vulkan, as double void pointers in
-CUDA/HIP and as cl\_mem pointer in OpenCL. This is done to maintain
-a uniform data pattern because some of the buffers can be allocated
-automatically. 
+CUDA/HIP/Level Zero and as cl\_mem pointer in OpenCL. This is done
+to maintain a uniform data pattern because some of the buffers can
+be allocated automatically. 
 
 The main buffer is called buffer and it always has to be provided,
 either during the plan creation or when the plan is executed. All
@@ -691,6 +717,7 @@ VKFFT_ERROR_ONLY_FORWARD_FFT_INITIALIZED = 1006,	// VkFFT tries to access invers
 VKFFT_ERROR_ONLY_INVERSE_FFT_INITIALIZED = 1007,	// VkFFT tries to access forward FFT plan, when appliction is created with makeInversePlanOnly flag
 VKFFT_ERROR_INVALID_CONTEXT = 1008,	// No context is provided (OpenCL API)
 VKFFT_ERROR_INVALID_PLATFORM = 1009,	// No platform is provided (OpenCL API)
+VKFFT_ERROR_EMPTY_FILE = 1011,
 VKFFT_ERROR_EMPTY_FFTdim = 2001,	// Number of dimensions is not provided in the configuration
 VKFFT_ERROR_EMPTY_size = 2002,	// Array of dimensions is not provided in the configuration
 VKFFT_ERROR_EMPTY_bufferSize = 2003,	// Buffer size has to be provided during the application creation
@@ -759,7 +786,10 @@ VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE = 4048,
 VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE = 4049,
 VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES = 4050,
 VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE = 4051,
-VKFFT_ERROR_FAILED_TO_CREATE_EVENT = 4052
+VKFFT_ERROR_FAILED_TO_CREATE_EVENT = 4052,
+VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST = 4053,
+VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST = 4054,
+VKFFT_ERROR_FAILED_TO_SUBMIT_BARRIER = 4055
 } VkFFTResult;
 \end{minted}
 \end{mdframed}
@@ -852,6 +882,10 @@ stream and synchronized if appended to multiple streams.
 calls to user-defined cl\_command\_queue. Currently, they are all
 assumed to be sequential. cl\_command\_queue must be provided as a
 pointer in VkFFTLaunchParams. 
+\item Level Zero API: similar to Vulkan, VkFFT appends a sequence of zeCommandListAppendLaunchKernel
+calls to user-defined command list ze\_command\_list\_handle\_t. They
+have execution barriers between. ze\_command\_list\_handle\_t must
+be provided as a pointer in VkFFTLaunchParams. 
 \end{itemize}
 If VkFFT fails during the VkFFTAppend call, it will not free the application
 and allocated there resources - use a separate call for that.
@@ -867,7 +901,7 @@ void deleteVkFFT(VkFFTApplication* app)
 Performs deallocation of resources used in the provided application.
 Returns application to the zero-initialized state.
 
-\subsubsection{Funcion VkFFTGetVersion()}
+\subsubsection{Function VkFFTGetVersion()}
 
 \begin{mdframed}[backgroundcolor=bg]
 \begin{minted}[tabsize=4,obeytabs,breaklines]{C}
@@ -907,9 +941,14 @@ hipDevice_t* device;	// Pointer to HIP device, obtained from hipDeviceGet
 hipStream_t* stream;	// Pointer to streams (can be more than 1), where to execute the kernels. Deafult 0
 uint64_t num_streams;	// Try to submit HIP kernels in multiple streams for asynchronous execution. Default 1 
 #elif(VKFFT_BACKEND==3) //OpenCL API
-cl_platform_id* platform;	// Pointer to OpenCL platform, obtained from clGetPlatformIDs
+cl_platform_id* platform;	// NOT REQUIRED
 cl_device_id* device;	// Pointer to OpenCL device, obtained from clGetDeviceIDs
 cl_context* context;	// Pointer to OpenCL context, obtained from clCreateContext
+#elif(VKFFT_BACKEND==4) //Level Zero API
+ze_device_handle_t* device;	// Pointer to Level Zero device, obtained from zeDeviceGet
+ze_context_handle_t* context;	// Pointer to Level Zero context, obtained from zeContextCreate
+ze_command_queue_handle_t* commandQueue;	// Pointer to Level Zero command queue with compute and copy capabilities, obtained from zeCommandQueueCreate
+uint32_t commandQueueID;	// ID of the commandQueue with compute and copy capabilities
 #endif
 
 // Data parameters (buffers can be specified at launch):
@@ -1006,7 +1045,7 @@ uint64_t numberKernels;	// N - only used in convolution step - specify how many 
 uint64_t kernelConvolution;	// Specify if this application is used to create kernel for convolution, so it has the same properties. performConvolution has to be set to 0 for kernel creation
 
 // Register overutilization (experimental): (default 0 if not stated otherwise)
-uint64_t registerBoost;	// Specify if register file size is bigger than shared memory and can be used to extend it X times (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4 to emulate 128KB of shared memory). Defaults: Nvidia - 4 in Vulkan/OpenCL, 1 in CUDA backend; AMD - 2 if shared memory >= 64KB, else 4 in Vulkan/OpenCL backend, 1 in HIP backend; Intel - 1 if shared memory >= 64KB, else 2 in Vulkan/OpenCL backend; Default 1
+uint64_t registerBoost;	// Specify if register file size is bigger than shared memory and can be used to extend it X times (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4 to emulate 128KB of shared memory). Defaults: Nvidia - 4 in Vulkan/OpenCL, 1 in CUDA backend; AMD - 2 if shared memory >= 64KB, else 4 in Vulkan/OpenCL backend, 1 in HIP backend; Intel - 1 if shared memory >= 64KB, else 2 in Vulkan/OpenCL/Level Zero backends; Default 1
 uint64_t registerBoostNonPow2;	// Specify if register overutilization should be used on non power of 2 sequences (0 - off, 1 - on)
 uint64_t registerBoost4Step;	// Specify if register file overutilization should be used in big sequences (>2^14), same definition as registerBoost. Default 1
 //not used techniques:
@@ -1041,6 +1080,8 @@ uint64_t streamCounter;	// Filled at app creation
 uint64_t streamID;	// Filled at app creation
 #elif(VKFFT_BACKEND==3) //OpenCL API
 cl_command_queue* commandQueue;	// Filled at app creation
+#elif(VKFFT_BACKEND==4)
+ze_command_list_handle_t* commandList;	// Filled at app creation
 #endif
 } VkFFTConfiguration;
 \end{minted}
@@ -1090,12 +1131,21 @@ for asynchronous execution. Default 1
 \end{itemize}
 OpenCL API will need the following information:
 \begin{itemize}
-\item cl\_platform\_id{*} platform - Pointer to OpenCL platform, obtained
-from clGetPlatformIDs() 
 \item cl\_device\_id{*} device - Pointer to OpenCL device, obtained from
 clGetDeviceIDs()
 \item cl\_context{*} context - Pointer to OpenCL context, obtained from
 clCreateContext()
+\end{itemize}
+Level Zero API will need the following information:
+\begin{itemize}
+\item ze\_device\_handle\_t{*} device - Pointer to Level Zero device, obtained
+from zeDeviceGet()
+\item ze\_context\_handle\_t{*} context - Pointer to Level Zero context,
+obtained from zeContextGet()
+\item ze\_command\_queue\_handle\_t{*} commandQueue - Pointer to Level Zero
+command queuewith compute and copy capabilities, obtained from zeCommandQueueCreate()
+\item uint32\_t commandQueueID - ID of the commandQueue with compute and
+copy capabilities
 \end{itemize}
 
 \subsubsection{Memory management parameters}
@@ -1111,19 +1161,19 @@ There are five buffer types user can provide to VkFFT:
 (kernel)
 \end{itemize}
 These buffers must be passed by a pointer: in Vulkan API they are
-provided as VkBuffer{*}, in CUDA and HIP they are provided as void{*}{*},
-in OpenCL, they are provided as cl\_mem{*}. Even though the underlying
-structure (VkBuffer, void{*}, cl\_mem) is not a memory but just a
-number that the driver can use to access corresponding allocated memory
-on the GPU, passing them by a pointer allows for the user to query
-multiple GPU allocated buffers for VkFFT to use. Currently, it is
-only supported in Vulkan API - each of five buffer types can be made
-out of multiple separate memory allocations. For example, it is possible
-to combine multiple small unused at the point of FFT calculation buffers
-to form a tempBuffer. This option also allows Vulkan API to overcome
-the limit of 4GB for a single memory allocation - due to the fact
-that Vulkan can only use 32-bit numbers for addressing (other APIs
-support 64-bit addressing). 
+provided as VkBuffer{*}, in CUDA, HIP and Level Zero they are provided
+as void{*}{*}, in OpenCL, they are provided as cl\_mem{*}. Even though
+the underlying structure (VkBuffer, void{*}, cl\_mem) is not a memory
+but just a number that the driver can use to access corresponding
+allocated memory on the GPU, passing them by a pointer allows for
+the user to query multiple GPU allocated buffers for VkFFT to use.
+Currently, it is only supported in Vulkan API - each of five buffer
+types can be made out of multiple separate memory allocations. For
+example, it is possible to combine multiple small unused at the point
+of FFT calculation buffers to form a tempBuffer. This option also
+allows Vulkan API to overcome the limit of 4GB for a single memory
+allocation - due to the fact that Vulkan can only use 32-bit numbers
+for addressing (other APIs support 64-bit addressing). 
 
 To use the buffers other than the main buffer, the user has to specify
 this in configuration at the application creation stage (set to zero
@@ -1202,15 +1252,15 @@ to enable. Optional parameter.
 \subsubsection{Precision parameters (and some things that can affect it):}
 
 uint64\_t doublePrecision - perform calculations in double precision.
-Default 0, set to 1 to enable. In Vulkan/OpenCL your device must support
-double-precision functionality. Optional parameter.
+Default 0, set to 1 to enable. In Vulkan/OpenCL/Level Zero your device
+must support double-precision functionality. Optional parameter.
 
 uint64\_t doublePrecisionFloatMemory - perform calculations in double
 precision, but all intermediate and final storage in float. Input/Output/main
 buffers must have single-precision layout. doublePrecision must be
 set to 0. This option increases precision, but not that much to be
-recommended for actual use. Default 0, set to 1 to enable. In Vulkan/OpenCL
-your device must support double-precision functionality. Experimental
+recommended for actual use. Default 0, set to 1 to enable. In Vulkan/OpenCL/Level
+Zero your device must support double-precision functionality. Experimental
 feature. Optional parameter.
 
 uint64\_t halfPrecision - half-precision in VkFFT is implemented only
@@ -1332,10 +1382,10 @@ call generated previously in VkFFTApplication.saveApplicationString).
 Default 0, set to 1 to enable. Optional parameter. Mutually exclusive
 with saveApplicationToString 
 
-void{*} loadApplicationString - memory array (uint32\_t{*} for Vulkan
-and HIP, char{*} for CUDA/OpenCL) through which user can load VkFFT
-binaries, must be provided by user if loadApplicationFromString =
-1. 
+void{*} loadApplicationString - memory array (uint32\_t{*} for Vulkan,
+HIP and Level Zero, char{*} for CUDA/OpenCL) through which user can
+load VkFFT binaries, must be provided by user if loadApplicationFromString
+= 1. 
 
 \subsubsection{Zero padding parameters}
 
@@ -1406,20 +1456,20 @@ parameter for kernel generation.
 
 \subsubsection{Register overutilization}
 
-Only works in C2C mode, without convolution support. Enabled in Vulkan
-and OpenCL APIs only (it works in other APIs, but worse). Experimental
-feature.
+Only works in C2C mode, without convolution support. Enabled in Vulkan,
+OpenCL and Level Zero APIs only (it works in other APIs, but worse).
+Experimental feature.
 
 uint64\_t registerBoost - specify if the register file size is bigger
 than shared memory and can be used to extend it X times (on Nvidia
 256KB register file can be used instead of 32KB of shared memory,
 set this constant to 4 to emulate 128KB of shared memory). Default
-1 - no overutilization. In Vulkan and OpenCL it is set to 4 on Nvidia
-GPUs, to 2 if the driver shows 64KB or more of shared memory on AMD,
-to 2 if the driver shows less than 64KB of shared memory on AMD, to
-1 if the driver shows 64KB or more of shared memory on Intel, to 2
-if the driver shows less than 64KB of shared memory on Intel. Optional
-parameter.
+1 - no overutilization. In Vulkan, OpenCL and Level Zero it is set
+to 4 on Nvidia GPUs, to 2 if the driver shows 64KB or more of shared
+memory on AMD, to 2 if the driver shows less than 64KB of shared memory
+on AMD, to 1 if the driver shows 64KB or more of shared memory on
+Intel, to 2 if the driver shows less than 64KB of shared memory on
+Intel. Optional parameter.
 
 uint64\_t registerBoostNonPow2 - specify if register overutilization
 should be used on non-power of 2 sequences. Default 0, set to 1 to
@@ -1581,6 +1631,12 @@ cl_platform_id platform;
 cl_device_id device;
 cl_context context;
 cl_command_queue commandQueue;
+#elif(VKFFT_BACKEND==4) //Level Zero API
+ze_driver_handle_t driver;
+ze_device_handle_t device;
+ze_context_handle_t context;
+ze_command_queue_handle_t commandQueue;
+uint32_t commandQueueID;
 #endif
 uint64_t device_id; //an id of a device, reported by devices_list call
 } VkGPU;
@@ -1704,6 +1760,71 @@ for (uint64_t j = 0; j < numPlatforms; j++) {
 	free(deviceList);
 }
 free(platforms);
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
+	res = zeInit(0);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	uint32_t numDrivers = 0;
+	res = zeDriverGet(&numDrivers, 0);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	ze_driver_handle_t* drivers = (ze_driver_handle_t*)malloc(numDrivers * sizeof(ze_driver_handle_t));
+	if (!drivers) return VKFFT_ERROR_MALLOC_FAILED;
+	res = zeDriverGet(&numDrivers, drivers);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	uint64_t k = 0;
+	for (uint64_t j = 0; j < numDrivers; j++) {
+		uint32_t numDevices = 0;
+		res = zeDeviceGet(drivers[j], &numDevices, nullptr);
+		if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+		ze_device_handle_t* deviceList = (ze_device_handle_t*)malloc(numDevices * sizeof(ze_device_handle_t));
+		if (!deviceList) return VKFFT_ERROR_MALLOC_FAILED;
+		res = zeDeviceGet(drivers[j], &numDevices, deviceList);
+		if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+		for (uint64_t i = 0; i < numDevices; i++) {
+			if (k == vkGPU->device_id) {
+				vkGPU->driver = drivers[j];
+				vkGPU->device = deviceList[i];
+				ze_context_desc_t contextDescription = {};
+				contextDescription.stype = ZE_STRUCTURE_TYPE_CONTEXT_DESC;
+				res = zeContextCreate(vkGPU->driver, &contextDescription, &vkGPU->context);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
+
+				uint32_t queueGroupCount = 0;
+				res = zeDeviceGetCommandQueueGroupProperties(vkGPU->device, &queueGroupCount, 0);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
+
+				ze_command_queue_group_properties_t* cmdqueueGroupProperties = (ze_command_queue_group_properties_t*) malloc(queueGroupCount * sizeof(ze_command_queue_group_properties_t));
+				if (!cmdqueueGroupProperties) return VKFFT_ERROR_MALLOC_FAILED;
+				res = zeDeviceGetCommandQueueGroupProperties(vkGPU->device, &queueGroupCount, cmdqueueGroupProperties);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
+
+				uint32_t commandQueueID = -1;
+				for (uint32_t i = 0; i < queueGroupCount; ++i) {
+					if ((cmdqueueGroupProperties[i].flags && ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_COMPUTE) && (cmdqueueGroupProperties[i].flags && ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_COPY)) {
+						commandQueueID = i;
+						break;
+					}
+				}
+				if (commandQueueID == -1) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
+				vkGPU->commandQueueID = commandQueueID;
+				ze_command_queue_desc_t commandQueueDescription = {};
+				commandQueueDescription.stype = ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC;
+				commandQueueDescription.ordinal = commandQueueID;
+				commandQueueDescription.priority = ZE_COMMAND_QUEUE_PRIORITY_NORMAL;
+				commandQueueDescription.mode = ZE_COMMAND_QUEUE_MODE_DEFAULT;
+				res = zeCommandQueueCreate(vkGPU->context, vkGPU->device, &commandQueueDescription, &vkGPU->commandQueue);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
+				free(cmdqueueGroupProperties);
+				k++;
+			}
+			else {
+				k++;
+			}
+		}
+
+		free(deviceList);
+	}
+	free(drivers);
 #endif
 \end{minted}
 \end{mdframed}
@@ -1738,8 +1859,11 @@ configuration.commandPool = &vkGPU->commandPool;
 configuration.physicalDevice = &vkGPU->physicalDevice; 			
 configuration.isCompilerInitialized = isCompilerInitialized; //glslang compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization 
 #elif(VKFFT_BACKEND==3) //OpenCL API		
-configuration.platform = &vkGPU->platform; 			
 configuration.context = &vkGPU->context; 
+#elif(VKFFT_BACKEND==4)
+configuration.context = &vkGPU->context;
+configuration.commandQueue = &vkGPU->commandQueue;
+configuration.commandQueueID = vkGPU->commandQueueID;
 #endif
 
 allocateBuffer(buffer, bufferSize); //Pseudocode for buffer allocation, differs between APIs
@@ -1757,6 +1881,8 @@ launchParams.buffer = &buffer;
 launchParams.commandBuffer = &commandBuffer;
 #elif(VKFFT_BACKEND==3) //OpenCL API
 launchParams.commandQueue = &commandQueue;
+#elif(VKFFT_BACKEND==4) //Level Zero API
+launchParams->commandList = &commandList;
 #endif
 resFFT = VkFFTAppend(app, -1, &launchParams);
 
@@ -2004,7 +2130,7 @@ configuration.saveApplicationToString = 1;
 if (configuration.loadApplicationFromString) {
 	FILE* kernelCache;
 	uint64_t str_len;
-#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2))
+#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2) || (VKFFT_BACKEND==4))
 	kernelCache = fopen("VkFFT_binary", "rb"); //Vulkan and HIP backends load data as a uint32_t sequence
 #else
 	kernelCache = fopen("VkFFT_binary", "r"); 
@@ -2025,7 +2151,7 @@ if (configuration.loadApplicationFromString)
 
 if (configuration.saveApplicationToString) {
 	FILE* kernelCache;
-#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2))
+#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2) || (VKFFT_BACKEND==4))
 	kernelCache = fopen("VkFFT_binary", "wb"); //Vulkan and HIP backends save data as a uint32_t sequence
 #else
 	kernelCache = fopen("VkFFT_binary", "w"); 

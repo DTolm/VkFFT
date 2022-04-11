@@ -37,6 +37,8 @@
 #else
 #include <CL/cl.h>
 #endif 
+#elif(VKFFT_BACKEND==4)
+#include <ze_api.h>
 #endif
 #include "vkFFT.h"
 #include "utils_VkFFT.h"
@@ -52,6 +54,8 @@ VkFFTResult sample_6_benchmark_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_outp
 	hipError_t res = hipSuccess;
 #elif(VKFFT_BACKEND==3)
 	cl_int res = CL_SUCCESS;
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "6 - VkFFT FFT + iFFT R2C/C2R benchmark\n");
@@ -92,8 +96,11 @@ VkFFTResult sample_6_benchmark_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_outp
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
 #elif(VKFFT_BACKEND==3)
-			configuration.platform = &vkGPU->platform;
 			configuration.context = &vkGPU->context;
+#elif(VKFFT_BACKEND==4)
+			configuration.context = &vkGPU->context;
+			configuration.commandQueue = &vkGPU->commandQueue;
+			configuration.commandQueueID = vkGPU->commandQueueID;
 #endif
 
 
@@ -119,6 +126,13 @@ VkFFTResult sample_6_benchmark_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_outp
 			cl_mem buffer = 0;
 			buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
 			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			configuration.buffer = &buffer;
+#elif(VKFFT_BACKEND==4)
+			void* buffer = 0;
+			ze_device_mem_alloc_desc_t device_desc = {};
+			device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+			res = zeMemAllocDevice(vkGPU->context, &device_desc, bufferSize, sizeof(float), vkGPU->device, &buffer);
+			if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = &buffer;
 #endif
 
@@ -147,6 +161,23 @@ VkFFTResult sample_6_benchmark_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_outp
 #elif(VKFFT_BACKEND==3)
 			res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
 			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==4)
+			ze_command_queue_desc_t commandQueueCopyDesc = {
+				ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
+				0,
+				vkGPU->commandQueueID,
+				0, // index
+				0, // flags
+				ZE_COMMAND_QUEUE_MODE_DEFAULT,
+				ZE_COMMAND_QUEUE_PRIORITY_NORMAL
+			};
+			ze_command_list_handle_t copyCommandList;
+			res = zeCommandListCreateImmediate(vkGPU->context, vkGPU->device, &commandQueueCopyDesc, &copyCommandList);
+			if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+			res = zeCommandListAppendMemoryCopy(copyCommandList, buffer, buffer_input, bufferSize, 0, 0, 0);
+			if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+			res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
+			if (res != 0) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 #endif
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 			resFFT = initializeVkFFT(&app, configuration);
@@ -160,6 +191,11 @@ VkFFTResult sample_6_benchmark_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_outp
 			cl_uint vendorID;
 			clGetDeviceInfo(vkGPU->device, CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
 			if (vendorID == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
+#elif(VKFFT_BACKEND==4)
+			ze_device_properties_t device_properties;
+			res = zeDeviceGetProperties(vkGPU->device, &device_properties);
+			if (res != 0) return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
+			if (device_properties.vendorId == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
 
@@ -218,6 +254,8 @@ VkFFTResult sample_6_benchmark_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_outp
 			hipFree(buffer);
 #elif(VKFFT_BACKEND==3)
 			clReleaseMemObject(buffer);
+#elif(VKFFT_BACKEND==4)
+			zeMemFree(vkGPU->context, buffer);
 #endif
 			deleteVkFFT(&app);
 

@@ -1,6 +1,6 @@
 [![Build Status](https://travis-ci.com/DTolm/VkFFT.svg?token=nMgUQeqx7PXMeCFaXqsb&branch=master)](https://travis-ci.com/github/DTolm/VkFFT)
-# VkFFT - Vulkan/CUDA/HIP/OpenCL Fast Fourier Transform library
-VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan/CUDA/HIP/OpenCL projects. VkFFT aims to provide the community with an open-source alternative to Nvidia's cuFFT library while achieving better performance. VkFFT is written in C language and supports Vulkan, CUDA, HIP and OpenCL as backends.
+# VkFFT - Vulkan/CUDA/HIP/OpenCL/Level Zero Fast Fourier Transform library
+VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan/CUDA/HIP/OpenCL/Level Zero projects. VkFFT aims to provide the community with an open-source alternative to Nvidia's cuFFT library while achieving better performance. VkFFT is written in C language and supports Vulkan, CUDA, HIP, OpenCL and Level Zero as backends.
 
 ## Check out my panel at Nvidia's GTC 2021 in Higher Education and Research category: https://gtc21.event.nvidia.com/
 
@@ -27,7 +27,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - Multiple input/output/temporary buffer split. Allows using data split between different memory allocations and mitigates 4GB single allocation limit.
   - Works on Nvidia, AMD and Intel GPUs. And Raspberry Pi 4 GPU.
   - Works on Windows, Linux and macOS
-  - VkFFT supports Vulkan, CUDA, HIP and OpenCL as backend to cover wide range of APIs
+  - VkFFT supports Vulkan, CUDA, HIP, OpenCL and Level Zero as backend to cover wide range of APIs
   - Header-only library with Vulkan interface, which allows appending VkFFT directly to user's command buffer. Kernels are compiled at run-time
 ## Future release plan
  - ##### Planned
@@ -48,6 +48,10 @@ To build CUDA/HIP version of the benchmark, replace VKFFT_BACKEND in CMakeLists 
 OpenCL:
 Include the vkFFT.h file. Provide the library with correctly chosen VKFFT_BACKEND definition. Only single/double precision for now.\
 To build OpenCL version of the benchmark, replace VKFFT_BACKEND in CMakeLists (line 5) with the value 3 and optionally enable FFTW.
+
+Level Zero:
+Include the vkFFT.h file. Provide the library with correctly chosen VKFFT_BACKEND definition. Clang and llvm-spirv must be valid system calls. Only single/double precision for now.\
+To build Level Zero version of the benchmark, replace VKFFT_BACKEND in CMakeLists (line 5) with the value 4 and optionally enable FFTW.
 ## Command-line interface
 VkFFT has a command-line interface with the following set of commands:\
 -h: print help\

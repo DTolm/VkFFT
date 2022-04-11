@@ -37,6 +37,8 @@
 #else
 #include <CL/cl.h>
 #endif 
+#elif(VKFFT_BACKEND==4)
+#include <ze_api.h>
 #endif
 #include "vkFFT.h"
 #include "utils_VkFFT.h"
@@ -52,6 +54,8 @@ VkFFTResult sample_52_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint
 	hipError_t res = hipSuccess;
 #elif(VKFFT_BACKEND==3)
 	cl_int res = CL_SUCCESS;
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "52 - VkFFT batched convolution example with identitiy kernel\n");
@@ -85,8 +89,11 @@ VkFFTResult sample_52_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint
 	configuration.physicalDevice = &vkGPU->physicalDevice;
 	configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
 #elif(VKFFT_BACKEND==3)
-	configuration.platform = &vkGPU->platform;
 	configuration.context = &vkGPU->context;
+#elif(VKFFT_BACKEND==4)
+	configuration.context = &vkGPU->context;
+	configuration.commandQueue = &vkGPU->commandQueue;
+	configuration.commandQueueID = vkGPU->commandQueueID;
 #endif
 	//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from configuration is passed to convolution_configuration as kernel object.
 	//1. Kernel forward FFT.
@@ -112,6 +119,13 @@ VkFFTResult sample_52_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint
 	cl_mem kernel = 0;
 	kernel = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, kernelSize, 0, &res);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	configuration.buffer = &kernel;
+#elif(VKFFT_BACKEND==4)
+	void* kernel = 0;
+	ze_device_mem_alloc_desc_t device_desc = {};
+	device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+	res = zeMemAllocDevice(vkGPU->context, &device_desc, kernelSize, sizeof(float), vkGPU->device, &kernel);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = &kernel;
 #endif
 
@@ -153,6 +167,23 @@ VkFFTResult sample_52_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint
 #elif(VKFFT_BACKEND==3)
 	res = clEnqueueWriteBuffer(vkGPU->commandQueue, kernel, CL_TRUE, 0, kernelSize, kernel_input, 0, NULL, NULL);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==4)
+	ze_command_queue_desc_t commandQueueCopyDesc = {
+				ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
+				0,
+				vkGPU->commandQueueID,
+				0, // index
+				0, // flags
+				ZE_COMMAND_QUEUE_MODE_DEFAULT,
+				ZE_COMMAND_QUEUE_PRIORITY_NORMAL
+	};
+	ze_command_list_handle_t copyCommandList;
+	res = zeCommandListCreateImmediate(vkGPU->context, vkGPU->device, &commandQueueCopyDesc, &copyCommandList);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+	res = zeCommandListAppendMemoryCopy(copyCommandList, kernel, kernel_input, kernelSize, 0, 0, 0);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+	res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 #endif
 	//Initialize application responsible for the kernel. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 	resFFT = initializeVkFFT(&app_kernel, configuration);
@@ -180,6 +211,8 @@ VkFFTResult sample_52_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint
 	convolution_configuration.kernel = (void**)&kernel;
 #elif(VKFFT_BACKEND==3)
 	convolution_configuration.kernel = &kernel;
+#elif(VKFFT_BACKEND==4)
+	convolution_configuration.kernel = (void**)&kernel;
 #endif	
 
 	convolution_configuration.kernelSize = &kernelSize;
@@ -228,6 +261,15 @@ VkFFTResult sample_52_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	convolution_configuration.inputBuffer = &inputBuffer;
 	convolution_configuration.buffer = &buffer;
+#elif(VKFFT_BACKEND==4)
+	void* inputBuffer = 0;
+	void* buffer = 0;
+	res = zeMemAllocDevice(vkGPU->context, &device_desc, inputBufferSize, sizeof(float), vkGPU->device, &inputBuffer);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	res = zeMemAllocDevice(vkGPU->context, &device_desc, bufferSize, sizeof(float), vkGPU->device, &buffer);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	convolution_configuration.inputBuffer = &inputBuffer;
+	configuration.buffer = &buffer;
 #endif
 
 	convolution_configuration.inputBufferSize = &inputBufferSize;
@@ -262,6 +304,15 @@ VkFFTResult sample_52_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint
 #elif(VKFFT_BACKEND==3)
 	res = clEnqueueWriteBuffer(vkGPU->commandQueue, inputBuffer, CL_TRUE, 0, inputBufferSize, buffer_input, 0, NULL, NULL);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==4)
+	res = zeCommandListReset(copyCommandList);
+	if (res != ZE_RESULT_SUCCESS)return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
+	res = zeCommandListCreateImmediate(vkGPU->context, vkGPU->device, &commandQueueCopyDesc, &copyCommandList);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+	res = zeCommandListAppendMemoryCopy(copyCommandList, inputBuffer, buffer_input, inputBufferSize, 0, 0, 0);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+	res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 #endif
 
 	//Initialize application responsible for the convolution.
@@ -288,6 +339,15 @@ VkFFTResult sample_52_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint
 #elif(VKFFT_BACKEND==3)
 	res = clEnqueueReadBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_output, 0, NULL, NULL);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==4)
+	res = zeCommandListReset(copyCommandList);
+	if (res != ZE_RESULT_SUCCESS)return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
+	res = zeCommandListCreateImmediate(vkGPU->context, vkGPU->device, &commandQueueCopyDesc, &copyCommandList);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+	res = zeCommandListAppendMemoryCopy(copyCommandList, buffer_output, buffer, bufferSize, 0, 0, 0);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+	res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 #endif
 
 	//Print data, if needed.
@@ -334,6 +394,10 @@ VkFFTResult sample_52_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint
 	clReleaseMemObject(inputBuffer);
 	clReleaseMemObject(buffer);
 	clReleaseMemObject(kernel);
+#elif(VKFFT_BACKEND==4)
+	zeMemFree(vkGPU->context, inputBuffer);
+	zeMemFree(vkGPU->context, buffer);
+	zeMemFree(vkGPU->context, kernel);
 #endif	
 	deleteVkFFT(&app_kernel);
 	deleteVkFFT(&app_convolution);

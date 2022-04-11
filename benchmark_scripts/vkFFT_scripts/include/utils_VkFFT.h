@@ -27,6 +27,12 @@ typedef struct {
 	cl_device_id device;
 	cl_context context;
 	cl_command_queue commandQueue;
+#elif(VKFFT_BACKEND==4)
+	ze_driver_handle_t driver;
+	ze_device_handle_t device;
+	ze_context_handle_t context;
+	ze_command_queue_handle_t commandQueue;
+	uint32_t commandQueueID;
 #endif
 	uint64_t device_id;//an id of a device, reported by Vulkan device list
 } VkGPU;//an example structure containing Vulkan primitives
@@ -40,6 +46,8 @@ typedef struct {
 	uint64_t N;
 	uint64_t R2C;
 	uint64_t DCT;
+	uint64_t saveApplicationToString;
+	uint64_t loadApplicationFromString;
 } VkFFTUserSystemParameters;//an example structure used to pass user-defined system for benchmarking
 
 #if(VKFFT_BACKEND==0)

@@ -37,6 +37,8 @@
 #else
 #include <CL/cl.h>
 #endif 
+#elif(VKFFT_BACKEND==4)
+#include <ze_api.h>
 #endif
 #include "vkFFT.h"
 #include "half.hpp"
@@ -55,6 +57,8 @@ VkFFTResult sample_2_benchmark_VkFFT_half(VkGPU* vkGPU, uint64_t file_output, FI
 	hipError_t res = hipSuccess;
 #elif(VKFFT_BACKEND==3)
 	cl_int res = CL_SUCCESS;
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "2 - VkFFT FFT + iFFT C2C benchmark 1D batched in half precision\n");
@@ -101,6 +105,16 @@ VkFFTResult sample_2_benchmark_VkFFT_half(VkGPU* vkGPU, uint64_t file_output, FI
 				else
 					configuration.coalescedMemory = 128;
 			}
+#elif(VKFFT_BACKEND==4)
+			ze_device_properties_t device_properties;
+			res = zeDeviceGetProperties(vkGPU->device, &device_properties);
+			if (res != 0) return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
+			if (device_properties.vendorId == 0x8086) {
+				if (n > 22)//128byte coalescing has a limit of 2^24 max size
+					configuration.coalescedMemory = 64;
+				else
+					configuration.coalescedMemory = 128;
+			}
 #endif
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 			configuration.device = &vkGPU->device;
@@ -111,8 +125,11 @@ VkFFTResult sample_2_benchmark_VkFFT_half(VkGPU* vkGPU, uint64_t file_output, FI
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
 #elif(VKFFT_BACKEND==3)
-			configuration.platform = &vkGPU->platform;
 			configuration.context = &vkGPU->context;
+#elif(VKFFT_BACKEND==4)
+			configuration.context = &vkGPU->context;
+			configuration.commandQueue = &vkGPU->commandQueue;
+			configuration.commandQueueID = vkGPU->commandQueueID;
 #endif
 
 			//Allocate buffer for the input data.
@@ -137,6 +154,13 @@ VkFFTResult sample_2_benchmark_VkFFT_half(VkGPU* vkGPU, uint64_t file_output, FI
 			cl_mem buffer = 0;
 			buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
 			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			configuration.buffer = &buffer;
+#elif(VKFFT_BACKEND==4)
+			void* buffer = 0;
+			ze_device_mem_alloc_desc_t device_desc = {};
+			device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+			res = zeMemAllocDevice(vkGPU->context, &device_desc, bufferSize, sizeof(half), vkGPU->device, &buffer);
+			if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			configuration.buffer = &buffer;
 #endif
 
@@ -166,6 +190,23 @@ VkFFTResult sample_2_benchmark_VkFFT_half(VkGPU* vkGPU, uint64_t file_output, FI
 #elif(VKFFT_BACKEND==3)
 			res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize, buffer_input, 0, NULL, NULL);
 			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==4)
+			ze_command_queue_desc_t commandQueueCopyDesc = {
+				ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
+				0,
+				vkGPU->commandQueueID,
+				0, // index
+				0, // flags
+				ZE_COMMAND_QUEUE_MODE_DEFAULT,
+				ZE_COMMAND_QUEUE_PRIORITY_NORMAL
+			};
+			ze_command_list_handle_t copyCommandList;
+			res = zeCommandListCreateImmediate(vkGPU->context, vkGPU->device, &commandQueueCopyDesc, &copyCommandList);
+			if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+			res = zeCommandListAppendMemoryCopy(copyCommandList, buffer, buffer_input, bufferSize, 0, 0, 0);
+			if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+			res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
+			if (res != 0) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 #endif
 			//free(buffer_input);
 
@@ -179,6 +220,8 @@ VkFFTResult sample_2_benchmark_VkFFT_half(VkGPU* vkGPU, uint64_t file_output, FI
 			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
 #elif(VKFFT_BACKEND==3)
 			if (vendorID == 0x8086) num_iter /= 4;
+#elif(VKFFT_BACKEND==4)
+			if (device_properties.vendorId == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
 			double totTime = 0;
@@ -221,6 +264,8 @@ VkFFTResult sample_2_benchmark_VkFFT_half(VkGPU* vkGPU, uint64_t file_output, FI
 			hipFree(buffer);
 #elif(VKFFT_BACKEND==3)
 			clReleaseMemObject(buffer);
+#elif(VKFFT_BACKEND==4)
+			zeMemFree(vkGPU->context, buffer);
 #endif
 			deleteVkFFT(&app);
 

@@ -37,6 +37,8 @@
 #else
 #include <CL/cl.h>
 #endif 
+#elif(VKFFT_BACKEND==4)
+#include <ze_api.h>
 #endif
 #include "vkFFT.h"
 #include "utils_VkFFT.h"
@@ -52,6 +54,8 @@ VkFFTResult sample_10_benchmark_VkFFT_single_multipleBuffers(VkGPU* vkGPU, uint6
 	hipError_t res = hipSuccess;
 #elif(VKFFT_BACKEND==3)
 	cl_int res = CL_SUCCESS;
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
 #endif
 #if(VKFFT_BACKEND==0)
 	if (file_output)

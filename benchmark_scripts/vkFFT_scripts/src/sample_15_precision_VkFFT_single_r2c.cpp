@@ -38,6 +38,8 @@
 #else
 #include <CL/cl.h>
 #endif 
+#elif(VKFFT_BACKEND==4)
+#include <ze_api.h>
 #endif
 #include "vkFFT.h"
 #include "utils_VkFFT.h"
@@ -59,6 +61,8 @@ VkFFTResult sample_15_precision_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_out
 	hipError_t res = hipSuccess;
 #elif(VKFFT_BACKEND==3)
 	cl_int res = CL_SUCCESS;
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
 #endif
 	if (file_output)
 		fprintf(output, "15 - VkFFT / FFTW R2C+C2R precision test in single precision\n");
@@ -182,8 +186,11 @@ VkFFTResult sample_15_precision_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_out
 			configuration.physicalDevice = &vkGPU->physicalDevice;
 			configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
 #elif(VKFFT_BACKEND==3)
-			configuration.platform = &vkGPU->platform;
 			configuration.context = &vkGPU->context;
+#elif(VKFFT_BACKEND==4)
+			configuration.context = &vkGPU->context;
+			configuration.commandQueue = &vkGPU->commandQueue;
+			configuration.commandQueueID = vkGPU->commandQueueID;
 #endif			
 
 			uint64_t numBuf = 1;
@@ -218,6 +225,9 @@ VkFFTResult sample_15_precision_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_out
 #elif(VKFFT_BACKEND==3)
 			cl_mem ibuffer = 0;
 			cl_mem buffer = 0;
+#elif(VKFFT_BACKEND==4)
+			void* ibuffer = 0;
+			void* buffer = 0;
 #endif
 			for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
@@ -244,41 +254,22 @@ VkFFTResult sample_15_precision_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_out
 				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 				buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize[i], 0, &res);
 				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+#elif(VKFFT_BACKEND==4)
+				ze_device_mem_alloc_desc_t device_desc = {};
+				device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+				res = zeMemAllocDevice(vkGPU->context, &device_desc, inputBufferSize[i], sizeof(float), vkGPU->device, &ibuffer);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+				res = zeMemAllocDevice(vkGPU->context, &device_desc, bufferSize[i], sizeof(float), vkGPU->device, &buffer);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #endif
 			}
 			configuration.inputBufferNum = numBuf;
 			configuration.bufferNum = numBuf;
 			configuration.bufferSize = bufferSize;
-#if(VKFFT_BACKEND==0)
 			configuration.isInputFormatted = 1;
 			configuration.inputBufferStride[0] = configuration.size[0];
 			configuration.inputBufferStride[1] = configuration.size[0] * configuration.size[1];
 			configuration.inputBufferStride[2] = configuration.size[0] * configuration.size[1] * configuration.size[2];
-			//configuration.inputBuffer = ibuffer;
-			//configuration.buffer = buffer;
-#elif(VKFFT_BACKEND==1)
-			configuration.isInputFormatted = 1;
-			configuration.inputBufferStride[0] = configuration.size[0];
-			configuration.inputBufferStride[1] = configuration.size[0] * configuration.size[1];
-			configuration.inputBufferStride[2] = configuration.size[0] * configuration.size[1] * configuration.size[2];
-			//configuration.inputBuffer = (void**)&ibuffer;
-			//configuration.buffer = (void**)&buffer;
-
-#elif(VKFFT_BACKEND==2)
-			configuration.isInputFormatted = 1;
-			configuration.inputBufferStride[0] = configuration.size[0];
-			configuration.inputBufferStride[1] = configuration.size[0] * configuration.size[1];
-			configuration.inputBufferStride[2] = configuration.size[0] * configuration.size[1] * configuration.size[2];
-			//configuration.inputBuffer = (void**)&ibuffer;
-			//configuration.buffer = (void**)&buffer;
-#elif(VKFFT_BACKEND==3)
-			configuration.isInputFormatted = 1;
-			configuration.inputBufferStride[0] = configuration.size[0];
-			configuration.inputBufferStride[1] = configuration.size[0] * configuration.size[1];
-			configuration.inputBufferStride[2] = configuration.size[0] * configuration.size[1] * configuration.size[2];
-			//configuration.inputBuffer = (void**)&ibuffer;
-			//configuration.buffer = (void**)&buffer;
-#endif
 			configuration.inputBufferSize = inputBufferSize;
 
 
@@ -297,6 +288,23 @@ VkFFTResult sample_15_precision_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_out
 #elif(VKFFT_BACKEND==3)
 				res = clEnqueueWriteBuffer(vkGPU->commandQueue, ibuffer, CL_TRUE, 0, inputBufferSize[i], inputC, 0, NULL, NULL);
 				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==4)
+				ze_command_queue_desc_t commandQueueCopyDesc = {
+					ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
+					0,
+					vkGPU->commandQueueID,
+					0, // index
+					0, // flags
+					ZE_COMMAND_QUEUE_MODE_DEFAULT,
+					ZE_COMMAND_QUEUE_PRIORITY_NORMAL
+				};
+				ze_command_list_handle_t copyCommandList;
+				res = zeCommandListCreateImmediate(vkGPU->context, vkGPU->device, &commandQueueCopyDesc, &copyCommandList);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+				res = zeCommandListAppendMemoryCopy(copyCommandList, ibuffer, inputC, inputBufferSize[i], 0, 0, 0);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+				res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
+				if (res != 0) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 #endif
 				shift += inputBufferSize[i];
 			}
@@ -320,6 +328,9 @@ VkFFTResult sample_15_precision_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_out
 #elif(VKFFT_BACKEND==3)
 			launchParams.inputBuffer = &ibuffer;
 			launchParams.buffer = &buffer;
+#elif(VKFFT_BACKEND==4)
+			launchParams.inputBuffer = (void**)&ibuffer;
+			launchParams.buffer = (void**)&buffer;
 #endif
 			resFFT = performVulkanFFT(vkGPU, &app, &launchParams, -1, num_iter);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -336,6 +347,9 @@ VkFFTResult sample_15_precision_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_out
 #elif(VKFFT_BACKEND==3)
 			launchParams2.inputBuffer = &ibuffer;
 			launchParams2.buffer = &buffer;
+#elif(VKFFT_BACKEND==4)
+			launchParams2.inputBuffer = (void**)&ibuffer;
+			launchParams2.buffer = (void**)&buffer;
 #endif
 			resFFT = performVulkanFFT(vkGPU, &app, &launchParams2, 1, num_iter);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -360,6 +374,23 @@ VkFFTResult sample_15_precision_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_out
 #elif(VKFFT_BACKEND==3)
 				res = clEnqueueReadBuffer(vkGPU->commandQueue, ibuffer, CL_TRUE, 0, inputBufferSize[i], output_VkFFT, 0, NULL, NULL);
 				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==4)
+				ze_command_queue_desc_t commandQueueCopyDesc = {
+					ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
+					0,
+					vkGPU->commandQueueID,
+					0, // index
+					0, // flags
+					ZE_COMMAND_QUEUE_MODE_DEFAULT,
+					ZE_COMMAND_QUEUE_PRIORITY_NORMAL
+				};
+				ze_command_list_handle_t copyCommandList;
+				res = zeCommandListCreateImmediate(vkGPU->context, vkGPU->device, &commandQueueCopyDesc, &copyCommandList);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+				res = zeCommandListAppendMemoryCopy(copyCommandList, output_VkFFT, ibuffer, inputBufferSize[i], 0, 0, 0);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+				res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
+				if (res != 0) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 #endif
 				shift += inputBufferSize[i];
 			}
@@ -436,6 +467,9 @@ VkFFTResult sample_15_precision_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_out
 #elif(VKFFT_BACKEND==3)
 				clReleaseMemObject(ibuffer);
 				clReleaseMemObject(buffer);
+#elif(VKFFT_BACKEND==4)
+				zeMemFree(vkGPU->context, ibuffer);
+				zeMemFree(vkGPU->context, buffer);
 #endif
 
 			}

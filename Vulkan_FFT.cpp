@@ -33,6 +33,8 @@
 #else
 #include <CL/cl.h>
 #endif 
+#elif(VKFFT_BACKEND==4)
+#include <ze_api.h>
 #endif
 #include "vkFFT.h"
 #include "utils_VkFFT.h"
@@ -203,6 +205,71 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 		free(deviceList);
 	}
 	free(platforms);
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
+	res = zeInit(0);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	uint32_t numDrivers = 0;
+	res = zeDriverGet(&numDrivers, 0);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	ze_driver_handle_t* drivers = (ze_driver_handle_t*)malloc(numDrivers * sizeof(ze_driver_handle_t));
+	if (!drivers) return VKFFT_ERROR_MALLOC_FAILED;
+	res = zeDriverGet(&numDrivers, drivers);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	uint64_t k = 0;
+	for (uint64_t j = 0; j < numDrivers; j++) {
+		uint32_t numDevices = 0;
+		res = zeDeviceGet(drivers[j], &numDevices, nullptr);
+		if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+		ze_device_handle_t* deviceList = (ze_device_handle_t*)malloc(numDevices * sizeof(ze_device_handle_t));
+		if (!deviceList) return VKFFT_ERROR_MALLOC_FAILED;
+		res = zeDeviceGet(drivers[j], &numDevices, deviceList);
+		if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+		for (uint64_t i = 0; i < numDevices; i++) {
+			if (k == vkGPU->device_id) {
+				vkGPU->driver = drivers[j];
+				vkGPU->device = deviceList[i];
+				ze_context_desc_t contextDescription = {};
+				contextDescription.stype = ZE_STRUCTURE_TYPE_CONTEXT_DESC;
+				res = zeContextCreate(vkGPU->driver, &contextDescription, &vkGPU->context);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
+
+				uint32_t queueGroupCount = 0;
+				res = zeDeviceGetCommandQueueGroupProperties(vkGPU->device, &queueGroupCount, 0);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
+
+				ze_command_queue_group_properties_t* cmdqueueGroupProperties = (ze_command_queue_group_properties_t*) malloc(queueGroupCount * sizeof(ze_command_queue_group_properties_t));
+				if (!cmdqueueGroupProperties) return VKFFT_ERROR_MALLOC_FAILED;
+				res = zeDeviceGetCommandQueueGroupProperties(vkGPU->device, &queueGroupCount, cmdqueueGroupProperties);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
+
+				uint32_t commandQueueID = -1;
+				for (uint32_t i = 0; i < queueGroupCount; ++i) {
+					if ((cmdqueueGroupProperties[i].flags && ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_COMPUTE) && (cmdqueueGroupProperties[i].flags && ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_COPY)) {
+						commandQueueID = i;
+						break;
+					}
+				}
+				if (commandQueueID == -1) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
+				vkGPU->commandQueueID = commandQueueID;
+				ze_command_queue_desc_t commandQueueDescription = {};
+				commandQueueDescription.stype = ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC;
+				commandQueueDescription.ordinal = commandQueueID;
+				commandQueueDescription.priority = ZE_COMMAND_QUEUE_PRIORITY_NORMAL;
+				commandQueueDescription.mode = ZE_COMMAND_QUEUE_MODE_DEFAULT;
+				res = zeCommandQueueCreate(vkGPU->context, vkGPU->device, &commandQueueDescription, &vkGPU->commandQueue);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
+				free(cmdqueueGroupProperties);
+				k++;
+			}
+			else {
+				k++;
+			}
+		}
+
+		free(deviceList);
+	}
+	free(drivers);
 #endif
 
 	uint64_t isCompilerInitialized = 1;
@@ -404,6 +471,10 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	res = clReleaseCommandQueue(vkGPU->commandQueue);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
 	clReleaseContext(vkGPU->context);
+#elif(VKFFT_BACKEND==4)
+	res = zeCommandQueueDestroy(vkGPU->commandQueue);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
+	res = zeContextDestroy(vkGPU->context);
 #endif
 
 	return resFFT;
@@ -439,7 +510,7 @@ int main(int argc, char* argv[])
 		version_decomposed[0] = version / 10000;
 		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
 		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
-		printf("VkFFT v%d.%d.%d (22-03-2022). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
+		printf("VkFFT v%d.%d.%d (11-04-2022). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
@@ -448,6 +519,8 @@ int main(int argc, char* argv[])
 		printf("HIP backend\n");
 #elif (VKFFT_BACKEND==3)
 		printf("OpenCL backend\n");
+#elif (VKFFT_BACKEND==4)
+		printf("Level Zero backend\n");
 #endif
 		printf("	-h: print help\n");
 		printf("	-devices: print the list of available device ids, used as -d argument\n");
@@ -532,7 +605,9 @@ int main(int argc, char* argv[])
 		-B uint - number of batched systems (default 1)\n\
 		-N uint - number of consecutive FFT+iFFT iterations (default 1)\n\
 		-R2C uint - use R2C (0 - off, 1 - on) (default 0)\n\
-		-DCT uint - perform DCT (0 - off, else type: 1, 2, 3 or 4) (default 0)\n");
+		-DCT uint - perform DCT (0 - off, else type: 1, 2, 3 or 4) (default 0)\n\
+		-save - save generated binaries\n\
+		-load - load previously generated binaries\n");
 #ifdef USE_cuFFT
 		printf("	-cufft X: launch cuFFT sample X:\n");
 		printf("		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n");
@@ -747,6 +822,14 @@ int main(int argc, char* argv[])
 				printf("No DCT parameter is selected with -DCT flag\n");
 				return 1;
 			}
+		}
+		if (findFlag(argv, argv + argc, "-save"))
+		{
+			userParams.saveApplicationToString = 1;
+		}
+		if (findFlag(argv, argv + argc, "-load"))
+		{
+			userParams.loadApplicationFromString = 1;
 		}
 		if (findFlag(argv, argv + argc, "-benchmark_vkfft")) {
 			VkFFTResult resFFT = launchVkFFT(&vkGPU, 200 + userParams.P, file_output, output, &userParams);

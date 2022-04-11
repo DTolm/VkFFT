@@ -37,6 +37,8 @@
 #else
 #include <CL/cl.h>
 #endif 
+#elif(VKFFT_BACKEND==4)
+#include <ze_api.h>
 #endif
 #include "vkFFT.h"
 #include "utils_VkFFT.h"
@@ -539,6 +541,37 @@ VkFFTResult devices_list() {
 		free(deviceList);
 	}
 	free(platforms);
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
+	res = zeInit(0);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	uint32_t numDrivers = 0;
+	res = zeDriverGet(&numDrivers, 0);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	ze_driver_handle_t* drivers = (ze_driver_handle_t*)malloc(numDrivers * sizeof(ze_driver_handle_t));
+	if (!drivers) return VKFFT_ERROR_MALLOC_FAILED;
+	res = zeDriverGet(&numDrivers, drivers);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
+	uint64_t k = 0;
+	for (uint64_t j = 0; j < numDrivers; j++) {
+		uint32_t numDevices = 0;
+		res = zeDeviceGet(drivers[j], &numDevices, nullptr);
+		if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+		ze_device_handle_t* deviceList = (ze_device_handle_t*)malloc(numDevices * sizeof(ze_device_handle_t));
+		if (!deviceList) return VKFFT_ERROR_MALLOC_FAILED;
+		res = zeDeviceGet(drivers[j], &numDevices, deviceList);
+		if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+		for (uint64_t i = 0; i < numDevices; i++) {
+			ze_device_properties_t device_properties;
+			res = zeDeviceGetProperties(deviceList[i], &device_properties);
+			if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES;
+			printf("Driver id: %" PRIu64 " Device id: %" PRIu64 " name: %s\n", j, k, device_properties.name);
+			k++;
+		}
+
+		free(deviceList);
+	}
+	free(drivers);
 #endif
 	return VKFFT_SUCCESS;
 }
@@ -613,6 +646,34 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
+	ze_command_list_desc_t commandListDescription = {};
+	commandListDescription.stype = ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC;
+	ze_command_list_handle_t commandList = {};
+	res = zeCommandListCreate(vkGPU->context, vkGPU->device, &commandListDescription, &commandList);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+	
+	launchParams->commandList = &commandList;
+	//Record commands num_iter times. Allows to perform multiple convolutions/transforms in one submit.
+	for (uint64_t i = 0; i < num_iter; i++) {
+		resFFT = VkFFTAppend(app, inverse, launchParams);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
+	}
+	res = zeCommandListClose(commandList);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+	
+	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
+	res = zeCommandQueueExecuteCommandLists(vkGPU->commandQueue, 1, &commandList, 0);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+	res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+
+	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
+	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	//printf("Pure submit execution time per num_iter: %.3f ms\n", totTime / num_iter);
+	res = zeCommandListDestroy(commandList);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
 #endif
 	return resFFT;
 }
@@ -697,6 +758,35 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 	time_result[0] = totTime / num_iter;
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
+	ze_command_list_desc_t commandListDescription = {};
+	commandListDescription.stype = ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC;
+	ze_command_list_handle_t commandList = {};
+	res = zeCommandListCreate(vkGPU->context, vkGPU->device, &commandListDescription, &commandList);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+
+	launchParams->commandList = &commandList;
+	for (uint64_t i = 0; i < num_iter; i++) {
+		resFFT = VkFFTAppend(app, -1, launchParams);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		resFFT = VkFFTAppend(app, 1, launchParams);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
+	}
+	res = zeCommandListClose(commandList);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+
+	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
+	res = zeCommandQueueExecuteCommandLists(vkGPU->commandQueue, 1, &commandList, 0);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+	res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+
+	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
+	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
+	time_result[0] = totTime / num_iter;
+	res = zeCommandListDestroy(commandList);
+	if (res != 0) return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
 #endif
 	return resFFT;
 }

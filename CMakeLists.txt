@@ -3,7 +3,7 @@ project(Vulkan_FFT)
 set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
 include(FetchContent)
-set(VKFFT_BACKEND 0 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL")
+set(VKFFT_BACKEND 0 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL, 4 - Level Zero")
 
 if(${VKFFT_BACKEND} EQUAL 1)
 	option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" ON)
@@ -104,6 +104,24 @@ elseif(${VKFFT_BACKEND} EQUAL 2)
 	#target_compile_definitions(${PROJECT_NAME} PUBLIC -DVKFFT_OLD_ROCM) #ROCm versions before 4.5 needed kernel include of hiprtc
 elseif(${VKFFT_BACKEND} EQUAL 3)
 	find_package(OpenCL REQUIRED)
+elseif(${VKFFT_BACKEND} EQUAL 4)
+	set(LevelZero_LIBRARY "/usr/lib/x86_64-linux-gnu/")
+	set(LevelZero_INCLUDE_DIR "/usr/include/")
+	find_library(
+		LevelZero_LIB
+		NAMES "ze_loader"
+		PATHS ${LevelZero_LIBRARY}
+		PATH_SUFFIXES "lib" "lib64"
+		NO_DEFAULT_PATH
+	  )
+	find_path(
+		LevelZero_INCLUDES
+		NAMES "ze_api.h"
+		PATHS ${LevelZero_INCLUDE_DIR}
+		PATH_SUFFIXES "include" 
+		NO_DEFAULT_PATH
+	  )
+	target_include_directories(${PROJECT_NAME} PUBLIC ${LevelZero_INCLUDES})
 endif()
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC -DVK_API_VERSION=11)#10 - Vulkan 1.0, 11 - Vulkan 1.1, 12 - Vulkan 1.2 
@@ -139,6 +157,8 @@ elseif(${VKFFT_BACKEND} EQUAL 2)
 	target_link_libraries(${PROJECT_NAME} PUBLIC hip::host VkFFT half)
 elseif(${VKFFT_BACKEND} EQUAL 3)
 	target_link_libraries(${PROJECT_NAME} PUBLIC OpenCL::OpenCL VkFFT half)
+elseif(${VKFFT_BACKEND} EQUAL 4)
+	target_link_libraries(${PROJECT_NAME} PUBLIC LevelZero VkFFT half)
 endif()
 
 if(build_VkFFT_FFTW_precision)
