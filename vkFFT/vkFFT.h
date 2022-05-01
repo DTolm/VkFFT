@@ -242,6 +242,8 @@ typedef struct {
 	uint64_t streamID;//Filled at app creation
 #elif(VKFFT_BACKEND==3)
 	cl_command_queue* commandQueue;
+	cl_event* event;//User given address to an event that is filled
+	cl_event internal_event;//An event to synchronize the calls if the user does not provide an event
 #elif(VKFFT_BACKEND==4)
 	ze_command_list_handle_t* commandList;//Filled at app execution
 #endif
@@ -276,6 +278,9 @@ typedef struct {
 	cl_mem* inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
 	cl_mem* outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
 	cl_mem* kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
+	cl_uint num_events_in_wait_list;//number of opencl events to wait for
+	cl_event *event_wait_list;//opencl events to wait for
+	cl_event *event;//last opencl event for the FFT
 #elif(VKFFT_BACKEND==4)
 	ze_command_list_handle_t* commandList;//commandList to which FFT is appended
 
@@ -27795,7 +27800,12 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 				}
 				size_t local_work_size[3] = { (size_t)axis->specializationConstants.localSize[0], (size_t)axis->specializationConstants.localSize[1],(size_t)axis->specializationConstants.localSize[2] };
 				size_t global_work_size[3] = { (size_t)maxBlockSize[0] * local_work_size[0] , (size_t)maxBlockSize[1] * local_work_size[1] ,(size_t)maxBlockSize[2] * local_work_size[2] };
-				result = clEnqueueNDRangeKernel(app->configuration.commandQueue[0], axis->kernel, 3, 0, global_work_size, local_work_size, 0, 0, 0);
+				cl_event new_event;
+				result = clEnqueueNDRangeKernel(app->configuration.commandQueue[0], axis->kernel, 3, 0, global_work_size, local_work_size, 1, app->configuration.event, &new_event);
+				&app->configuration.event = new_event;
+				else {
+					result = clEnqueueNDRangeKernel(app->configuration.commandQueue[0], axis->kernel, 3, 0, global_work_size, local_work_size, 0, 0, 0);
+				}
 				//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 " - %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
 
 				if (result != CL_SUCCESS) {
@@ -27944,6 +27954,13 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	app->configuration.streamCounter = 0;
 #elif(VKFFT_BACKEND==3)
 	app->configuration.commandQueue = launchParams->commandQueue;
+	if (launchParams->event) {
+		app->configuration.event = launchParams->event;
+	}
+	else {
+		app->configuration.event = &app->configuration.internal_event;
+	}
+	clEnqueueMarkerWithWaitList(launchParams->commandQueue, launchParams->num_events_in_wait_list, launchParams->event_wait_list, app->configuration.event);
 #elif(VKFFT_BACKEND==4)
 	app->configuration.commandList = launchParams->commandList;
 #endif
