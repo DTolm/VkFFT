@@ -17103,7 +17103,7 @@ static inline void freeShaderGenVkFFT(VkFFTSpecializationConstantsLayout* sc) {
 		free(sc->disableThreadsStart);
 		sc->disableThreadsStart = 0;
 	}
-	if (sc->disableThreadsStart) {
+	if (sc->disableThreadsEnd) {
 		free(sc->disableThreadsEnd);
 		sc->disableThreadsEnd = 0;
 	}
