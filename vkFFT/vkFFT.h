@@ -22230,25 +22230,14 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 						else {
 							if (sc->mergeSequencesR2C) {
 								if (sc->axisSwapped) {
-									sc->tempLen = sprintf(sc->tempStr, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim / 2 + 1);
+									sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")];\n\
+									%s = sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")];\n", sc->w, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->temp, sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*((combinedID / %" PRIu64 ") %% 2 == 0 ? %s.x+%s.x : %s.y+%s.y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->w, sc->temp, sc->w, sc->temp);
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y-sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "}else{\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "}\n");
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*((combinedID / %" PRIu64 ") %% 2 == 0 ? %s.y-%s.y : -%s.x+%s.x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->w, sc->temp, sc->w, sc->temp);
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
 									if (sc->outputBufferBlockNum == 1)
@@ -22259,25 +22248,14 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 									if (res != VKFFT_SUCCESS) return res;
 								}
 								else {
-									sc->tempLen = sprintf(sc->tempStr, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim / 2 + 1);
+									sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride];\n\
+									%s = sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride];\n", sc->w, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->temp, sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*((combinedID / %" PRIu64 ") %% 2 == 0 ? %s.x+%s.x : %s.y+%s.y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->w, sc->temp, sc->w, sc->temp);
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y-sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "}else{\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "}\n");
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*((combinedID / %" PRIu64 ") %% 2 == 0 ? %s.y-%s.y : -%s.x+%s.x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->w, sc->temp, sc->w, sc->temp);
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
 									if (sc->outputBufferBlockNum == 1)
