@@ -158,7 +158,7 @@ elseif(${VKFFT_BACKEND} EQUAL 2)
 elseif(${VKFFT_BACKEND} EQUAL 3)
 	target_link_libraries(${PROJECT_NAME} PUBLIC OpenCL::OpenCL VkFFT half)
 elseif(${VKFFT_BACKEND} EQUAL 4)
-	target_link_libraries(${PROJECT_NAME} PUBLIC LevelZero VkFFT half)
+	target_link_libraries(${PROJECT_NAME} PUBLIC ze_loader VkFFT half)
 endif()
 
 if(build_VkFFT_FFTW_precision)
