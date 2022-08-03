@@ -1,1 +1,1 @@
-void sample_0_benchmark_rocFFT_single(bool file_output, FILE* output);
+void sample_0_benchmark_rocFFT_single(bool file_output, FILE* output, int device_id);

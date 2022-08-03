@@ -18,13 +18,14 @@
 #define GROUP 1
 
 
-void sample_6_benchmark_rocFFT_single_r2c(bool file_output, FILE* output)
+void sample_6_benchmark_rocFFT_single_r2c(bool file_output, FILE* output, int device_id)
 {
 	if (file_output)
 		fprintf(output, "6 - rocFFT FFT + iFFT R2C/C2R multidimensional benchmark in single precision\n");
 	printf("6 - rocFFT FFT + iFFT R2C/C2R multidimensional benchmark in single precision\n");
+	hipSetDevice(device_id);
 	const int num_benchmark_samples = 24;
-	const int num_runs = 3;
+	const int num_runs = 5;
 	//printf("First %" PRIu64 " runs are a warmup\n", num_runs);
 	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2}, {64, 64, 1, 2}, {256, 256, 1, 2}, {1024, 256, 1, 2}, {512, 512, 1, 2}, {1024, 1024, 1, 2},  {4096, 256, 1, 2}, {2048, 1024, 1, 2},{4096, 2048, 1, 2}, {4096, 4096, 1, 2}, {720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},
 																{32, 32, 32, 3}, {64, 64, 64, 3}, {256, 256, 32, 3},  {1024, 256, 32, 3},  {256, 256, 256, 3}, {2048, 1024, 8, 3},  {512, 512, 128, 3}, {2048, 256, 256, 3}, {4096, 512, 8, 3} };
@@ -85,14 +86,14 @@ void sample_6_benchmark_rocFFT_single_r2c(bool file_output, FILE* output)
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint64_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 2; t < num_runs; t++) {
 						avg_time += run_time[t][0];
 					}
-					avg_time /= num_runs;
-					for (uint64_t t = 0; t < num_runs; t++) {
+					avg_time /= num_runs-2;
+					for (uint64_t t = 2; t < num_runs; t++) {
 						std_error += (run_time[t][0] - avg_time) * (run_time[t][0] - avg_time);
 					}
-					std_error = sqrt(std_error / num_runs);
+					std_error = sqrt(std_error / (num_runs-2));
 					if (file_output)
 						fprintf(output, "rocFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 "\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], rocBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)rocBufferSize / 1024) / avg_time));
 

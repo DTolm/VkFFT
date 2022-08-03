@@ -8,4 +8,4 @@ typedef struct {
 	uint64_t R2C;
 } rocFFTUserSystemParameters;//an example structure used to pass user-defined system for benchmarking
 
-void user_benchmark_rocFFT(bool file_output, FILE* output, rocFFTUserSystemParameters* userParams);
+void user_benchmark_rocFFT(bool file_output, FILE* output, rocFFTUserSystemParameters* userParams, int device_id);

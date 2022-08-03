@@ -18,12 +18,13 @@
 #define GROUP 1
 
 
-void sample_1003_benchmark_rocFFT_single_3d_2_512(bool file_output, FILE* output)
+void sample_1003_benchmark_rocFFT_single_3d_2_512(bool file_output, FILE* output, int device_id)
 {
 	if (file_output)
 		fprintf(output, "1003 - rocFFT FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
 	printf("1003 - rocFFT FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
-const int num_runs = 3;
+	hipSetDevice(device_id);
+	const int num_runs = 5;
 	
 	double benchmark_result[2] = { 0,0 };//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	hipfftComplex* inputC = (hipfftComplex*)malloc((uint64_t)sizeof(hipfftComplex)*pow(2, 27));
@@ -93,14 +94,14 @@ const int num_runs = 3;
 					num_systems++;
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint64_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 2; t < num_runs; t++) {
 						avg_time += run_time[t][0];
 					}
-					avg_time /= num_runs;
-					for (uint64_t t = 0; t < num_runs; t++) {
+					avg_time /= (num_runs-2);
+					for (uint64_t t = 2; t < num_runs; t++) {
 						std_error += (run_time[t][0] - avg_time) * (run_time[t][0] - avg_time);
 					}
-					std_error = sqrt(std_error / num_runs);
+					std_error = sqrt(std_error / (num_runs-2));
 					
 					if (file_output)
 						fprintf(output, "rocFFT System: %" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " bandwidth: %0.1f\n", dims[0], rocBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)rocBufferSize / 1024) / avg_time), 3*rocBufferSize / 1024.0 / 1024.0 / 1.024 * 4 / avg_time);

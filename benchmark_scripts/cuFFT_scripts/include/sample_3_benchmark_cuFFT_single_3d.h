@@ -1,1 +1,1 @@
-void sample_3_benchmark_cuFFT_single_3d(bool file_output, FILE* output);
+void sample_3_benchmark_cuFFT_single_3d(bool file_output, FILE* output, int device_id);

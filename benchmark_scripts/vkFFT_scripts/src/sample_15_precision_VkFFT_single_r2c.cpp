@@ -151,13 +151,13 @@ VkFFTResult sample_15_precision_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_out
 			//fftwf_complex* output_extFFT = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * (dims[0]/2+1) * dims[1] * dims[2]));
 			float* output_extFFT = (float*)(malloc(sizeof(float) * (dims[0]) * dims[1] * dims[2]));
 			if (!output_extFFT) return VKFFT_ERROR_MALLOC_FAILED;
-			launch_precision_cuFFT_r2c(inputC, (void*)output_extFFT, benchmark_dimensions[n]);
+			launch_precision_cuFFT_r2c(inputC, (void*)output_extFFT, (int)vkGPU->device_id, benchmark_dimensions[n]);
 #endif // USE_cuFFT
 #ifdef USE_rocFFT
 			//fftwf_complex* output_extFFT = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * (dims[0]/2+1) * dims[1] * dims[2]));
 			float* output_extFFT = (float*)(malloc(sizeof(float) * (dims[0]) * dims[1] * dims[2]));
 			if (!output_extFFT) return VKFFT_ERROR_MALLOC_FAILED;
-			launch_precision_rocFFT_r2c(inputC, (void*)output_extFFT, benchmark_dimensions[n]);
+			launch_precision_rocFFT_r2c(inputC, (void*)output_extFFT, (int)vkGPU->device_id, benchmark_dimensions[n]);
 #endif // USE_rocFFT
 			float totTime = 0;
 			int num_iter = 1;

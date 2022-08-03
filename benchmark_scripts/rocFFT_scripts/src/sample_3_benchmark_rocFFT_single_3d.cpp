@@ -18,13 +18,14 @@
 #define GROUP 1
 
 
-void sample_3_benchmark_rocFFT_single_3d(bool file_output, FILE* output)
+void sample_3_benchmark_rocFFT_single_3d(bool file_output, FILE* output, int device_id)
 {
 	if (file_output)
 		fprintf(output, "3 - rocFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
 	printf("3 - rocFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
+	hipSetDevice(device_id);
 	const int num_benchmark_samples = 39;
-	const int num_runs = 3;
+	const int num_runs = 5;
 	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},
 	{720, 480, 1, 2},{1280, 720, 1, 2},{1920, 1080, 1, 2}, {2560, 1440, 1, 2},{3840, 2160, 1, 2},{7680, 4320, 1, 2},
 	{(uint64_t)pow(2,6), (uint64_t)pow(2,6), 1, 2},	{(uint64_t)pow(2,7), (uint64_t)pow(2,6), 1, 2}, {(uint64_t)pow(2,7), (uint64_t)pow(2,7), 1, 2},	{(uint64_t)pow(2,8), (uint64_t)pow(2,7), 1, 2},{(uint64_t)pow(2,8), (uint64_t)pow(2,8), 1, 2},
@@ -85,14 +86,14 @@ void sample_3_benchmark_rocFFT_single_3d(bool file_output, FILE* output)
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint64_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 2; t < num_runs; t++) {
 						avg_time += run_time[t][0];
 					}
-					avg_time /= num_runs;
-					for (uint64_t t = 0; t < num_runs; t++) {
+					avg_time /= num_runs-2;
+					for (uint64_t t = 2; t < num_runs; t++) {
 						std_error += (run_time[t][0] - avg_time) * (run_time[t][0] - avg_time);
 					}
-					std_error = sqrt(std_error / num_runs);
+					std_error = sqrt(std_error / (num_runs-2));
 					if (file_output)
 						fprintf(output, "rocFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 "\n", benchmark_dimensions[n][0], benchmark_dimensions[n][1], benchmark_dimensions[n][2], rocBufferSize / 1024 / 1024, avg_time, std_error, num_iter, (uint64_t)(((double)rocBufferSize / 1024) / avg_time));
 

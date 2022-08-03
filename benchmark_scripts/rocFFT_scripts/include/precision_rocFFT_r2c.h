@@ -1,1 +1,1 @@
-void launch_precision_rocFFT_r2c(void* inputC, void* output_cuFFT, uint64_t* dims);
+void launch_precision_rocFFT_r2c(void* inputC, void* output_cuFFT, int device_id, uint64_t* dims);

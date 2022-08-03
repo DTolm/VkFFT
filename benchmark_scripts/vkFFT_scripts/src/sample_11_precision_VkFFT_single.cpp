@@ -132,12 +132,12 @@ VkFFTResult sample_11_precision_VkFFT_single(VkGPU* vkGPU, uint64_t file_output,
 #ifdef USE_cuFFT
 			fftwf_complex* output_extFFT = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * dims[0] * dims[1] * dims[2]));
 			if (!output_extFFT) return VKFFT_ERROR_MALLOC_FAILED;
-			launch_precision_cuFFT_single(inputC, (void*)output_extFFT, benchmark_dimensions[n]);
+			launch_precision_cuFFT_single(inputC, (void*)output_extFFT, (int)vkGPU->device_id, benchmark_dimensions[n]);
 #endif // USE_cuFFT
 #ifdef USE_rocFFT
 			fftwf_complex* output_extFFT = (fftwf_complex*)(malloc(sizeof(fftwf_complex) * dims[0] * dims[1] * dims[2]));
 			if (!output_extFFT) return VKFFT_ERROR_MALLOC_FAILED;
-			launch_precision_rocFFT_single(inputC, (void*)output_extFFT, benchmark_dimensions[n]);
+			launch_precision_rocFFT_single(inputC, (void*)output_extFFT, (int)vkGPU->device_id, benchmark_dimensions[n]);
 #endif // USE_rocFFT
 			//VkFFT part
 

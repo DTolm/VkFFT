@@ -19,11 +19,12 @@
 #define GROUP 1
 
 
-void sample_8_benchmark_cuFFT_double_Bluestein(bool file_output, FILE* output)
+void sample_8_benchmark_cuFFT_double_Bluestein(bool file_output, FILE* output, int device_id)
 {
 	if (file_output)
 		fprintf(output, "8 - cuFFT FFT + iFFT C2C big prime benchmark in double precision (similar to VkFFT Bluestein)\n");
 	printf("8 - cuFFT FFT + iFFT C2C big prime benchmark in double precision (similar to VkFFT Bluestein)\n");
+	cudaSetDevice(device_id);
 	const int num_benchmark_samples = 54;
 	const int num_runs = 3;
 	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},

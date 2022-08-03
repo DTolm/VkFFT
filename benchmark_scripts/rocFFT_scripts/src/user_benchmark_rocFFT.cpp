@@ -17,10 +17,10 @@
 
 #include "user_benchmark_rocFFT.h"
 
-void user_benchmark_rocFFT(bool file_output, FILE* output, rocFFTUserSystemParameters* userParams)
+void user_benchmark_rocFFT(bool file_output, FILE* output, rocFFTUserSystemParameters* userParams, int device_id)
 {
-	
-	const int num_runs = 3;
+	hipSetDevice(device_id);
+	const int num_runs = 7;
 	double benchmark_result[2] = { 0,0 };//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	uint64_t storageComplexSize;
 	switch (userParams->P) {
@@ -170,14 +170,14 @@ void user_benchmark_rocFFT(bool file_output, FILE* output, rocFFTUserSystemParam
 				if (r == num_runs - 1) {
 					double std_error = 0;
 					double avg_time = 0;
-					for (uint64_t t = 0; t < num_runs; t++) {
+					for (uint64_t t = 2; t < num_runs; t++) {
 						avg_time += run_time[t][0];
 					}
-					avg_time /= num_runs;
-					for (uint64_t t = 0; t < num_runs; t++) {
+					avg_time /= (num_runs-2);
+					for (uint64_t t = 2; t < num_runs; t++) {
 						std_error += (run_time[t][0] - avg_time) * (run_time[t][0] - avg_time);
 					}
-					std_error = sqrt(std_error / num_runs);
+					std_error = sqrt(std_error / (num_runs-2));
 					if (file_output)
 						fprintf(output, "rocFFT System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " Batch: %" PRIu64 " Buffer: %" PRIu64 " MB avg_time_per_step: %0.3f ms std_error: %0.3f num_iter: %" PRIu64 " benchmark: %" PRIu64 " scaled bandwidth: %0.1f\n",  userParams->X, userParams->Y, userParams->Z, userParams->B, bufferSize / 1024 / 1024, avg_time, std_error, userParams->N, (uint64_t)(((double)bufferSize / 1024) / avg_time), ((double)bufferSize / 1024.0 / 1024.0 / 1.024 * 4 * FFTdim / avg_time));
 

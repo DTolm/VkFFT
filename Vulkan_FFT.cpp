@@ -238,7 +238,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 				res = zeDeviceGetCommandQueueGroupProperties(vkGPU->device, &queueGroupCount, 0);
 				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
 
-				ze_command_queue_group_properties_t* cmdqueueGroupProperties = (ze_command_queue_group_properties_t*) malloc(queueGroupCount * sizeof(ze_command_queue_group_properties_t));
+				ze_command_queue_group_properties_t* cmdqueueGroupProperties = (ze_command_queue_group_properties_t*)malloc(queueGroupCount * sizeof(ze_command_queue_group_properties_t));
 				if (!cmdqueueGroupProperties) return VKFFT_ERROR_MALLOC_FAILED;
 				res = zeDeviceGetCommandQueueGroupProperties(vkGPU->device, &queueGroupCount, cmdqueueGroupProperties);
 				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
@@ -510,7 +510,7 @@ int main(int argc, char* argv[])
 		version_decomposed[0] = version / 10000;
 		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
 		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
-		printf("VkFFT v%d.%d.%d (04-06-2022). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
+		printf("VkFFT v%d.%d.%d (03-08-2022). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
@@ -838,12 +838,12 @@ int main(int argc, char* argv[])
 		else {
 #ifdef USE_cuFFT
 			if (findFlag(argv, argv + argc, "-benchmark_cufft")) {
-				user_benchmark_cuFFT(file_output, output, (cuFFTUserSystemParameters*)(&userParams));
+				user_benchmark_cuFFT(file_output, output, (cuFFTUserSystemParameters*)(&userParams), (int)vkGPU.device_id);
 			}
 			return 0;
 #elif USE_rocFFT
 			if (findFlag(argv, argv + argc, "-benchmark_rocfft")) {
-				user_benchmark_rocFFT(file_output, output, (rocFFTUserSystemParameters*)(&userParams));
+				user_benchmark_rocFFT(file_output, output, (rocFFTUserSystemParameters*)(&userParams), (int)vkGPU.device_id);
 			}
 			return 0;
 #endif
@@ -885,34 +885,34 @@ int main(int argc, char* argv[])
 			}
 			switch (sample_id) {
 			case 0:
-				sample_0_benchmark_cuFFT_single(file_output, output);
+				sample_0_benchmark_cuFFT_single(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 1:
-				sample_1_benchmark_cuFFT_double(file_output, output);
+				sample_1_benchmark_cuFFT_double(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 2:
-				sample_2_benchmark_cuFFT_half(file_output, output);
+				sample_2_benchmark_cuFFT_half(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 3:
-				sample_3_benchmark_cuFFT_single_3d(file_output, output);
+				sample_3_benchmark_cuFFT_single_3d(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 6:
-				sample_6_benchmark_cuFFT_single_r2c(file_output, output);
+				sample_6_benchmark_cuFFT_single_r2c(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 7:
-				sample_7_benchmark_cuFFT_single_Bluestein(file_output, output);
+				sample_7_benchmark_cuFFT_single_Bluestein(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 8:
-				sample_8_benchmark_cuFFT_double_Bluestein(file_output, output);
+				sample_8_benchmark_cuFFT_double_Bluestein(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 1000:
-				sample_1000_benchmark_cuFFT_single_2_4096(file_output, output);
+				sample_1000_benchmark_cuFFT_single_2_4096(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 1001:
-				sample_1001_benchmark_cuFFT_double_2_4096(file_output, output);
+				sample_1001_benchmark_cuFFT_double_2_4096(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 1003:
-				sample_1003_benchmark_cuFFT_single_3d_2_512(file_output, output);
+				sample_1003_benchmark_cuFFT_single_3d_2_512(file_output, output, (int)vkGPU.device_id);
 				break;
 			}
 		}
@@ -935,31 +935,31 @@ int main(int argc, char* argv[])
 			}
 			switch (sample_id) {
 			case 0:
-				sample_0_benchmark_rocFFT_single(file_output, output);
+				sample_0_benchmark_rocFFT_single(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 1:
-				sample_1_benchmark_rocFFT_double(file_output, output);
+				sample_1_benchmark_rocFFT_double(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 3:
-				sample_3_benchmark_rocFFT_single_3d(file_output, output);
+				sample_3_benchmark_rocFFT_single_3d(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 6:
-				sample_6_benchmark_rocFFT_single_r2c(file_output, output);
+				sample_6_benchmark_rocFFT_single_r2c(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 7:
-				sample_7_benchmark_rocFFT_single_Bluestein(file_output, output);
+				sample_7_benchmark_rocFFT_single_Bluestein(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 8:
-				sample_8_benchmark_rocFFT_double_Bluestein(file_output, output);
+				sample_8_benchmark_rocFFT_double_Bluestein(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 1000:
-				sample_1000_benchmark_rocFFT_single_2_4096(file_output, output);
+				sample_1000_benchmark_rocFFT_single_2_4096(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 1001:
-				sample_1001_benchmark_rocFFT_double_2_4096(file_output, output);
+				sample_1001_benchmark_rocFFT_double_2_4096(file_output, output, (int)vkGPU.device_id);
 				break;
 			case 1003:
-				sample_1003_benchmark_rocFFT_single_3d_2_512(file_output, output);
+				sample_1003_benchmark_rocFFT_single_3d_2_512(file_output, output, (int)vkGPU.device_id);
 				break;
 			}
 		}
@@ -983,20 +983,20 @@ int main(int argc, char* argv[])
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
 		}
 #ifdef USE_cuFFT
-		sample_0_benchmark_cuFFT_single(file_output, output);
-		sample_1_benchmark_cuFFT_double(file_output, output);
-		sample_2_benchmark_cuFFT_half(file_output, output);
-		sample_3_benchmark_cuFFT_single_3d(file_output, output);
-		sample_6_benchmark_cuFFT_single_r2c(file_output, output);
-		sample_7_benchmark_cuFFT_single_Bluestein(file_output, output);
-		sample_8_benchmark_cuFFT_double_Bluestein(file_output, output);
+		sample_0_benchmark_cuFFT_single(file_output, output, (int)vkGPU.device_id);
+		sample_1_benchmark_cuFFT_double(file_output, output, (int)vkGPU.device_id);
+		sample_2_benchmark_cuFFT_half(file_output, output, (int)vkGPU.device_id);
+		sample_3_benchmark_cuFFT_single_3d(file_output, output, (int)vkGPU.device_id);
+		sample_6_benchmark_cuFFT_single_r2c(file_output, output, (int)vkGPU.device_id);
+		sample_7_benchmark_cuFFT_single_Bluestein(file_output, output, (int)vkGPU.device_id);
+		sample_8_benchmark_cuFFT_double_Bluestein(file_output, output, (int)vkGPU.device_id);
 #elif USE_rocFFT
-		sample_0_benchmark_rocFFT_single(file_output, output);
-		sample_1_benchmark_rocFFT_double(file_output, output);
-		sample_3_benchmark_rocFFT_single_3d(file_output, output);
-		sample_6_benchmark_rocFFT_single_r2c(file_output, output);
-		sample_7_benchmark_rocFFT_single_Bluestein(file_output, output);
-		sample_8_benchmark_rocFFT_double_Bluestein(file_output, output);
+		sample_0_benchmark_rocFFT_single(file_output, output, (int)vkGPU.device_id);
+		sample_1_benchmark_rocFFT_double(file_output, output, (int)vkGPU.device_id);
+		sample_3_benchmark_rocFFT_single_3d(file_output, output, (int)vkGPU.device_id);
+		sample_6_benchmark_rocFFT_single_r2c(file_output, output, (int)vkGPU.device_id);
+		sample_7_benchmark_rocFFT_single_Bluestein(file_output, output, (int)vkGPU.device_id);
+		sample_8_benchmark_rocFFT_double_Bluestein(file_output, output, (int)vkGPU.device_id);
 #endif
 	}
 	return 0;

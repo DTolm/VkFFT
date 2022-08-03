@@ -1,4 +1,4 @@
-%% LyX 2.3.4.3 created this file.  For more info, see http://www.lyx.org/.
+%% LyX 2.3.6.1 created this file.  For more info, see http://www.lyx.org/.
 %% Do not edit unless you really know what you are doing.
 \documentclass[12pt,english]{article}
 \usepackage{amsmath}
@@ -44,7 +44,7 @@
 {\Large Dmitrii Tolmachev\par} 	
 	
 \vspace{1cm} 	
-{\large April 2021, version 1.2.24\par} 
+{\large August 2022, version 1.2.26\par} 
 \end{titlepage}
 
 \newpage{}
@@ -650,6 +650,8 @@ vectors used during the computation. This buffer can have:
 \item phase vectors used in the Four Step FFT algorithm between stages
 \item phase vectors used in DCT-II/III/IV to perform a mapping between R2R
 and C2C
+\item phase vectors used in post-processing for R2C/pre-processing for C2R
+for even length sequences as C2C of half size
 \end{itemize}
 VkFFT manages LUT allocations by itself and they are performed during
 the initializeVkFFT call. LUT are allocated per axis, though some
@@ -730,6 +732,7 @@ VKFFT_ERROR_EMPTY_outputBufferSize = 2009,	// Same error as VKFFT_ERROR_EMPTY_bu
 VKFFT_ERROR_EMPTY_outputBuffer = 2010,	// Same error as VKFFT_ERROR_EMPTY_buffer if isOutputFormatted is enabled
 VKFFT_ERROR_EMPTY_kernelSize = 2011,	// Same error as VKFFT_ERROR_EMPTY_bufferSize if performConvolution is enabled
 VKFFT_ERROR_EMPTY_kernel = 2012,	// Same error as VKFFT_ERROR_EMPTY_buffer if performConvolution is enabled
+VKFFT_ERROR_EMPRY_useCustomBluesteinPaddingPattern_arrays = 2014,	// pointers to primeSizes or paddedSizes arrays are zero when useCustomBluesteinPaddingPattern is enabled	
 VKFFT_ERROR_UNSUPPORTED_RADIX = 3001,	// VkFFT has encountered unsupported radix (more than 13) during decomposition and Bluestein's FFT fallback did not work
 VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH = 3002,	// VkFFT can not do this sequence length currently - it requires mor than three-upload Four step FFT
 VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C = 3003,	// VkFFT can not do this sequence length currently - odd multi-upload R2C/C2R FFTs
@@ -1003,8 +1006,8 @@ uint64_t inverseReturnToInputBuffer;	// return data to the input buffer in inver
 uint64_t numberBatches;	// N - used to perform multiple batches of initial data. Default 1
 uint64_t useUint64;	// Use 64-bit addressing mode in generated kernels
 uint64_t omitDimension[3];	// Disable FFT for this dimension (0 - FFT enabled, 1 - FFT disabled). Default 0. Doesn't work for R2C for now. Doesn't work with convolutions.
-uint64_t fixMaxRadixBluestein;	// Controls the padding of sequences in Bluestein convolution. If specified, padded sequence will be made of up to fixMaxRadixBluestein primes. Default: 2 for up to 1048576 combined dimension FFT system, 7 after. Min = 2, Max = 13.
 uint64_t performBandwidthBoost; // Try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise  
+
 uint64_t doublePrecision;	// Perform calculations in double precision (0 - off, 1 - on).
 uint64_t halfPrecision;	// Perform calculations in half precision (0 - off, 1 - on)
 uint64_t halfPrecisionMemoryOnly;	// Use half precision only as input/output buffer. Input/Output have to be allocated as half, buffer/tempBuffer have to be allocated as float (out-of-place mode only). Specify isInputFormatted and isOutputFormatted to use (0 - off, 1 - on)
@@ -1029,6 +1032,13 @@ uint64_t printMemoryLayout;	// Will print order of buffers used in shaders (0 - 
 uint64_t saveApplicationToString;	// Will save all compiled binaries to VkFFTApplication.saveApplicationString (will be allocated by VkFFT, deallocated with deleteVkFFT call). VkFFTApplication.applicationStringSize will contain size of binary in bytes. (0 - off, 1 - on)
 uint64_t loadApplicationFromString;	// Will load all binaries from loadApplicationString instead of recompiling them (must be allocated by user, must contain what saveApplicationToString call generated previously in VkFFTApplication.saveApplicationString). (0 - off, 1 - on). Mutually exclusive with saveApplicationToString
 void* loadApplicationString;	// Memory array (uint32_t* for Vulkan/HIP, char* for CUDA/OpenCL) through which user can load VkFFT binaries, must be provided by user if loadApplicationFromString = 1. 
+
+//optional Bluestein optimizations: (default 0 if not stated otherwise)
+uint64_t fixMaxRadixBluestein;	// controls the padding of sequences in Bluestein convolution. If specified, padded sequence will be made of up to fixMaxRadixBluestein primes. Default: 2 for CUDA and Vulkan/OpenCL/HIP up to 1048576 combined dimension FFT system, 7 for Vulkan/OpenCL/HIP past after. Min = 2, Max = 13.
+uint64_t forceBluesteinSequenceSize;	// force the sequence size to pad to in Bluestein's algorithm. Must be at least 2*N-1 and decomposable with primes 2-13.
+uint64_t useCustomBluesteinPaddingPattern;	// force the sequence sizes to pad to in Bluestein's algorithm, but on a range. This number specifies the number of elements in primeSizes and in paddedSizes arrays. primeSizes - array of non-decomposable as radix scheme sizes - 17, 23, 31 etc. paddedSizes - array of lengths to pad to. paddedSizes[i] will be the padding size for all non-decomposable sequences from primeSizes[i] to primeSizes[i+1] (will use default scheme after last one) - 42, 60, 64 for primeSizes before and 37+ will use default scheme (for example). Default is vendor and API-based specified in autoCustomBluesteinPaddingPattern.
+uint64_t* primeSizes;	// described in useCustomBluesteinPaddingPattern
+uint64_t* paddedSizes;	// described in useCustomBluesteinPaddingPattern
 
 // Optional zero padding control parameters: (default 0 if not stated otherwise)
 uint64_t performZeropadding[3];	// Don't read some data/perform computations if some input sequences are zeropadded for each axis (0 - off, 1 - on)
@@ -1066,6 +1076,8 @@ uint64_t allocateTempBuffer;	// Buffer allocated by app automatically if needed 
 uint64_t reorderFourStep;	// Unshuffle Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on). Default 1.
 int64_t maxCodeLength;	// Specify how big can be buffer used for code generation (in char). Default 1000000 chars. 
 int64_t maxTempLength;	// Specify how big can be buffer used for intermediate string sprintfs be (in char). Default 5000 chars. If code segfaults for some reason - try increasing this number.
+uint64_t autoCustomBluesteinPaddingPattern; // default value for useCustomBluesteinPaddingPattern
+uint64_t vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 - AMD, etc
 #if(VKFFT_BACKEND==0) //Vulkan API
 VkDeviceMemory tempBufferDeviceMemory;	// Filled at app creation
 VkCommandBuffer* commandBuffer;	// Filled at app execution
@@ -1325,12 +1337,6 @@ but it is better to have an option to force it as a failsafe. Doesn't
 work in Vulkan API (use multiple buffer binding). Default 0, set to
 1 to enable. Optional parameter.
 
-uint64\_t fixMaxRadixBluestein - controls the padding of sequences
-in Bluestein convolution. If specified, the padded sequence will be
-made of up to fixMaxRadixBluestein primes. Default: 2 for up to 1048576
-combined dimension FFT system, 7 after. Min = 2, Max = 13. Optional
-parameter.
-
 uint64\_t performBandwidthBoost - try to reduce coalsesced number
 by a factor of X to get bigger sequence in one upload for strided
 axes. Default: -1(inf) for DCT, 2 for Bluestein's algorithm (or -1
@@ -1386,6 +1392,40 @@ void{*} loadApplicationString - memory array (uint32\_t{*} for Vulkan,
 HIP and Level Zero, char{*} for CUDA/OpenCL) through which user can
 load VkFFT binaries, must be provided by user if loadApplicationFromString
 = 1. 
+
+\subsubsection{Bluestein control parameters}
+
+If the sequence can not be decomposed as a multiplication of primes
+up to 13, FFT is performed as a convolution. The sequence to pad to
+with the best performance is usually device-dependent. VkFFT uses
+parameters manually tuned for all sequences between 2 and 4096 for
+both double and single precision on Nvidia A100 (Nvidia profile) and
+AMD MI250 (default profile). To control this process, VkFFT allows
+for the following parameters specification:
+
+uint64\_t fixMaxRadixBluestein - controls the padding of sequences
+in Bluestein convolution. If specified, padded sequence will be made
+of up to fixMaxRadixBluestein primes. Default: 2 for CUDA and Vulkan/OpenCL/HIP
+up to 1048576 combined dimension FFT system, 7 for Vulkan/OpenCL/HIP
+past after. Min = 2, Max = 13.
+
+uint64\_t forceBluesteinSequenceSize - force the sequence size to
+pad to in Bluestein's algorithm. Must be at least 2{*}N-1 and decomposable
+with primes 2-13.
+
+uint64\_t useCustomBluesteinPaddingPattern - force the sequence sizes
+to pad to in Bluestein's algorithm, but on a range. This number specifies
+the number of elements in primeSizes and in paddedSizes arrays. primeSizes
+- array of non-decomposable as radix scheme sizes - 17, 23, 31 etc.
+paddedSizes - array of lengths to pad to. paddedSizes{[}i{]} will
+be the padding size for all non-decomposable sequences from primeSizes{[}i{]}
+to primeSizes{[}i+1{]} (will use default scheme after last one) -
+42, 60, 64 for primeSizes before and 37+ will use default scheme (for
+example). Default is vendor and API-based specified in autoCustomBluesteinPaddingPattern.
+
+uint64\_t{*} primeSizes - described in useCustomBluesteinPaddingPattern
+
+uint64\_t{*} paddedSizes - described in useCustomBluesteinPaddingPattern
 
 \subsubsection{Zero padding parameters}
 
@@ -1525,6 +1565,12 @@ generation be (in char). Default 1000000 chars.
 int64\_t maxTempLength - specify how big can the buffer used for intermediate
 string sprintf's be (in char). Default 5000 chars. If code segfaults
 for some reason - try increasing this number.
+
+uint64\_t autoCustomBluesteinPaddingPattern; // default value for
+useCustomBluesteinPaddingPattern
+
+uint64\_t vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002
+- AMD, etc.
 
 \newpage{}
 

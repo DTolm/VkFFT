@@ -18,8 +18,9 @@
 #include <cuda_fp16.h>
 #include <cufftXt.h>
 
-void launch_precision_cuFFT_half(void* inputC, void* output_cuFFT, uint64_t* dims)
+void launch_precision_cuFFT_half(void* inputC, void* output_cuFFT, int device_id, uint64_t* dims)
 {
+	cudaSetDevice(device_id);
 	cufftHandle planHalf;
 	half2* dataC;
 	cudaMalloc((void**)&dataC, sizeof(half2) * dims[0] * dims[1] * dims[2]);

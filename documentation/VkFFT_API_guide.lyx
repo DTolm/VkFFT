@@ -192,7 +192,7 @@ vspace{1cm}
 
 {
 \backslash
-large April 2021, version 1.2.24
+large August 2022, version 1.2.26
 \backslash
 par} 
 \end_layout
@@ -1768,6 +1768,11 @@ phase vectors used in DCT-II/III/IV to perform a mapping between R2R and
  C2C
 \end_layout
 
+\begin_layout Itemize
+phase vectors used in post-processing for R2C/pre-processing for C2R for
+ even length sequences as C2C of half size
+\end_layout
+
 \begin_layout Standard
 VkFFT manages LUT allocations by itself and they are performed during the
  initializeVkFFT call.
@@ -2043,6 +2048,13 @@ ze if performConvolution is enabled
 
 VKFFT_ERROR_EMPTY_kernel = 2012,	// Same error as VKFFT_ERROR_EMPTY_buffer
  if performConvolution is enabled
+\end_layout
+
+\begin_layout Plain Layout
+
+VKFFT_ERROR_EMPRY_useCustomBluesteinPaddingPattern_arrays = 2014,	// pointers
+ to primeSizes or paddedSizes arrays are zero when useCustomBluesteinPaddingPatt
+ern is enabled	
 \end_layout
 
 \begin_layout Plain Layout
@@ -3269,20 +3281,14 @@ uint64_t omitDimension[3];	// Disable FFT for this dimension (0 - FFT enabled,
 
 \begin_layout Plain Layout
 
-uint64_t fixMaxRadixBluestein;	// Controls the padding of sequences in Bluestein
- convolution.
- If specified, padded sequence will be made of up to fixMaxRadixBluestein
- primes.
- Default: 2 for up to 1048576 combined dimension FFT system, 7 after.
- Min = 2, Max = 13.
-\end_layout
-
-\begin_layout Plain Layout
-
 uint64_t performBandwidthBoost; // Try to reduce coalsesced number by a
  factor of X to get bigger sequence in one upload for strided axes.
  Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise
   
+\end_layout
+
+\begin_layout Plain Layout
+
 \end_layout
 
 \begin_layout Plain Layout
@@ -3442,6 +3448,59 @@ void* loadApplicationString;	// Memory array (uint32_t* for Vulkan/HIP,
  char* for CUDA/OpenCL) through which user can load VkFFT binaries, must
  be provided by user if loadApplicationFromString = 1.
  
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+//optional Bluestein optimizations: (default 0 if not stated otherwise)
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t fixMaxRadixBluestein;	// controls the padding of sequences in Bluestein
+ convolution.
+ If specified, padded sequence will be made of up to fixMaxRadixBluestein
+ primes.
+ Default: 2 for CUDA and Vulkan/OpenCL/HIP up to 1048576 combined dimension
+ FFT system, 7 for Vulkan/OpenCL/HIP past after.
+ Min = 2, Max = 13.
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t forceBluesteinSequenceSize;	// force the sequence size to pad to
+ in Bluestein's algorithm.
+ Must be at least 2*N-1 and decomposable with primes 2-13.
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t useCustomBluesteinPaddingPattern;	// force the sequence sizes to
+ pad to in Bluestein's algorithm, but on a range.
+ This number specifies the number of elements in primeSizes and in paddedSizes
+ arrays.
+ primeSizes - array of non-decomposable as radix scheme sizes - 17, 23,
+ 31 etc.
+ paddedSizes - array of lengths to pad to.
+ paddedSizes[i] will be the padding size for all non-decomposable sequences
+ from primeSizes[i] to primeSizes[i+1] (will use default scheme after last
+ one) - 42, 60, 64 for primeSizes before and 37+ will use default scheme
+ (for example).
+ Default is vendor and API-based specified in autoCustomBluesteinPaddingPattern.
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t* primeSizes;	// described in useCustomBluesteinPaddingPattern
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t* paddedSizes;	// described in useCustomBluesteinPaddingPattern
 \end_layout
 
 \begin_layout Plain Layout
@@ -3670,6 +3729,18 @@ int64_t maxTempLength;	// Specify how big can be buffer used for intermediate
  string sprintfs be (in char).
  Default 5000 chars.
  If code segfaults for some reason - try increasing this number.
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t autoCustomBluesteinPaddingPattern; // default value for useCustomBluest
+einPaddingPattern
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 -
+ AMD, etc
 \end_layout
 
 \begin_layout Plain Layout
@@ -4207,16 +4278,6 @@ uint64_t useUint64 - forces 64-bit addressing in generated kernels.
 \end_layout
 
 \begin_layout Standard
-uint64_t fixMaxRadixBluestein - controls the padding of sequences in Bluestein
- convolution.
- If specified, the padded sequence will be made of up to fixMaxRadixBluestein
- primes.
- Default: 2 for up to 1048576 combined dimension FFT system, 7 after.
- Min = 2, Max = 13.
- Optional parameter.
-\end_layout
-
-\begin_layout Standard
 uint64_t performBandwidthBoost - try to reduce coalsesced number by a factor
  of X to get bigger sequence in one upload for strided axes.
  Default: -1(inf) for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0
@@ -4303,6 +4364,60 @@ void* loadApplicationString - memory array (uint32_t* for Vulkan, HIP and
  Level Zero, char* for CUDA/OpenCL) through which user can load VkFFT binaries,
  must be provided by user if loadApplicationFromString = 1.
  
+\end_layout
+
+\begin_layout Subsubsection
+Bluestein control parameters
+\end_layout
+
+\begin_layout Standard
+If the sequence can not be decomposed as a multiplication of primes up to
+ 13, FFT is performed as a convolution.
+ The sequence to pad to with the best performance is usually device-dependent.
+ VkFFT uses parameters manually tuned for all sequences between 2 and 4096
+ for both double and single precision on Nvidia A100 (Nvidia profile) and
+ AMD MI250 (default profile).
+ To control this process, VkFFT allows for the following parameters specificatio
+n:
+\end_layout
+
+\begin_layout Standard
+uint64_t fixMaxRadixBluestein - controls the padding of sequences in Bluestein
+ convolution.
+ If specified, padded sequence will be made of up to fixMaxRadixBluestein
+ primes.
+ Default: 2 for CUDA and Vulkan/OpenCL/HIP up to 1048576 combined dimension
+ FFT system, 7 for Vulkan/OpenCL/HIP past after.
+ Min = 2, Max = 13.
+\end_layout
+
+\begin_layout Standard
+uint64_t forceBluesteinSequenceSize - force the sequence size to pad to
+ in Bluestein's algorithm.
+ Must be at least 2*N-1 and decomposable with primes 2-13.
+\end_layout
+
+\begin_layout Standard
+uint64_t useCustomBluesteinPaddingPattern - force the sequence sizes to
+ pad to in Bluestein's algorithm, but on a range.
+ This number specifies the number of elements in primeSizes and in paddedSizes
+ arrays.
+ primeSizes - array of non-decomposable as radix scheme sizes - 17, 23,
+ 31 etc.
+ paddedSizes - array of lengths to pad to.
+ paddedSizes[i] will be the padding size for all non-decomposable sequences
+ from primeSizes[i] to primeSizes[i+1] (will use default scheme after last
+ one) - 42, 60, 64 for primeSizes before and 37+ will use default scheme
+ (for example).
+ Default is vendor and API-based specified in autoCustomBluesteinPaddingPattern.
+\end_layout
+
+\begin_layout Standard
+uint64_t* primeSizes - described in useCustomBluesteinPaddingPattern
+\end_layout
+
+\begin_layout Standard
+uint64_t* paddedSizes - described in useCustomBluesteinPaddingPattern
 \end_layout
 
 \begin_layout Subsubsection
@@ -4540,6 +4655,16 @@ int64_t maxTempLength - specify how big can the buffer used for intermediate
  string sprintf's be (in char).
  Default 5000 chars.
  If code segfaults for some reason - try increasing this number.
+\end_layout
+
+\begin_layout Standard
+uint64_t autoCustomBluesteinPaddingPattern; // default value for useCustomBluest
+einPaddingPattern
+\end_layout
+
+\begin_layout Standard
+uint64_t vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 -
+ AMD, etc.
 \end_layout
 
 \begin_layout Standard

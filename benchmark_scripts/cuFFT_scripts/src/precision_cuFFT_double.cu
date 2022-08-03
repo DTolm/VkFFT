@@ -16,8 +16,9 @@
 #include "device_launch_parameters.h"
 #include <cufft.h>
 
-void launch_precision_cuFFT_double(void* inputC, void* output_cuFFT, uint64_t* dims)
+void launch_precision_cuFFT_double(void* inputC, void* output_cuFFT, int device_id, uint64_t* dims)
 {
+	cudaSetDevice(device_id);
 	cufftHandle planZ2Z;
 	cufftDoubleComplex* dataC;
 	cudaMalloc((void**)&dataC, sizeof(cufftDoubleComplex) * dims[0] * dims[1] * dims[2]);

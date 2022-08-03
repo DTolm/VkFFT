@@ -19,11 +19,12 @@
 #define GROUP 1
 
 
-void sample_3_benchmark_cuFFT_single_3d(bool file_output, FILE* output)
+void sample_3_benchmark_cuFFT_single_3d(bool file_output, FILE* output, int device_id)
 {
 	if (file_output)
 		fprintf(output, "3 - cuFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
 	printf("3 - cuFFT FFT + iFFT C2C multidimensional benchmark in single precision\n");
+	cudaSetDevice(device_id);
 	const int num_benchmark_samples = 39;
 	const int num_runs = 3;
 	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {1024, 1024, 1, 2},

@@ -1,1 +1,1 @@
-void sample_1003_benchmark_rocFFT_single_3d_2_512(bool file_output, FILE* output);
+void sample_1003_benchmark_rocFFT_single_3d_2_512(bool file_output, FILE* output, int device_id);

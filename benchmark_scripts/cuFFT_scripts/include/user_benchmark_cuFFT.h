@@ -8,4 +8,4 @@ typedef struct {
 	uint64_t R2C;
 } cuFFTUserSystemParameters;//an example structure used to pass user-defined system for benchmarking
 
-void user_benchmark_cuFFT(bool file_output, FILE* output, cuFFTUserSystemParameters* userParams);
+void user_benchmark_cuFFT(bool file_output, FILE* output, cuFFTUserSystemParameters* userParams, int device_id);

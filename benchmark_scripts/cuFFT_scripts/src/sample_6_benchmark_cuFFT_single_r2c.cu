@@ -19,11 +19,12 @@
 #define GROUP 1
 
 
-void sample_6_benchmark_cuFFT_single_r2c(bool file_output, FILE* output)
+void sample_6_benchmark_cuFFT_single_r2c(bool file_output, FILE* output, int device_id)
 {
 	if (file_output)
 		fprintf(output, "6 - cuFFT FFT + iFFT R2C/C2R multidimensional benchmark in single precision\n");
 	printf("6 - cuFFT FFT + iFFT R2C/C2R multidimensional benchmark in single precision\n");
+	cudaSetDevice(device_id);
 	const int num_benchmark_samples = 24;
 	const int num_runs = 3;
 	//printf("First %" PRIu64 " runs are a warmup\n", num_runs);

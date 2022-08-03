@@ -155,9 +155,8 @@ typedef struct {
 	uint64_t numSharedBanks;//how many banks shared memory has. Default 32
 	uint64_t inverseReturnToInputBuffer;//return data to the input buffer in inverse transform (0 - off, 1 - on). isInputFormatted must be enabled
 	uint64_t numberBatches;// N - used to perform multiple batches of initial data. Default 1
-	uint64_t useUint64;//use 64-bit addressing mode in generated kernels
+	uint64_t useUint64;// use 64-bit addressing mode in generated kernels
 	uint64_t omitDimension[3];//disable FFT for this dimension (0 - FFT enabled, 1 - FFT disabled). Default 0. Doesn't work for R2C dimension 0 for now. Doesn't work with convolutions.
-	uint64_t fixMaxRadixBluestein;//controls the padding of sequences in Bluestein convolution. If specified, padded sequence will be made of up to fixMaxRadixBluestein primes. Default: 2 for CUDA and Vulkan/OpenCL/HIP up to 1048576 combined dimension FFT system, 7 for Vulkan/OpenCL/HIP past after. Min = 2, Max = 13.
 	uint64_t performBandwidthBoost;//try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise 
 
 	uint64_t doublePrecision; //perform calculations in double precision (0 - off, 1 - on).
@@ -188,6 +187,14 @@ typedef struct {
 
 	uint64_t loadApplicationFromString;//will load all binaries from loadApplicationString instead of recompiling them (must be allocated by user, must contain what saveApplicationToString call generated previously in VkFFTApplication.saveApplicationString). (0 - off, 1 - on). Mutually exclusive with saveApplicationToString
 	void* loadApplicationString;//memory array (uint32_t* for Vulkan, char* for CUDA/HIP/OpenCL) through which user can load VkFFT binaries, must be provided by user if loadApplicationFromString = 1.
+
+	//optional Bluestein optimizations: (default 0 if not stated otherwise)
+	uint64_t fixMaxRadixBluestein;//controls the padding of sequences in Bluestein convolution. If specified, padded sequence will be made of up to fixMaxRadixBluestein primes. Default: 2 for CUDA and Vulkan/OpenCL/HIP up to 1048576 combined dimension FFT system, 7 for Vulkan/OpenCL/HIP past after. Min = 2, Max = 13.
+	uint64_t forceBluesteinSequenceSize;// force the sequence size to pad to in Bluestein's algorithm. Must be at least 2*N-1 and decomposable with primes 2-13.
+	uint64_t useCustomBluesteinPaddingPattern;// force the sequence sizes to pad to in Bluestein's algorithm, but on a range. This number specifies the number of elements in primeSizes and in paddedSizes arrays. primeSizes - array of non-decomposable as radix scheme sizes - 17, 23, 31 etc. 
+											  // paddedSizes - array of lengths to pad to. paddedSizes[i] will be the padding size for all non-decomposable sequences from primeSizes[i] to primeSizes[i+1] (will use default scheme after last one) - 42, 60, 64 for primeSizes before and 37+ will use default scheme (for example). Default is vendor and API-based specified in autoCustomBluesteinPaddingPattern.
+	uint64_t* primeSizes; // described in useCustomBluesteinPaddingPattern
+	uint64_t* paddedSizes; // described in useCustomBluesteinPaddingPattern
 
 	//optional zero padding control parameters: (default 0 if not stated otherwise)
 	uint64_t performZeropadding[3]; // don't read some data/perform computations if some input sequences are zeropadded for each axis (0 - off, 1 - on)
@@ -228,6 +235,8 @@ typedef struct {
 	uint64_t reorderFourStep; // unshuffle Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on). Default 1.
 	int64_t maxCodeLength; //specify how big can be buffer used for code generation (in char). Default 4000000 chars.
 	int64_t maxTempLength; //specify how big can be buffer used for intermediate string sprintfs be (in char). Default 5000 chars. If code segfaults for some reason - try increasing this number.
+	uint64_t autoCustomBluesteinPaddingPattern; // default value for useCustomBluesteinPaddingPattern
+	uint64_t vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 - AMD, etc.
 #if(VKFFT_BACKEND==0)
 	VkDeviceMemory tempBufferDeviceMemory;//Filled at app creation
 	VkCommandBuffer* commandBuffer;//Filled at app execution
@@ -323,6 +332,7 @@ typedef enum VkFFTResult {
 	VKFFT_ERROR_EMPTY_kernelSize = 2011,
 	VKFFT_ERROR_EMPTY_kernel = 2012,
 	VKFFT_ERROR_EMPTY_applicationString = 2013,
+	VKFFT_ERROR_EMPRY_useCustomBluesteinPaddingPattern_arrays = 2014,
 	VKFFT_ERROR_UNSUPPORTED_RADIX = 3001,
 	VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH = 3002,
 	VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C = 3003,
@@ -398,11 +408,14 @@ typedef struct {
 	uint64_t axis_upload_id;
 	uint64_t numAxisUploads;
 	uint64_t registers_per_thread;
-	uint64_t registers_per_thread_per_radix[14];
+	uint64_t registers_per_thread_per_radix[33];
 	uint64_t min_registers_per_thread;
+	uint64_t maxNonPow2Radix;
+	uint64_t usedLocRegs;
 	uint64_t readToRegisters;
 	uint64_t writeFromRegisters;
 	uint64_t LUT;
+	uint64_t useCoalescedLUTUploadToSM;
 	uint64_t useBluesteinFFT;
 	uint64_t reverseBluesteinMultiUpload;
 	uint64_t BluesteinConvolutionStep;
@@ -436,7 +449,7 @@ typedef struct {
 	uint64_t fft_dim_x;
 	uint64_t dispatchZactualFFTSize;
 	uint64_t numStages;
-	uint64_t stageRadix[20];
+	uint64_t stageRadix[33];
 	uint64_t inputOffset;
 	uint64_t kernelOffset;
 	uint64_t outputOffset;
@@ -517,7 +530,7 @@ typedef struct {
 	char temp[50];
 	char w[50];
 	char iw[50];
-	char locID[13][40];
+	char locID[33][40];
 	char* code0;
 	char* output;
 	char* tempStr;
@@ -947,20 +960,89 @@ static inline VkFFTResult VkDivReal(VkFFTSpecializationConstantsLayout* sc, cons
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
 };
-static inline VkFFTResult VkPermute(VkFFTSpecializationConstantsLayout* sc, const uint64_t* permute, const uint64_t num_elem, const uint64_t type, char** regIDs) {
+static inline VkFFTResult VkPermute(VkFFTSpecializationConstantsLayout* sc, const uint64_t* permute, const uint64_t num_elem, const uint64_t type, char** regIDs, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	char temp_ID[13][20];
+	char temp_ID[33][20];
+	/*uint64_t permute_complete[33];
+	uint64_t num_completed = 0;
+	uint64_t start = 0;
+	uint64_t start_subcycle = 0;*/
 	if (type == 0) {
 		for (uint64_t i = 0; i < num_elem; i++)
 			sprintf(temp_ID[i], "%s", sc->locID[i]);
 		for (uint64_t i = 0; i < num_elem; i++)
 			sprintf(sc->locID[i], "%s", temp_ID[permute[i]]);
+		/*for (uint64_t i = 0; i < num_elem; i++) {
+			permute_complete[i] = 0;
+		}
+		while (start != num_elem) {
+			if (permute_complete[start] == 0) {
+				if (start_subcycle == 0) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s;\n", temp, sc->locID[start]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					start_subcycle = start;
+				}
+				if (permute[start] == start_subcycle) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s;\n", sc->locID[start], temp);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s;\n", sc->locID[start], sc->locID[permute[start]]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				permute_complete[start] = 1;
+				start = permute[start];
+			}
+			else {
+				start++;
+				start_subcycle = 0;
+			}
+		}*/
+
 	}
 	if (type == 1) {
 		for (uint64_t i = 0; i < num_elem; i++)
 			sprintf(temp_ID[i], "%s", regIDs[i]);
 		for (uint64_t i = 0; i < num_elem; i++)
 			sprintf(regIDs[i], "%s", temp_ID[permute[i]]);
+		/*for (uint64_t i = 0; i < num_elem; i++) {
+			permute_complete[i] = 0;
+		}
+		while (start != num_elem) {
+			if (permute_complete[start] == 0) {
+				if (start_subcycle == 0) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s;\n", temp, regIDs[start]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					start_subcycle = start;
+				}
+				if (permute[start] == start_subcycle) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s;\n", regIDs[start], temp);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s;\n", regIDs[start], regIDs[permute[start]]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				permute_complete[start] = 1;
+				start = permute[start];
+			}
+			else {
+				start++;
+				start_subcycle = 0;
+			}
+		}*/
 	}
 	return res;
 };
@@ -1930,8 +2012,9 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 	return res;
 }
 
-static inline VkFFTResult inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t radix, uint64_t stageSize, double stageAngle, char** regID) {
+static inline VkFFTResult inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t radix, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, char** regID) {
 	VkFFTResult res = VKFFT_SUCCESS;
+	double double_PI = 3.1415926535897932384626433832795;
 	char vecType[30];
 	char LFending[4] = "";
 	if (!strcmp(floatType, "float")) sprintf(LFending, "f");
@@ -1982,10 +2065,26 @@ static inline VkFFTResult inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLay
 if (res != VKFFT_SUCCESS) return res;
 			sc->tempLen = sprintf(sc->tempStr, "	{\n\
 	%s temp;\n", vecType);*/
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
 		if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
 			sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
+				}
 			if (!sc->inverse) {
 				sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 				res = VkAppendLine(sc);
@@ -2006,6 +2105,7 @@ if (res != VKFFT_SUCCESS) return res;
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
+		}
 		}
 		res = VkMulComplex(sc, temp, regID[1], w, 0);
 		if (res != VKFFT_SUCCESS) return res;
@@ -2052,10 +2152,26 @@ temp%s = temp%s + temp;\n\
 			res = VkAppendLine(sc);
 if (res != VKFFT_SUCCESS) return res;
 			}*/
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
 		if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
 			sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
+				}
 			if (!sc->inverse) {
 				sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 				res = VkAppendLine(sc);
@@ -2078,14 +2194,31 @@ if (res != VKFFT_SUCCESS) return res;
 				if (res != VKFFT_SUCCESS) return res;
 			}
 		}
+		}
 		res = VkMulComplex(sc, sc->locID[2], regID[2], w, 0);
 		/*sc->tempLen = sprintf(sc->tempStr, "\
 loc_2.x = temp%s.x * w.x - temp%s.y * w.y;\n\
 loc_2.y = temp%s.y * w.x + temp%s.x * w.y;\n", regID[2], regID[2], regID[2], regID[2]);*/
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
 		if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n", w, stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
 			sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n", w, stageSize);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
+				}
 			if (!sc->inverse) {
 				sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 				res = VkAppendLine(sc);
@@ -2106,6 +2239,7 @@ loc_2.y = temp%s.y * w.x + temp%s.x * w.y;\n", regID[2], regID[2], regID[2], reg
 				sc->tempLen = sprintf(sc->tempStr, "	%s=sincos_20(angle*%.17e%s);\n", w, 2.0 / 3.0, LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
+				}
 			}
 		}
 		res = VkMulComplex(sc, sc->locID[1], regID[1], w, 0);
@@ -2177,10 +2311,26 @@ temp%s.y = loc_1.y + loc_2.x; \n", regID[1], regID[1], regID[2], regID[2]);*/
 		//sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", vecType, temp);
 		//res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
 		if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
 			sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
+				}
 			if (!sc->inverse) {
 				sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 				res = VkAppendLine(sc);
@@ -2200,6 +2350,7 @@ temp%s.y = loc_1.y + loc_2.x; \n", regID[1], regID[1], regID[2], regID[2]);*/
 				sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle);\n", w);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
+				}
 			}
 		}
 		res = VkMulComplex(sc, temp, regID[2], w, 0);
@@ -2224,10 +2375,26 @@ temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
 temp%s = temp%s - temp;\n\
 temp%s = temp%s + temp;\n\n\
 //DIF 2nd stage with angle\n", regID[2], regID[2], regID[2], regID[2], regID[2], regID[0], regID[0], regID[0], regID[3], regID[3], regID[3], regID[3], regID[3], regID[1], regID[1], regID[1]);*/
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
 		if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n", w, stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
 			sc->tempLen = sprintf(sc->tempStr, "	%s=twiddleLUT[LUTId+%" PRIu64 "];\n", w, stageSize);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
+				}
 			if (!sc->inverse) {
 				sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 				res = VkAppendLine(sc);
@@ -2247,6 +2414,7 @@ temp%s = temp%s + temp;\n\n\
 				sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
+				}
 			}
 		}
 		res = VkMulComplex(sc, temp, regID[1], w, 0);
@@ -2292,10 +2460,15 @@ temp%s = temp%s + temp;\n\n", regID[1], regID[1], regID[1], regID[1], regID[1], 
 		if (res != VKFFT_SUCCESS) return res;
 		res = VkMovComplex(sc, temp, regID[1]);
 		if (res != VKFFT_SUCCESS) return res;
-		res = VkMovComplex(sc, regID[1], regID[2]);
+
+		uint64_t permute2[4] = { 0,2,1,3 };
+		res = VkPermute(sc, permute2, 4, 1, regID, temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		/*res = VkMovComplex(sc, regID[1], regID[2]);
 		if (res != VKFFT_SUCCESS) return res;
 		res = VkMovComplex(sc, regID[2], temp);
-		if (res != VKFFT_SUCCESS) return res;
+		if (res != VKFFT_SUCCESS) return res;*/
 		/*VkAppendLine(sc, "	}\n");
 		sc->tempLen = sprintf(sc->tempStr, "\
 temp.x = temp%s.x * w.x - temp%s.y * w.y;\n\
@@ -2342,12 +2515,29 @@ if (res != VKFFT_SUCCESS) return res;
 			}*/
 			/*sc->tempLen = sprintf(sc->tempStr, "	{\n\
 	%s loc_0;\n	%s loc_1;\n	%s loc_2;\n	%s loc_3;\n	%s loc_4;\n", vecType, vecType, vecType, vecType, vecType);*/
+
 		for (uint64_t i = radix - 1; i > 0; i--) {
+			if (stageSize == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
 			if (i == radix - 1) {
 				if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
 					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+						}
 					if (!sc->inverse) {
 						sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 						res = VkAppendLine(sc);
@@ -2373,9 +2563,16 @@ if (res != VKFFT_SUCCESS) return res;
 			}
 			else {
 				if (sc->LUT) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n", w, (radix - 1 - i) * stageSize);
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
 					if (!sc->inverse) {
 						sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 						res = VkAppendLine(sc);
@@ -2396,6 +2593,7 @@ if (res != VKFFT_SUCCESS) return res;
 						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
+						}
 					}
 				}
 			}
@@ -2513,6 +2711,213 @@ temp%s.y = loc_1.y + loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID
 		}
 		break;
 	}
+	case 6: {
+		char* tf[2];
+		//VkAppendLine(sc, "	{\n");
+		for (uint64_t i = 0; i < 2; i++) {
+			tf[i] = (char*)malloc(sizeof(char) * 50);
+			if (!tf[i]) {
+				for (uint64_t j = 0; j < i; j++) {
+					free(tf[j]);
+					tf[j] = 0;
+				}
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+		}
+
+		sprintf(tf[0], "-0.5%s", LFending);
+		sprintf(tf[1], "-0.8660254037844386467637231707529%s", LFending);
+		for (uint64_t i = radix - 1; i > 0; i--) {
+			if (stageSize == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				if (i == radix - 1) {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!sc->inverse) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+				else {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!sc->inverse) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+			}
+			res = VkMulComplex(sc, regID[i], regID[i], w, temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		//important
+		//res = VkMovComplex(sc, regID[1], sc->locID[1]);
+		//if (res != VKFFT_SUCCESS) return res;
+
+		uint64_t P = 3;
+		uint64_t Q = 2;
+		for (uint64_t i = 0; i < Q; i++) {
+			res = VkMovComplex(sc, sc->locID[0], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[1], regID[i + Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[2], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkAddComplex(sc, regID[i + Q], sc->locID[1], sc->locID[2]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 2 * Q], sc->locID[1], sc->locID[2]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkAddComplex(sc, sc->locID[0], regID[i], regID[i + Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, sc->locID[2], regID[i + 2 * Q], tf[1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, regID[i], sc->locID[0]);
+			if (res != VKFFT_SUCCESS) return res;
+			if (stageAngle < 0)
+			{
+				res = VkShuffleComplex(sc, regID[i + Q], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplexInv(sc, regID[i + 2 * Q], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				res = VkShuffleComplexInv(sc, regID[i + Q], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplex(sc, regID[i + 2 * Q], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+
+		res = VkMovComplex(sc, temp, regID[1]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkSubComplex(sc, regID[1], regID[0], temp);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkAddComplex(sc, regID[0], regID[0], temp);
+		if (res != VKFFT_SUCCESS) return res;
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -0.5%s;\n", w, LFending);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0.8660254037844386467637231707529%s;\n\n", w, LFending);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -0.5%s;\n", w, LFending);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = -0.8660254037844386467637231707529%s;\n\n", w, LFending);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+		res = VkMulComplex(sc, temp, regID[3], w, 0);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkSubComplex(sc, regID[3], regID[2], temp);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkAddComplex(sc, regID[2], regID[2], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMulComplex(sc, temp, regID[5], w, 0);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkSubComplex(sc, regID[5], regID[4], temp);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkAddComplex(sc, regID[4], regID[4], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		uint64_t permute2[6] = { 0,3,4,1,2,5 };
+		res = VkPermute(sc, permute2, 6, 1, regID, temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		/*res = VkMovComplex(sc, temp, regID[1]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[1], regID[3]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[3], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[2]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[2], regID[4]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[4], temp);
+		if (res != VKFFT_SUCCESS) return res;*/
+
+		for (uint64_t i = 0; i < 2; i++) {
+			free(tf[i]);
+			tf[i] = 0;
+		}
+		break;
+	}
 	case 7: {
 		/*if (sc->LUT) {
 			sc->tempLen = sprintf(sc->tempStr, "void radix5(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, inout %s temp_4, %s LUTId) {\n", vecType, vecType, vecType, vecType, vecType, uintType);
@@ -2557,11 +2962,27 @@ temp%s.y = loc_1.y + loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID
 if (res != VKFFT_SUCCESS) return res;
 			}*/
 		for (uint64_t i = radix - 1; i > 0; i--) {
+			if (stageSize == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
 			if (i == radix - 1) {
 				if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
 					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+						}
 					if (!sc->inverse) {
 						sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 						res = VkAppendLine(sc);
@@ -2587,9 +3008,16 @@ if (res != VKFFT_SUCCESS) return res;
 			}
 			else {
 				if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
 					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+						}
 					if (!sc->inverse) {
 						sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 						res = VkAppendLine(sc);
@@ -2610,6 +3038,7 @@ if (res != VKFFT_SUCCESS) return res;
 						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
+						}
 					}
 				}
 			}
@@ -2796,10 +3225,26 @@ if (res != VKFFT_SUCCESS) return res;
 			sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", vecType, iw);
 			res = VkAppendLine(sc);
 if (res != VKFFT_SUCCESS) return res;*/
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
 		if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
 			sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
+				}
 			if (!sc->inverse) {
 				sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 				res = VkAppendLine(sc);
@@ -2814,11 +3259,17 @@ if (res != VKFFT_SUCCESS) return res;*/
 				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle);\n", w, sinDef);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
+					if (!strcmp(floatType, "double")) {
+						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle);\n", w);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
 			}
 			if (!strcmp(floatType, "double")) {
 				sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle);\n", w);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
+				}
 			}
 		}
 		for (uint64_t i = 0; i < 4; i++) {
@@ -2834,10 +3285,26 @@ temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
 temp%s = temp%s - temp;\n\
 temp%s = temp%s + temp;\n\n", regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 4], regID[i + 0], regID[i + 0], regID[i + 0]);*/
 		}
-		if (sc->LUT) {
-			sc->tempLen = sprintf(sc->tempStr, "	%s=twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, stageSize);
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+		if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, stageSize);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
 			if (!sc->inverse) {
 				sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 				res = VkAppendLine(sc);
@@ -2857,6 +3324,7 @@ temp%s = temp%s + temp;\n\n", regID[i + 4], regID[i + 4], regID[i + 4], regID[i 
 				sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
+				}
 			}
 		}
 		for (uint64_t i = 0; i < 2; i++) {
@@ -2904,11 +3372,26 @@ temp.y = temp%s.y * iw.x + temp%s.x * iw.y;\n\
 temp%s = temp%s - temp;\n\
 temp%s = temp%s + temp;\n\n", regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 2], regID[i + 0], regID[i + 0], regID[i + 0]);*/
 		}
-
-		if (sc->LUT) {
-			sc->tempLen = sprintf(sc->tempStr, "	%s=twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, 2 * stageSize);
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+		if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, 2*stageSize);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, 2*stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
 			if (!sc->inverse) {
 				sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 				res = VkAppendLine(sc);
@@ -2929,6 +3412,7 @@ temp%s = temp%s + temp;\n\n", regID[i + 2], regID[i + 2], regID[i + 2], regID[i 
 				sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
+				}
 			}
 		}
 		res = VkMulComplex(sc, temp, regID[1], w, 0);
@@ -3022,6 +3506,12 @@ temp%s = temp%s + temp;\n\n", regID[5], regID[5], regID[5], regID[5], regID[5], 
 		if (res != VKFFT_SUCCESS) return res;
 		res = VkAddComplex(sc, regID[6], regID[6], temp);
 		if (res != VKFFT_SUCCESS) return res;
+
+		uint64_t permute2[8] = { 0,4,2,6,1,5,3,7 };
+		res = VkPermute(sc, permute2, 8, 1, regID, temp);
+		if (res != VKFFT_SUCCESS) return res;
+		/*
+		if (res != VKFFT_SUCCESS) return res;
 		res = VkMovComplex(sc, temp, regID[1]);
 		if (res != VKFFT_SUCCESS) return res;
 		res = VkMovComplex(sc, regID[1], regID[4]);
@@ -3033,7 +3523,7 @@ temp%s = temp%s + temp;\n\n", regID[5], regID[5], regID[5], regID[5], regID[5], 
 		res = VkMovComplex(sc, regID[3], regID[6]);
 		if (res != VKFFT_SUCCESS) return res;
 		res = VkMovComplex(sc, regID[6], temp);
-		if (res != VKFFT_SUCCESS) return res;
+		if (res != VKFFT_SUCCESS) return res;*/
 		/*sc->tempLen = sprintf(sc->tempStr, "\
 temp.x = temp%s.x * w.x - temp%s.y * w.y;\n\
 temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
@@ -3048,6 +3538,473 @@ temp%s = temp;\n\
 }\n\n", regID[7], regID[7], regID[7], regID[7], regID[7], regID[6], regID[6], regID[6], regID[1], regID[1], regID[4], regID[4], regID[3], regID[3], regID[6], regID[6]);
 			//VkAppendLine(sc, "	}\n");*/
 
+		break;
+	}
+	case 9: {
+		char* tf[2];
+		//VkAppendLine(sc, "	{\n");
+		for (uint64_t i = 0; i < 2; i++) {
+			tf[i] = (char*)malloc(sizeof(char) * 50);
+			if (!tf[i]) {
+				for (uint64_t j = 0; j < i; j++) {
+					free(tf[j]);
+					tf[j] = 0;
+				}
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+		}
+
+		sprintf(tf[0], "-0.5%s", LFending);
+		sprintf(tf[1], "-0.8660254037844386467637231707529%s", LFending);
+		for (uint64_t i = radix - 1; i > 0; i--) {
+			if (stageSize == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				if (i == radix - 1) {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!sc->inverse) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+				else {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!sc->inverse) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+			}
+			res = VkMulComplex(sc, regID[i], regID[i], w, temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		//important
+		//res = VkMovComplex(sc, regID[1], sc->locID[1]);
+		//if (res != VKFFT_SUCCESS) return res;
+		//res = VkMovComplex(sc, regID[2], sc->locID[2]);
+		//if (res != VKFFT_SUCCESS) return res;
+		uint64_t P = 3;
+		uint64_t Q = 3;
+		for (uint64_t i = 0; i < Q; i++) {
+			res = VkMovComplex(sc, sc->locID[0], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[1], regID[i + Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[2], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i + Q], sc->locID[1], sc->locID[2]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 2 * Q], sc->locID[1], sc->locID[2]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkAddComplex(sc, sc->locID[0], regID[i], regID[i + Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, sc->locID[2], regID[i + 2 * Q], tf[1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, regID[i], sc->locID[0]);
+			if (res != VKFFT_SUCCESS) return res;
+			if (stageAngle < 0)
+			{
+				res = VkShuffleComplex(sc, regID[i + Q], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplexInv(sc, regID[i + 2 * Q], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				res = VkShuffleComplexInv(sc, regID[i + Q], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplex(sc, regID[i + 2 * Q], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+
+
+		for (uint64_t i = 0; i < P; i++) {
+			if (i > 0) {
+				if (stageAngle < 0) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				res = VkMulComplex(sc, sc->locID[1], regID[Q * i + 1], w, temp);
+				if (res != VKFFT_SUCCESS) return res;
+				if (stageAngle < 0) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(4 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(4 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(4 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(4 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				res = VkMulComplex(sc, sc->locID[2], regID[Q * i + 2], w, temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				res = VkMovComplex(sc, sc->locID[1], regID[1]);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkMovComplex(sc, sc->locID[2], regID[2]);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+
+			res = VkAddComplex(sc, regID[Q * i + 1], sc->locID[1], sc->locID[2]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[Q * i + 2], sc->locID[1], sc->locID[2]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkAddComplex(sc, sc->locID[0], regID[Q * i], regID[Q * i + 1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkFMAComplex(sc, sc->locID[1], regID[Q * i + 1], tf[0], regID[Q * i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, sc->locID[2], regID[Q * i + 2], tf[1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, regID[Q * i], sc->locID[0]);
+			if (res != VKFFT_SUCCESS) return res;
+			if (stageAngle < 0)
+			{
+				res = VkShuffleComplex(sc, regID[Q * i + 1], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplexInv(sc, regID[Q * i + 2], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				res = VkShuffleComplexInv(sc, regID[Q * i + 1], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplex(sc, regID[Q * i + 2], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+
+		uint64_t permute2[9] = { 0,3,6,1,4,7,2,5,8 };
+		res = VkPermute(sc, permute2, 9, 1, regID, temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		/*res = VkMovComplex(sc, temp, regID[1]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[1], regID[3]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[3], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[2]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[2], regID[4]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[4], temp);
+		if (res != VKFFT_SUCCESS) return res;*/
+
+		for (uint64_t i = 0; i < 2; i++) {
+			free(tf[i]);
+			tf[i] = 0;
+		}
+		break;
+	}
+	case 10: {
+		char* tf[5];
+		//VkAppendLine(sc, "	{\n");
+		for (uint64_t i = 0; i < 5; i++) {
+			tf[i] = (char*)malloc(sizeof(char) * 50);
+			if (!tf[i]) {
+				for (uint64_t j = 0; j < i; j++) {
+					free(tf[j]);
+					tf[j] = 0;
+				}
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+		}
+		sprintf(tf[0], "-0.5%s", LFending);
+		sprintf(tf[1], "1.538841768587626701285145288018455%s", LFending);
+		sprintf(tf[2], "-0.363271264002680442947733378740309%s", LFending);
+		sprintf(tf[3], "-0.809016994374947424102293417182819%s", LFending);
+		sprintf(tf[4], "-0.587785252292473129168705954639073%s", LFending);
+		for (uint64_t i = radix - 1; i > 0; i--) {
+			if (stageSize == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				if (i == radix - 1) {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!sc->inverse) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+				else {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!sc->inverse) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+			}
+			res = VkMulComplex(sc, regID[i], regID[i], w, temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		//important
+		//res = VkMovComplex(sc, regID[1], sc->locID[1]);
+		//if (res != VKFFT_SUCCESS) return res;
+
+		uint64_t P = 5;
+		uint64_t Q = 2;
+		for (uint64_t i = 0; i < Q; i++) {
+			res = VkMovComplex(sc, sc->locID[0], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[1], regID[i + Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[2], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[3], regID[i + 3 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[4], regID[i + 4 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkAddComplex(sc, regID[i + Q], sc->locID[1], sc->locID[4]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i + 2 * Q], sc->locID[2], sc->locID[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 3 * Q], sc->locID[2], sc->locID[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 4 * Q], sc->locID[1], sc->locID[4]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, sc->locID[3], regID[i + Q], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[4], regID[i + 3 * Q], regID[i + 4 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkAddComplex(sc, sc->locID[0], regID[i], regID[i + Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[0], sc->locID[0], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkFMAComplex(sc, sc->locID[2], regID[i + 2 * Q], tf[0], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, regID[i + 3 * Q], regID[i + 3 * Q], tf[1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, regID[i + 4 * Q], regID[i + 4 * Q], tf[2]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, sc->locID[3], sc->locID[3], tf[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, sc->locID[4], sc->locID[4], tf[4]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkSubComplex(sc, sc->locID[1], sc->locID[1], sc->locID[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[2], sc->locID[2], sc->locID[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[3], regID[i + 3 * Q], sc->locID[4]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[4], sc->locID[4], regID[i + 4 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, regID[i], sc->locID[0]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			if (stageAngle < 0)
+			{
+				res = VkShuffleComplex(sc, regID[i + Q], sc->locID[1], sc->locID[4], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplex(sc, regID[i + 2 * Q], sc->locID[2], sc->locID[3], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplexInv(sc, regID[i + 3 * Q], sc->locID[2], sc->locID[3], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplexInv(sc, regID[i + 4 * Q], sc->locID[1], sc->locID[4], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				res = VkShuffleComplexInv(sc, regID[i + Q], sc->locID[1], sc->locID[4], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplexInv(sc, regID[i + 2 * Q], sc->locID[2], sc->locID[3], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplex(sc, regID[i + 3 * Q], sc->locID[2], sc->locID[3], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplex(sc, regID[i + 4 * Q], sc->locID[1], sc->locID[4], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+
+		}
+
+
+		for (uint64_t i = 0; i < P; i++) {
+			if (i > 0) {
+				if (stageAngle < 0) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				res = VkMulComplex(sc, temp, regID[Q * i + 1], w, 0);
+			}
+			else {
+				res = VkMovComplex(sc, temp, regID[Q * i + 1]);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			res = VkSubComplex(sc, regID[Q * i + 1], regID[Q * i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[Q * i], regID[Q * i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+		uint64_t permute2[10] = { 0, 2, 4, 6, 8, 1, 3, 5, 7, 9 };
+		res = VkPermute(sc, permute2, 10, 1, regID, temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		for (uint64_t i = 0; i < 5; i++) {
+			free(tf[i]);
+			tf[i] = 0;
+		}
 		break;
 	}
 	case 11: {
@@ -3105,11 +4062,27 @@ temp%s = temp;\n\
 			sprintf(tf[19], "4.99299221941104307e-02%s", LFending);
 		}
 		for (uint64_t i = radix - 1; i > 0; i--) {
+			if (stageSize == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
 			if (i == radix - 1) {
 				if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
 					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+						}
 					if (!sc->inverse) {
 						sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 						res = VkAppendLine(sc);
@@ -3135,9 +4108,16 @@ temp%s = temp;\n\
 			}
 			else {
 				if (sc->LUT) {
+						if  (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
 					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+						}
 					if (!sc->inverse) {
 						sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 						res = VkAppendLine(sc);
@@ -3158,6 +4138,7 @@ temp%s = temp;\n\
 						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
+						}
 					}
 				}
 			}
@@ -3167,7 +4148,7 @@ temp%s = temp;\n\
 		res = VkMovComplex(sc, sc->locID[0], regID[0]);
 		if (res != VKFFT_SUCCESS) return res;
 		uint64_t permute[11] = { 0,1,9,4,3,5,10,2,7,8,6 };
-		res = VkPermute(sc, permute, 11, 0, 0);
+		res = VkPermute(sc, permute, 11, 0, 0, w);
 		if (res != VKFFT_SUCCESS) return res;
 		for (uint64_t i = 0; i < 5; i++) {
 			res = VkAddComplex(sc, regID[i + 1], sc->locID[i + 1], sc->locID[i + 6]);
@@ -3303,10 +4284,228 @@ temp%s = temp;\n\
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		uint64_t permute2[11] = { 0,10,1,8,7,9,4,2,3,6,5 };
-		res = VkPermute(sc, permute2, 11, 1, regID);
+		res = VkPermute(sc, permute2, 11, 1, regID, temp);
 		if (res != VKFFT_SUCCESS) return res;
 
 		for (uint64_t i = 0; i < 20; i++) {
+			free(tf[i]);
+			tf[i] = 0;
+		}
+		break;
+	}
+	case 12: {
+		char* tf[2];
+		//VkAppendLine(sc, "	{\n");
+		for (uint64_t i = 0; i < 2; i++) {
+			tf[i] = (char*)malloc(sizeof(char) * 50);
+			if (!tf[i]) {
+				for (uint64_t j = 0; j < i; j++) {
+					free(tf[j]);
+					tf[j] = 0;
+				}
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+		}
+		sprintf(tf[0], "-0.5%s", LFending);
+		sprintf(tf[1], "-0.8660254037844386467637231707529%s", LFending);
+		for (uint64_t i = radix - 1; i > 0; i--) {
+			if (stageSize == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				if (i == radix - 1) {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!sc->inverse) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+				else {
+					if (sc->LUT) {
+						if  (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!sc->inverse) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+			}
+			res = VkMulComplex(sc, regID[i], regID[i], w, temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		//important
+		//res = VkMovComplex(sc, regID[1], sc->locID[1]);
+		//if (res != VKFFT_SUCCESS) return res;
+		//res = VkMovComplex(sc, regID[2], sc->locID[2]);
+		//if (res != VKFFT_SUCCESS) return res;
+		uint64_t P = 3;
+		uint64_t Q = 4;
+		for (uint64_t i = 0; i < Q; i++) {
+			res = VkMovComplex(sc, sc->locID[0], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[1], regID[i + Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[2], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i + Q], sc->locID[1], sc->locID[2]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 2 * Q], sc->locID[1], sc->locID[2]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkAddComplex(sc, sc->locID[0], regID[i], regID[i + Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, sc->locID[2], regID[i + 2 * Q], tf[1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, regID[i], sc->locID[0]);
+			if (res != VKFFT_SUCCESS) return res;
+			if (stageAngle < 0)
+			{
+				res = VkShuffleComplex(sc, regID[i + Q], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplexInv(sc, regID[i + 2 * Q], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				res = VkShuffleComplexInv(sc, regID[i + Q], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplex(sc, regID[i + 2 * Q], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+
+
+		for (uint64_t i = 0; i < P; i++) {
+			for (uint64_t j = 0; j < Q; j++) {
+				if (i > 0) {
+					if (stageAngle < 0) {
+						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * j * double_PI / radix), LFending);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(2 * i * j * double_PI / radix), LFending);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * j * double_PI / radix), LFending);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(2 * i * j * double_PI / radix), LFending);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					res = VkMulComplex(sc, regID[Q * i + j], regID[Q * i + j], w, temp);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			res = VkMovComplex(sc, temp, regID[Q * i + 2]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[Q * i + 2], regID[Q * i], regID[Q * i + 2]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[Q * i], regID[Q * i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkMovComplex(sc, temp, regID[Q * i + 3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[Q * i + 3], regID[Q * i + 1], regID[Q * i + 3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[Q * i + 1], regID[Q * i + 1], temp);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkMovComplex(sc, temp, regID[Q * i + 1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[Q * i + 1], regID[Q * i], regID[Q * i + 1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[Q * i], regID[Q * i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+
+			if (stageAngle < 0) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", temp, regID[Q * i + 3]);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", temp, regID[Q * i + 3]);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", temp, regID[Q * i + 3]);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", temp, regID[Q * i + 3]);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			res = VkSubComplex(sc, regID[Q * i + 3], regID[Q * i + 2], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[Q * i + 2], regID[Q * i + 2], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+		uint64_t permute2[12] = { 0,4,8,2,6,10,1,5,9,3,7,11 };
+		res = VkPermute(sc, permute2, 12, 1, regID, temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		for (uint64_t i = 0; i < 2; i++) {
 			free(tf[i]);
 			tf[i] = 0;
 		}
@@ -3368,11 +4567,27 @@ temp%s = temp;\n\
 			sprintf(tf[19], "1.10915484383755047e+00%s", LFending);
 		}
 		for (uint64_t i = radix - 1; i > 0; i--) {
+			if (stageSize == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
 			if (i == radix - 1) {
 				if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
 					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+						}
 					if (!sc->inverse) {
 						sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 						res = VkAppendLine(sc);
@@ -3398,9 +4613,16 @@ temp%s = temp;\n\
 			}
 			else {
 				if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
 					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+						}
 					if (!sc->inverse) {
 						sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 						res = VkAppendLine(sc);
@@ -3424,6 +4646,7 @@ temp%s = temp;\n\
 					}
 				}
 			}
+			}
 			res = VkMulComplex(sc, sc->locID[i], regID[i], w, 0);
 			if (res != VKFFT_SUCCESS) return res;
 
@@ -3431,7 +4654,7 @@ temp%s = temp;\n\
 		res = VkMovComplex(sc, sc->locID[0], regID[0]);
 		if (res != VKFFT_SUCCESS) return res;
 		uint64_t permute[13] = { 0,1,3,9,5,2,6,12,10,4,8,11,7 };
-		res = VkPermute(sc, permute, 13, 0, 0);
+		res = VkPermute(sc, permute, 13, 0, 0, w);
 		if (res != VKFFT_SUCCESS) return res;
 		for (uint64_t i = 0; i < 6; i++) {
 			res = VkSubComplex(sc, regID[i + 7], sc->locID[i + 1], sc->locID[i + 7]);
@@ -3568,13 +4791,1883 @@ temp%s = temp;\n\
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		uint64_t permute2[13] = { 0,12,1,10,5,3,2,8,9,11,4,7,6 };
-		res = VkPermute(sc, permute2, 13, 1, regID);
+		res = VkPermute(sc, permute2, 13, 1, regID, temp);
 		if (res != VKFFT_SUCCESS) return res;
 
 		for (uint64_t i = 0; i < 20; i++) {
 			free(tf[i]);
 			tf[i] = 0;
 		}
+		break;
+	}
+	case 14: {
+		char* tf[8];
+
+		//VkAppendLine(sc, "	{\n");
+		for (uint64_t i = 0; i < 8; i++) {
+			tf[i] = (char*)malloc(sizeof(char) * 50);
+			if (!tf[i]) {
+				for (uint64_t j = 0; j < i; j++) {
+					free(tf[j]);
+					tf[j] = 0;
+				}
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+		}
+		sprintf(tf[0], "-1.16666666666666651863693004997913%s", LFending);
+		sprintf(tf[1], "0.79015646852540022404554065360571%s", LFending);
+		sprintf(tf[2], "0.05585426728964774240049351305970%s", LFending);
+		sprintf(tf[3], "0.73430220123575240531721419756650%s", LFending);
+		if (stageAngle < 0) {
+			sprintf(tf[4], "0.44095855184409837868031445395900%s", LFending);
+			sprintf(tf[5], "0.34087293062393136944265847887436%s", LFending);
+			sprintf(tf[6], "-0.53396936033772524066165487965918%s", LFending);
+			sprintf(tf[7], "0.87484229096165666561546458979137%s", LFending);
+		}
+		else {
+			sprintf(tf[4], "-0.44095855184409837868031445395900%s", LFending);
+			sprintf(tf[5], "-0.34087293062393136944265847887436%s", LFending);
+			sprintf(tf[6], "0.53396936033772524066165487965918%s", LFending);
+			sprintf(tf[7], "-0.87484229096165666561546458979137%s", LFending);
+		}
+		for (uint64_t i = radix - 1; i > 0; i--) {
+			if (stageSize == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				if (i == radix - 1) {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!sc->inverse) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+				else {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!sc->inverse) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+			}
+			res = VkMulComplex(sc, regID[i], regID[i], w, temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		//important
+		//res = VkMovComplex(sc, regID[1], sc->locID[1]);
+		//if (res != VKFFT_SUCCESS) return res;
+
+		uint64_t P = 7;
+		uint64_t Q = 2;
+		for (uint64_t i = 0; i < Q; i++) {
+			res = VkMovComplex(sc, sc->locID[0], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[1], regID[i + Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[2], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[3], regID[i + 3 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[4], regID[i + 4 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[5], regID[i + 5 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[6], regID[i + 6 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkAddComplex(sc, regID[i], sc->locID[1], sc->locID[6]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + Q], sc->locID[1], sc->locID[6]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i + 2 * Q], sc->locID[2], sc->locID[5]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 3 * Q], sc->locID[2], sc->locID[5]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i + 4 * Q], sc->locID[4], sc->locID[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 5 * Q], sc->locID[4], sc->locID[3]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkAddComplex(sc, sc->locID[5], regID[i + Q], regID[i + 3 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[5], sc->locID[5], regID[i + 5 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[1], regID[i], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[1], sc->locID[1], regID[i + 4 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[0], sc->locID[0], sc->locID[1]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkSubComplex(sc, sc->locID[2], regID[i], regID[i + 4 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, sc->locID[3], regID[i + 4 * Q], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, sc->locID[4], regID[i + 2 * Q], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkSubComplex(sc, regID[i], regID[i + Q], regID[i + 5 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 2 * Q], regID[i + 5 * Q], regID[i + 3 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 4 * Q], regID[i + 3 * Q], regID[i + Q]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkMulComplexNumber(sc, sc->locID[1], sc->locID[1], tf[0]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, sc->locID[2], sc->locID[2], tf[1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, sc->locID[3], sc->locID[3], tf[2]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, sc->locID[4], sc->locID[4], tf[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, sc->locID[5], sc->locID[5], tf[4]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, regID[i], regID[i], tf[5]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, regID[i + 2 * Q], regID[i + 2 * Q], tf[6]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, regID[i + 4 * Q], regID[i + 4 * Q], tf[7]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkSubComplex(sc, regID[i + 5 * Q], regID[i + 4 * Q], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplexInv(sc, regID[i + 6 * Q], regID[i + 4 * Q], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i + 4 * Q], regID[i], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], sc->locID[0], sc->locID[1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i + Q], sc->locID[2], sc->locID[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 2 * Q], sc->locID[4], sc->locID[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplexInv(sc, regID[i + 3 * Q], sc->locID[2], sc->locID[4]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[1], regID[i], regID[i + Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[2], regID[i], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[3], regID[i], regID[i + 3 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[4], regID[i + 4 * Q], sc->locID[5]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[6], regID[i + 6 * Q], sc->locID[5]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[5], sc->locID[5], regID[i + 5 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, regID[i], sc->locID[0]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkShuffleComplexInv(sc, regID[i + Q], sc->locID[1], sc->locID[4], 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkShuffleComplexInv(sc, regID[i + 2 * Q], sc->locID[3], sc->locID[6], 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkShuffleComplex(sc, regID[i + 3 * Q], sc->locID[2], sc->locID[5], 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkShuffleComplexInv(sc, regID[i + 4 * Q], sc->locID[2], sc->locID[5], 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkShuffleComplex(sc, regID[i + 5 * Q], sc->locID[3], sc->locID[6], 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkShuffleComplex(sc, regID[i + 6 * Q], sc->locID[1], sc->locID[4], 0);
+			if (res != VKFFT_SUCCESS) return res;
+
+		}
+
+
+		for (uint64_t i = 0; i < P; i++) {
+			if (i > 0) {
+				if (stageAngle < 0) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				res = VkMulComplex(sc, temp, regID[Q * i + 1], w, 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				res = VkMovComplex(sc, temp, regID[Q * i + 1]);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			res = VkSubComplex(sc, regID[Q * i + 1], regID[Q * i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[Q * i], regID[Q * i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+		uint64_t permute2[14] = { 0,2,4,6,8,10,12,1,3,5,7,9,11,13 };
+		res = VkPermute(sc, permute2, 14, 1, regID, temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		for (uint64_t i = 0; i < 8; i++) {
+			free(tf[i]);
+			tf[i] = 0;
+		}
+		break;
+	}
+	case 15: {
+		char* tf[5];
+		//VkAppendLine(sc, "	{\n");
+		for (uint64_t i = 0; i < 5; i++) {
+			tf[i] = (char*)malloc(sizeof(char) * 50);
+			if (!tf[i]) {
+				for (uint64_t j = 0; j < i; j++) {
+					free(tf[j]);
+					tf[j] = 0;
+				}
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+		}
+		sprintf(tf[0], "-0.5%s", LFending);
+		sprintf(tf[1], "1.538841768587626701285145288018455%s", LFending);
+		sprintf(tf[2], "-0.363271264002680442947733378740309%s", LFending);
+		sprintf(tf[3], "-0.809016994374947424102293417182819%s", LFending);
+		sprintf(tf[4], "-0.587785252292473129168705954639073%s", LFending);
+
+		char* tf2[2];
+		//VkAppendLine(sc, "	{\n");
+		for (uint64_t i = 0; i < 2; i++) {
+			tf2[i] = (char*)malloc(sizeof(char) * 50);
+			if (!tf2[i]) {
+				for (uint64_t j = 0; j < i; j++) {
+					free(tf2[j]);
+					tf2[j] = 0;
+				}
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+		}
+
+		sprintf(tf2[0], "-0.5%s", LFending);
+		sprintf(tf2[1], "-0.8660254037844386467637231707529%s", LFending);
+
+		for (uint64_t i = radix - 1; i > 0; i--) {
+			if (stageSize == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				if (i == radix - 1) {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!sc->inverse) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+				else {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!sc->inverse) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+			}
+			res = VkMulComplex(sc, regID[i], regID[i], w, temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		//important
+		//res = VkMovComplex(sc, regID[1], sc->locID[1]);
+		//if (res != VKFFT_SUCCESS) return res;
+
+		uint64_t P = 5;
+		uint64_t Q = 3;
+		for (uint64_t i = 0; i < Q; i++) {
+			res = VkMovComplex(sc, sc->locID[0], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[1], regID[i + Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[2], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[3], regID[i + 3 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, sc->locID[4], regID[i + 4 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkAddComplex(sc, regID[i + Q], sc->locID[1], sc->locID[4]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i + 2 * Q], sc->locID[2], sc->locID[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 3 * Q], sc->locID[2], sc->locID[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 4 * Q], sc->locID[1], sc->locID[4]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, sc->locID[3], regID[i + Q], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[4], regID[i + 3 * Q], regID[i + 4 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkAddComplex(sc, sc->locID[0], regID[i], regID[i + Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[0], sc->locID[0], regID[i + 2 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkFMAComplex(sc, sc->locID[2], regID[i + 2 * Q], tf[0], regID[i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, regID[i + 3 * Q], regID[i + 3 * Q], tf[1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, regID[i + 4 * Q], regID[i + 4 * Q], tf[2]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, sc->locID[3], sc->locID[3], tf[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, sc->locID[4], sc->locID[4], tf[4]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkSubComplex(sc, sc->locID[1], sc->locID[1], sc->locID[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[2], sc->locID[2], sc->locID[3]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[3], regID[i + 3 * Q], sc->locID[4]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, sc->locID[4], sc->locID[4], regID[i + 4 * Q]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, regID[i], sc->locID[0]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			if (stageAngle < 0)
+			{
+				res = VkShuffleComplex(sc, regID[i + Q], sc->locID[1], sc->locID[4], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplex(sc, regID[i + 2 * Q], sc->locID[2], sc->locID[3], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplexInv(sc, regID[i + 3 * Q], sc->locID[2], sc->locID[3], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplexInv(sc, regID[i + 4 * Q], sc->locID[1], sc->locID[4], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				res = VkShuffleComplexInv(sc, regID[i + Q], sc->locID[1], sc->locID[4], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplexInv(sc, regID[i + 2 * Q], sc->locID[2], sc->locID[3], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplex(sc, regID[i + 3 * Q], sc->locID[2], sc->locID[3], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplex(sc, regID[i + 4 * Q], sc->locID[1], sc->locID[4], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+
+		}
+
+
+		for (uint64_t i = 0; i < P; i++) {
+			if (i > 0) {
+				if (stageAngle < 0) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(2 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				res = VkMulComplex(sc, sc->locID[1], regID[Q * i + 1], w, temp);
+				if (res != VKFFT_SUCCESS) return res;
+				if (stageAngle < 0) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(4 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(4 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(4 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(4 * i * double_PI / radix), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				res = VkMulComplex(sc, sc->locID[2], regID[Q * i + 2], w, temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				res = VkMovComplex(sc, sc->locID[1], regID[1]);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkMovComplex(sc, sc->locID[2], regID[2]);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+
+			res = VkAddComplex(sc, regID[Q * i + 1], sc->locID[1], sc->locID[2]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[Q * i + 2], sc->locID[1], sc->locID[2]);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkAddComplex(sc, sc->locID[0], regID[Q * i], regID[Q * i + 1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkFMAComplex(sc, sc->locID[1], regID[Q * i + 1], tf2[0], regID[Q * i]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMulComplexNumber(sc, sc->locID[2], regID[Q * i + 2], tf2[1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, regID[Q * i], sc->locID[0]);
+			if (res != VKFFT_SUCCESS) return res;
+			if (stageAngle < 0)
+			{
+				res = VkShuffleComplex(sc, regID[Q * i + 1], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplexInv(sc, regID[Q * i + 2], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				res = VkShuffleComplexInv(sc, regID[Q * i + 1], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkShuffleComplex(sc, regID[Q * i + 2], sc->locID[1], sc->locID[2], 0);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+
+		uint64_t permute2[15] = { 0, 3, 6, 9, 12, 1, 4, 7, 10, 13, 2, 5, 8, 11, 14 };
+		res = VkPermute(sc, permute2, 15, 1, regID, temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		for (uint64_t i = 0; i < 5; i++) {
+			free(tf[i]);
+			tf[i] = 0;
+		}
+		for (uint64_t i = 0; i < 2; i++) {
+			free(tf2[i]);
+			tf2[i] = 0;
+		}
+		break;
+	}
+	case 16: {
+		if (res != VKFFT_SUCCESS) return res;
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (!sc->inverse) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			else {
+				if (!strcmp(floatType, "float")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle);\n", w, cosDef);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle);\n", w, sinDef);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (!strcmp(floatType, "double")) {
+						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle);\n", w);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+				}
+				if (!strcmp(floatType, "double")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle);\n", w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+		}
+		for (uint64_t i = 0; i < 8; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 8], w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 8], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (!sc->inverse) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			else {
+				if (!strcmp(floatType, "float")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(0.5%s*angle);\n", w, cosDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(0.5%s*angle);\n", w, sinDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (!strcmp(floatType, "double")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+		}
+		for (uint64_t i = 0; i < 4; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 4], w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 4], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
+		}
+
+		for (uint64_t i = 8; i < 12; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 4], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 4], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, 2*stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, 2*stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (!sc->inverse) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			else {
+				if (!strcmp(floatType, "float")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(0.25%s*angle);\n", w, cosDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(0.25%s*angle);\n", w, sinDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
+				}
+				if (!strcmp(floatType, "double")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+		}
+		for (uint64_t i = 0; i < 2; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 2], w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 2], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
+		}
+		for (uint64_t i = 4; i < 6; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 2], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 2], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * loc_SQRT1_2 + %s.y * loc_SQRT1_2;\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * loc_SQRT1_2 - %s.x * loc_SQRT1_2;\n\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * loc_SQRT1_2 - %s.y * loc_SQRT1_2;\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * loc_SQRT1_2 + %s.x * loc_SQRT1_2;\n\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 8; i < 10; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 2], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 2], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", w, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", w, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	w = %s(iw.y, -iw.x);\n\n", vecType);
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", w, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", w, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	w = %s(-iw.y, iw.x);\n\n", vecType);
+		}
+		for (uint64_t i = 12; i < 14; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 2], w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 2], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, 3*stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, 3*stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (!sc->inverse) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			else {
+				if (!strcmp(floatType, "float")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(0.125%s*angle);\n", w, cosDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(0.125%s*angle);\n", w, sinDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
+				}
+				if (!strcmp(floatType, "double")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+		}
+
+		for (uint64_t i = 0; i < 1; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 1], w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
+		}
+		for (uint64_t i = 2; i < 3; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 1], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * loc_SQRT1_2 + %s.y * loc_SQRT1_2;\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * loc_SQRT1_2 - %s.x * loc_SQRT1_2;\n\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * loc_SQRT1_2 - %s.y * loc_SQRT1_2;\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * loc_SQRT1_2 + %s.x * loc_SQRT1_2;\n\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 4; i < 5; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 1], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", temp, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", temp, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, iw, temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", temp, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", temp, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, iw, temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 6; i < 7; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 1], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+
+		for (uint64_t j = 0; j < 2; j++) {
+			if (stageAngle < 0) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			for (uint64_t i = 8 + 4 * j; i < 9 + 4 * j; i++) {
+				res = VkMulComplex(sc, temp, regID[i + 1], iw, 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkAddComplex(sc, regID[i], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			if (stageAngle < 0) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkMovComplex(sc, iw, temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkMovComplex(sc, iw, temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			for (uint64_t i = 10 + 4 * j; i < 11 + 4 * j; i++) {
+				res = VkMulComplex(sc, temp, regID[i + 1], iw, 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkAddComplex(sc, regID[i], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+
+		uint64_t permute2[16] = { 0,8,4,12,2,10,6,14,1,9,5,13,3,11,7,15 };
+		res = VkPermute(sc, permute2, 16, 1, regID, temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		/*res = VkMovComplex(sc, temp, regID[1]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[1], regID[8]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[8], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[2]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[2], regID[4]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[4], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[3]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[3], regID[12]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[12], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[5]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[5], regID[10]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[10], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[7]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[7], regID[14]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[14], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[11]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[11], regID[13]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[13], temp);
+		if (res != VKFFT_SUCCESS) return res;*/
+		break;
+	}
+	case 32: {
+		if (res != VKFFT_SUCCESS) return res;
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (!sc->inverse) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			else {
+				if (!strcmp(floatType, "float")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle);\n", w, cosDef);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle);\n", w, sinDef);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (!strcmp(floatType, "double")) {
+						sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle);\n", w);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+				}
+				if (!strcmp(floatType, "double")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle);\n", w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+		}
+		for (uint64_t i = 0; i < 16; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 16], w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 16], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (!sc->inverse) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			else {
+				if (!strcmp(floatType, "float")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(0.5%s*angle);\n", w, cosDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(0.5%s*angle);\n", w, sinDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (!strcmp(floatType, "double")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+		}
+		for (uint64_t i = 0; i < 8; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 8], w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 8], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
+		}
+
+		for (uint64_t i = 16; i < 24; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 8], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 8], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, 2*stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, 2*stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (!sc->inverse) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			else {
+				if (!strcmp(floatType, "float")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(0.25%s*angle);\n", w, cosDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(0.25%s*angle);\n", w, sinDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
+				}
+				if (!strcmp(floatType, "double")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+		}
+		for (uint64_t i = 0; i < 4; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 4], w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 4], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
+		}
+		for (uint64_t i = 8; i < 12; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 4], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 4], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * loc_SQRT1_2 + %s.y * loc_SQRT1_2;\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * loc_SQRT1_2 - %s.x * loc_SQRT1_2;\n\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * loc_SQRT1_2 - %s.y * loc_SQRT1_2;\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * loc_SQRT1_2 + %s.x * loc_SQRT1_2;\n\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 16; i < 20; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 4], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 4], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", w, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", w, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	w = %s(iw.y, -iw.x);\n\n", vecType);
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", w, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", w, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	w = %s(-iw.y, iw.x);\n\n", vecType);
+		}
+		for (uint64_t i = 24; i < 28; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 4], w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 4], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, 3*stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, 3*stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (!sc->inverse) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			else {
+				if (!strcmp(floatType, "float")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(0.125%s*angle);\n", w, cosDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(0.125%s*angle);\n", w, sinDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
+				}
+				if (!strcmp(floatType, "double")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+		}
+
+		for (uint64_t i = 0; i < 2; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 2], w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 2], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
+		}
+		for (uint64_t i = 4; i < 6; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 2], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 2], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * loc_SQRT1_2 + %s.y * loc_SQRT1_2;\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * loc_SQRT1_2 - %s.x * loc_SQRT1_2;\n\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * loc_SQRT1_2 - %s.y * loc_SQRT1_2;\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * loc_SQRT1_2 + %s.x * loc_SQRT1_2;\n\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 8; i < 10; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 2], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 2], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", temp, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", temp, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, iw, temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", temp, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", temp, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, iw, temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 12; i < 14; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 2], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 2], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+
+		for (uint64_t j = 0; j < 2; j++) {
+			if (stageAngle < 0) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			for (uint64_t i = 16 + 8 * j; i < 18 + 8 * j; i++) {
+				res = VkMulComplex(sc, temp, regID[i + 2], iw, 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkSubComplex(sc, regID[i + 2], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkAddComplex(sc, regID[i], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			if (stageAngle < 0) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkMovComplex(sc, iw, temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkMovComplex(sc, iw, temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			for (uint64_t i = 20 + 8 * j; i < 22 + 8 * j; i++) {
+				res = VkMulComplex(sc, temp, regID[i + 2], iw, 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkSubComplex(sc, regID[i + 2], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkAddComplex(sc, regID[i], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+
+		if (stageSize == 1) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			if (sc->LUT) {
+				if (sc->useCoalescedLUTUploadToSM) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, 4* stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, 4* stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (!sc->inverse) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			else {
+				if (!strcmp(floatType, "float")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(0.0625%s*angle);\n", w, cosDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(0.0625%s*angle);\n", w, sinDef, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
+				}
+				if (!strcmp(floatType, "double")) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+		}
+
+		for (uint64_t i = 0; i < 1; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 1], w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", iw, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			//sc->tempLen = sprintf(sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
+		}
+		for (uint64_t i = 2; i < 3; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 1], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * loc_SQRT1_2 + %s.y * loc_SQRT1_2;\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * loc_SQRT1_2 - %s.x * loc_SQRT1_2;\n\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * loc_SQRT1_2 - %s.y * loc_SQRT1_2;\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * loc_SQRT1_2 + %s.x * loc_SQRT1_2;\n\n", iw, w, w);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 4; i < 5; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 1], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (stageAngle < 0) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", temp, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", temp, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, iw, temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", temp, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", temp, iw);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkMovComplex(sc, iw, temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 6; i < 7; i++) {
+			res = VkMulComplex(sc, temp, regID[i + 1], iw, 0);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex(sc, regID[i], regID[i], temp);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+
+		for (uint64_t j = 0; j < 2; j++) {
+			if (stageAngle < 0) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			for (uint64_t i = 8 + 4 * j; i < 9 + 4 * j; i++) {
+				res = VkMulComplex(sc, temp, regID[i + 1], iw, 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkAddComplex(sc, regID[i], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			if (stageAngle < 0) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkMovComplex(sc, iw, temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkMovComplex(sc, iw, temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			for (uint64_t i = 10 + 4 * j; i < 11 + 4 * j; i++) {
+				res = VkMulComplex(sc, temp, regID[i + 1], iw, 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkAddComplex(sc, regID[i], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+
+		for (uint64_t j = 0; j < 4; j++) {
+			if ((j == 1) || (j == 2)) {
+				if (stageAngle < 0) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, cos((7 - 2 * j) * double_PI / 16), LFending, w, sin((7 - 2 * j) * double_PI / 16), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, cos((7 - 2 * j) * double_PI / 16), LFending, w, sin((7 - 2 * j) * double_PI / 16), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, cos((7 - 2 * j) * double_PI / 16), LFending, w, sin((7 - 2 * j) * double_PI / 16), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, cos((7 - 2 * j) * double_PI / 16), LFending, w, sin((7 - 2 * j) * double_PI / 16), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			else {
+				if (stageAngle < 0) {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 16), LFending, w, sin((2 * j + 1) * double_PI / 16), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 16), LFending, w, sin((2 * j + 1) * double_PI / 16), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 16), LFending, w, sin((2 * j + 1) * double_PI / 16), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 16), LFending, w, sin((2 * j + 1) * double_PI / 16), LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			for (uint64_t i = 16 + 4 * j; i < 17 + 4 * j; i++) {
+				res = VkMulComplex(sc, temp, regID[i + 1], iw, 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkAddComplex(sc, regID[i], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			if (stageAngle < 0) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.y;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.x;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkMovComplex(sc, iw, temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = -%s.y;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.x;\n", temp, iw);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkMovComplex(sc, iw, temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			for (uint64_t i = 18 + 4 * j; i < 19 + 4 * j; i++) {
+				res = VkMulComplex(sc, temp, regID[i + 1], iw, 0);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkSubComplex(sc, regID[i + 1], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+				res = VkAddComplex(sc, regID[i], regID[i], temp);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+
+		uint64_t permute2[32] = { 0,16,8,24,4,20,12,28,2,18,10,26,6,22,14,30,1,17,9,25,5,21,13,29,3,19,11,27,7,23,15,31 };
+		res = VkPermute(sc, permute2, 32, 1, regID, temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		/*res = VkMovComplex(sc, temp, regID[1]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[1], regID[16]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[16], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[2]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[2], regID[8]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[8], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[3]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[3], regID[24]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[24], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[5]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[5], regID[20]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[20], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[6]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[6], regID[12]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[12], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[7]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[7], regID[28]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[28], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[9]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[9], regID[18]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[18], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[11]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[11], regID[26]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[26], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[13]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[13], regID[22]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[22], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[15]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[15], regID[30]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[30], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[19]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[19], regID[25]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[25], temp);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovComplex(sc, temp, regID[23]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[23], regID[29]);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovComplex(sc, regID[29], temp);
+		if (res != VKFFT_SUCCESS) return res;*/
+
 		break;
 	}
 	}
@@ -3814,13 +6907,8 @@ temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	sprintf(sc->w, "w");
-	uint64_t maxNonPow2Radix = 1;
-	if (sc->fftDim % 3 == 0) maxNonPow2Radix = 3;
-	if (sc->fftDim % 5 == 0) maxNonPow2Radix = 5;
-	if (sc->fftDim % 7 == 0) maxNonPow2Radix = 7;
-	if (sc->fftDim % 11 == 0) maxNonPow2Radix = 11;
-	if (sc->fftDim % 13 == 0) maxNonPow2Radix = 13;
-	for (uint64_t i = 0; i < maxNonPow2Radix; i++) {
+	uint64_t maxNonPow2Radix = sc->maxNonPow2Radix;
+	for (uint64_t i = 0; i < sc->usedLocRegs; i++) {
 		sprintf(sc->locID[i], "loc_%" PRIu64 "", i);
 		sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->locID[i]);
 		res = VkAppendLine(sc);
@@ -3833,10 +6921,10 @@ temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 		if (res != VKFFT_SUCCESS) return res;
 	}
 	sprintf(sc->temp, "%s", sc->locID[0]);
-	uint64_t useRadix8 = 0;
+	uint64_t useRadix8plus = 0;
 	for (uint64_t i = 0; i < sc->numStages; i++)
-		if (sc->stageRadix[i] == 8) useRadix8 = 1;
-	if (useRadix8 == 1) {
+		if ((sc->stageRadix[i] == 8) || (sc->stageRadix[i] == 16) || (sc->stageRadix[i] == 32)) useRadix8plus = 1;
+	if (useRadix8plus == 1) {
 		if (maxNonPow2Radix > 1) sprintf(sc->iw, "%s", sc->locID[1]);
 		else {
 			sc->tempLen = sprintf(sc->tempStr, "	%s iw;\n", vecType);
@@ -5576,7 +8664,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 							}
 							else {
 								if (i >= (uint64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[1])) {
-									if (((uint64_t)ceil(sc->fftDim / 2.0) - 1 - (sc->localSize[1] - ((sc->fftDim / 2) % sc->localSize[1] + 1))) > (i - ((int64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[1]))) * sc->localSize[1]) {
+									if ((((uint64_t)ceil(sc->fftDim / 2.0) - 1 - (sc->localSize[1] - ((sc->fftDim / 2) % sc->localSize[1] + 1))) > (i - ((int64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[1]))) * sc->localSize[1]) && ((uint64_t)ceil(sc->fftDim / 2.0) - 1 > (sc->localSize[1] - ((sc->fftDim / 2) % sc->localSize[1] + 1)))) {
 										if (sc->zeropadBluestein[0]) {
 											sc->tempLen = sprintf(sc->tempStr, "		if(%" PRIu64 " > %s){\n", ((uint64_t)ceil(sc->fftDim / 2.0) - 1 - (sc->localSize[1] - ((sc->fftDim / 2) % sc->localSize[1] + 1))) - (i - ((int64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[1]))) * sc->localSize[1], sc->gl_LocalInvocationID_y);
 											res = VkAppendLine(sc);
@@ -5613,6 +8701,11 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 									}
 								}
 								else {
+									if (sc->localSize[1] > sc->fftDim) {
+										sc->tempLen = sprintf(sc->tempStr, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_y, sc->fftDim);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+									}
 									sc->tempLen = sprintf(sc->tempStr, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_y, (sc->fftDim / 2 + 1) % sc->localSize[1]);
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
@@ -5634,6 +8727,20 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 									sc->tempLen = sprintf(sc->tempStr, "		}\n");
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
+									if (sc->localSize[1] > sc->fftDim) {
+										sc->tempLen = sprintf(sc->tempStr, "		}else{;\n");
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+										sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+										sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+										sc->tempLen = sprintf(sc->tempStr, "		}\n");
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+									}
 								}
 							}
 						}
@@ -5648,7 +8755,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 							}
 							else {
 								if (i >= (uint64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[0])) {
-									if (((uint64_t)ceil(sc->fftDim / 2.0) - 1 - (sc->localSize[0] - ((sc->fftDim / 2) % sc->localSize[0] + 1))) > (i - ((int64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[0]))) * sc->localSize[0]) {
+									if ((((uint64_t)ceil(sc->fftDim / 2.0) - 1 - (sc->localSize[0] - ((sc->fftDim / 2) % sc->localSize[0] + 1))) > (i - ((int64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[0]))) * sc->localSize[0]) && ((uint64_t)ceil(sc->fftDim / 2.0) - 1 > (sc->localSize[0] - ((sc->fftDim / 2) % sc->localSize[0] + 1)))) {
 										if (sc->zeropadBluestein[0]) {
 											sc->tempLen = sprintf(sc->tempStr, "		if(%" PRIu64 " > %s){\n", ((uint64_t)ceil(sc->fftDim / 2.0) - 1 - (sc->localSize[0] - ((sc->fftDim / 2) % sc->localSize[0] + 1))) - (i - ((int64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[0]))) * sc->localSize[0], sc->gl_LocalInvocationID_x);
 											res = VkAppendLine(sc);
@@ -5685,6 +8792,11 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 									}
 								}
 								else {
+									if (sc->localSize[0] > sc->fftDim) {
+										sc->tempLen = sprintf(sc->tempStr, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_x, sc->fftDim);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+									}
 									sc->tempLen = sprintf(sc->tempStr, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_x, (sc->fftDim / 2 + 1) % sc->localSize[0]);
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
@@ -5706,6 +8818,20 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 									sc->tempLen = sprintf(sc->tempStr, "		}\n");
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
+									if (sc->localSize[0] > sc->fftDim) {
+										sc->tempLen = sprintf(sc->tempStr, "		}else{;\n");
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+										sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+										sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+										sc->tempLen = sprintf(sc->tempStr, "		}\n");
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+									}
 								}
 							}
 						}
@@ -5722,7 +8848,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 							}
 							else {
 								if (i >= (uint64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[1])) {
-									if (((uint64_t)ceil(sc->fftDim / 2.0) - 1 - (sc->localSize[1] - ((sc->fftDim / 2) % sc->localSize[1] + 1))) > (i - ((int64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[1]))) * sc->localSize[1]) {
+									if ((((uint64_t)ceil(sc->fftDim / 2.0) - 1 - (sc->localSize[1] - ((sc->fftDim / 2) % sc->localSize[1] + 1))) > (i - ((int64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[1]))) * sc->localSize[1]) && ((uint64_t)ceil(sc->fftDim / 2.0) - 1 > (sc->localSize[1] - ((sc->fftDim / 2) % sc->localSize[1] + 1)))) {
 										if (sc->zeropadBluestein[0]) {
 											sc->tempLen = sprintf(sc->tempStr, "		if(%" PRIu64 " > %s){\n", ((uint64_t)ceil(sc->fftDim / 2.0) - 1 - (sc->localSize[1] - ((sc->fftDim / 2) % sc->localSize[1] + 1))) - (i - ((int64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[1]))) * sc->localSize[1], sc->gl_LocalInvocationID_y);
 											res = VkAppendLine(sc);
@@ -5759,6 +8885,11 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 									}
 								}
 								else {
+									if (sc->localSize[1] > sc->fftDim) {
+										sc->tempLen = sprintf(sc->tempStr, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_y, sc->fftDim);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+									}
 									sc->tempLen = sprintf(sc->tempStr, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_y, (sc->fftDim / 2 + 1) % sc->localSize[1]);
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
@@ -5780,6 +8911,20 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 									sc->tempLen = sprintf(sc->tempStr, "		}\n");
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
+									if (sc->localSize[1] > sc->fftDim) {
+										sc->tempLen = sprintf(sc->tempStr, "		}else{;\n");
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+										sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+										sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+										sc->tempLen = sprintf(sc->tempStr, "		}\n");
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+									}
 								}
 							}
 						}
@@ -5794,7 +8939,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 							}
 							else {
 								if (i >= (uint64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[0])) {
-									if (((uint64_t)ceil(sc->fftDim / 2.0) - 1 - (sc->localSize[0] - ((sc->fftDim / 2) % sc->localSize[0] + 1))) > (i - ((int64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[0]))) * sc->localSize[0]) {
+									if ((((uint64_t)ceil(sc->fftDim / 2.0) - 1 - (sc->localSize[0] - ((sc->fftDim / 2) % sc->localSize[0] + 1))) > (i - ((int64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[0]))) * sc->localSize[0]) && ((uint64_t)ceil(sc->fftDim / 2.0) - 1 > (sc->localSize[0] - ((sc->fftDim / 2) % sc->localSize[0] + 1)))) {
 										if (sc->zeropadBluestein[0]) {
 											sc->tempLen = sprintf(sc->tempStr, "		if(%" PRIu64 " > %s){\n", ((uint64_t)ceil(sc->fftDim / 2.0) - 1 - (sc->localSize[0] - ((sc->fftDim / 2) % sc->localSize[0] + 1))) - (i - ((int64_t)ceil((sc->fftDim / 2 + 1) / (double)sc->localSize[0]))) * sc->localSize[0], sc->gl_LocalInvocationID_x);
 											res = VkAppendLine(sc);
@@ -5831,6 +8976,11 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 									}
 								}
 								else {
+									if (sc->localSize[0] > sc->fftDim) {
+										sc->tempLen = sprintf(sc->tempStr, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_x, sc->fftDim);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+									}
 									sc->tempLen = sprintf(sc->tempStr, "		if(%s < %" PRIu64 "){;\n", sc->gl_LocalInvocationID_x, (sc->fftDim / 2 + 1) % sc->localSize[0]);
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
@@ -5852,6 +9002,20 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 									sc->tempLen = sprintf(sc->tempStr, "		}\n");
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
+									if (sc->localSize[0] > sc->fftDim) {
+										sc->tempLen = sprintf(sc->tempStr, "		}else{;\n");
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+										sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+										sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0;\n", sc->regIDs[i + k * sc->registers_per_thread]);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+										sc->tempLen = sprintf(sc->tempStr, "		}\n");
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+									}
 								}
 							}
 						}
@@ -10223,6 +13387,34 @@ static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstant
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 	}
+
+	//upload second stage of LUT to sm
+	uint64_t numLUTelementsStage = 0;
+	switch (stageRadix) {
+	case 2:
+		numLUTelementsStage = 1;
+		break;
+	case 4:
+		numLUTelementsStage = 2;
+		break;
+	case 8:
+		numLUTelementsStage = 3;
+		break;
+	case 16:
+		numLUTelementsStage = 4;
+		break;
+	case 32:
+		numLUTelementsStage = 5;
+		break;
+	default:
+		numLUTelementsStage = stageRadix - 1;
+		break;
+	}
+	if ((sc->LUT) && (stageSize > 1) && ((((numLUTelementsStage >= 4)&&(sc->fftDim>=1024))||(((numLUTelementsStage >= 3) && (sc->fftDim < 1024))))|| (logicalRegistersPerThread / stageRadix > 1)) && (sc->registerBoost == 1) && (stageSize < sc->warpSize))
+		sc->useCoalescedLUTUploadToSM = 1;
+	else
+		sc->useCoalescedLUTUploadToSM = 0;
+
 	for (uint64_t k = 0; k < sc->registerBoost; k++) {
 		for (uint64_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
 			sc->tempLen = sprintf(sc->tempStr, "\
@@ -10265,6 +13457,112 @@ static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstant
 					if (res != VKFFT_SUCCESS) return res;
 				}
 			}
+			if (!sc->useCoalescedLUTUploadToSM) {
+				char** regID = (char**)malloc(sizeof(char*) * stageRadix);
+				if (regID) {
+					for (uint64_t i = 0; i < stageRadix; i++) {
+						regID[i] = (char*)malloc(sizeof(char) * 50);
+						if (!regID[i]) {
+							for (uint64_t j = 0; j < i; j++) {
+								free(regID[j]);
+								regID[j] = 0;
+							}
+							free(regID);
+							regID = 0;
+							return VKFFT_ERROR_MALLOC_FAILED;
+						}
+						uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
+						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
+						sprintf(regID[i], "%s", sc->regIDs[id]);
+						/*if(j + i * logicalStoragePerThread / stageRadix < logicalRegistersPerThread)
+							sprintf(regID[i], "%s", sc->regIDs[j + i * logicalStoragePerThread / stageRadix]);
+						else
+							sprintf(regID[i], "%" PRIu64 "[%" PRIu64 "]", (j + i * logicalStoragePerThread / stageRadix)/ logicalRegistersPerThread, (j + i * logicalStoragePerThread / stageRadix) % logicalRegistersPerThread);*/
+
+					}
+					res = inlineRadixKernelVkFFT(sc, floatType, uintType, stageRadix, stageSize, stageSizeSum, stageAngle, regID);
+					if (res != VKFFT_SUCCESS) return res;
+					for (uint64_t i = 0; i < stageRadix; i++) {
+						uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
+						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
+						sprintf(sc->regIDs[id], "%s", regID[i]);
+					}
+					for (uint64_t i = 0; i < stageRadix; i++) {
+						free(regID[i]);
+						regID[i] = 0;
+					}
+					free(regID);
+					regID = 0;
+				}
+				else
+					return VKFFT_ERROR_MALLOC_FAILED;
+			}
+		}
+
+		if (sc->useCoalescedLUTUploadToSM) {
+			if (sc->localSize[0] * logicalStoragePerThread > sc->fftDim) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendZeropadEnd(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+
+			sc->useCoalescedLUTUploadToSM = 1;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s;\n", sc->sdataID, sc->gl_LocalInvocationID_x);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			if (sc->localSize[1] > 1) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + %" PRIu64 "*%s;\n", sc->sdataID, sc->sdataID, sc->localSize[0], sc->gl_LocalInvocationID_y);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+
+			for (uint64_t i = 0; i < (uint64_t)ceil(numLUTelementsStage * stageSize / ((double)sc->localSize[0] * sc->localSize[1])); i++) {
+				if (i > 0) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + %" PRIu64 ";\n", sc->sdataID, sc->sdataID, sc->localSize[0] * sc->localSize[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (i == (uint64_t)ceil(numLUTelementsStage * stageSize / ((double)sc->localSize[0] * sc->localSize[1])) - 1) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		if(%s<%" PRIu64 "){\n", sc->sdataID, numLUTelementsStage * stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				sc->tempLen = sprintf(sc->tempStr, "\
+		sdata[%s] = twiddleLUT[%s+%" PRIu64 "];\n", sc->sdataID, sc->sdataID, (stageSizeSum));
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				if (i == (uint64_t)ceil(numLUTelementsStage * stageSize / ((double)sc->localSize[0] * sc->localSize[1])) - 1) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendZeropadStart(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
+			if (res != VKFFT_SUCCESS) return res;
+
+			if (sc->localSize[0] * logicalStoragePerThread > sc->fftDim) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_x, logicalStoragePerThread, sc->fftDim);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			for (uint64_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
 			char** regID = (char**)malloc(sizeof(char*) * stageRadix);
 			if (regID) {
 				for (uint64_t i = 0; i < stageRadix; i++) {
@@ -10287,7 +13585,19 @@ static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstant
 						sprintf(regID[i], "%" PRIu64 "[%" PRIu64 "]", (j + i * logicalStoragePerThread / stageRadix)/ logicalRegistersPerThread, (j + i * logicalStoragePerThread / stageRadix) % logicalRegistersPerThread);*/
 
 				}
-				res = inlineRadixKernelVkFFT(sc, floatType, uintType, stageRadix, stageSize, stageAngle, regID);
+					sc->tempLen = sprintf(sc->tempStr, "\
+		%s = (%s+ %" PRIu64 ") %% (%" PRIu64 ");\n", sc->stageInvocationID, sc->gl_LocalInvocationID_x, (j + k * logicalRegistersPerThread / stageRadix) * logicalGroupSize, stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (!sc->useCoalescedLUTUploadToSM) {
+						if (sc->LUT)
+							sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID + %" PRIu64 ";\n", stageSizeSum);
+						else
+							sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					res = inlineRadixKernelVkFFT(sc, floatType, uintType, stageRadix, stageSize, stageSizeSum, stageAngle, regID);
 				if (res != VKFFT_SUCCESS) return res;
 				for (uint64_t i = 0; i < stageRadix; i++) {
 					uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
@@ -10320,6 +13630,7 @@ static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstant
 		%s=shuffle[(%" PRIu64 "+tshuffle)%%(%" PRIu64 ")];\n", sc->regIDs[id], i, logicalRegistersPerThread);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
+				}
 			}
 		}
 	}
@@ -10382,6 +13693,35 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 	}
+
+	//upload second stage of LUT to sm
+	uint64_t numLUTelementsStage = 0;
+	switch (stageRadix) {
+	case 2:
+		numLUTelementsStage = 1;
+		break;
+	case 4:
+		numLUTelementsStage = 2;
+		break;
+	case 8:
+		numLUTelementsStage = 3;
+		break;
+	case 16:
+		numLUTelementsStage = 4;
+		break;
+	case 32:
+		numLUTelementsStage = 5;
+		break;
+	default:
+		numLUTelementsStage = stageRadix - 1;
+		break;
+	}
+	if ((sc->LUT) && (stageSize > 1) && ((((numLUTelementsStage >= 4) && (sc->fftDim >= 1024)) || (((numLUTelementsStage >= 3) && (sc->fftDim < 1024)))) || (logicalRegistersPerThread / stageRadix > 1)) && (sc->registerBoost == 1) && (stageSize < sc->warpSize))
+		sc->useCoalescedLUTUploadToSM = 1;
+	else
+		sc->useCoalescedLUTUploadToSM = 0;
+
+
 	for (uint64_t k = 0; k < sc->registerBoost; k++) {
 		for (uint64_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
 			sc->tempLen = sprintf(sc->tempStr, "\
@@ -10404,7 +13744,110 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 					if (res != VKFFT_SUCCESS) return res;
 				}
 			}
+			if (!sc->useCoalescedLUTUploadToSM) {
+				char** regID = (char**)malloc(sizeof(char*) * stageRadix);
+				if (regID) {
+					for (uint64_t i = 0; i < stageRadix; i++) {
+						regID[i] = (char*)malloc(sizeof(char) * 50);
+						if (!regID[i]) {
+							for (uint64_t j = 0; j < i; j++) {
+								free(regID[j]);
+								regID[j] = 0;
+							}
+							free(regID);
+							regID = 0;
+							return VKFFT_ERROR_MALLOC_FAILED;
+						}
+						uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
+						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
+						sprintf(regID[i], "%s", sc->regIDs[id]);
+						/*if (j + i * logicalStoragePerThread / stageRadix < logicalRegistersPerThread)
+							sprintf(regID[i], "_%" PRIu64 "", j + i * logicalStoragePerThread / stageRadix);
+						else
+							sprintf(regID[i], "%" PRIu64 "[%" PRIu64 "]", (j + i * logicalStoragePerThread / stageRadix) / logicalRegistersPerThread, (j + i * logicalStoragePerThread / stageRadix) % logicalRegistersPerThread);*/
 
+					}
+					res = inlineRadixKernelVkFFT(sc, floatType, uintType, stageRadix, stageSize, stageSizeSum, stageAngle, regID);
+					if (res != VKFFT_SUCCESS) return res;
+					for (uint64_t i = 0; i < stageRadix; i++) {
+						uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
+						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
+						sprintf(sc->regIDs[id], "%s", regID[i]);
+					}
+					for (uint64_t i = 0; i < stageRadix; i++) {
+						free(regID[i]);
+						regID[i] = 0;
+					}
+					free(regID);
+					regID = 0;
+				}
+				else
+					return VKFFT_ERROR_MALLOC_FAILED;
+			}
+		}
+
+		//upload second stage of LUT to sm
+		if (sc->useCoalescedLUTUploadToSM) {
+			if (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) {
+				sc->tempLen = sprintf(sc->tempStr, "		}\n");
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendZeropadEnd(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+
+			sc->useCoalescedLUTUploadToSM = 1;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s;\n", sc->sdataID, sc->gl_LocalInvocationID_x);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + %" PRIu64 "*%s;\n", sc->sdataID, sc->sdataID, sc->localSize[0], sc->gl_LocalInvocationID_y);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+
+			for (uint64_t i = 0; i < (uint64_t)ceil(numLUTelementsStage * stageSize / ((double)sc->localSize[0] * sc->localSize[1])); i++) {
+				if (i > 0) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + %" PRIu64 ";\n", sc->sdataID, sc->sdataID, sc->localSize[0] * sc->localSize[1]);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (i == (uint64_t)ceil(numLUTelementsStage * stageSize / ((double)sc->localSize[0] * sc->localSize[1])) - 1) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		if(%s<%" PRIu64 "){\n", sc->sdataID, numLUTelementsStage * stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				sc->tempLen = sprintf(sc->tempStr, "\
+		sdata[%s] = twiddleLUT[%s+%" PRIu64 "];\n", sc->sdataID, sc->sdataID, (stageSizeSum));
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				if (i == (uint64_t)ceil(numLUTelementsStage * stageSize / ((double)sc->localSize[0] * sc->localSize[1])) - 1) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendZeropadStart(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
+			if (res != VKFFT_SUCCESS) return res;
+
+			if (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s * %" PRIu64 " < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_y, logicalStoragePerThread, sc->fftDim);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			for (uint64_t j = 0; j < logicalRegistersPerThread / stageRadix; j++) {
 			char** regID = (char**)malloc(sizeof(char*) * stageRadix);
 			if (regID) {
 				for (uint64_t i = 0; i < stageRadix; i++) {
@@ -10427,7 +13870,17 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 						sprintf(regID[i], "%" PRIu64 "[%" PRIu64 "]", (j + i * logicalStoragePerThread / stageRadix) / logicalRegistersPerThread, (j + i * logicalStoragePerThread / stageRadix) % logicalRegistersPerThread);*/
 
 				}
-				res = inlineRadixKernelVkFFT(sc, floatType, uintType, stageRadix, stageSize, stageAngle, regID);
+					sc->tempLen = sprintf(sc->tempStr, "\
+		%s = (%s+ %" PRIu64 ") %% (%" PRIu64 ");\n", sc->stageInvocationID, sc->gl_LocalInvocationID_y, (j + k * logicalRegistersPerThread / stageRadix) * logicalGroupSize, stageSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					if (sc->LUT)
+						sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID + %" PRIu64 ";\n", stageSizeSum);
+					else
+						sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					res = inlineRadixKernelVkFFT(sc, floatType, uintType, stageRadix, stageSize, stageSizeSum, stageAngle, regID);
 				if (res != VKFFT_SUCCESS) return res;
 				for (uint64_t i = 0; i < stageRadix; i++) {
 					uint64_t id = j + k * logicalRegistersPerThread / stageRadix + i * logicalStoragePerThread / stageRadix;
@@ -10443,6 +13896,7 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 			}
 			else
 				return VKFFT_ERROR_MALLOC_FAILED;
+			}
 		}
 	}
 	if (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) {
@@ -10747,6 +14201,12 @@ static inline VkFFTResult appendRadixShuffleNonStrided(VkFFTSpecializationConsta
 									res = VkMulReal(sc, sc->combinedID, sc->gl_LocalInvocationID_y, sc->sharedStride);
 									if (res != VKFFT_SUCCESS) return res;
 									res = VkAddReal(sc, sc->sdataID, sc->sdataID, sc->combinedID);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								if (sc->resolveBankConflictFirstStages == 1) {
+									sc->tempLen = sprintf(sc->tempStr, "\
+	%s = (%s / %" PRIu64 ") * %" PRIu64 " + %s %% %" PRIu64 ";", sc->sdataID, sc->sdataID, sc->numSharedBanks / 2, sc->numSharedBanks / 2 + 1, sc->sdataID, sc->numSharedBanks / 2);
+									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
 								}
 								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + gl_LocalInvocationID.x + %" PRIu64 "", t * logicalGroupSizeNext);
@@ -17845,6 +21305,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 				freeShaderGenVkFFT(sc);
 				return res;
 			}
+			if (i > 0) {
 			switch (sc->stageRadix[i]) {
 			case 2:
 				stageSizeSum += stageSize;
@@ -17858,18 +21319,43 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 			case 5:
 				stageSizeSum += stageSize * 4;
 				break;
+				case 6:
+					stageSizeSum += stageSize * 5;
+					break;
 			case 7:
 				stageSizeSum += stageSize * 6;
 				break;
 			case 8:
 				stageSizeSum += stageSize * 3;
 				break;
+				case 9:
+					stageSizeSum += stageSize * 8;
+					break;
+				case 10:
+					stageSizeSum += stageSize * 9;
+					break;
 			case 11:
 				stageSizeSum += stageSize * 10;
 				break;
+				case 12:
+					stageSizeSum += stageSize * 11;
+					break;
 			case 13:
 				stageSizeSum += stageSize * 12;
 				break;
+				case 14:
+					stageSizeSum += stageSize * 13;
+					break;
+				case 15:
+					stageSizeSum += stageSize * 14;
+					break;
+				case 16:
+					stageSizeSum += stageSize * 4;
+					break;
+				case 32:
+					stageSizeSum += stageSize * 5;
+					break;
+				}
 			}
 			if (i == sc->numStages - 1) {
 				res = appendRadixShuffle(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], sc->stageRadix[i], locType);
@@ -17956,6 +21442,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 				freeShaderGenVkFFT(sc);
 				return res;
 			}
+			if (i > 0) {
 			switch (sc->stageRadix[i]) {
 			case 2:
 				stageSizeSum += stageSize;
@@ -17969,18 +21456,43 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 			case 5:
 				stageSizeSum += stageSize * 4;
 				break;
+				case 6:
+					stageSizeSum += stageSize * 5;
+					break;
 			case 7:
 				stageSizeSum += stageSize * 6;
 				break;
 			case 8:
 				stageSizeSum += stageSize * 3;
 				break;
+				case 9:
+					stageSizeSum += stageSize * 8;
+					break;
+				case 10:
+					stageSizeSum += stageSize * 9;
+					break;
 			case 11:
 				stageSizeSum += stageSize * 10;
 				break;
+				case 12:
+					stageSizeSum += stageSize * 11;
+					break;
 			case 13:
 				stageSizeSum += stageSize * 12;
 				break;
+				case 14:
+					stageSizeSum += stageSize * 13;
+					break;
+				case 15:
+					stageSizeSum += stageSize * 14;
+					break;
+				case 16:
+					stageSizeSum += stageSize * 4;
+					break;
+				case 32:
+					stageSizeSum += stageSize * 5;
+					break;
+				}
 			}
 			if (i == sc->numStages - 1) {
 				res = appendRadixShuffle(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], sc->stageRadix[i], locType);
@@ -18432,9 +21944,19 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 			}
 		}
 	}
+	if (app->configuration.autoCustomBluesteinPaddingPattern) {
+		if (app->configuration.primeSizes != 0) {
+			free(app->configuration.primeSizes);
+			app->configuration.primeSizes = 0;
 }
-static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t* loc_multipliers, uint64_t* registers_per_thread_per_radix, uint64_t* registers_per_thread, uint64_t* min_registers_per_thread, uint64_t* isGoodSequence) {
-	for (uint64_t i = 0; i < 14; i++) {
+		if (app->configuration.paddedSizes != 0) {
+			free(app->configuration.paddedSizes);
+			app->configuration.paddedSizes = 0;
+		}
+	}
+}
+static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t fft_length, uint64_t extraSharedMemoryForPow2, uint64_t max_rhs, uint64_t* loc_multipliers, uint64_t* registers_per_thread_per_radix, uint64_t* registers_per_thread, uint64_t* min_registers_per_thread, uint64_t* isGoodSequence) {
+	for (uint64_t i = 0; i < 33; i++) {
 		registers_per_thread_per_radix[i] = 0;
 	}
 	registers_per_thread[0] = 0;
@@ -18846,6 +22368,15 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t* loc_multipliers, 
 							}
 						}
 						else {
+							if (loc_multipliers[2] == loc_multipliers[3]) {
+								registers_per_thread_per_radix[2] = 6;
+								registers_per_thread_per_radix[3] = 6;
+								registers_per_thread_per_radix[5] = 0;
+								registers_per_thread_per_radix[7] = 0;
+								registers_per_thread_per_radix[11] = 0;
+								registers_per_thread_per_radix[13] = 0;
+							}
+							else {
 							switch (loc_multipliers[2]) {
 							case 1:
 								registers_per_thread_per_radix[2] = 6;
@@ -18876,6 +22407,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t* loc_multipliers, 
 					}
 				}
 			}
+		}
 		}
 		else {
 			if (loc_multipliers[5] > 0) {
@@ -19272,19 +22804,11 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t* loc_multipliers, 
 								registers_per_thread_per_radix[11] = 0;
 								registers_per_thread_per_radix[13] = 0;
 								break;
-							case 3:
-								registers_per_thread_per_radix[2] = 14;
-								registers_per_thread_per_radix[3] = 0;
-								registers_per_thread_per_radix[5] = 0;
-								registers_per_thread_per_radix[7] = 14;
-								registers_per_thread_per_radix[11] = 0;
-								registers_per_thread_per_radix[13] = 0;
-								break;
 							default:
-								registers_per_thread_per_radix[2] = 14;
+								registers_per_thread_per_radix[2] = 8;
 								registers_per_thread_per_radix[3] = 0;
 								registers_per_thread_per_radix[5] = 0;
-								registers_per_thread_per_radix[7] = 14;
+								registers_per_thread_per_radix[7] = 7;
 								registers_per_thread_per_radix[11] = 0;
 								registers_per_thread_per_radix[13] = 0;
 								break;
@@ -19389,7 +22913,44 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t* loc_multipliers, 
 							}
 						}
 						else {
-							registers_per_thread_per_radix[2] = (loc_multipliers[2] > 2) ? 8 : (uint64_t)pow(2, loc_multipliers[2]);
+							uint64_t max_loc_multipliers_pow2 = 0;
+							uint64_t active_threads_y = max_rhs / 64; //estimate workbalance across CU (assume we have 64 CU)
+							if (active_threads_y == 0) active_threads_y = 1;
+							uint64_t testMinStages = -1;
+							uint64_t maxRadixMinStages = 1;
+							uint64_t fixMaxCheckRadix2 = 3;
+#if(VKFFT_BACKEND==1)
+							fixMaxCheckRadix2 = ((fft_length >= 2048) && (extraSharedMemoryForPow2)) ? 5 : 3;
+#endif
+							for (uint64_t i = 1; i <= fixMaxCheckRadix2; i++) {
+								uint64_t numStages = (uint64_t)ceil(log2(fft_length) / ((double)i));
+								if (numStages < testMinStages) {
+									testMinStages = numStages;
+									maxRadixMinStages = i;
+								}
+							}
+							for (uint64_t i = maxRadixMinStages; i >= 1; i--) {
+								uint64_t active_threads_x = (active_threads_y * fft_length) / ((uint64_t)pow(2, i));
+								if (active_threads_x >= 128) {
+									max_loc_multipliers_pow2 = i;
+									i = 1;
+								}
+
+							}
+							if (max_loc_multipliers_pow2 < 3) max_loc_multipliers_pow2 = 3;
+
+							uint64_t final_loc_multipliers_pow2 = 1;
+							uint64_t num_stages_min = (uint64_t)log2(fft_length);
+							for (uint64_t i = 2; i <= max_loc_multipliers_pow2; i++) {
+								uint64_t num_stages = ceil(((uint64_t)log2(fft_length)) / (double)i);
+								if (num_stages < num_stages_min) {
+									final_loc_multipliers_pow2 = i;
+									num_stages_min = num_stages;
+								}
+
+							}
+							registers_per_thread_per_radix[2] = (loc_multipliers[2] > final_loc_multipliers_pow2) ? (uint64_t)pow(2, final_loc_multipliers_pow2) : (uint64_t)pow(2, loc_multipliers[2]);
+							registers_per_thread_per_radix[2] = (loc_multipliers[2] < 3) ? (uint64_t)pow(2, loc_multipliers[2]) : registers_per_thread_per_radix[2];
 							registers_per_thread_per_radix[3] = 0;
 							registers_per_thread_per_radix[5] = 0;
 							registers_per_thread_per_radix[7] = 0;
@@ -19797,7 +23358,22 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t* loc_multipliers, 
 		}
 
 	}
-	for (uint64_t i = 0; i < 14; i++) {
+
+	registers_per_thread_per_radix[32] = ((registers_per_thread_per_radix[2] % 32) == 0) ? registers_per_thread_per_radix[2] : 0;
+	registers_per_thread_per_radix[16] = ((registers_per_thread_per_radix[2] % 16) == 0) ? registers_per_thread_per_radix[2] : 0;
+	registers_per_thread_per_radix[8] = ((registers_per_thread_per_radix[2] % 8) == 0) ? registers_per_thread_per_radix[2] : 0;
+	registers_per_thread_per_radix[4] = ((registers_per_thread_per_radix[2] % 4) == 0) ? registers_per_thread_per_radix[2] : 0;
+	if ((registers_per_thread_per_radix[2] >= 12) && (registers_per_thread_per_radix[3] >= 12)) {
+		registers_per_thread_per_radix[12] = (registers_per_thread_per_radix[2] > registers_per_thread_per_radix[3]) ? registers_per_thread_per_radix[3] : registers_per_thread_per_radix[2];
+		if ((registers_per_thread_per_radix[12] % 12) != 0) registers_per_thread_per_radix[12] = 0;
+	}
+	registers_per_thread_per_radix[6] = (registers_per_thread_per_radix[2] > registers_per_thread_per_radix[3]) ? registers_per_thread_per_radix[3] : registers_per_thread_per_radix[2];
+	registers_per_thread_per_radix[9] = ((registers_per_thread_per_radix[3] % 9) == 0) ? registers_per_thread_per_radix[3] : 0;
+	registers_per_thread_per_radix[10] = (registers_per_thread_per_radix[2] > registers_per_thread_per_radix[5]) ? registers_per_thread_per_radix[5] : registers_per_thread_per_radix[2];
+	registers_per_thread_per_radix[14] = (registers_per_thread_per_radix[2] > registers_per_thread_per_radix[7]) ? registers_per_thread_per_radix[7] : registers_per_thread_per_radix[2];
+	registers_per_thread_per_radix[15] = (registers_per_thread_per_radix[3] > registers_per_thread_per_radix[5]) ? registers_per_thread_per_radix[5] : registers_per_thread_per_radix[3];
+
+	for (uint64_t i = 0; i < 33; i++) {
 		if ((registers_per_thread_per_radix[i] != 0) && (registers_per_thread_per_radix[i] < min_registers_per_thread[0])) min_registers_per_thread[0] = registers_per_thread_per_radix[i];
 		if ((registers_per_thread_per_radix[i] != 0) && (registers_per_thread_per_radix[i] > registers_per_thread[0])) registers_per_thread[0] = registers_per_thread_per_radix[i];
 	}
@@ -19805,6 +23381,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t* loc_multipliers, 
 	else isGoodSequence[0] = 1;
 	return VKFFT_SUCCESS;
 }
+
 static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t axis_id, uint64_t supportAxis) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	VkFFTAxis* axes = FFTPlan->axes[axis_id];
@@ -19817,12 +23394,22 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			complexSize = (2 * sizeof(float));
 		else
 			complexSize = (2 * sizeof(float));
-	uint64_t maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
+	uint64_t usedSharedMemory = ((app->configuration.size[axis_id] & (app->configuration.size[axis_id] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : app->configuration.sharedMemorySize;
+	uint64_t maxSequenceLengthSharedMemory = usedSharedMemory / complexSize;
 	uint64_t maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
 	uint64_t nonStridedAxisId = (app->configuration.considerAllAxesStrided) ? -1 : 0;
+	uint64_t max_rhs = 1;
 	for (uint64_t i = 0; i < 3; i++) {
 		FFTPlan->actualFFTSizePerAxis[axis_id][i] = app->configuration.size[i];
+		if ((FFTPlan->actualFFTSizePerAxis[axis_id][i] > 0)) max_rhs *= FFTPlan->actualFFTSizePerAxis[axis_id][i];
 	}
+	if (app->configuration.numberBatches > app->actualNumBatches)
+		max_rhs *= app->configuration.numberBatches;
+	else
+		max_rhs *= app->actualNumBatches;
+	if (app->configuration.coordinateFeatures > 0) max_rhs *= app->configuration.coordinateFeatures;
+	if (app->configuration.numberKernels > 0) max_rhs *= app->configuration.numberKernels;
+
 	FFTPlan->actualPerformR2CPerAxis[axis_id] = app->configuration.performR2C;
 	if ((axis_id == 0) && (app->configuration.performR2C) && (app->configuration.size[axis_id] > maxSingleSizeNonStrided)) {
 		FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
@@ -19843,7 +23430,10 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		if (app->configuration.performBandwidthBoost > 0)
 			axes->specializationConstants.performBandwidthBoost = app->configuration.performBandwidthBoost;
 	}
-	uint64_t multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };//split the sequence
+	uint64_t multipliers[33];
+	for (uint64_t i = 0; i < 33; i++) {
+		multipliers[i] = 0;
+	}
 	uint64_t tempSequence = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 	for (uint64_t i = 2; i < 14; i++) {
 		if (tempSequence % i == 0) {
@@ -19856,15 +23446,36 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		app->useBluesteinFFT[axis_id] = 1;
 		if (axis_id != nonStridedAxisId) {
 			if (app->configuration.performBandwidthBoost == 0)
-				axes->specializationConstants.performBandwidthBoost = 2;
+				axes->specializationConstants.performBandwidthBoost = 1;
 		}
 		app->configuration.registerBoost = 1;
 		tempSequence = 2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1;
 		uint64_t FFTSizeSelected = 0;
+		if (((app->configuration.useCustomBluesteinPaddingPattern > 0) || (app->configuration.autoCustomBluesteinPaddingPattern)) && (!app->configuration.fixMaxRadixBluestein)) {
+			uint64_t arr_limit = (app->configuration.useCustomBluesteinPaddingPattern) ? app->configuration.useCustomBluesteinPaddingPattern : app->configuration.autoCustomBluesteinPaddingPattern;
+			for (uint64_t i = 0; i < arr_limit; i++) {
+				if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] >= app->configuration.primeSizes[i]) {
+					if (i != (arr_limit - 1)) {
+						if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < app->configuration.primeSizes[i + 1]) {
+							tempSequence = app->configuration.paddedSizes[i];
+							FFTSizeSelected = 1;
+							i = arr_limit;
+						}
+					}
+					else {
+						if ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) <= app->configuration.paddedSizes[i]) {
+							tempSequence = app->configuration.paddedSizes[i];
+							FFTSizeSelected = 1;
+							i = arr_limit;
+						}
+					}
+				}
+			}
+		}
 		if (app->configuration.fixMaxRadixBluestein > 0) {
 			while (!FFTSizeSelected) {
 				uint64_t testSequence = tempSequence;
-				for (uint64_t i = 0; i < 20; i++) {
+				for (uint64_t i = 0; i < 33; i++) {
 					multipliers[i] = 0;
 				}
 				for (uint64_t i = 2; i < app->configuration.fixMaxRadixBluestein + 1; i++) {
@@ -19884,11 +23495,11 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemory) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemory))))  tempSequence = (uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence)));
 				}
 				else {
-					uint64_t maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
+					uint64_t maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / (app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
 					if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemoryStrided_temp) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemoryStrided_temp))))  tempSequence = (uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence)));
 				}
 				uint64_t testSequence = tempSequence;
-				for (uint64_t i = 0; i < 20; i++) {
+				for (uint64_t i = 0; i < 33; i++) {
 					multipliers[i] = 0;
 				}
 				for (uint64_t i = 2; i < 8; i++) {
@@ -19900,11 +23511,11 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				}
 				if (testSequence != 1) tempSequence++;
 				else {
-					uint64_t registers_per_thread_per_radix[14];
+					uint64_t registers_per_thread_per_radix[33];
 					uint64_t registers_per_thread = 0;
 					uint64_t min_registers_per_thread = -1;
 					uint64_t isGoodSequence = 0;
-					res = VkFFTGetRegistersPerThread(multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
+					res = VkFFTGetRegistersPerThread(tempSequence, 0, max_rhs / tempSequence, multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
 					if (res != VKFFT_SUCCESS) return res;
 					if (isGoodSequence) FFTSizeSelected = 1;
 					else tempSequence++;
@@ -19918,11 +23529,30 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			FFTPlan->actualPerformR2CPerAxis[axis_id] = 0;
 			FFTPlan->multiUploadR2C = 1;
 			tempSequence = 2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1;
-			uint64_t FFTSizeSelected = 0;
+			FFTSizeSelected = 0;
+			if (((app->configuration.useCustomBluesteinPaddingPattern > 0) || (app->configuration.autoCustomBluesteinPaddingPattern)) && (!app->configuration.fixMaxRadixBluestein)) {
+				uint64_t arr_limit = (app->configuration.useCustomBluesteinPaddingPattern) ? app->configuration.useCustomBluesteinPaddingPattern : app->configuration.autoCustomBluesteinPaddingPattern;
+				for (uint64_t i = 0; i < arr_limit; i++) {
+					if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] >= app->configuration.primeSizes[i]) {
+						if (i != (arr_limit - 1)) {
+							if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < app->configuration.primeSizes[i + 1]) {
+								tempSequence = app->configuration.paddedSizes[i];
+								FFTSizeSelected = 1;
+							}
+						}
+						else {
+							if ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) <= app->configuration.paddedSizes[i]) {
+								tempSequence = app->configuration.paddedSizes[i];
+								FFTSizeSelected = 1;
+							}
+						}
+					}
+				}
+			}
 			if (app->configuration.fixMaxRadixBluestein > 0) {
 				while (!FFTSizeSelected) {
 					uint64_t testSequence = tempSequence;
-					for (uint64_t i = 0; i < 20; i++) {
+					for (uint64_t i = 0; i < 33; i++) {
 						multipliers[i] = 0;
 					}
 					for (uint64_t i = 2; i < app->configuration.fixMaxRadixBluestein + 1; i++) {
@@ -19942,11 +23572,11 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 						if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemory) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemory))))  tempSequence = (uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence)));
 					}
 					else {
-						uint64_t maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
+						uint64_t maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / (app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
 						if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemoryStrided_temp) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemoryStrided_temp))))  tempSequence = (uint64_t)pow(2, (uint64_t)ceil(log2(tempSequence)));
 					}
 					uint64_t testSequence = tempSequence;
-					for (uint64_t i = 0; i < 20; i++) {
+					for (uint64_t i = 0; i < 33; i++) {
 						multipliers[i] = 0;
 					}
 					for (uint64_t i = 2; i < 8; i++) {
@@ -19958,11 +23588,11 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					}
 					if (testSequence != 1) tempSequence++;
 					else {
-						uint64_t registers_per_thread_per_radix[14];
+						uint64_t registers_per_thread_per_radix[33];
 						uint64_t registers_per_thread = 0;
 						uint64_t min_registers_per_thread = -1;
 						uint64_t isGoodSequence = 0;
-						res = VkFFTGetRegistersPerThread(multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
+						res = VkFFTGetRegistersPerThread(tempSequence, 0, max_rhs / tempSequence, multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
 						if (res != VKFFT_SUCCESS) return res;
 						if (isGoodSequence) FFTSizeSelected = 1;
 						else tempSequence++;
@@ -19971,30 +23601,34 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			}
 			FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = tempSequence;
 		}
+
+		if (app->configuration.forceBluesteinSequenceSize) FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.forceBluesteinSequenceSize;
+
 		if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] & (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1)) == 0) {
-			app->configuration.sharedMemorySize = app->configuration.sharedMemorySizePow2;
-			maxSequenceLengthSharedMemory = app->configuration.sharedMemorySize / complexSize;
+			usedSharedMemory = app->configuration.sharedMemorySizePow2;
+			maxSequenceLengthSharedMemory = usedSharedMemory / complexSize;
 			maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
 		}
 	}
 	uint64_t isPowOf2 = (pow(2, (uint64_t)log2(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id])) == FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]) ? 1 : 0;
+	uint64_t locNumBatches = (app->configuration.numberBatches > app->actualNumBatches) ? app->configuration.numberBatches : app->actualNumBatches;
 	if (app->configuration.tempBufferSize[0] == 0) {
 		if ((app->configuration.performR2C) && (axis_id == 0)) {
 			if (FFTPlan->multiUploadR2C)
-				app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * app->configuration.numberBatches * app->configuration.numberKernels * complexSize;
+				app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
 		}
 		else {
-			app->configuration.tempBufferSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * app->configuration.numberBatches * app->configuration.numberKernels * complexSize;
+			app->configuration.tempBufferSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
 		}
 	}
 	if (app->useBluesteinFFT[axis_id]) {
 		if ((app->configuration.performR2C) && (axis_id == 0)) {
 			if (FFTPlan->multiUploadR2C) {
-				if ((FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * app->configuration.numberBatches * app->configuration.numberKernels * complexSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * app->configuration.numberBatches * app->configuration.numberKernels * complexSize;
+				if ((FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
 			}
 		}
 		else {
-			if (FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * app->configuration.numberBatches * app->configuration.numberKernels * complexSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * app->configuration.numberBatches * app->configuration.numberKernels * complexSize;
+			if (FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
 		}
 	}
 	//return VKFFT_ERROR_UNSUPPORTED_RADIX;
@@ -20004,7 +23638,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			registerBoost = i;
 	}
 	if ((axis_id == nonStridedAxisId) && (!app->configuration.performConvolution)) maxSingleSizeNonStrided *= registerBoost;
-	uint64_t maxSequenceLengthSharedMemoryStrided = (app->configuration.coalescedMemory > complexSize) ? app->configuration.sharedMemorySize / (app->configuration.coalescedMemory) : app->configuration.sharedMemorySize / complexSize;
+	uint64_t maxSequenceLengthSharedMemoryStrided = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / (app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
 	uint64_t maxSingleSizeStrided = (!app->configuration.performConvolution) ? maxSequenceLengthSharedMemoryStrided * registerBoost : maxSequenceLengthSharedMemoryStrided;
 	uint64_t numPasses = 1;
 	uint64_t numPassesHalfBandwidth = 1;
@@ -20041,7 +23675,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	maxSingleSizeStrided = maxSequenceLengthSharedMemoryStrided * registerBoost;
 	uint64_t maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
 	if ((axes->specializationConstants.performBandwidthBoost)) {
-		maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / axes->specializationConstants.performBandwidthBoost > complexSize) ? app->configuration.sharedMemorySizePow2 / (app->configuration.coalescedMemory / axes->specializationConstants.performBandwidthBoost) : app->configuration.sharedMemorySizePow2 / complexSize;
+		maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / axes->specializationConstants.performBandwidthBoost > complexSize) ? usedSharedMemory / (app->configuration.coalescedMemory / axes->specializationConstants.performBandwidthBoost) : usedSharedMemory / complexSize;
 		temp = (axis_id == nonStridedAxisId) ? (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeNonStrided) : (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
 		//temp = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / maxSingleSizeNonStrided;
 		if (temp > 1) {//more passes than two
@@ -20198,7 +23832,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				locAxisSplit[1] = (uint64_t)pow(2, (uint64_t)log2axis / 3);
 				if (log2axis % 3 > 1) locAxisSplit[1] *= 2;
 				locAxisSplit[2] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / locAxisSplit[0] / locAxisSplit[1];*/
-				uint64_t maxSingleSizeStrided128 = app->configuration.sharedMemorySize / (128);
+				uint64_t maxSingleSizeStrided128 = usedSharedMemory / (128);
 				uint64_t maxPow8_128 = (uint64_t)pow(8, ((uint64_t)log2(maxSingleSizeStrided128)) / 3);
 				//unit stride
 				if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / maxPow8_128 <= maxPow8Strided * maxSingleSizeStrided)
@@ -20335,53 +23969,34 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	FFTPlan->numAxisUploads[axis_id] = numPasses;
 	for (uint64_t k = 0; k < numPasses; k++) {
 		tempSequence = locAxisSplit[k];
-		uint64_t loc_multipliers[20] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }; //split the smaller sequence
-		for (uint64_t i = 2; i < 14; i++) {
+		uint64_t loc_multipliers[33]; //split the smaller sequence
+		for (uint64_t i = 0; i < 33; i++) {
+			loc_multipliers[i] = 0;
+		}
+		for (uint64_t i = 2; i < 33; i++) {
 			if (tempSequence % i == 0) {
 				tempSequence /= i;
 				loc_multipliers[i]++;
 				i--;
 			}
 		}
-		uint64_t registers_per_thread_per_radix[14];
+		uint64_t registers_per_thread_per_radix[33];
 		uint64_t registers_per_thread = 0;
 		uint64_t min_registers_per_thread = -1;
 		uint64_t isGoodSequence = 0;
-		res = VkFFTGetRegistersPerThread(loc_multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
+		uint64_t extraSharedMemoryForPow2 = ((app->configuration.sharedMemorySizePow2 < app->configuration.sharedMemorySize) || ((locAxisSplit[k] < maxSingleSizeNonStrided) && ((axis_id == nonStridedAxisId))) || ((locAxisSplit[k] < maxSingleSizeStrided) && ((axis_id != nonStridedAxisId)))) ? 1 : 0;
+
+		res = VkFFTGetRegistersPerThread(locAxisSplit[k], extraSharedMemoryForPow2, max_rhs / locAxisSplit[k], loc_multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
 		if (res != VKFFT_SUCCESS) return res;
-		registers_per_thread_per_radix[8] = registers_per_thread_per_radix[2];
-		registers_per_thread_per_radix[4] = registers_per_thread_per_radix[2];
+
 		if ((registerBoost == 4) && (registers_per_thread % 4 != 0)) {
 			registers_per_thread *= 2;
-			for (uint64_t i = 2; i < 14; i++) {
+			for (uint64_t i = 2; i < 33; i++) {
 				registers_per_thread_per_radix[i] *= 2;
 			}
 			min_registers_per_thread *= 2;
 		}
-		if (registers_per_thread_per_radix[8] % 8 == 0) {
-			loc_multipliers[8] = loc_multipliers[2] / 3;
-			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[8] * 3;
-		}
-		if (registers_per_thread_per_radix[4] % 4 == 0) {
-			loc_multipliers[4] = loc_multipliers[2] / 2;
-			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[4] * 2;
-		}
-		if ((registerBoost == 2) && (loc_multipliers[2] == 0)) {
-			if (loc_multipliers[4] > 0) {
-				loc_multipliers[4]--;
-				loc_multipliers[2] = 2;
-			}
-			else {
-				loc_multipliers[8]--;
-				loc_multipliers[4]++;
-				loc_multipliers[2]++;
-			}
-		}
-		if ((registerBoost == 4) && (loc_multipliers[4] == 0)) {
-			loc_multipliers[8]--;
-			loc_multipliers[4]++;
-			loc_multipliers[2]++;
-		}
+
 		uint64_t maxBatchCoalesced = ((axis_id == 0) && (((k == 0) && ((!app->configuration.reorderFourStep) || (app->useBluesteinFFT[axis_id]))) || (numPasses == 1))) ? 1 : app->configuration.coalescedMemory / complexSize;
 		if (maxBatchCoalesced * locAxisSplit[k] / (min_registers_per_thread * registerBoost) > app->configuration.maxThreadsNum)
 		{
@@ -20402,7 +24017,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			uint64_t temp_scaleRegistersNum = scaleRegistersNum;
 			while ((locAxisSplit[k] / (registers_per_thread * registerBoost)) % temp_scaleRegistersNum != 0) temp_scaleRegistersNum++;
 			registers_per_thread *= temp_scaleRegistersNum;
-			for (uint64_t i = 2; i < 14; i++) {
+			for (uint64_t i = 2; i < 33; i++) {
 				if (registers_per_thread_per_radix[i] != 0) {
 					temp_scaleRegistersNum = scaleRegistersNum;
 					while ((locAxisSplit[k] / (registers_per_thread_per_radix[i] * registerBoost)) % temp_scaleRegistersNum != 0) temp_scaleRegistersNum++;
@@ -20415,7 +24030,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				min_registers_per_thread = registers_per_thread;
 				registers_per_thread = temp;
 			}
-			for (uint64_t i = 2; i < 14; i++) {
+			for (uint64_t i = 2; i < 33; i++) {
 				if (registers_per_thread_per_radix[i] > registers_per_thread) {
 					registers_per_thread = registers_per_thread_per_radix[i];
 				}
@@ -20425,12 +24040,12 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			}
 			if ((loc_multipliers[3] >= 2) && (((registers_per_thread / min_registers_per_thread) % 3) == 0)) {
 				registers_per_thread /= 3;
-				for (uint64_t i = 2; i < 14; i++) {
+				for (uint64_t i = 2; i < 33; i++) {
 					if (registers_per_thread_per_radix[i] % 9 == 0) {
 						registers_per_thread_per_radix[i] /= 3;
 					}
 				}
-				for (uint64_t i = 2; i < 14; i++) {
+				for (uint64_t i = 2; i < 33; i++) {
 					if (registers_per_thread_per_radix[i] > registers_per_thread) {
 						registers_per_thread = registers_per_thread_per_radix[i];
 					}
@@ -20440,11 +24055,147 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				}
 			}
 		}
+		//optimize used radix kernels
+		if ((registers_per_thread_per_radix[32] > 0) && (registers_per_thread_per_radix[32] % 32 == 0)) {
+			loc_multipliers[32] = loc_multipliers[2] / 5;
+			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[32] * 5;
+		}
+		if ((registers_per_thread_per_radix[16] > 0) && (registers_per_thread_per_radix[16] % 16 == 0)) {
+			loc_multipliers[16] = loc_multipliers[2] / 4;
+			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[16] * 4;
+		}
+		if ((registers_per_thread_per_radix[15] > 0) && (registers_per_thread_per_radix[15] % 15 == 0)) {
+			loc_multipliers[15] = (loc_multipliers[3] > loc_multipliers[5]) ? loc_multipliers[5] : loc_multipliers[3];
+			loc_multipliers[3] = loc_multipliers[3] - loc_multipliers[15];
+			loc_multipliers[5] = loc_multipliers[5] - loc_multipliers[15];
+		}
+		if ((registers_per_thread_per_radix[14] > 0) && (registers_per_thread_per_radix[14] % 14 == 0)) {
+			loc_multipliers[14] = (loc_multipliers[2] > loc_multipliers[7]) ? loc_multipliers[7] : loc_multipliers[2];
+			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[14];
+			loc_multipliers[7] = loc_multipliers[7] - loc_multipliers[14];
+		}
+		if ((registers_per_thread_per_radix[12] > 0) && (registers_per_thread_per_radix[12] % 6 == 0)) {
+			loc_multipliers[12] = (loc_multipliers[2] > 2 * loc_multipliers[3]) ? loc_multipliers[3] : loc_multipliers[2] / 2;
+			loc_multipliers[2] = loc_multipliers[2] - 2 * loc_multipliers[12];
+			loc_multipliers[3] = loc_multipliers[3] - loc_multipliers[12];
+		}
+		if ((registers_per_thread_per_radix[10] > 0) && (registers_per_thread_per_radix[10] % 10 == 0)) {
+			loc_multipliers[10] = (loc_multipliers[2] > loc_multipliers[5]) ? loc_multipliers[5] : loc_multipliers[2];
+			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[10];
+			loc_multipliers[5] = loc_multipliers[5] - loc_multipliers[10];
+		}
+		if ((registers_per_thread_per_radix[9] > 0) && (registers_per_thread_per_radix[9] % 9 == 0)) {
+			loc_multipliers[9] = loc_multipliers[3] / 2;
+			loc_multipliers[3] = loc_multipliers[3] - loc_multipliers[9] * 2;
+		}
+		if ((registers_per_thread_per_radix[8] > 0) && (registers_per_thread_per_radix[8] % 8 == 0)) {
+			loc_multipliers[8] = loc_multipliers[2] / 3;
+			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[8] * 3;
+		}
+		if ((registers_per_thread_per_radix[6] > 0) && (registers_per_thread_per_radix[6] % 6 == 0)) {
+			loc_multipliers[6] = (loc_multipliers[2] > loc_multipliers[3]) ? loc_multipliers[3] : loc_multipliers[2];
+			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[6];
+			loc_multipliers[3] = loc_multipliers[3] - loc_multipliers[6];
+		}
+		if ((registers_per_thread_per_radix[4] > 0) && (registers_per_thread_per_radix[4] % 4 == 0)) {
+			loc_multipliers[4] = loc_multipliers[2] / 2;
+			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[4] * 2;
+		}
+		if ((registerBoost == 2) && (loc_multipliers[2] == 0)) {
+			if (loc_multipliers[4] > 0) {
+				loc_multipliers[4]--;
+				loc_multipliers[2] = 2;
+			}
+			else if (loc_multipliers[8] > 0) {
+				loc_multipliers[8]--;
+				loc_multipliers[4]++;
+				loc_multipliers[2]++;
+			}
+			else if (loc_multipliers[16] > 0) {
+				loc_multipliers[16]--;
+				loc_multipliers[8]++;
+				loc_multipliers[2]++;
+			}
+			else if (loc_multipliers[32] > 0) {
+				loc_multipliers[32]--;
+				loc_multipliers[16]++;
+				loc_multipliers[2]++;
+			}
+		}
+		if ((registerBoost == 4) && (loc_multipliers[4] == 0)) {
+			if (loc_multipliers[8] > 0) {
+				loc_multipliers[8]--;
+				loc_multipliers[4]++;
+				loc_multipliers[2]++;
+			}
+			else if (loc_multipliers[16] > 0) {
+				if (loc_multipliers[2] == 0) {
+					loc_multipliers[16]--;
+					loc_multipliers[4] = 2;
+				}
+				else {
+					loc_multipliers[16]--;
+					loc_multipliers[4]++;
+					loc_multipliers[2]--;
+					loc_multipliers[8]++;
+				}
+			}
+			else if (loc_multipliers[32] > 0) {
+				if (loc_multipliers[2] == 0) {
+					loc_multipliers[32]--;
+					loc_multipliers[8]++;
+					loc_multipliers[4]++;
+				}
+				else {
+					loc_multipliers[32]--;
+					loc_multipliers[16]++;
+					loc_multipliers[4]++;
+					loc_multipliers[2]--;
+				}
+			}
+		}
+
+		axes[k].specializationConstants.maxNonPow2Radix = 1;
+		axes[k].specializationConstants.usedLocRegs = 1;
+		for (uint64_t i = 2; i < 33; i++) {
+			uint64_t usedLocRegs = 0;
+			if (loc_multipliers[i] > 0) {
+				switch (i) {
+				case 6:
+					usedLocRegs = 3;
+					break;
+				case 9:
+					usedLocRegs = 3;
+					break;
+				case 10:
+					usedLocRegs = 5;
+					break;
+				case 12:
+					usedLocRegs = 3;
+					break;
+				case 14:
+					usedLocRegs = 7;
+					break;
+				case 15:
+					usedLocRegs = 5;
+					break;
+				default:
+					usedLocRegs = i;
+					break;
+				}
+			}
+			if ((loc_multipliers[i] > 0) && ((i & (i - 1)) != 0)) {
+				axes[k].specializationConstants.maxNonPow2Radix = i;
+			}
+			if ((usedLocRegs > axes[k].specializationConstants.usedLocRegs) && ((i & (i - 1)) != 0)) {
+				axes[k].specializationConstants.usedLocRegs = usedLocRegs;
+			}
+		}
 		uint64_t j = 0;
 		axes[k].specializationConstants.registerBoost = registerBoost;
 		axes[k].specializationConstants.registers_per_thread = registers_per_thread;
 		axes[k].specializationConstants.min_registers_per_thread = min_registers_per_thread;
-		for (uint64_t i = 2; i < 14; i++) {
+		for (uint64_t i = 2; i < 33; i++) {
 			axes[k].specializationConstants.registers_per_thread_per_radix[i] = registers_per_thread_per_radix[i];
 		}
 		axes[k].specializationConstants.numStages = 0;
@@ -20457,7 +24208,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				switchRegisterBoost = tempRegisterBoost;
 			}
 			else {
-				for (uint64_t i = 14; i > 1; i--) {
+				for (uint64_t i = 32; i > 1; i--) {
 					if (loc_multipliers[i] > 0) {
 						loc_multipliers[i]--;
 						switchRegisterBoost = i;
@@ -20466,7 +24217,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				}
 			}
 		}
-		for (uint64_t i = 14; i > 1; i--) {
+		for (uint64_t i = 32; i > 1; i--) {
 			if (loc_multipliers[i] > 0) {
 				axes[k].specializationConstants.stageRadix[j] = i;
 				loc_multipliers[i]--;
@@ -20518,7 +24269,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		kernelPreparationConfiguration.loadApplicationString = (void*)((char*)app->configuration.loadApplicationString + app->currentApplicationStringPos);
 #endif
 	}
-	kernelPreparationConfiguration.performBandwidthBoost = (app->configuration.performBandwidthBoost > 0) ? app->configuration.performBandwidthBoost : 2;
+	kernelPreparationConfiguration.performBandwidthBoost = (app->configuration.performBandwidthBoost > 0) ? app->configuration.performBandwidthBoost : 1;
 	if (axis_id == 0) kernelPreparationConfiguration.performBandwidthBoost = 0;
 	if (axis_id > 0) kernelPreparationConfiguration.considerAllAxesStrided = 1;
 	if (app->configuration.tempBuffer) {
@@ -24083,6 +27834,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		uint64_t dimMult = 1;
 		uint64_t maxStageSum = 0;
 		for (uint64_t i = 0; i < axis->specializationConstants.numStages; i++) {
+			if (i > 0) {
 			switch (axis->specializationConstants.stageRadix[i]) {
 			case 2:
 				maxStageSum += dimMult;
@@ -24096,18 +27848,43 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			case 5:
 				maxStageSum += dimMult * 4;
 				break;
+				case 6:
+					maxStageSum += dimMult * 5;
+					break;
 			case 7:
 				maxStageSum += dimMult * 6;
 				break;
 			case 8:
 				maxStageSum += dimMult * 3;
 				break;
+				case 9:
+					maxStageSum += dimMult * 8;
+					break;
+				case 10:
+					maxStageSum += dimMult * 9;
+					break;
 			case 11:
 				maxStageSum += dimMult * 10;
 				break;
+				case 12:
+					maxStageSum += dimMult * 11;
+					break;
 			case 13:
 				maxStageSum += dimMult * 12;
 				break;
+				case 14:
+					maxStageSum += dimMult * 13;
+					break;
+				case 15:
+					maxStageSum += dimMult * 14;
+					break;
+				case 16:
+					maxStageSum += dimMult * 4;
+					break;
+				case 32:
+					maxStageSum += dimMult * 5;
+					break;
+				}
 			}
 			dimMult *= axis->specializationConstants.stageRadix[i];
 		}
@@ -24145,14 +27922,15 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 						axis->bufferLUTSize = (maxStageSum) * 2 * sizeof(double);
 				}
 			}
+			if (axis->bufferLUTSize==0) axis->bufferLUTSize = sizeof(double);
 			double* tempLUT = (double*)malloc(axis->bufferLUTSize);
 			if (!tempLUT) {
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			uint64_t localStageSize = 1;
+			uint64_t localStageSize = axis->specializationConstants.stageRadix[0];
 			uint64_t localStageSum = 0;
-			for (uint64_t i = 0; i < axis->specializationConstants.numStages; i++) {
+			for (uint64_t i = 1; i < axis->specializationConstants.numStages; i++) {
 				if ((axis->specializationConstants.stageRadix[i] & (axis->specializationConstants.stageRadix[i] - 1)) == 0) {
 					for (uint64_t k = 0; k < log2(axis->specializationConstants.stageRadix[i]); k++) {
 						for (uint64_t j = 0; j < localStageSize; j++) {
@@ -24373,14 +28151,15 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 						axis->bufferLUTSize = (maxStageSum) * 2 * sizeof(float);
 				}
 			}
+			if (axis->bufferLUTSize == 0) axis->bufferLUTSize = sizeof(float);
 			float* tempLUT = (float*)malloc(axis->bufferLUTSize);
 			if (!tempLUT) {
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			uint64_t localStageSize = 1;
+			uint64_t localStageSize = axis->specializationConstants.stageRadix[0];
 			uint64_t localStageSum = 0;
-			for (uint64_t i = 0; i < axis->specializationConstants.numStages; i++) {
+			for (uint64_t i = 1; i < axis->specializationConstants.numStages; i++) {
 				if ((axis->specializationConstants.stageRadix[i] & (axis->specializationConstants.stageRadix[i] - 1)) == 0) {
 					for (uint64_t k = 0; k < log2(axis->specializationConstants.stageRadix[i]); k++) {
 						for (uint64_t j = 0; j < localStageSize; j++) {
@@ -25505,7 +29284,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		if ((axis_id != 0) && (app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) == 0)) type = 143;
 		if ((axis_id != 0) && (app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) == 1)) type = 145;
 #if(VKFFT_BACKEND==0)
-		axis->specializationConstants.cacheShuffle = ((FFTPlan->numAxisUploads[axis_id] > 1) && ((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) == 0) && (!app->configuration.doublePrecision) && (!axis->specializationConstants.useBluesteinFFT) && (!app->configuration.doublePrecisionFloatMemory) && ((type == 0) || (type == 5) || (type == 6))) ? 1 : 0;
+		axis->specializationConstants.cacheShuffle = 0; //((FFTPlan->numAxisUploads[axis_id] > 1) && ((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) == 0) && (!app->configuration.doublePrecision) && (!axis->specializationConstants.useBluesteinFFT) && (!app->configuration.doublePrecisionFloatMemory) && ((type == 0) || (type == 5) || (type == 6))) ? 1 : 0;
 #elif(VKFFT_BACKEND==1)
 		axis->specializationConstants.cacheShuffle = 0;
 #elif(VKFFT_BACKEND==2)
@@ -26360,12 +30139,362 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	}
 	return resFFT;
 }
+static inline VkFFTResult initializeBluesteinAutoPadding(VkFFTApplication* app) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+	if (!app->configuration.useCustomBluesteinPaddingPattern) {
+		switch (app->configuration.vendorID) {
+		case 0x10DE://NVIDIA
+			if (app->configuration.doublePrecision) {
+				app->configuration.autoCustomBluesteinPaddingPattern = 48;
+			}
+			else {
+				app->configuration.autoCustomBluesteinPaddingPattern = 45;
+			}
+			break;
+		default: //have not done a test run for Intel, so everything else uses AMD profile
+			if (app->configuration.doublePrecision) {
+				app->configuration.autoCustomBluesteinPaddingPattern = 27;
+			}
+			else {
+				app->configuration.autoCustomBluesteinPaddingPattern = 30;
+			}
+			break;
+		}
+		app->configuration.primeSizes = (uint64_t*)malloc(app->configuration.autoCustomBluesteinPaddingPattern * sizeof(uint64_t));
+		if (!app->configuration.primeSizes) return VKFFT_ERROR_MALLOC_FAILED;
+		app->configuration.paddedSizes = (uint64_t*)malloc(app->configuration.autoCustomBluesteinPaddingPattern * sizeof(uint64_t));
+		if (!app->configuration.paddedSizes) return VKFFT_ERROR_MALLOC_FAILED;
+		switch (app->configuration.vendorID) {
+		case 0x10DE://Nvidia
+			if (app->configuration.doublePrecision) {
+				app->configuration.primeSizes[0] = 17;
+				app->configuration.paddedSizes[0] = 36;
+				app->configuration.primeSizes[1] = 19;
+				app->configuration.paddedSizes[1] = 40;
+				app->configuration.primeSizes[2] = 23;
+				app->configuration.paddedSizes[2] = 48;
+				app->configuration.primeSizes[3] = 29;
+				app->configuration.paddedSizes[3] = 64;
+				app->configuration.primeSizes[4] = 34;
+				app->configuration.paddedSizes[4] = 70;
+				app->configuration.primeSizes[5] = 37;
+				app->configuration.paddedSizes[5] = 80;
+				app->configuration.primeSizes[6] = 41;
+				app->configuration.paddedSizes[6] = 90;
+				app->configuration.primeSizes[7] = 46;
+				app->configuration.paddedSizes[7] = 96;
+				app->configuration.primeSizes[8] = 51;
+				app->configuration.paddedSizes[8] = 104;
+				app->configuration.primeSizes[9] = 53;
+				app->configuration.paddedSizes[9] = 128;
+				app->configuration.primeSizes[10] = 67;
+				app->configuration.paddedSizes[10] = 144;
+				app->configuration.primeSizes[11] = 73;
+				app->configuration.paddedSizes[11] = 160;
+				app->configuration.primeSizes[12] = 82;
+				app->configuration.paddedSizes[12] = 256;
+				app->configuration.primeSizes[13] = 129;
+				app->configuration.paddedSizes[13] = 288;
+				app->configuration.primeSizes[14] = 145;
+				app->configuration.paddedSizes[14] = 512;
+				app->configuration.primeSizes[15] = 257;
+				app->configuration.paddedSizes[15] = 625;
+				app->configuration.primeSizes[16] = 314;
+				app->configuration.paddedSizes[16] = 750;
+				app->configuration.primeSizes[17] = 376;
+				app->configuration.paddedSizes[17] = 756;
+				app->configuration.primeSizes[18] = 379;
+				app->configuration.paddedSizes[18] = 768;
+				app->configuration.primeSizes[19] = 386;
+				app->configuration.paddedSizes[19] = 1024;
+				app->configuration.primeSizes[20] = 513;
+				app->configuration.paddedSizes[20] = 1056;
+				app->configuration.primeSizes[21] = 529;
+				app->configuration.paddedSizes[21] = 1200;
+				app->configuration.primeSizes[22] = 601;
+				app->configuration.paddedSizes[22] = 1225;
+				app->configuration.primeSizes[23] = 614;
+				app->configuration.paddedSizes[23] = 1250;
+				app->configuration.primeSizes[24] = 626;
+				app->configuration.paddedSizes[24] = 1296;
+				app->configuration.primeSizes[25] = 649;
+				app->configuration.paddedSizes[25] = 1331;
+				app->configuration.primeSizes[26] = 667;
+				app->configuration.paddedSizes[26] = 1440;
+				app->configuration.primeSizes[27] = 721;
+				app->configuration.paddedSizes[27] = 1456;
+				app->configuration.primeSizes[28] = 730;
+				app->configuration.paddedSizes[28] = 1560;
+				app->configuration.primeSizes[29] = 781;
+				app->configuration.paddedSizes[29] = 2048;
+				app->configuration.primeSizes[30] = 1025;
+				app->configuration.paddedSizes[30] = 2187;
+				app->configuration.primeSizes[31] = 1095;
+				app->configuration.paddedSizes[31] = 2304;
+				app->configuration.primeSizes[32] = 1153;
+				app->configuration.paddedSizes[32] = 2688;
+				app->configuration.primeSizes[33] = 1345;
+				app->configuration.paddedSizes[33] = 2730;
+				app->configuration.primeSizes[34] = 1366;
+				app->configuration.paddedSizes[34] = 2925;
+				app->configuration.primeSizes[35] = 1464;
+				app->configuration.paddedSizes[35] = 3000;
+				app->configuration.primeSizes[36] = 1501;
+				app->configuration.paddedSizes[36] = 4096;
+				app->configuration.primeSizes[37] = 2049;
+				app->configuration.paddedSizes[37] = 4368;
+				app->configuration.primeSizes[38] = 2185;
+				app->configuration.paddedSizes[38] = 4608;
+				app->configuration.primeSizes[39] = 2305;
+				app->configuration.paddedSizes[39] = 4725;
+				app->configuration.primeSizes[40] = 2364;
+				app->configuration.paddedSizes[40] = 4900;
+				app->configuration.primeSizes[41] = 2451;
+				app->configuration.paddedSizes[41] = 5184;
+				app->configuration.primeSizes[42] = 2593;
+				app->configuration.paddedSizes[42] = 5625;
+				app->configuration.primeSizes[43] = 2814;
+				app->configuration.paddedSizes[43] = 5760;
+				app->configuration.primeSizes[44] = 2881;
+				app->configuration.paddedSizes[44] = 6000;
+				app->configuration.primeSizes[45] = 3001;
+				app->configuration.paddedSizes[45] = 6048;
+				app->configuration.primeSizes[46] = 3026;
+				app->configuration.paddedSizes[46] = 6561;
+				app->configuration.primeSizes[47] = 3282;
+				app->configuration.paddedSizes[47] = 8192;
+			}
+			else {
+				app->configuration.primeSizes[0] = 17;
+				app->configuration.paddedSizes[0] = 36;
+				app->configuration.primeSizes[1] = 19;
+				app->configuration.paddedSizes[1] = 40;
+				app->configuration.primeSizes[2] = 23;
+				app->configuration.paddedSizes[2] = 48;
+				app->configuration.primeSizes[3] = 29;
+				app->configuration.paddedSizes[3] = 64;
+				app->configuration.primeSizes[4] = 34;
+				app->configuration.paddedSizes[4] = 70;
+				app->configuration.primeSizes[5] = 37;
+				app->configuration.paddedSizes[5] = 80;
+				app->configuration.primeSizes[6] = 41;
+				app->configuration.paddedSizes[6] = 96;
+				app->configuration.primeSizes[7] = 51;
+				app->configuration.paddedSizes[7] = 104;
+				app->configuration.primeSizes[8] = 53;
+				app->configuration.paddedSizes[8] = 112;
+				app->configuration.primeSizes[9] = 57;
+				app->configuration.paddedSizes[9] = 120;
+				app->configuration.primeSizes[10] = 61;
+				app->configuration.paddedSizes[10] = 128;
+				app->configuration.primeSizes[11] = 67;
+				app->configuration.paddedSizes[11] = 144;
+				app->configuration.primeSizes[12] = 73;
+				app->configuration.paddedSizes[12] = 150;
+				app->configuration.primeSizes[13] = 76;
+				app->configuration.paddedSizes[13] = 160;
+				app->configuration.primeSizes[14] = 82;
+				app->configuration.paddedSizes[14] = 256;
+				app->configuration.primeSizes[15] = 129;
+				app->configuration.paddedSizes[15] = 384;
+				app->configuration.primeSizes[16] = 193;
+				app->configuration.paddedSizes[16] = 512;
+				app->configuration.primeSizes[17] = 257;
+				app->configuration.paddedSizes[17] = 567;
+				app->configuration.primeSizes[18] = 285;
+				app->configuration.paddedSizes[18] = 625;
+				app->configuration.primeSizes[19] = 314;
+				app->configuration.paddedSizes[19] = 768;
+				app->configuration.primeSizes[20] = 386;
+				app->configuration.paddedSizes[20] = 832;
+				app->configuration.primeSizes[21] = 417;
+				app->configuration.paddedSizes[21] = 1024;
+				app->configuration.primeSizes[22] = 513;
+				app->configuration.paddedSizes[22] = 1152;
+				app->configuration.primeSizes[23] = 577;
+				app->configuration.paddedSizes[23] = 1200;
+				app->configuration.primeSizes[24] = 601;
+				app->configuration.paddedSizes[24] = 1296;
+				app->configuration.primeSizes[25] = 649;
+				app->configuration.paddedSizes[25] = 1536;
+				app->configuration.primeSizes[26] = 769;
+				app->configuration.paddedSizes[26] = 2048;
+				app->configuration.primeSizes[27] = 1025;
+				app->configuration.paddedSizes[27] = 2187;
+				app->configuration.primeSizes[28] = 1095;
+				app->configuration.paddedSizes[28] = 2304;
+				app->configuration.primeSizes[29] = 1153;
+				app->configuration.paddedSizes[29] = 2500;
+				app->configuration.primeSizes[30] = 1251;
+				app->configuration.paddedSizes[30] = 2592;
+				app->configuration.primeSizes[31] = 1297;
+				app->configuration.paddedSizes[31] = 2816;
+				app->configuration.primeSizes[32] = 1409;
+				app->configuration.paddedSizes[32] = 3072;
+				app->configuration.primeSizes[33] = 1537;
+				app->configuration.paddedSizes[33] = 4096;
+				app->configuration.primeSizes[34] = 2049;
+				app->configuration.paddedSizes[34] = 4368;
+				app->configuration.primeSizes[35] = 2185;
+				app->configuration.paddedSizes[35] = 4563;
+				app->configuration.primeSizes[36] = 2283;
+				app->configuration.paddedSizes[36] = 4576;
+				app->configuration.primeSizes[37] = 2289;
+				app->configuration.paddedSizes[37] = 4608;
+				app->configuration.primeSizes[38] = 2305;
+				app->configuration.paddedSizes[38] = 5184;
+				app->configuration.primeSizes[39] = 2593;
+				app->configuration.paddedSizes[39] = 5625;
+				app->configuration.primeSizes[40] = 2814;
+				app->configuration.paddedSizes[40] = 5632;
+				app->configuration.primeSizes[41] = 2817;
+				app->configuration.paddedSizes[41] = 6000;
+				app->configuration.primeSizes[42] = 3001;
+				app->configuration.paddedSizes[42] = 6144;
+				app->configuration.primeSizes[43] = 3073;
+				app->configuration.paddedSizes[43] = 6561;
+				app->configuration.primeSizes[44] = 3282;
+				app->configuration.paddedSizes[44] = 8192;
+			}
+			break;
+		default: //have not done a test run for Intel, so everything else uses AMD profile
+			if (app->configuration.doublePrecision) {
+				app->configuration.primeSizes[0] = 17;
+				app->configuration.paddedSizes[0] = 36;
+				app->configuration.primeSizes[1] = 19;
+				app->configuration.paddedSizes[1] = 40;
+				app->configuration.primeSizes[2] = 23;
+				app->configuration.paddedSizes[2] = 56;
+				app->configuration.primeSizes[3] = 29;
+				app->configuration.paddedSizes[3] = 64;
+				app->configuration.primeSizes[4] = 34;
+				app->configuration.paddedSizes[4] = 70;
+				app->configuration.primeSizes[5] = 37;
+				app->configuration.paddedSizes[5] = 78;
+				app->configuration.primeSizes[6] = 41;
+				app->configuration.paddedSizes[6] = 81;
+				app->configuration.primeSizes[7] = 43;
+				app->configuration.paddedSizes[7] = 90;
+				app->configuration.primeSizes[8] = 46;
+				app->configuration.paddedSizes[8] = 112;
+				app->configuration.primeSizes[9] = 57;
+				app->configuration.paddedSizes[9] = 125;
+				app->configuration.primeSizes[10] = 67;
+				app->configuration.paddedSizes[10] = 150;
+				app->configuration.primeSizes[11] = 76;
+				app->configuration.paddedSizes[11] = 256;
+				app->configuration.primeSizes[12] = 129;
+				app->configuration.paddedSizes[12] = 270;
+				app->configuration.primeSizes[13] = 136;
+				app->configuration.paddedSizes[13] = 512;
+				app->configuration.primeSizes[14] = 257;
+				app->configuration.paddedSizes[14] = 625;
+				app->configuration.primeSizes[15] = 314;
+				app->configuration.paddedSizes[15] = 750;
+				app->configuration.primeSizes[16] = 376;
+				app->configuration.paddedSizes[16] = 756;
+				app->configuration.primeSizes[17] = 379;
+				app->configuration.paddedSizes[17] = 768;
+				app->configuration.primeSizes[18] = 386;
+				app->configuration.paddedSizes[18] = 875;
+				app->configuration.primeSizes[19] = 439;
+				app->configuration.paddedSizes[19] = 1024;
+				app->configuration.primeSizes[20] = 513;
+				app->configuration.paddedSizes[20] = 1296;
+				app->configuration.primeSizes[21] = 649;
+				app->configuration.paddedSizes[21] = 1300;
+				app->configuration.primeSizes[22] = 651;
+				app->configuration.paddedSizes[22] = 1323;
+				app->configuration.primeSizes[23] = 663;
+				app->configuration.paddedSizes[23] = 1512;
+				app->configuration.primeSizes[24] = 757;
+				app->configuration.paddedSizes[24] = 1792;
+				app->configuration.primeSizes[25] = 897;
+				app->configuration.paddedSizes[25] = 2016;
+				app->configuration.primeSizes[26] = 1009;
+				app->configuration.paddedSizes[26] = 2048;
+			}
+			else {
+				app->configuration.primeSizes[0] = 17;
+				app->configuration.paddedSizes[0] = 35;
+				app->configuration.primeSizes[1] = 19;
+				app->configuration.paddedSizes[1] = 42;
+				app->configuration.primeSizes[2] = 23;
+				app->configuration.paddedSizes[2] = 64;
+				app->configuration.primeSizes[3] = 34;
+				app->configuration.paddedSizes[3] = 70;
+				app->configuration.primeSizes[4] = 37;
+				app->configuration.paddedSizes[4] = 84;
+				app->configuration.primeSizes[5] = 43;
+				app->configuration.paddedSizes[5] = 88;
+				app->configuration.primeSizes[6] = 46;
+				app->configuration.paddedSizes[6] = 128;
+				app->configuration.primeSizes[7] = 67;
+				app->configuration.paddedSizes[7] = 150;
+				app->configuration.primeSizes[8] = 76;
+				app->configuration.paddedSizes[8] = 162;
+				app->configuration.primeSizes[9] = 82;
+				app->configuration.paddedSizes[9] = 176;
+				app->configuration.primeSizes[10] = 89;
+				app->configuration.paddedSizes[10] = 256;
+				app->configuration.primeSizes[11] = 129;
+				app->configuration.paddedSizes[11] = 512;
+				app->configuration.primeSizes[12] = 257;
+				app->configuration.paddedSizes[12] = 625;
+				app->configuration.primeSizes[13] = 314;
+				app->configuration.paddedSizes[13] = 768;
+				app->configuration.primeSizes[14] = 386;
+				app->configuration.paddedSizes[14] = 1024;
+				app->configuration.primeSizes[15] = 513;
+				app->configuration.paddedSizes[15] = 1296;
+				app->configuration.primeSizes[16] = 649;
+				app->configuration.paddedSizes[16] = 2048;
+				app->configuration.primeSizes[17] = 1025;
+				app->configuration.paddedSizes[17] = 2187;
+				app->configuration.primeSizes[18] = 1095;
+				app->configuration.paddedSizes[18] = 2304;
+				app->configuration.primeSizes[19] = 1153;
+				app->configuration.paddedSizes[19] = 2500;
+				app->configuration.primeSizes[20] = 1251;
+				app->configuration.paddedSizes[20] = 2592;
+				app->configuration.primeSizes[21] = 1297;
+				app->configuration.paddedSizes[21] = 3072;
+				app->configuration.primeSizes[22] = 1537;
+				app->configuration.paddedSizes[22] = 3125;
+				app->configuration.primeSizes[23] = 1564;
+				app->configuration.paddedSizes[23] = 4096;
+				app->configuration.primeSizes[24] = 2049;
+				app->configuration.paddedSizes[24] = 4375;
+				app->configuration.primeSizes[25] = 2189;
+				app->configuration.paddedSizes[25] = 4608;
+				app->configuration.primeSizes[26] = 2305;
+				app->configuration.paddedSizes[26] = 5184;
+				app->configuration.primeSizes[27] = 2593;
+				app->configuration.paddedSizes[27] = 5632;
+				app->configuration.primeSizes[28] = 2817;
+				app->configuration.paddedSizes[28] = 6561;
+				app->configuration.primeSizes[29] = 3282;
+				app->configuration.paddedSizes[29] = 8192;
+			}
+			break;
+		}
+	}
+	return resFFT;
+}
 static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfiguration inputLaunchConfiguration) {
+	VkFFTResult resFFT = VKFFT_SUCCESS;
 	//app->configuration = {};// inputLaunchConfiguration;
 	if (inputLaunchConfiguration.doublePrecision != 0)	app->configuration.doublePrecision = inputLaunchConfiguration.doublePrecision;
 	if (inputLaunchConfiguration.doublePrecisionFloatMemory != 0)	app->configuration.doublePrecisionFloatMemory = inputLaunchConfiguration.doublePrecisionFloatMemory;
 	if (inputLaunchConfiguration.halfPrecision != 0)	app->configuration.halfPrecision = inputLaunchConfiguration.halfPrecision;
 	if (inputLaunchConfiguration.halfPrecisionMemoryOnly != 0)	app->configuration.halfPrecisionMemoryOnly = inputLaunchConfiguration.halfPrecisionMemoryOnly;
+	if (inputLaunchConfiguration.useCustomBluesteinPaddingPattern != 0) {
+		app->configuration.useCustomBluesteinPaddingPattern = inputLaunchConfiguration.useCustomBluesteinPaddingPattern;
+		app->configuration.primeSizes = inputLaunchConfiguration.primeSizes;
+		if (!app->configuration.primeSizes) return VKFFT_ERROR_EMPRY_useCustomBluesteinPaddingPattern_arrays;
+		app->configuration.paddedSizes = inputLaunchConfiguration.paddedSizes;
+		if (!app->configuration.paddedSizes) return VKFFT_ERROR_EMPRY_useCustomBluesteinPaddingPattern_arrays;
+	}
 	//set device parameters
 #if(VKFFT_BACKEND==0)
 	if (!inputLaunchConfiguration.isCompilerInitialized) {
@@ -26414,6 +30543,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	//if ((physicalDeviceProperties.vendorID == 0x8086) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
 	app->configuration.sharedMemorySize = physicalDeviceProperties.limits.maxComputeSharedMemorySize;
 	app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(physicalDeviceProperties.limits.maxComputeSharedMemorySize));
+	app->configuration.vendorID = physicalDeviceProperties.vendorID;
 	switch (physicalDeviceProperties.vendorID) {
 	case 0x10DE://NVIDIA
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
@@ -26440,7 +30570,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		app->configuration.registerBoostNonPow2 = 0;
 		app->configuration.registerBoost = (physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = 0;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 20 : 21;
 		break;
 	default:
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
@@ -26524,6 +30654,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
 	}
 	app->configuration.warpSize = value;
+	//we don't need this in CUDA
 	app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(app->configuration.sharedMemorySize));
 	if (app->configuration.num_streams > 1) {
 		app->configuration.stream_event = (cudaEvent_t*)malloc(app->configuration.num_streams * sizeof(cudaEvent_t));
@@ -26546,6 +30677,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	app->configuration.registerBoost = 1;
 	app->configuration.registerBoost4Step = 1;
 	app->configuration.swapTo3Stage4Step = 0;
+	app->configuration.vendorID = 0x10DE;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
 	if (inputLaunchConfiguration.device == 0) {
@@ -26633,7 +30765,8 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	app->configuration.registerBoostNonPow2 = 0;
 	app->configuration.registerBoost = 1;
 	app->configuration.registerBoost4Step = 1;
-	app->configuration.swapTo3Stage4Step = 0;
+	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 20 : 21;
+	app->configuration.vendorID = 0x1002;
 #elif(VKFFT_BACKEND==3)
 	cl_int res = 0;
 	if (inputLaunchConfiguration.device == 0) {
@@ -26694,6 +30827,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	}
 	app->configuration.sharedMemorySize = sharedMemorySize;
 	app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(sharedMemorySize));
+	app->configuration.vendorID = vendorID;
 	switch (vendorID) {
 	case 0x10DE://NVIDIA
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
@@ -26778,7 +30912,14 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	app->configuration.registerBoost = (app->configuration.sharedMemorySize >= 65536) ? 1 : 2;
 	app->configuration.registerBoost4Step = 1;
 	app->configuration.swapTo3Stage4Step = 0;
+	app->configuration.vendorID = 0x8086;
 #endif
+
+	resFFT = initializeBluesteinAutoPadding(app);
+	if (resFFT != VKFFT_SUCCESS) {
+		deleteVkFFT(app);
+		return resFFT;
+	}
 	//set main parameters:
 	if (inputLaunchConfiguration.FFTdim == 0) {
 		deleteVkFFT(app);
@@ -27021,7 +31162,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 
 	if (inputLaunchConfiguration.useLUT != 0)	app->configuration.useLUT = inputLaunchConfiguration.useLUT;
 	if (inputLaunchConfiguration.fixMaxRadixBluestein != 0) app->configuration.fixMaxRadixBluestein = inputLaunchConfiguration.fixMaxRadixBluestein;
-
+	if (inputLaunchConfiguration.forceBluesteinSequenceSize != 0) app->configuration.forceBluesteinSequenceSize = inputLaunchConfiguration.forceBluesteinSequenceSize;
 	if (inputLaunchConfiguration.performR2C != 0) {
 		app->configuration.performR2C = inputLaunchConfiguration.performR2C;
 	}
@@ -27157,13 +31298,12 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 #if(VKFFT_BACKEND==0) 
 	app->configuration.useUint64 = 0; //No physical addressing mode in Vulkan shaders. Use multiple-buffer support to achieve emulation of physical addressing.
 #endif
-	VkFFTResult resFFT = VKFFT_SUCCESS;
-	uint64_t initSharedMemory = app->configuration.sharedMemorySize;
+	//uint64_t initSharedMemory = app->configuration.sharedMemorySize;
 	if (!app->configuration.makeForwardPlanOnly) {
 		app->localFFTPlan_inverse = (VkFFTPlan*)calloc(1, sizeof(VkFFTPlan));
 		if (app->localFFTPlan_inverse) {
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
-				app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
+				//app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
 				resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, i, 0);
 				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
@@ -27176,7 +31316,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 				}
 			}
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
-				app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
+				//app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
 				for (uint64_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
 					resFFT = VkFFTPlanAxis(app, app->localFFTPlan_inverse, i, j, 1, 0);
 					if (resFFT != VKFFT_SUCCESS) {
@@ -27211,7 +31351,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		app->localFFTPlan = (VkFFTPlan*)calloc(1, sizeof(VkFFTPlan));
 		if (app->localFFTPlan) {
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
-				app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
+				//app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
 				resFFT = VkFFTScheduler(app, app->localFFTPlan, i, 0);
 				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
@@ -27224,7 +31364,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 				}
 			}
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
-				app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
+				//app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
 				for (uint64_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++) {
 					resFFT = VkFFTPlanAxis(app, app->localFFTPlan, i, j, 0, 0);
 					if (resFFT != VKFFT_SUCCESS) {
@@ -27981,7 +32121,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 				VkFFTAxis* axis = &app->localFFTPlan->axes[0][l];
 				resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, axis, 0, l, 0);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
-				uint64_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1)) ? 1 : app->configuration.coordinateFeatures;
+				uint64_t maxCoordinate = ((app->configuration.matrixConvolution > 1) && (app->configuration.performConvolution) && (app->configuration.FFTdim == 1) && (l == 0)) ? 1 : app->configuration.coordinateFeatures;
 #if(VKFFT_BACKEND==0)
 				vkCmdBindPipeline(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipeline);
 				vkCmdBindDescriptorSets(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &axis->descriptorSet, 0, 0);
@@ -28624,6 +32764,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10225; //X.XX.XX format
+	return 10226; //X.XX.XX format
 }
 #endif

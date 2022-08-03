@@ -15,8 +15,9 @@
 #include "hip/hip_runtime.h"
 #include <hipfft.h>
 
-void launch_precision_rocFFT_r2c(void* inputC, void* output_rocFFT, uint64_t* dims)
+void launch_precision_rocFFT_r2c(void* inputC, void* output_rocFFT, int device_id, uint64_t* dims)
 {
+	hipSetDevice(device_id);
 	hipfftHandle planR2C;
 	hipfftReal* dataR;
 	hipfftComplex* dataC;

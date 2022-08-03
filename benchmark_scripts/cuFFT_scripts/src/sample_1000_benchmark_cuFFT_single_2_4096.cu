@@ -19,13 +19,14 @@
 #define GROUP 1
 
 
-void sample_1000_benchmark_cuFFT_single_2_4096(bool file_output, FILE* output)
+void sample_1000_benchmark_cuFFT_single_2_4096(bool file_output, FILE* output, int device_id)
 {
 
 	const int num_runs = 3;
 	if (file_output)
 		fprintf(output, "1000 - cuFFT FFT + iFFT C2C benchmark 1D batched in single precision: all supported systems from 2 to 4096\n");
 	printf("1000 - FFT + iFFT C2C benchmark 1D batched in single precision: all supported systems from 2 to 4096\n");
+	cudaSetDevice(device_id);
 	double benchmark_result[2] = { 0,0 };//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	cufftComplex* inputC = (cufftComplex*)malloc((uint64_t)sizeof(cufftComplex) * pow(2, 27));
 	for (uint64_t i = 0; i < pow(2, 27); i++) {

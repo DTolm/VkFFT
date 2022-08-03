@@ -15,8 +15,9 @@
 #include "hip/hip_runtime.h"
 #include <hipfft.h>
 
-void launch_precision_rocFFT_double(void* inputC, void* output_rocFFT, uint64_t* dims)
+void launch_precision_rocFFT_double(void* inputC, void* output_rocFFT, int device_id, uint64_t* dims)
 {
+	hipSetDevice(device_id);
 	hipfftHandle planZ2Z;
 	hipfftDoubleComplex* dataC;
 	hipMalloc((void**)&dataC, sizeof(hipfftDoubleComplex) * dims[0] * dims[1] * dims[2]);

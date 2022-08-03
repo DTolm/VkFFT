@@ -134,7 +134,7 @@ VkFFTResult sample_13_precision_VkFFT_half(VkGPU* vkGPU, uint64_t file_output, F
 #ifdef USE_cuFFT
 			half2* output_extFFT = (half2*)(malloc(2 * sizeof(half) * dims[0] * dims[1] * dims[2]));
 			if (!output_extFFT) return VKFFT_ERROR_MALLOC_FAILED;
-			launch_precision_cuFFT_half(inputC, (void*)output_extFFT, benchmark_dimensions[n]);
+			launch_precision_cuFFT_half(inputC, (void*)output_extFFT, (int)vkGPU->device_id, benchmark_dimensions[n]);
 #endif // USE_cuFFT
 
 			//VkFFT part

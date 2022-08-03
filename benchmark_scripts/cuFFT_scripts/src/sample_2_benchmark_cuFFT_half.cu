@@ -20,12 +20,13 @@
 #define GROUP 1
 
 
-void sample_2_benchmark_cuFFT_half(bool file_output, FILE* output)
+void sample_2_benchmark_cuFFT_half(bool file_output, FILE* output, int device_id)
 {
 	const int num_runs = 3;
 	if (file_output)
 		fprintf(output, "2 - cuFFT FFT + iFFT C2C benchmark 1D batched in half precision\n");
 	printf("2 - cuFFT FFT + iFFT C2C benchmark 1D batched in half precision\n");
+	cudaSetDevice(device_id);
 	double benchmark_result[2] = { 0,0 };//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	half2* inputC = (half2*)malloc((uint64_t)sizeof(half2) * pow(2, 27));
 	for (uint64_t i = 0; i < pow(2, 27); i++) {

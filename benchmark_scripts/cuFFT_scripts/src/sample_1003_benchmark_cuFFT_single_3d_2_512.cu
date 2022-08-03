@@ -19,12 +19,13 @@
 #define GROUP 1
 
 
-void sample_1003_benchmark_cuFFT_single_3d_2_512(bool file_output, FILE* output)
+void sample_1003_benchmark_cuFFT_single_3d_2_512(bool file_output, FILE* output, int device_id)
 {
 	if (file_output)
 		fprintf(output, "1003 - cuFFT FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
 	printf("1003 - cuFFT FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
-const int num_runs = 3;
+	cudaSetDevice(device_id);
+	const int num_runs = 3;
 	
 	double benchmark_result[2] = { 0,0 };//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	cufftComplex* inputC = (cufftComplex*)malloc((uint64_t)sizeof(cufftComplex)*pow(2, 27));

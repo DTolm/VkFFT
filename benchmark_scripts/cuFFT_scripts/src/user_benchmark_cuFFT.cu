@@ -18,9 +18,10 @@
 
 #include "user_benchmark_cuFFT.h"
 
-void user_benchmark_cuFFT(bool file_output, FILE* output, cuFFTUserSystemParameters* userParams)
+void user_benchmark_cuFFT(bool file_output, FILE* output, cuFFTUserSystemParameters* userParams, int device_id)
 {
 	
+	cudaSetDevice(device_id);
 	const int num_runs = 3;
 	double benchmark_result[2] = { 0,0 };//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	uint64_t storageComplexSize;
