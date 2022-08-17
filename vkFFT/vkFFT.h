@@ -33014,7 +33014,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		axis->groupedBatch = (axis->groupedBatch / maxBatchCoalesced) * maxBatchCoalesced;
 		//half bandiwdth technique
 		if (!((axis_id == 0) && (FFTPlan->numAxisUploads[axis_id] == 1)) && !((axis_id == 0) && (axis_upload_id == 0) && (!axis->specializationConstants.reorderFourStep)) && (axis->specializationConstants.fftDim > maxSingleSizeStrided)) {
-			axis->groupedBatch = (uint64_t)ceil(axis->groupedBatch / 2.0);
+			axis->groupedBatch = maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim;
+			if (axis->groupedBatch == 0) axis->groupedBatch = 1;
 		}
 
 		if ((app->configuration.halfThreads) && (axis->groupedBatch * axis->specializationConstants.fftDim * complexSize >= app->configuration.sharedMemorySize))
