@@ -92,6 +92,8 @@ VkFFTResult sample_1000_VkFFT_single_2_4096(VkGPU* vkGPU, uint64_t file_output, 
 			if (temp != 1) break;*/
 			configuration.numberBatches = (uint64_t)pow(2, (uint64_t)log2((uint64_t)64 * 32 * (uint64_t)pow(2, 16) / configuration.size[0]));
 			if (configuration.numberBatches < 1) configuration.numberBatches = 1;
+			if (r==0) configuration.saveApplicationToString = 1;
+			if (r!=0) configuration.loadApplicationFromString = 1;
 
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
 			configuration.device = &vkGPU->device;
@@ -187,9 +189,37 @@ VkFFTResult sample_1000_VkFFT_single_2_4096(VkGPU* vkGPU, uint64_t file_output, 
 			if (res != 0) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 #endif
 
+			if (configuration.loadApplicationFromString) {
+				FILE* kernelCache;
+				uint64_t str_len;
+				char fname[500];
+				int VkFFT_version = VkFFTGetVersion();
+				sprintf(fname, "VkFFT_binary");
+				kernelCache = fopen(fname, "rb");
+				if (!kernelCache) return VKFFT_ERROR_EMPTY_FILE;
+				fseek(kernelCache, 0, SEEK_END);
+				str_len = ftell(kernelCache);
+				fseek(kernelCache, 0, SEEK_SET);
+				configuration.loadApplicationString = malloc(str_len);
+				fread(configuration.loadApplicationString, str_len, 1, kernelCache);
+				fclose(kernelCache);
+			}
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 			resFFT = initializeVkFFT(&app, configuration);
 			if (resFFT != VKFFT_SUCCESS) return resFFT;
+
+			if (configuration.loadApplicationFromString)
+				free(configuration.loadApplicationString);
+
+			if (configuration.saveApplicationToString) {
+				FILE* kernelCache;
+				char fname[500];
+				int VkFFT_version = VkFFTGetVersion();
+				sprintf(fname, "VkFFT_binary");
+				kernelCache = fopen(fname, "wb");
+				fwrite(app.saveApplicationString, app.applicationStringSize, 1, kernelCache);
+				fclose(kernelCache);
+			}
 
 			//Submit FFT+iFFT.
 			uint64_t num_iter = (((uint64_t)3 * 4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (uint64_t)((uint64_t)3 * 4096 * 1024.0 * 1024.0) / bufferSize;

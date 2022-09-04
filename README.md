@@ -15,7 +15,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - Forward and inverse directions of FFT
   - Support for big FFT dimension sizes. Current limits: C2C or even C2R/R2C - (2^32, 2^32, 2^32).  Odd C2R/R2C - (2^12, 2^32, 2^32). R2R - (2^12, 2^12, 2^12). Depends on the amount of shared memory on the device. (will be increased later).
   - Radix-2/3/4/5/7/8/11/13 FFT. Sequences using radix 3, 5, 7, 11 and 13 have comparable performance to that of powers of 2.
-  - Rader's FFT algorithm for primes from 17 up to user defined prime (default 83). Inlined and done without additional memory transfers.
+  - Rader's FFT algorithm for primes from 17 up to max shared memory length (~10000). Inlined and done without additional memory transfers.
   - Bluestein's FFT algorithm for all other sequences. Full coverage of C2C range, single upload (2^12, 2^12, 2^12) for R2C/C2R/R2R. Optimized to have as few memory transfers as possible by using zero padding and merged convolution support of VkFFT
   - Single, double and half precision support. Double precision uses CPU-generated LUT tables. Half precision still does all computations in single and only uses half precision to store data.
   - All transformations are performed in-place with no performance loss. Out-of-place transforms are supported by selecting different input/output buffers.
@@ -71,20 +71,9 @@ VkFFT.h is a library that can append FFT, iFFT or convolution calculation to the
 VkFFT achieves striding by grouping nearby FFTs instead of transpositions. \
 Explicit VkFFT documentation can be found in the documentation folder.
 ## Benchmark results in comparison to cuFFT
-To measure how Vulkan FFT implementation works in comparison to cuFFT, we will perform many 1D, 2D and 3D tests, ranging from the small systems to the big ones. The test will consist of performing C2C FFT and inverse C2C FFT consecutively multiple times to calculate the average time required. The results are obtained on Nvidia RTX 3080, AMD Radeon VII and AMD Radeon 6800XT graphics cards with no other GPU load. Launching -test key from Vulkan_FFT.cpp performs VkFFT/cuFFT benchmark. The overall benchmark score is calculated as an averaged performance score over presented set of systems (the bigger - the better): sum(system_size/average_iteration_time) /num_benchmark_samples
-
-The stable flat lines present for small sequence lengths indicate that time scales linearly with the system size, so the bigger the bandwidth the better the result will be. The stepwise drops occur once the amount of transfers increases from to 2x and to 3x when compute unit can't hold full sequence and splits it into  the combination of smaller ones. Radeon VII is faster than RTX 3080 below 2^18 (=2MB - page file size on AMD due to it having HBM2 memory with higher bandwidth, however, this GPU apparently has TLB miss problems on large buffer sizes. On RTX 3080, VkFFT is faster than cuFFT in single precision batched 1D FFTs on the range from 2^3 to 2^27:
-![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/vkfft_benchmark_single.png?raw=true)
-In double precision Radeon VII is able to get an advantage due to its high double precision core count. Radeon RX 6800XT can store LUT in the L3 cache and has a higher double precision core count as well:
-![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/vkfft_benchmark_double.png?raw=true)
-In half precision mode, VkFFT only uses it for data storage, all computations are performed in single. It still proves to be enough to get a stable 2x performance gain on RTX 3080: 
-![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/vkfft_benchmark_half.png?raw=true)
-Multidimensional systems are optimized as well. Benchmark shows Radeon RX 6800XT can store systems up to 128MB in the L3 cache for big performance gains. Native support for zero padding allows to transfer less data and get up to 3x performance boost in multidimensional FFTs:
-![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/vkfft_benchmark_2d.png?raw=true)
-![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/vkfft_benchmark_3d.png?raw=true)
-The test configuration below takes multiple 1D FFTs of a supported sequence length from the range of 2 to 4096, batch them together so the full system takes from 500MB to 1GB of data and perform multiple consecutive FFTs/iFFTs (-vkfft 1000 key). After that time per a single FFT is obtained by averaging the result.   Total system size will be divided by the time taken by a single transform upload+download, resulting in the achieved bandwidth. The GPUs used in this comparison are Nvidia A100 and AMD MI100. The performance was compared against Nvidia cuFFT (CUDA 11.2 version) and AMD rocFFT (ROCm 4.1 version) libraries in single precision: 
-![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/fp32_cuda_a100.png?raw=true)
-![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/fp32_hip_mi100.png?raw=true)
+The test configuration below takes multiple 1D FFTs of all lengths from the range of 2 to 4096, batch them together so the full system takes from 500MB to 1GB of data and perform multiple consecutive FFTs/iFFTs (-vkfft 1001 key). After that time per a single FFT is obtained by averaging the result.   Total system size will be divided by the time taken by a single transform upload+download, resulting in the estimation of an achieved global bandwidth. The GPUs used in this comparison are Nvidia A100 and AMD MI250. The performance was compared against Nvidia cuFFT (CUDA 11.7 version) and AMD rocFFT (ROCm 5.2 version) libraries in double precision: 
+![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/fp64_cuda_a100.png?raw=true)
+![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/fp64_hip_mi250.png?raw=true)
 ## Precision comparison of cuFFT/VkFFT/FFTW
 To measure how VkFFT (single/double/half precision) results compare to cuFFT/rocFFT (single/double/half precision) and FFTW (double precision), a set of ~60 systems covering full FFT range was filled with random complex data on the scale of [-1,1] and one C2C transform was performed on each system. Samples 11(single), 12(double), 13(half) calculate for each value of the transformed system:
 

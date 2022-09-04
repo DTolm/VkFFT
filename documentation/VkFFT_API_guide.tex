@@ -44,7 +44,7 @@
 {\Large Dmitrii Tolmachev\par} 	
 	
 \vspace{1cm} 	
-{\large August 2022, version 1.2.26\par} 
+{\large September 2022, version 1.2.28\par} 
 \end{titlepage}
 
 \newpage{}
@@ -1031,7 +1031,9 @@ uint64_t printMemoryLayout;	// Will print order of buffers used in shaders (0 - 
 
 uint64_t saveApplicationToString;	// Will save all compiled binaries to VkFFTApplication.saveApplicationString (will be allocated by VkFFT, deallocated with deleteVkFFT call). VkFFTApplication.applicationStringSize will contain size of binary in bytes. (0 - off, 1 - on)
 uint64_t loadApplicationFromString;	// Will load all binaries from loadApplicationString instead of recompiling them (must be allocated by user, must contain what saveApplicationToString call generated previously in VkFFTApplication.saveApplicationString). (0 - off, 1 - on). Mutually exclusive with saveApplicationToString
-void* loadApplicationString;	// Memory array (uint32_t* for Vulkan/HIP, char* for CUDA/OpenCL) through which user can load VkFFT binaries, must be provided by user if loadApplicationFromString = 1. 
+void* loadApplicationString;	// Memory binary array through which user can load VkFFT binaries, must be provided by user if loadApplicationFromString = 1. Use rb/wb flags to load/save.
+
+uint64_t disableSetLocale;	// disables all VkFFT attempts to set locale to C - user must ensure that VkFFT has C locale during the plan initialization. This option is needed for multithreading. Default 0. 
 
 //optional Bluestein optimizations: (default 0 if not stated otherwise)
 uint64_t fixMaxRadixBluestein;	// controls the padding of sequences in Bluestein convolution. If specified, padded sequence will be made of up to fixMaxRadixBluestein primes. Default: 2 for CUDA and Vulkan/OpenCL/HIP up to 1048576 combined dimension FFT system, 7 for Vulkan/OpenCL/HIP past after. Min = 2, Max = 13.
@@ -1039,6 +1041,12 @@ uint64_t forceBluesteinSequenceSize;	// force the sequence size to pad to in Blu
 uint64_t useCustomBluesteinPaddingPattern;	// force the sequence sizes to pad to in Bluestein's algorithm, but on a range. This number specifies the number of elements in primeSizes and in paddedSizes arrays. primeSizes - array of non-decomposable as radix scheme sizes - 17, 23, 31 etc. paddedSizes - array of lengths to pad to. paddedSizes[i] will be the padding size for all non-decomposable sequences from primeSizes[i] to primeSizes[i+1] (will use default scheme after last one) - 42, 60, 64 for primeSizes before and 37+ will use default scheme (for example). Default is vendor and API-based specified in autoCustomBluesteinPaddingPattern.
 uint64_t* primeSizes;	// described in useCustomBluesteinPaddingPattern
 uint64_t* paddedSizes;	// described in useCustomBluesteinPaddingPattern
+
+uint64_t fixMinRaderPrimeMult;	// start direct multiplication Rader's algorithm for radix primes from this number. This means that VkFFT will inline custom Rader kernels if sequence is divisible by these primes. Default is 17, as VkFFT has kernels for 2-13. If you make it less than 13, VkFFT will switch from these kernels to Rader.
+uint64_t fixMaxRaderPrimeMult;	// switch from Mult Rader's algorithm for radix primes from this number. Current limitation for Rader is maxThreadNum/2+1, realistically you would want to switch somewhere on 30-100 range. Default is vendor-specific (currently ~40)
+
+uint64_t fixMinRaderPrimeFFT;	// start FFT convolution version of Rader for radix primes from this number. Better than direct multiplication version for almost all primes (except small ones, like 17-23 on some GPUs). Must be bigger or equal to fixMinRaderPrimeMult. Deafult 29 on AMD and 17 on other GPUs. 
+uint64_t fixMaxRaderPrimeFFT;	// switch to Bluestein's algorithm for radix primes from this number. Switch may happen earlier if prime can't fit in shared memory. Default is 16384, which is bigger than most current GPU's shared memory.
 
 // Optional zero padding control parameters: (default 0 if not stated otherwise)
 uint64_t performZeropadding[3];	// Don't read some data/perform computations if some input sequences are zeropadded for each axis (0 - off, 1 - on)
@@ -1064,6 +1072,8 @@ uint64_t devicePageSize;	// In KB, the size of a page on the GPU. Setting to 0 d
 uint64_t localPageSize;	// In KB, the size to split page into if sequence spans multiple devicePageSize pages
 
 // Automatically filled based on device info (still can be reconfigured by user):
+uint64_t computeCapabilityMajor;	// CUDA/HIP compute capability of the device
+uint64_t computeCapabilityMinor;	// CUDA/HIP compute capability of the device 	
 uint64_t maxComputeWorkGroupCount[3];	// maxComputeWorkGroupCount from VkPhysicalDeviceLimits
 uint64_t maxComputeWorkGroupSize[3];	// maxComputeWorkGroupCount from VkPhysicalDeviceLimits
 uint64_t maxThreadsNum;	// Max number of threads from VkPhysicalDeviceLimits
@@ -1077,6 +1087,7 @@ uint64_t reorderFourStep;	// Unshuffle Four step algorithm. Requires tempbuffer 
 int64_t maxCodeLength;	// Specify how big can be buffer used for code generation (in char). Default 1000000 chars. 
 int64_t maxTempLength;	// Specify how big can be buffer used for intermediate string sprintfs be (in char). Default 5000 chars. If code segfaults for some reason - try increasing this number.
 uint64_t autoCustomBluesteinPaddingPattern; // default value for useCustomBluesteinPaddingPattern
+uint64_t useRaderUintLUT; // allocate additional LUT to store g_pow
 uint64_t vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 - AMD, etc
 #if(VKFFT_BACKEND==0) //Vulkan API
 VkDeviceMemory tempBufferDeviceMemory;	// Filled at app creation
@@ -1388,10 +1399,37 @@ call generated previously in VkFFTApplication.saveApplicationString).
 Default 0, set to 1 to enable. Optional parameter. Mutually exclusive
 with saveApplicationToString 
 
-void{*} loadApplicationString - memory array (uint32\_t{*} for Vulkan,
-HIP and Level Zero, char{*} for CUDA/OpenCL) through which user can
-load VkFFT binaries, must be provided by user if loadApplicationFromString
-= 1. 
+void{*} loadApplicationString - memory binary array through which
+user can load VkFFT binaries, must be provided by user if loadApplicationFromString
+= 1. Use rb/wb flags to load/save.
+
+uint64\_t disableSetLocale - disables all VkFFT attempts to set locale
+to C - user must ensure that VkFFT has C locale during the plan initialization.
+This option is needed for multithreading. Default 0.
+
+\subsubsection{Rader control parameters}
+
+uint64\_t fixMinRaderPrimeMult - start direct multiplication Rader's
+algorithm for radix primes from this number. This means that VkFFT
+will inline custom Rader kernels if sequence is divisible by these
+primes. Default is 17, as VkFFT has kernels for 2-13. If you make
+it less than 13, VkFFT will switch from these kernels to Rader.
+
+uint64\_t fixMaxRaderPrimeMult - switch from Mult Rader's algorithm
+for radix primes from this number. Current limitation for Rader is
+maxThreadNum/2+1, realistically you would want to switch somewhere
+on 30-100 range. Default is vendor-specific (currently \textasciitilde 40)
+
+uint64\_t fixMinRaderPrimeFFT - start FFT convolution version of Rader
+for radix primes from this number. Better than direct multiplication
+version for almost all primes (except small ones, like 17-23 on some
+GPUs). Must be bigger or equal to fixMinRaderPrimeMult. Deafult 29
+on AMD and 17 on other GPUs. 
+
+uint64\_t fixMaxRaderPrimeFFT - switch to Bluestein's algorithm for
+radix primes from this number. Switch may happen earlier if prime
+can't fit in shared memory. Default is 16384, which is bigger than
+most current GPU's shared memory.
 
 \subsubsection{Bluestein control parameters}
 
@@ -1521,6 +1559,12 @@ as registerBoost. Default 1. Optional parameter.
 
 \subsubsection{Extra advanced parameters (filled automatically)}
 
+uint64\_t computeCapabilityMajor - CUDA/HIP compute capability of
+the device
+
+uint64\_t computeCapabilityMinor - CUDA/HIP compute capability of
+the device 
+
 uint64\_t maxComputeWorkGroupCount{[}3{]} - how many workgroups can
 be launched at one dispatch. Automatically derived from the driver,
 can be artificially lowered. Then VkFFT will perform a logical split
@@ -1566,10 +1610,11 @@ int64\_t maxTempLength - specify how big can the buffer used for intermediate
 string sprintf's be (in char). Default 5000 chars. If code segfaults
 for some reason - try increasing this number.
 
-uint64\_t autoCustomBluesteinPaddingPattern; // default value for
-useCustomBluesteinPaddingPattern
+uint64\_t autoCustomBluesteinPaddingPattern - default value for useCustomBluesteinPaddingPattern
 
-uint64\_t vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002
+uint64\_t useRaderUintLUT - allocate additional LUT to store g\_pow 
+
+uint64\_t vendorID - vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002
 - AMD, etc.
 
 \newpage{}
@@ -2162,7 +2207,7 @@ convolution_configuration.conjugateConvolution = 1;
 This example shows how to save/load binaries generated by VkFFT. This
 can reduce time taken by initializeVkFFT call by removing RTC components
 from it. Be sure that rest of the configuration stays the same to
-reuse the binary.
+reuse the binary. Use rb/wb flags to load/save.
 
 \begin{mdframed}[backgroundcolor=bg]
 \begin{minted}[tabsize=4,obeytabs,breaklines]{C}
@@ -2176,11 +2221,7 @@ configuration.saveApplicationToString = 1;
 if (configuration.loadApplicationFromString) {
 	FILE* kernelCache;
 	uint64_t str_len;
-#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2) || (VKFFT_BACKEND==4))
-	kernelCache = fopen("VkFFT_binary", "rb"); //Vulkan and HIP backends load data as a uint32_t sequence
-#else
-	kernelCache = fopen("VkFFT_binary", "r"); 
-#endif
+	kernelCache = fopen("VkFFT_binary", "rb");
 	fseek(kernelCache, 0, SEEK_END);
 	str_len = ftell(kernelCache);
 	fseek(kernelCache, 0, SEEK_SET);
@@ -2197,11 +2238,7 @@ if (configuration.loadApplicationFromString)
 
 if (configuration.saveApplicationToString) {
 	FILE* kernelCache;
-#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2) || (VKFFT_BACKEND==4))
-	kernelCache = fopen("VkFFT_binary", "wb"); //Vulkan and HIP backends save data as a uint32_t sequence
-#else
-	kernelCache = fopen("VkFFT_binary", "w"); 
-#endif
+	kernelCache = fopen("VkFFT_binary", "wb");
 	fwrite(app.saveApplicationString, app.applicationStringSize, 1, kernelCache);
 	fclose(kernelCache);
 }

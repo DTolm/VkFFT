@@ -164,11 +164,7 @@ VkFFTResult user_benchmark_VkFFT(VkGPU* vkGPU, uint64_t file_output, FILE* outpu
 				char fname[500];
 				int VkFFT_version = VkFFTGetVersion();
 				sprintf(fname, "VkFFT_binary_X%" PRIu64 "_Y%" PRIu64 "_Z%" PRIu64 "_P%" PRIu64 "_B%" PRIu64 "_N%" PRIu64 "_R2C%" PRIu64 "_DCT%" PRIu64 "_ver%d", userParams->X, userParams->Y, userParams->Z, userParams->P, userParams->B, userParams->N, userParams->R2C, userParams->DCT, VkFFT_version);
-#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2) || (VKFFT_BACKEND==4))
-				kernelCache = fopen(fname, "rb"); //Vulkan and HIP backends load data as a uint32_t sequence
-#else
-				kernelCache = fopen(fname, "r");
-#endif
+				kernelCache = fopen(fname, "rb");
 				if (!kernelCache) return VKFFT_ERROR_EMPTY_FILE;
 				fseek(kernelCache, 0, SEEK_END);
 				str_len = ftell(kernelCache);
@@ -189,11 +185,7 @@ VkFFTResult user_benchmark_VkFFT(VkGPU* vkGPU, uint64_t file_output, FILE* outpu
 				char fname[500];
 				int VkFFT_version = VkFFTGetVersion();
 				sprintf(fname, "VkFFT_binary_X%" PRIu64 "_Y%" PRIu64 "_Z%" PRIu64 "_P%" PRIu64 "_B%" PRIu64 "_N%" PRIu64 "_R2C%" PRIu64 "_DCT%" PRIu64 "_ver%d", userParams->X, userParams->Y, userParams->Z, userParams->P, userParams->B, userParams->N, userParams->R2C, userParams->DCT, VkFFT_version);
-#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2) || (VKFFT_BACKEND==4))
-				kernelCache = fopen(fname, "wb"); //Vulkan and HIP backends save data as a uint32_t sequence
-#else
-				kernelCache = fopen(fname, "w");
-#endif
+				kernelCache = fopen(fname, "wb");
 				fwrite(app.saveApplicationString, app.applicationStringSize, 1, kernelCache);
 				fclose(kernelCache);
 			}

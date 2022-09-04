@@ -192,7 +192,7 @@ vspace{1cm}
 
 {
 \backslash
-large August 2022, version 1.2.26
+large September 2022, version 1.2.28
 \backslash
 par} 
 \end_layout
@@ -3444,9 +3444,22 @@ pplicationString).
 
 \begin_layout Plain Layout
 
-void* loadApplicationString;	// Memory array (uint32_t* for Vulkan/HIP,
- char* for CUDA/OpenCL) through which user can load VkFFT binaries, must
- be provided by user if loadApplicationFromString = 1.
+void* loadApplicationString;	// Memory binary array through which user can
+ load VkFFT binaries, must be provided by user if loadApplicationFromString
+ = 1.
+ Use rb/wb flags to load/save.
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t disableSetLocale;	// disables all VkFFT attempts to set locale
+ to C - user must ensure that VkFFT has C locale during the plan initialization.
+ This option is needed for multithreading.
+ Default 0.
  
 \end_layout
 
@@ -3501,6 +3514,52 @@ uint64_t* primeSizes;	// described in useCustomBluesteinPaddingPattern
 \begin_layout Plain Layout
 
 uint64_t* paddedSizes;	// described in useCustomBluesteinPaddingPattern
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t fixMinRaderPrimeMult;	// start direct multiplication Rader's algorithm
+ for radix primes from this number.
+ This means that VkFFT will inline custom Rader kernels if sequence is divisible
+ by these primes.
+ Default is 17, as VkFFT has kernels for 2-13.
+ If you make it less than 13, VkFFT will switch from these kernels to Rader.
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t fixMaxRaderPrimeMult;	// switch from Mult Rader's algorithm for
+ radix primes from this number.
+ Current limitation for Rader is maxThreadNum/2+1, realistically you would
+ want to switch somewhere on 30-100 range.
+ Default is vendor-specific (currently ~40)
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t fixMinRaderPrimeFFT;	// start FFT convolution version of Rader
+ for radix primes from this number.
+ Better than direct multiplication version for almost all primes (except
+ small ones, like 17-23 on some GPUs).
+ Must be bigger or equal to fixMinRaderPrimeMult.
+ Deafult 29 on AMD and 17 on other GPUs.
+ 
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t fixMaxRaderPrimeFFT;	// switch to Bluestein's algorithm for radix
+ primes from this number.
+ Switch may happen earlier if prime can't fit in shared memory.
+ Default is 16384, which is bigger than most current GPU's shared memory.
 \end_layout
 
 \begin_layout Plain Layout
@@ -3658,6 +3717,17 @@ uint64_t localPageSize;	// In KB, the size to split page into if sequence
 
 \begin_layout Plain Layout
 
+uint64_t computeCapabilityMajor;	// CUDA/HIP compute capability of the device
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t computeCapabilityMinor;	// CUDA/HIP compute capability of the device
+ 	
+\end_layout
+
+\begin_layout Plain Layout
+
 uint64_t maxComputeWorkGroupCount[3];	// maxComputeWorkGroupCount from VkPhysica
 lDeviceLimits
 \end_layout
@@ -3735,6 +3805,11 @@ int64_t maxTempLength;	// Specify how big can be buffer used for intermediate
 
 uint64_t autoCustomBluesteinPaddingPattern; // default value for useCustomBluest
 einPaddingPattern
+\end_layout
+
+\begin_layout Plain Layout
+
+uint64_t useRaderUintLUT; // allocate additional LUT to store g_pow
 \end_layout
 
 \begin_layout Plain Layout
@@ -4360,10 +4435,55 @@ String instead of recompiling them (loadApplicationString must be allocated
 \end_layout
 
 \begin_layout Standard
-void* loadApplicationString - memory array (uint32_t* for Vulkan, HIP and
- Level Zero, char* for CUDA/OpenCL) through which user can load VkFFT binaries,
- must be provided by user if loadApplicationFromString = 1.
+void* loadApplicationString - memory binary array through which user can
+ load VkFFT binaries, must be provided by user if loadApplicationFromString
+ = 1.
+ Use rb/wb flags to load/save.
+\end_layout
+
+\begin_layout Standard
+uint64_t disableSetLocale - disables all VkFFT attempts to set locale to
+ C - user must ensure that VkFFT has C locale during the plan initialization.
+ This option is needed for multithreading.
+ Default 0.
+\end_layout
+
+\begin_layout Subsubsection
+Rader control parameters
+\end_layout
+
+\begin_layout Standard
+uint64_t fixMinRaderPrimeMult - start direct multiplication Rader's algorithm
+ for radix primes from this number.
+ This means that VkFFT will inline custom Rader kernels if sequence is divisible
+ by these primes.
+ Default is 17, as VkFFT has kernels for 2-13.
+ If you make it less than 13, VkFFT will switch from these kernels to Rader.
+\end_layout
+
+\begin_layout Standard
+uint64_t fixMaxRaderPrimeMult - switch from Mult Rader's algorithm for radix
+ primes from this number.
+ Current limitation for Rader is maxThreadNum/2+1, realistically you would
+ want to switch somewhere on 30-100 range.
+ Default is vendor-specific (currently ~40)
+\end_layout
+
+\begin_layout Standard
+uint64_t fixMinRaderPrimeFFT - start FFT convolution version of Rader for
+ radix primes from this number.
+ Better than direct multiplication version for almost all primes (except
+ small ones, like 17-23 on some GPUs).
+ Must be bigger or equal to fixMinRaderPrimeMult.
+ Deafult 29 on AMD and 17 on other GPUs.
  
+\end_layout
+
+\begin_layout Standard
+uint64_t fixMaxRaderPrimeFFT - switch to Bluestein's algorithm for radix
+ primes from this number.
+ Switch may happen earlier if prime can't fit in shared memory.
+ Default is 16384, which is bigger than most current GPU's shared memory.
 \end_layout
 
 \begin_layout Subsubsection
@@ -4585,6 +4705,15 @@ Extra advanced parameters (filled automatically)
 \end_layout
 
 \begin_layout Standard
+uint64_t computeCapabilityMajor - CUDA/HIP compute capability of the device
+\end_layout
+
+\begin_layout Standard
+uint64_t computeCapabilityMinor - CUDA/HIP compute capability of the device
+ 
+\end_layout
+
+\begin_layout Standard
 uint64_t maxComputeWorkGroupCount[3] - how many workgroups can be launched
  at one dispatch.
  Automatically derived from the driver, can be artificially lowered.
@@ -4658,13 +4787,17 @@ int64_t maxTempLength - specify how big can the buffer used for intermediate
 \end_layout
 
 \begin_layout Standard
-uint64_t autoCustomBluesteinPaddingPattern; // default value for useCustomBluest
-einPaddingPattern
+uint64_t autoCustomBluesteinPaddingPattern - default value for useCustomBluestei
+nPaddingPattern
 \end_layout
 
 \begin_layout Standard
-uint64_t vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 -
- AMD, etc.
+uint64_t useRaderUintLUT - allocate additional LUT to store g_pow 
+\end_layout
+
+\begin_layout Standard
+uint64_t vendorID - vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 - AMD,
+ etc.
 \end_layout
 
 \begin_layout Standard
@@ -7303,6 +7436,7 @@ This example shows how to save/load binaries generated by VkFFT.
  This can reduce time taken by initializeVkFFT call by removing RTC components
  from it.
  Be sure that rest of the configuration stays the same to reuse the binary.
+ Use rb/wb flags to load/save.
 \end_layout
 
 \begin_layout Standard
@@ -7374,28 +7508,7 @@ if (configuration.loadApplicationFromString) {
 
 \begin_layout Plain Layout
 
-#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2) || (VKFFT_BACKEND==4))
-\end_layout
-
-\begin_layout Plain Layout
-
-	kernelCache = fopen("VkFFT_binary", "rb"); //Vulkan and HIP backends load
- data as a uint32_t sequence
-\end_layout
-
-\begin_layout Plain Layout
-
-#else
-\end_layout
-
-\begin_layout Plain Layout
-
-	kernelCache = fopen("VkFFT_binary", "r"); 
-\end_layout
-
-\begin_layout Plain Layout
-
-#endif
+	kernelCache = fopen("VkFFT_binary", "rb");
 \end_layout
 
 \begin_layout Plain Layout
@@ -7477,28 +7590,7 @@ if (configuration.saveApplicationToString) {
 
 \begin_layout Plain Layout
 
-#if((VKFFT_BACKEND==0) || (VKFFT_BACKEND==2) || (VKFFT_BACKEND==4))
-\end_layout
-
-\begin_layout Plain Layout
-
-	kernelCache = fopen("VkFFT_binary", "wb"); //Vulkan and HIP backends save
- data as a uint32_t sequence
-\end_layout
-
-\begin_layout Plain Layout
-
-#else
-\end_layout
-
-\begin_layout Plain Layout
-
-	kernelCache = fopen("VkFFT_binary", "w"); 
-\end_layout
-
-\begin_layout Plain Layout
-
-#endif
+	kernelCache = fopen("VkFFT_binary", "wb");
 \end_layout
 
 \begin_layout Plain Layout

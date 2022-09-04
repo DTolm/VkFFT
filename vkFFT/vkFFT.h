@@ -184,9 +184,11 @@ typedef struct {
 	uint64_t printMemoryLayout;//will print order of buffers used in shaders (0 - off, 1 - on)
 
 	uint64_t saveApplicationToString;//will save all compiled binaries to VkFFTApplication.saveApplicationString (will be allocated by VkFFT, deallocated with deleteVkFFT call). (0 - off, 1 - on)
-
+	
 	uint64_t loadApplicationFromString;//will load all binaries from loadApplicationString instead of recompiling them (must be allocated by user, must contain what saveApplicationToString call generated previously in VkFFTApplication.saveApplicationString). (0 - off, 1 - on). Mutually exclusive with saveApplicationToString
-	void* loadApplicationString;//memory array (uint32_t* for Vulkan, char* for CUDA/HIP/OpenCL) through which user can load VkFFT binaries, must be provided by user if loadApplicationFromString = 1.
+	void* loadApplicationString;//memory binary array through which user can load VkFFT binaries, must be provided by user if loadApplicationFromString = 1. Use rb/wb flags to load/save.
+
+	uint64_t disableSetLocale;//disables all VkFFT attempts to set locale to C - user must ensure that VkFFT has C locale during the plan initialization. This option is needed for multithreading. Default 0.
 
 	//optional Bluestein optimizations: (default 0 if not stated otherwise)
 	uint64_t fixMaxRadixBluestein;//controls the padding of sequences in Bluestein convolution. If specified, padded sequence will be made of up to fixMaxRadixBluestein primes. Default: 2 for CUDA and Vulkan/OpenCL/HIP up to 1048576 combined dimension FFT system, 7 for Vulkan/OpenCL/HIP past after. Min = 2, Max = 13.
@@ -196,8 +198,11 @@ typedef struct {
 	uint64_t* primeSizes; // described in useCustomBluesteinPaddingPattern
 	uint64_t* paddedSizes; // described in useCustomBluesteinPaddingPattern
 
-	uint64_t fixMinRaderPrime;//start Rader algorithm for radix primes from this number. This means that VkFFT will inline custom Rader kernels if sequence is divisible by these primes. Default is 17, as VkFFT has kernels for 2-13. If you make it less than 13, VkFFT will switch from these kernels to Rader.
-	uint64_t fixMaxRaderPrime;//switch from Rader to Bluestein algorithm for radix primes from this number. Current limitation for Rader is maxThreadNum/2+1, realistically you would want to switch somewhere on 30-100 range. Default is vendor-specific (currently ~40)
+	uint64_t fixMinRaderPrimeMult;//start direct multiplication Rader's algorithm for radix primes from this number. This means that VkFFT will inline custom Rader kernels if sequence is divisible by these primes. Default is 17, as VkFFT has kernels for 2-13. If you make it less than 13, VkFFT will switch from these kernels to Rader.
+	uint64_t fixMaxRaderPrimeMult;//switch from Mult Rader's algorithm for radix primes from this number. Current limitation for Rader is maxThreadNum/2+1, realistically you would want to switch somewhere on 30-100 range. Default is vendor-specific (currently ~40)
+
+	uint64_t fixMinRaderPrimeFFT;//start FFT convolution version of Rader for radix primes from this number. Better than direct multiplication version for almost all primes (except small ones, like 17-23 on some GPUs). Must be bigger or equal to fixMinRaderPrimeMult. Deafult 29 on AMD and 17 on other GPUs. 
+	uint64_t fixMaxRaderPrimeFFT;//switch to Bluestein's algorithm for radix primes from this number. Switch may happen earlier if prime can't fit in shared memory. Default is 16384, which is bigger than most current GPU's shared memory.
 
 	//optional zero padding control parameters: (default 0 if not stated otherwise)
 	uint64_t performZeropadding[3]; // don't read some data/perform computations if some input sequences are zeropadded for each axis (0 - off, 1 - on)
@@ -226,6 +231,8 @@ typedef struct {
 	uint64_t localPageSize;//in KB, the size to split page into if sequence spans multiple devicePageSize pages
 
 	//automatically filled based on device info (still can be reconfigured by user):
+	uint64_t computeCapabilityMajor; // CUDA/HIP compute capability of the device
+	uint64_t computeCapabilityMinor; // CUDA/HIP compute capability of the device
 	uint64_t maxComputeWorkGroupCount[3]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
 	uint64_t maxComputeWorkGroupSize[3]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
 	uint64_t maxThreadsNum; //max number of threads from VkPhysicalDeviceLimits
@@ -239,6 +246,7 @@ typedef struct {
 	int64_t maxCodeLength; //specify how big can be buffer used for code generation (in char). Default 4000000 chars.
 	int64_t maxTempLength; //specify how big can be buffer used for intermediate string sprintfs be (in char). Default 5000 chars. If code segfaults for some reason - try increasing this number.
 	uint64_t autoCustomBluesteinPaddingPattern; // default value for useCustomBluesteinPaddingPattern
+	uint64_t useRaderUintLUT; // allocate additional LUT to store g_pow
 	uint64_t vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 - AMD, etc.
 #if(VKFFT_BACKEND==0)
 	VkDeviceMemory tempBufferDeviceMemory;//Filled at app creation
@@ -397,6 +405,43 @@ typedef enum VkFFTResult {
 	VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST = 4054,
 	VKFFT_ERROR_FAILED_TO_SUBMIT_BARRIER = 4055
 } VkFFTResult;
+
+typedef struct VkFFTRaderContainer VkFFTRaderContainer;
+
+typedef struct VkFFTRaderContainer {
+	uint64_t prime;
+	uint64_t generator;
+	uint64_t multiplier;
+	uint64_t inline_rader_g_pow;
+	uint64_t raderUintLUToffset;
+
+	uint64_t type; //0 - FFT, 1 - Direct multiplication
+
+	uint64_t raderRegisters;
+	uint64_t rader_min_registers;
+
+	//Direct multiplication parameters
+
+	//FFT parameters
+	uint64_t registers_per_thread;
+	uint64_t min_registers_per_thread;
+	uint64_t loc_multipliers[33];
+	uint64_t registers_per_thread_per_radix[20];
+	uint64_t stageRadix[20];
+	uint64_t numStages;
+	uint64_t numSubPrimes;
+	uint64_t stage_rader_generator[20];
+	uint64_t containerFFTDim;
+	uint64_t containerFFTNum;
+	uint64_t subLogicalGroupSizeMax;//how many threads are needed per Rader transform
+	uint64_t RaderKernelOffsetLUT;
+	uint64_t RaderRadixOffsetLUT;
+	uint64_t RaderRadixOffsetLUTiFFT;
+	void* raderFFTkernel;
+
+	struct VkFFTRaderContainer* container;
+};
+
 typedef struct {
 	uint64_t size[3];
 	uint64_t localSize[3];
@@ -419,6 +464,7 @@ typedef struct {
 	uint64_t readToRegisters;
 	uint64_t writeFromRegisters;
 	uint64_t LUT;
+	uint64_t raderUintLUT;
 	uint64_t useCoalescedLUTUploadToSM;
 	uint64_t useBluesteinFFT;
 	uint64_t reverseBluesteinMultiUpload;
@@ -485,6 +531,7 @@ typedef struct {
 	uint64_t kernelNumberByteSize;
 	uint64_t maxStageSumLUT;
 	uint64_t unroll;
+	uint64_t swapComputeWorkGroupID;
 	uint64_t convolutionStep;
 	uint64_t symmetricKernel;
 	uint64_t supportAxis;
@@ -495,32 +542,50 @@ typedef struct {
 	uint64_t resolveBankConflictFirstStages;
 	uint64_t sharedStrideBankConflictFirstStages;
 	uint64_t sharedStrideReadWriteConflict;
+
+	uint64_t sharedStrideRaderFFT;
+	uint64_t sharedShiftRaderFFT;
+
 	uint64_t maxSharedStride;
 	uint64_t axisSwapped;
 	uint64_t mergeSequencesR2C;
 
-	uint64_t numBuffersBound[6];
+	uint64_t numBuffersBound[10];
 	uint64_t convolutionBindingID;
 	uint64_t LUTBindingID;
 	uint64_t BluesteinConvolutionBindingID;
 	uint64_t BluesteinMultiplicationBindingID;
 
 	uint64_t useRader;
+	uint64_t numRaderPrimes;
+	uint64_t minRaderFFTThreadNum;
+	VkFFTRaderContainer* raderContainer;
+	VkFFTRaderContainer* currentRaderContainer;
+	uint64_t RaderUintLUTBindingID;
+
+	uint64_t useRaderMult;
 	uint64_t additionalRaderSharedSize;
 	uint64_t RaderKernelOffsetShared[33];
 	uint64_t RaderKernelOffsetLUT[33];
 	uint64_t rader_generator[33];
-	uint64_t fixMinRaderPrime;//start Rader algorithm for primes from this number
-	uint64_t fixMaxRaderPrime;//switch from Rader to Bluestein algorithm for primes from this number
+	uint64_t fixMinRaderPrimeMult;//start Rader algorithm for primes from this number
+	uint64_t fixMaxRaderPrimeMult;//switch from Rader to Bluestein algorithm for primes from this number
+	uint64_t fixMinRaderPrimeFFT;//start Rader algorithm for primes from this number
+	uint64_t fixMaxRaderPrimeFFT;//switch from Rader to Bluestein algorithm for primes from this number
+
 	uint64_t inline_rader_g_pow;
+	uint64_t inline_rader_kernel;
+
 	uint64_t raderRegisters;
 	uint64_t rader_min_registers;
-	uint64_t rader_primes[20];
-	uint64_t rader_generator_sorted[20];
+
+	uint64_t useRaderFFT;
 
 	uint64_t performOffsetUpdate;
 	uint64_t performBufferSetUpdate;
 	uint64_t useUint64;
+	uint64_t disableSetLocale;
+
 	char** regIDs;
 	char* disableThreadsStart;
 	char* disableThreadsEnd;
@@ -560,7 +625,7 @@ typedef struct {
 	int64_t currentLen;
 	int64_t maxCodeLength;
 	int64_t maxTempLength;
-	const char* oldLocale;
+	char oldLocale[100];
 } VkFFTSpecializationConstantsLayout;
 typedef struct {
 	uint32_t dataUint32[10];
@@ -598,6 +663,8 @@ typedef struct {
 	VkPipeline pipeline;
 	VkDeviceMemory bufferLUTDeviceMemory;
 	VkBuffer bufferLUT;
+	VkDeviceMemory bufferRaderUintLUTDeviceMemory;
+	VkBuffer bufferRaderUintLUT;
 	VkDeviceMemory* bufferBluesteinDeviceMemory;
 	VkDeviceMemory* bufferBluesteinFFTDeviceMemory;
 	VkBuffer* bufferBluestein;
@@ -608,6 +675,7 @@ typedef struct {
 	CUmodule VkFFTModule;
 	CUfunction VkFFTKernel;
 	void* bufferLUT;
+	void* bufferRaderUintLUT;
 	CUdeviceptr consts_addr;
 	void** bufferBluestein;
 	void** bufferBluesteinFFT;
@@ -617,6 +685,7 @@ typedef struct {
 	hipModule_t VkFFTModule;
 	hipFunction_t VkFFTKernel;
 	void* bufferLUT;
+	void* bufferRaderUintLUT;
 	hipDeviceptr_t consts_addr;
 	void** bufferBluestein;
 	void** bufferBluesteinFFT;
@@ -626,6 +695,7 @@ typedef struct {
 	cl_program  program;
 	cl_kernel kernel;
 	cl_mem bufferLUT;
+	cl_mem bufferRaderUintLUT;
 	cl_mem* bufferBluestein;
 	cl_mem* bufferBluesteinFFT;
 #elif(VKFFT_BACKEND==4)
@@ -634,6 +704,7 @@ typedef struct {
 	ze_module_handle_t VkFFTModule;
 	ze_kernel_handle_t VkFFTKernel;
 	void* bufferLUT;
+	void* bufferRaderUintLUT;
 	void** bufferBluestein;
 	void** bufferBluesteinFFT;
 #endif
@@ -642,6 +713,7 @@ typedef struct {
 	uint64_t binarySize;
 
 	uint64_t bufferLUTSize;
+	uint64_t bufferRaderUintLUTSize;
 	uint64_t referenceLUT;
 } VkFFTAxis;
 
@@ -667,6 +739,8 @@ typedef struct {
 	//Bluestein buffers reused among plans
 	uint64_t useBluesteinFFT[3];
 #if(VKFFT_BACKEND==0)
+	VkDeviceMemory bufferRaderUintLUTDeviceMemory[3][4];
+	VkBuffer bufferRaderUintLUT[3][4];
 	VkDeviceMemory bufferBluesteinDeviceMemory[3];
 	VkDeviceMemory bufferBluesteinFFTDeviceMemory[3];
 	VkDeviceMemory bufferBluesteinIFFTDeviceMemory[3];
@@ -674,25 +748,36 @@ typedef struct {
 	VkBuffer bufferBluesteinFFT[3];
 	VkBuffer bufferBluesteinIFFT[3];
 #elif(VKFFT_BACKEND==1)
+	void* bufferRaderUintLUT[3][4];
 	void* bufferBluestein[3];
 	void* bufferBluesteinFFT[3];
 	void* bufferBluesteinIFFT[3];
 #elif(VKFFT_BACKEND==2)
+	void* bufferRaderUintLUT[3][4];
 	void* bufferBluestein[3];
 	void* bufferBluesteinFFT[3];
 	void* bufferBluesteinIFFT[3];
 #elif(VKFFT_BACKEND==3)
+	cl_mem bufferRaderUintLUT[3][4];
 	cl_mem bufferBluestein[3];
 	cl_mem bufferBluesteinFFT[3];
 	cl_mem bufferBluesteinIFFT[3];
 #elif(VKFFT_BACKEND==4)
+	void* bufferRaderUintLUT[3][4];
 	void* bufferBluestein[3];
 	void* bufferBluesteinFFT[3];
 	void* bufferBluesteinIFFT[3];
 #endif
+	uint64_t bufferRaderUintLUTSize[3][4];
 	uint64_t bufferBluesteinSize[3];
 	void* applicationBluesteinString[3];
 	uint64_t applicationBluesteinStringSize[3];
+
+	uint64_t numRaderFFTPrimes;
+	uint64_t rader_primes[30];
+	uint64_t rader_buffer_size[30];
+	void* raderFFTkernel[30];
+	uint64_t applicationStringOffsetRader;
 
 	uint64_t currentApplicationStringPos;
 
@@ -1312,6 +1397,7 @@ static inline VkFFTResult appendPushConstantsVkFFT(VkFFTSpecializationConstantsL
 }
 static inline VkFFTResult appendConstantsVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType) {
 	VkFFTResult res = VKFFT_SUCCESS;
+	double double_PI = 3.1415926535897932384626433832795;
 	char LFending[4] = "";
 	char uintType_32[30];
 	if (!strcmp(floatType, "float")) sprintf(LFending, "f");
@@ -1334,21 +1420,21 @@ static inline VkFFTResult appendConstantsVkFFT(VkFFTSpecializationConstantsLayou
 	res = appendConstant(sc, floatType, "loc_SQRT1_2", "0.70710678118654752440084436210485", LFending);
 	if (res != VKFFT_SUCCESS) return res;
 	if (sc->useRader) {
-		if (sc->inline_rader_g_pow) {
-			for (uint64_t i = 0; i < 20; i++) {
-				if (sc->rader_primes[i] > 0) {
+		for (uint64_t i = 0; i < sc->numRaderPrimes; i++) {
+			if (sc->raderContainer[i].prime > 0) {
+				if (sc->inline_rader_g_pow == 1) {
 					uint64_t g_pow = 1;
 #if((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
-					sc->tempLen = sprintf(sc->tempStr, "__constant %s g_pow_%" PRIu64 "[%" PRIu64 "]= {1", uintType_32, sc->rader_primes[i], sc->rader_primes[i]);
+					sc->tempLen = sprintf(sc->tempStr, "__constant %s g_pow_%" PRIu64 "[%" PRIu64 "]= {1", uintType_32, sc->raderContainer[i].prime, sc->raderContainer[i].prime);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 #else
-					sc->tempLen = sprintf(sc->tempStr, "const %s g_pow_%" PRIu64 "[%" PRIu64 "]= {1", uintType_32, sc->rader_primes[i], sc->rader_primes[i]);
+					sc->tempLen = sprintf(sc->tempStr, "const %s g_pow_%" PRIu64 "[%" PRIu64 "]= {1", uintType_32, sc->raderContainer[i].prime, sc->raderContainer[i].prime);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 #endif
-					for (uint64_t t = 0; t < sc->rader_primes[i] - 1; t++) {
-						g_pow = (g_pow * sc->rader_generator_sorted[i]) % sc->rader_primes[i];
+					for (uint64_t t = 0; t < sc->raderContainer[i].prime - 1; t++) {
+						g_pow = (g_pow * sc->raderContainer[i].generator) % sc->raderContainer[i].prime;
 						sc->tempLen = sprintf(sc->tempStr, ", %" PRIu64 "", g_pow);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
@@ -1356,6 +1442,75 @@ static inline VkFFTResult appendConstantsVkFFT(VkFFTSpecializationConstantsLayou
 					sc->tempLen = sprintf(sc->tempStr, "};\n");
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (sc->inline_rader_kernel) {
+#if((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+					sc->tempLen = sprintf(sc->tempStr, "__constant %s r_rader_kernel_%" PRIu64 "[%" PRIu64 "]= {", floatType, sc->raderContainer[i].prime, sc->raderContainer[i].prime - 1);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+#else
+					sc->tempLen = sprintf(sc->tempStr, "const %s r_rader_kernel_%" PRIu64 "[%" PRIu64 "]= {", floatType, sc->raderContainer[i].prime, sc->raderContainer[i].prime - 1);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+#endif
+					for (uint64_t j = 0; j < (sc->raderContainer[i].prime - 1); j++) {//fix later
+						if (!strcmp(floatType, "double")) {
+							double* raderFFTKernel = (double*)sc->raderContainer[i].raderFFTkernel;
+							sc->tempLen = sprintf(sc->tempStr, "%.17e%s ", raderFFTKernel[2 * j] / (sc->raderContainer[i].prime - 1), LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!strcmp(floatType, "float")) {
+							float* raderFFTKernel = (float*)sc->raderContainer[i].raderFFTkernel;
+							sc->tempLen = sprintf(sc->tempStr, "%.8e%s ", raderFFTKernel[2 * j] / (sc->raderContainer[i].prime - 1), LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (j < (sc->raderContainer[i].prime - 2)) {
+							sc->tempLen = sprintf(sc->tempStr, ", ");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "};\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+#if((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+					sc->tempLen = sprintf(sc->tempStr, "__constant %s i_rader_kernel_%" PRIu64 "[%" PRIu64 "]= {", floatType, sc->raderContainer[i].prime, sc->raderContainer[i].prime - 1);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+#else
+					sc->tempLen = sprintf(sc->tempStr, "const %s i_rader_kernel_%" PRIu64 "[%" PRIu64 "]= {", floatType, sc->raderContainer[i].prime, sc->raderContainer[i].prime - 1);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+#endif
+					for (uint64_t j = 0; j < (sc->raderContainer[i].prime - 1); j++) {//fix later
+						if (!strcmp(floatType, "double")) {
+							double* raderFFTKernel = (double*)sc->raderContainer[i].raderFFTkernel;
+							sc->tempLen = sprintf(sc->tempStr, "%.17e%s ", raderFFTKernel[2 * j + 1] / (sc->raderContainer[i].prime - 1), LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!strcmp(floatType, "float")) {
+							float* raderFFTKernel = (float*)sc->raderContainer[i].raderFFTkernel;
+							sc->tempLen = sprintf(sc->tempStr, "%.8e%s ", raderFFTKernel[2 * j + 1] / (sc->raderContainer[i].prime - 1), LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+
+						if (j < (sc->raderContainer[i].prime - 2)) {
+							sc->tempLen = sprintf(sc->tempStr, ", ");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "};\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
 				}
 			}
 		}
@@ -1806,6 +1961,26 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataLUT {\n\
 #endif
 	return res;
 }
+static inline VkFFTResult appendRaderUintLUTLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc, uint64_t id) {
+	VkFFTResult res = VKFFT_SUCCESS;
+	char uintType_32[30];
+#if(VKFFT_BACKEND==0)
+	sprintf(uintType_32, "uint");
+	sc->tempLen = sprintf(sc->tempStr, "\
+layout(std430, binding = %" PRIu64 ") readonly buffer DataRaderUintLUT {\n\
+%s g_pow[];\n\
+};\n", id, uintType_32);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+#elif(VKFFT_BACKEND==1)
+	sprintf(uintType_32, "unsigned int");
+#elif(VKFFT_BACKEND==2)
+	sprintf(uintType_32, "unsigned int");
+#elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+	sprintf(uintType_32, "unsigned int");
+#endif
+	return res;
+}
 static inline VkFFTResult appendBluesteinLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc, uint64_t id, const char* floatType) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	char vecType[30];
@@ -2206,7 +2381,7 @@ if (res != VKFFT_SUCCESS) return res;
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -2293,7 +2468,7 @@ if (res != VKFFT_SUCCESS) return res;
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -2340,7 +2515,7 @@ loc_2.y = temp%s.y * w.x + temp%s.x * w.y;\n", regID[2], regID[2], regID[2], reg
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -2449,7 +2624,7 @@ temp%s.y = loc_1.y + loc_2.x; \n", regID[1], regID[1], regID[2], regID[2]);*/
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -2513,7 +2688,7 @@ temp%s = temp%s + temp;\n\n\
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -2576,8 +2751,8 @@ temp%s = temp%s + temp;\n\n", regID[1], regID[1], regID[1], regID[1], regID[1], 
 		if (res != VKFFT_SUCCESS) return res;
 		res = VkAddComplex(sc, regID[2], regID[2], temp);
 		if (res != VKFFT_SUCCESS) return res;
-		res = VkMovComplex(sc, temp, regID[1]);
-		if (res != VKFFT_SUCCESS) return res;
+		//res = VkMovComplex(sc, temp, regID[1]);
+		//if (res != VKFFT_SUCCESS) return res;
 
 		uint64_t permute2[4] = { 0,2,1,3 };
 		res = VkPermute(sc, permute2, 4, 1, regID, temp);
@@ -2656,7 +2831,7 @@ if (res != VKFFT_SUCCESS) return res;
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -2691,7 +2866,7 @@ if (res != VKFFT_SUCCESS) return res;
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -2867,7 +3042,7 @@ temp%s.y = loc_1.y + loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -2902,7 +3077,7 @@ temp%s.y = loc_1.y + loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -3101,7 +3276,7 @@ if (res != VKFFT_SUCCESS) return res;
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -3136,7 +3311,7 @@ if (res != VKFFT_SUCCESS) return res;
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -3363,7 +3538,7 @@ if (res != VKFFT_SUCCESS) return res;*/
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -3423,7 +3598,7 @@ temp%s = temp%s + temp;\n\n", regID[i + 4], regID[i + 4], regID[i + 4], regID[i 
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -3510,7 +3685,7 @@ temp%s = temp%s + temp;\n\n", regID[i + 2], regID[i + 2], regID[i + 2], regID[i 
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -3696,7 +3871,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -3731,7 +3906,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -3939,7 +4114,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -3974,7 +4149,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -4201,7 +4376,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -4236,7 +4411,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -4448,7 +4623,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -4483,7 +4658,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -4706,7 +4881,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -4741,7 +4916,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -4970,7 +5145,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -5005,7 +5180,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -5251,7 +5426,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -5286,7 +5461,7 @@ temp%s = temp;\n\
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
-						if (!sc->inverse) {
+						if (stageAngle < 0) {
 							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
@@ -5507,7 +5682,7 @@ temp%s = temp;\n\
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -5562,7 +5737,7 @@ temp%s = temp;\n\
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -5639,7 +5814,7 @@ temp%s = temp;\n\
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -5767,7 +5942,7 @@ temp%s = temp;\n\
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -6005,7 +6180,7 @@ temp%s = temp;\n\
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -6060,7 +6235,7 @@ temp%s = temp;\n\
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -6137,7 +6312,7 @@ temp%s = temp;\n\
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -6265,7 +6440,7 @@ temp%s = temp;\n\
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -6454,7 +6629,7 @@ temp%s = temp;\n\
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				if (!sc->inverse) {
+				if (stageAngle < 0) {
 					sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -6831,7 +7006,7 @@ static inline VkFFTResult appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLa
 #endif
 		vecSize = 16;
 	}
-	if (sc->useRader) {
+	if (sc->useRaderMult) {
 		sc->sharedMemSize -= sc->additionalRaderSharedSize * vecSize;
 		sc->sharedMemSizePow2 -= sc->additionalRaderSharedSize * vecSize;
 	}
@@ -6845,19 +7020,49 @@ static inline VkFFTResult appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLa
 		sc->sharedStrideBankConflictFirstStages = ((sc->fftDim > sc->numSharedBanks / 2) && ((sc->fftDim & (sc->fftDim - 1)) == 0)) ? sc->fftDim / sc->registerBoost * (sc->numSharedBanks / 2 + 1) / (sc->numSharedBanks / 2) : sc->fftDim / sc->registerBoost;
 		sc->sharedStrideReadWriteConflict = ((sc->numSharedBanks / 2 <= sc->localSize[1])) ? sc->fftDim / sc->registerBoost + 1 : sc->fftDim / sc->registerBoost + (sc->numSharedBanks / 2) / sc->localSize[1];
 		if (sc->sharedStrideReadWriteConflict < sc->fftDim / sc->registerBoost + mergeR2C) sc->sharedStrideReadWriteConflict = sc->fftDim / sc->registerBoost + mergeR2C;
+		if (sc->useRaderFFT) {
+			uint64_t max_stride = sc->fftDim;
+			uint64_t max_shift = 0;
+			for (uint64_t i = 0; i < sc->numRaderPrimes; i++) {
+
+				for (uint64_t j = 0; j < sc->raderContainer[i].numStages; j++) {
+					if (sc->raderContainer[i].containerFFTNum < 8) {
+						uint64_t subLogicalGroupSize = (uint64_t)ceil(sc->raderContainer[i].containerFFTDim / (double)sc->raderContainer[i].registers_per_thread_per_radix[sc->raderContainer[i].stageRadix[j]]); // hopefully it is not <1, will fix 
+						uint64_t shift = (subLogicalGroupSize > (sc->raderContainer[i].containerFFTDim % (sc->numSharedBanks / 2))) ? subLogicalGroupSize - sc->raderContainer[i].containerFFTDim % (sc->numSharedBanks / 2) : 0;
+						if (j == 0) shift = (sc->raderContainer[i].containerFFTDim % (sc->numSharedBanks / 2)) ? 0 : 1;
+						uint64_t loc_stride = sc->raderContainer[i].containerFFTDim + shift;
+						if (sc->raderContainer[i].containerFFTNum * (loc_stride + 1) > max_stride) {
+							max_stride = sc->raderContainer[i].containerFFTNum * (loc_stride + 1);
+							if (shift > max_shift) max_shift = shift;
+						}
+					}
+				}
+			}
+			sc->sharedShiftRaderFFT = max_shift;
+			sc->sharedStrideRaderFFT = max_stride;
+		}
+
 		sc->maxSharedStride = (sc->sharedStrideBankConflictFirstStages < sc->sharedStrideReadWriteConflict) ? sc->sharedStrideReadWriteConflict : sc->sharedStrideBankConflictFirstStages;
+
+		if (sc->useRaderFFT)
+			sc->maxSharedStride = (sc->maxSharedStride < sc->sharedStrideRaderFFT) ? sc->sharedStrideRaderFFT : sc->maxSharedStride;
+
 		sc->usedSharedMemory = vecSize * sc->localSize[1] * sc->maxSharedStride;
 		sc->maxSharedStride = ((sc->sharedMemSize < sc->usedSharedMemory)) ? sc->fftDim / sc->registerBoost : sc->maxSharedStride;
 
 		sc->sharedStrideBankConflictFirstStages = (sc->maxSharedStride == sc->fftDim / sc->registerBoost) ? sc->fftDim / sc->registerBoost : sc->sharedStrideBankConflictFirstStages;
 		sc->sharedStrideReadWriteConflict = (sc->maxSharedStride == sc->fftDim / sc->registerBoost) ? sc->fftDim / sc->registerBoost : sc->sharedStrideReadWriteConflict;
+		if (sc->useRaderFFT) {
+			sc->sharedStrideRaderFFT = (sc->maxSharedStride == sc->fftDim / sc->registerBoost) ? sc->fftDim / sc->registerBoost : sc->sharedStrideRaderFFT;
+			sc->sharedShiftRaderFFT = (sc->maxSharedStride == sc->fftDim / sc->registerBoost) ? 0 : sc->sharedShiftRaderFFT;
+		}
 		//sc->maxSharedStride += mergeR2C;
 		//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", sc->maxSharedStride, sc->sharedStrideBankConflictFirstStages, sc->sharedStrideReadWriteConflict, sc->localSize[1], sc->fftDim);
 		sc->tempLen = sprintf(sc->tempStr, "%s sharedStride = %" PRIu64 ";\n", uintType, sc->sharedStrideReadWriteConflict);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		sc->usedSharedMemory = vecSize * sc->localSize[1] * sc->maxSharedStride;
-		if (sc->useRader) {
+		if (sc->useRaderMult) {
 			for (uint64_t i = 0; i < 20; i++) {
 				sc->RaderKernelOffsetShared[i] += sc->usedSharedMemory / vecSize;
 			}
@@ -6896,7 +7101,7 @@ static inline VkFFTResult appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLa
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		sc->usedSharedMemory = vecSize * sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost;
-		if (sc->useRader) {
+		if (sc->useRaderMult) {
 			for (uint64_t i = 0; i < 20; i++) {
 				sc->RaderKernelOffsetShared[i] += sc->usedSharedMemory / vecSize;
 			}
@@ -6926,7 +7131,7 @@ static inline VkFFTResult appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLa
 		break;
 	}
 	}
-	if (sc->useRader) {
+	if (sc->useRaderMult) {
 		sc->sharedMemSize += sc->additionalRaderSharedSize * vecSize;
 		sc->sharedMemSizePow2 += sc->additionalRaderSharedSize * vecSize;
 	}
@@ -7065,25 +7270,41 @@ temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 		if (res != VKFFT_SUCCESS) return res;
 	}
 	sprintf(sc->temp, "%s", sc->locID[0]);
-	if (sc->useRader) {
-		if (sc->raderRegisters / 2 <= sc->usedLocRegs - 1) {
-			for (uint64_t i = 0; i < sc->raderRegisters / 2; i++) {
-				sprintf(sc->x0[i], "%s", sc->locID[i + 1]);
+	if (sc->useRaderFFT) {
+		for (uint64_t i = 0; i < 2; i++) {
+			sprintf(sc->x0[i], "x0_%" PRIu64 "", i);
+			sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->x0[i]);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x=0;\n", sc->x0[i]);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y=0;\n", sc->x0[i]);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+	}
+	if (sc->useRaderMult) {
+		int64_t rader_fft_regs = (sc->useRaderFFT) ? 2 : 0;
+		int64_t rader_mult_regs = sc->raderRegisters / 2 - rader_fft_regs;
+		if (rader_mult_regs <= sc->usedLocRegs - 1) {
+			for (int64_t i = 0; i < rader_mult_regs; i++) {
+				sprintf(sc->x0[i + rader_fft_regs], "%s", sc->locID[i + 1]);
 			}
 		}
 		else {
-			for (uint64_t i = 0; i < sc->usedLocRegs - 1; i++) {
-				sprintf(sc->x0[i], "%s", sc->locID[i + 1]);
+			for (int64_t i = 0; i < sc->usedLocRegs - 1; i++) {
+				sprintf(sc->x0[i + rader_fft_regs], "%s", sc->locID[i + 1]);
 			}
-			for (uint64_t i = sc->usedLocRegs - 1; i < sc->raderRegisters / 2; i++) {
-				sprintf(sc->x0[i], "x0_%" PRIu64 "", i);
-				sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->x0[i]);
+			for (int64_t i = sc->usedLocRegs - 1; i < rader_mult_regs; i++) {
+				sprintf(sc->x0[i + rader_fft_regs], "x0_%" PRIu64 "", i + rader_fft_regs);
+				sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->x0[i + rader_fft_regs]);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "	%s.x=0;\n", sc->x0[i]);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x=0;\n", sc->x0[i + rader_fft_regs]);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "	%s.y=0;\n", sc->x0[i]);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y=0;\n", sc->x0[i + rader_fft_regs]);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
@@ -7094,7 +7315,7 @@ temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 	//if (res != VKFFT_SUCCESS) return res;
 	uint64_t useRadix8plus = 0;
 	for (uint64_t i = 0; i < sc->numStages; i++)
-		if ((sc->stageRadix[i] == 8) || (sc->stageRadix[i] == 16) || (sc->stageRadix[i] == 32)) useRadix8plus = 1;
+		if ((sc->stageRadix[i] == 8) || (sc->stageRadix[i] == 16) || (sc->stageRadix[i] == 32) || (sc->useRaderFFT)) useRadix8plus = 1;
 	if (useRadix8plus == 1) {
 		if (maxNonPow2Radix > 1) sprintf(sc->iw, "%s", sc->locID[1]);
 		else {
@@ -7703,6 +7924,7 @@ static inline VkFFTResult appendSetSMToZero(VkFFTSpecializationConstantsLayout* 
 		used_registers_read = (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]);
 		break;
 	}
+	if (sc->registerBoost > 1) used_registers_read /= sc->registerBoost;
 	//appendZeropadStart(sc);
 	for (uint64_t k = 0; k < sc->registerBoost; k++) {
 		for (uint64_t i = 0; i < used_registers_read; i++) {
@@ -7790,7 +8012,7 @@ static inline VkFFTResult setReadToRegisters(VkFFTSpecializationConstantsLayout*
 	switch (readType) {
 	case 0: //single_c2c
 	{
-		if ((sc->localSize[1] > 1) || ((sc->performR2C) && (sc->actualInverse)) || (sc->localSize[0] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim) || ((sc->stageRadix[0] >= sc->fixMinRaderPrime) && (sc->rader_generator[0] > 0)))
+		if ((sc->localSize[1] > 1) || ((sc->performR2C) && (sc->actualInverse)) || (sc->localSize[0] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim) || (sc->rader_generator[0] > 0))
 			sc->readToRegisters = 0;
 		else
 			sc->readToRegisters = 1;
@@ -7798,7 +8020,7 @@ static inline VkFFTResult setReadToRegisters(VkFFTSpecializationConstantsLayout*
 	}
 	case 1: //grouped_c2c
 	{
-		if ((sc->localSize[1] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim) || ((sc->stageRadix[0] >= sc->fixMinRaderPrime) && (sc->rader_generator[0] > 0)))
+		if ((sc->localSize[1] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim) || (sc->rader_generator[0] > 0))
 			sc->readToRegisters = 0;
 		else
 			sc->readToRegisters = 1;
@@ -7806,7 +8028,7 @@ static inline VkFFTResult setReadToRegisters(VkFFTSpecializationConstantsLayout*
 	}
 	case 2: //single_c2c_strided
 	{
-		if ((sc->localSize[1] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim) || ((sc->stageRadix[0] >= sc->fixMinRaderPrime) && (sc->rader_generator[0] > 0)))
+		if ((sc->localSize[1] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim) || (sc->rader_generator[0] > 0))
 			sc->readToRegisters = 0;
 		else
 			sc->readToRegisters = 1;
@@ -7814,7 +8036,7 @@ static inline VkFFTResult setReadToRegisters(VkFFTSpecializationConstantsLayout*
 	}
 	case 5://single_r2c
 	{
-		if ((sc->axisSwapped) || (sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim) || ((sc->stageRadix[0] >= sc->fixMinRaderPrime) && (sc->rader_generator[0] > 0)))
+		if ((sc->axisSwapped) || (sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim) || (sc->rader_generator[0] > 0))
 			sc->readToRegisters = 0;
 		else
 			sc->readToRegisters = 1;
@@ -7822,7 +8044,7 @@ static inline VkFFTResult setReadToRegisters(VkFFTSpecializationConstantsLayout*
 	}
 	case 6: //single_c2r
 	{
-		if (((sc->stageRadix[0] >= sc->fixMinRaderPrime) && (sc->rader_generator[0] > 0)) || ((sc->fftDim % sc->localSize[0]) && (!sc->axisSwapped)) || ((sc->fftDim % sc->localSize[1]) && (sc->axisSwapped)))
+		if ((sc->rader_generator[0] > 0) || ((sc->fftDim % sc->localSize[0]) && (!sc->axisSwapped)) || ((sc->fftDim % sc->localSize[1]) && (sc->axisSwapped)))
 			sc->readToRegisters = 0;
 		else
 			sc->readToRegisters = 1;
@@ -7835,8 +8057,8 @@ static inline VkFFTResult setReadToRegisters(VkFFTSpecializationConstantsLayout*
 	}
 	case 144:
 	{
-		uint64_t registers_first_stage = (sc->stageRadix[0] < sc->fixMinRaderPrime) ? sc->registers_per_thread_per_radix[sc->stageRadix[0]] : 1;
-		if (((sc->stageRadix[0] >= sc->fixMinRaderPrime) && (sc->rader_generator[0] > 0)) || (sc->fftDim % registers_first_stage))
+		uint64_t registers_first_stage = (sc->stageRadix[0] < sc->fixMinRaderPrimeMult) ? sc->registers_per_thread_per_radix[sc->stageRadix[0]] : 1;
+		if ((sc->rader_generator[0] > 0) || (sc->fftDim % registers_first_stage))
 			sc->readToRegisters = 0;
 		else
 			sc->readToRegisters = 1;
@@ -7844,8 +8066,8 @@ static inline VkFFTResult setReadToRegisters(VkFFTSpecializationConstantsLayout*
 	}
 	case 145:
 	{
-		uint64_t registers_first_stage = (sc->stageRadix[0] < sc->fixMinRaderPrime) ? sc->registers_per_thread_per_radix[sc->stageRadix[0]] : 1;
-		if (((sc->stageRadix[0] >= sc->fixMinRaderPrime) && (sc->rader_generator[0] > 0)) || (sc->fftDim % registers_first_stage))
+		uint64_t registers_first_stage = (sc->stageRadix[0] < sc->fixMinRaderPrimeMult) ? sc->registers_per_thread_per_radix[sc->stageRadix[0]] : 1;
+		if ((sc->rader_generator[0] > 0) || (sc->fftDim % registers_first_stage))
 			sc->readToRegisters = 0;
 		else
 			sc->readToRegisters = 1;
@@ -7860,6 +8082,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	char vecType[30];
 	char inputsStruct[20] = "";
 	char LFending[4] = "";
+	char uintType_32[30];
 	if (!strcmp(floatType, "float")) sprintf(LFending, "f");
 #if(VKFFT_BACKEND==0)
 	if (sc->inputBufferBlockNum == 1)
@@ -7869,12 +8092,14 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
 	if (!strcmp(floatType, "double")) sprintf(LFending, "LF");
+	sprintf(uintType_32, "uint");
 	char cosDef[20] = "cos";
 	char sinDef[20] = "sin";
 #elif(VKFFT_BACKEND==1)
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 	if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+	sprintf(uintType_32, "unsigned int");
 	sprintf(inputsStruct, "inputs");
 	char cosDef[20] = "__cosf";
 	char sinDef[20] = "__sinf";
@@ -7882,6 +8107,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 	if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+	sprintf(uintType_32, "unsigned int");
 	sprintf(inputsStruct, "inputs");
 	char cosDef[20] = "__cosf";
 	char sinDef[20] = "__sinf";
@@ -7889,6 +8115,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 	sprintf(inputsStruct, "inputs");
+	sprintf(uintType_32, "unsigned int");
 	char cosDef[20] = "native_cos";
 	char sinDef[20] = "native_sin";
 #endif
@@ -7992,21 +8219,29 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		char shiftY2[100] = "";
 		if (sc->performWorkGroupShift[1])
 			sprintf(shiftY, " + consts.workGroupShiftY ");
+		uint64_t used_registers_read = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
+		if (sc->registerBoost > 1) used_registers_read /= sc->registerBoost;
 		if (sc->fftDim < sc->fft_dim_full) {
 			if (sc->axisSwapped) {
-				sc->tempLen = sprintf(sc->tempStr, "		%s numActiveThreads = ((%s/%" PRIu64 ")==%" PRIu64 ") ? %" PRIu64 " : %" PRIu64 ";\n", uintType, sc->gl_WorkGroupID_x, sc->firstStageStartSize / sc->fftDim, ((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim), (uint64_t)ceil(((sc->fft_dim_full - (sc->firstStageStartSize / sc->fftDim) * ((((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim)) * sc->localSize[0] * sc->fftDim)) / (sc->firstStageStartSize / sc->fftDim)) / (double)sc->min_registers_per_thread), sc->localSize[0] * sc->localSize[1]);// sc->fft_dim_full, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full / (sc->localSize[0] * sc->fftDim));
+				sc->tempLen = sprintf(sc->tempStr, "		%s numActiveThreads = ((%s/%" PRIu64 ")==%" PRIu64 ") ? %" PRIu64 " : %" PRIu64 ";\n", uintType, sc->gl_WorkGroupID_x, sc->firstStageStartSize / sc->fftDim, ((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim), (uint64_t)ceil(((sc->fft_dim_full - (sc->firstStageStartSize / sc->fftDim) * ((((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim)) * sc->localSize[0] * sc->fftDim)) / (sc->firstStageStartSize / sc->fftDim)) / (double)used_registers_read), sc->localSize[0] * sc->localSize[1]);// sc->fft_dim_full, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full / (sc->localSize[0] * sc->fftDim));
 				//sc->tempLen = sprintf(sc->tempStr, "		if (numActiveThreads>%" PRIu64 ") numActiveThreads = %" PRIu64 ";\n", sc->localSize[0]* sc->localSize[1], sc->localSize[0]* sc->localSize[1]);
 				//sprintf(sc->disableThreadsStart, "		if((%s+%" PRIu64 "*%s)< numActiveThreads) {\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				sprintf(sc->disableThreadsStart, "		if(%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
+				sc->tempLen = sprintf(sc->tempStr, "		%s disableThreads = (%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", uintType_32, sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sprintf(sc->disableThreadsStart, "		if(disableThreads>0) {\n");
 				sc->tempLen = sprintf(sc->tempStr, "		if((%s+%" PRIu64 "*%s)< numActiveThreads) {\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 				sprintf(sc->disableThreadsEnd, "}");
 			}
 			else {
-				sprintf(sc->disableThreadsStart, "		if(%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
+				sc->tempLen = sprintf(sc->tempStr, "		%s disableThreads = (%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", uintType_32, sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sprintf(sc->disableThreadsStart, "		if(disableThreads>0) {\n");
 				res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
 				if (res != VKFFT_SUCCESS) return res;
 				sprintf(sc->disableThreadsEnd, "}");
@@ -8017,7 +8252,6 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
-		uint64_t used_registers_read = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
 		if (sc->fftDim == sc->fft_dim_full) {
 			for (uint64_t k = 0; k < sc->registerBoost; k++) {
 				for (uint64_t i = 0; i < used_registers_read; i++) {
@@ -8036,10 +8270,17 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					if (res != VKFFT_SUCCESS) return res;
 					if (sc->axisSwapped) {
 						if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
-							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1]);
+#if (VKFFT_BACKEND!=2) //AMD compiler fix
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
+#else
+							sc->tempLen = sprintf(sc->tempStr, "		if(!(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 ")) %s = 0; {\n", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1], sc->inoutID);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+#endif
 						}
+
 						if ((1 + i + k * used_registers_read) * sc->localSize[0] * sc->localSize[1] > (sc->fftDim * sc->localSize[0])) {
 							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[0]);
 							res = VkAppendLine(sc);
@@ -8048,9 +8289,15 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					}
 					else {
 						if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
-							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1]);
+#if (VKFFT_BACKEND!=2) //AMD compiler fix
+							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
+#else
+							sc->tempLen = sprintf(sc->tempStr, "		if(!(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 ")) %s = 0; {\n", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1], sc->inoutID);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+#endif
 						}
 						if ((1 + i + k * used_registers_read) * sc->localSize[0] * sc->localSize[1] > (sc->fftDim * sc->localSize[1])) {
 							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", sc->fftDim * sc->localSize[1]);
@@ -8335,12 +8582,16 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		char shiftX[500] = "";
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
+		sc->tempLen = sprintf(sc->tempStr, "		%s disableThreads = (((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", uintType_32, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize, sc->size[sc->axis_id]);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sprintf(sc->disableThreadsStart, "		if(disableThreads>0) {\n");
 
-		sprintf(sc->disableThreadsStart, "		if (((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize, sc->size[sc->axis_id]);
 		res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
 		if (res != VKFFT_SUCCESS) return res;
 		sprintf(sc->disableThreadsEnd, "}");
 		uint64_t used_registers_read = (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]);
+		if (sc->registerBoost > 1) used_registers_read /= sc->registerBoost;
 		for (uint64_t k = 0; k < sc->registerBoost; k++) {
 			for (uint64_t i = 0; i < used_registers_read; i++) {
 				sc->tempLen = sprintf(sc->tempStr, "		inoutID = (%" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 "));\n", sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * used_registers_read) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize);
@@ -8451,11 +8702,15 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 			sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
 
 		//sc->tempLen = sprintf(sc->tempStr, "		if(gl_GlobalInvolcationID.x%s >= %" PRIu64 ") return; \n", shiftX, sc->size[0] / axis->specializationConstants.fftDim);
-		sprintf(sc->disableThreadsStart, "		if (((%s%s) / %" PRIu64 ") * (%" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim, sc->fft_dim_full);
+		sc->tempLen = sprintf(sc->tempStr, "		%s disableThreads = (((%s%s) / %" PRIu64 ") * (%" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", uintType_32, sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim, sc->fft_dim_full);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sprintf(sc->disableThreadsStart, "		if(disableThreads>0) {\n");
 		res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
 		if (res != VKFFT_SUCCESS) return res;
 		sprintf(sc->disableThreadsEnd, "}");
 		uint64_t used_registers_read = (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]);
+		if (sc->registerBoost > 1) used_registers_read /= sc->registerBoost;
 		for (uint64_t k = 0; k < sc->registerBoost; k++) {
 			for (uint64_t i = 0; i < used_registers_read; i++) {
 				sc->tempLen = sprintf(sc->tempStr, "		inoutID = (%s%s) %% (%" PRIu64 ") + %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") * (%" PRIu64 ");\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * used_registers_read) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
@@ -8569,6 +8824,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		if (sc->fftDim == sc->fft_dim_full) {
 			uint64_t used_registers_read = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
+			if (sc->registerBoost > 1) used_registers_read /= sc->registerBoost;
 			for (uint64_t k = 0; k < sc->registerBoost; k++) {
 				for (uint64_t i = 0; i < used_registers_read; i++) {
 
@@ -8826,10 +9082,12 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		if (sc->fftDim < sc->fft_dim_full) {
 			//not implemented
 			if (sc->axisSwapped)
-				sprintf(sc->disableThreadsStart, "		if(%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
+				sc->tempLen = sprintf(sc->tempStr, "		%s disableThreads = (%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", uintType_32, sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
 			else
-				sprintf(sc->disableThreadsStart, "		if(%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") {\n", sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
-
+				sc->tempLen = sprintf(sc->tempStr, "		%s disableThreads = (%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", uintType_32, sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sprintf(sc->disableThreadsStart, "		if(disableThreads>0) {\n");
 			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
 			if (res != VKFFT_SUCCESS) return res;
 			sprintf(sc->disableThreadsEnd, "}");
@@ -8840,6 +9098,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		uint64_t used_registers_read = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
+		if (sc->registerBoost > 1) used_registers_read /= sc->registerBoost;
 		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		if (sc->fftDim == sc->fft_dim_full) {
 			if (sc->zeropadBluestein[0]) {
@@ -8865,9 +9124,15 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					if (res != VKFFT_SUCCESS) return res;
 					if (sc->axisSwapped) {
 						if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
+#if (VKFFT_BACKEND!=2) //AMD compiler fix
 							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[0], sc->size[sc->axis_id + 1]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
+#else
+							sc->tempLen = sprintf(sc->tempStr, "		if(!(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 ")) %s = 0; {\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[0], sc->size[sc->axis_id + 1], sc->inoutID);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+#endif
 						}
 						if ((1 + i + k * num_in) * sc->localSize[0] * sc->localSize[1] > mult * (sc->fftDim / 2 + 1) * sc->localSize[0]) {
 							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[0]);
@@ -8877,9 +9142,15 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					}
 					else {
 						if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
+#if (VKFFT_BACKEND!=2) //AMD compiler fix
 							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[1], sc->size[sc->axis_id + 1]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
+#else
+							sc->tempLen = sprintf(sc->tempStr, "		if(!(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 ")) %s = 0; {\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[1], sc->size[sc->axis_id + 1], sc->inoutID);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+#endif
 						}
 						if ((1 + i + k * num_in) * sc->localSize[0] * sc->localSize[1] > mult * (sc->fftDim / 2 + 1) * sc->localSize[1]) {
 							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID < %" PRIu64 "){\n", mult * (sc->fftDim / 2 + 1) * sc->localSize[1]);
@@ -9937,6 +10208,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 			sprintf(shiftY, " + consts.workGroupShiftY ");
 		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		uint64_t used_registers_read = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
+		if (sc->registerBoost > 1) used_registers_read /= sc->registerBoost;
 		if (sc->fftDim == sc->fft_dim_full) {
 			if (sc->zeropadBluestein[0]) {
 				res = appendSetSMToZero(sc, floatType, floatTypeMemory, uintType, readType);
@@ -10155,6 +10427,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 			sprintf(shiftY, " + consts.workGroupShiftY ");
 		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		uint64_t used_registers_read = (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]);
+		if (sc->registerBoost > 1) used_registers_read /= sc->registerBoost;
 		if (sc->fftDim == sc->fft_dim_full) {
 			if (sc->zeropadBluestein[0]) {
 				res = appendSetSMToZero(sc, floatType, floatTypeMemory, uintType, readType);
@@ -11287,6 +11560,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		if (sc->performWorkGroupShift[1])
 			sprintf(shiftY, " + consts.workGroupShiftY ");
 		uint64_t used_registers_read = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
+		if (sc->registerBoost > 1) used_registers_read /= sc->registerBoost;
 		if (sc->fftDim == sc->fft_dim_full) {
 			if (sc->zeropadBluestein[0]) {
 				res = appendSetSMToZero(sc, floatType, floatTypeMemory, uintType, readType);
@@ -12242,6 +12516,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		if (sc->performWorkGroupShift[1])
 			sprintf(shiftY, " + consts.workGroupShiftY ");
 		uint64_t used_registers_read = (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]);
+		if (sc->registerBoost > 1) used_registers_read /= sc->registerBoost;
 		if (sc->fftDim == sc->fft_dim_full) {
 			if (sc->zeropadBluestein[0]) {
 				res = appendSetSMToZero(sc, floatType, floatTypeMemory, uintType, readType);
@@ -12928,6 +13203,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 			sprintf(shiftY, " + consts.workGroupShiftY ");
 		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		uint64_t used_registers_read = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
+		if (sc->registerBoost > 1) used_registers_read /= sc->registerBoost;
 		if (sc->fftDim == sc->fft_dim_full) {
 			if (sc->zeropadBluestein[0]) {
 				res = appendSetSMToZero(sc, floatType, floatTypeMemory, uintType, readType);
@@ -13325,6 +13601,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 			sprintf(shiftY, " + consts.workGroupShiftY ");
 		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		uint64_t used_registers_read = (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]);
+		if (sc->registerBoost > 1) used_registers_read /= sc->registerBoost;
 		if (sc->fftDim == sc->fft_dim_full) {
 			if (sc->zeropadBluestein[0]) {
 				res = appendSetSMToZero(sc, floatType, floatTypeMemory, uintType, readType);
@@ -13574,7 +13851,7 @@ static inline VkFFTResult appendReorder4StepRead(VkFFTSpecializationConstantsLay
 	//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #endif
 
-	uint64_t logicalRegistersPerThread = (sc->useRader && ((sc->stageRadix[0] >= sc->fixMinRaderPrime) && (sc->rader_generator[0] > 0))) ? sc->min_registers_per_thread : sc->registers_per_thread_per_radix[sc->stageRadix[0]];// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+	uint64_t logicalRegistersPerThread = (sc->rader_generator[0] > 0) ? sc->min_registers_per_thread : sc->registers_per_thread_per_radix[sc->stageRadix[0]];// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 	switch (reorderType) {
 	case 1: {//grouped_c2c
 		char shiftX[500] = "";
@@ -13818,7 +14095,7 @@ static inline VkFFTResult appendReorder4StepWrite(VkFFTSpecializationConstantsLa
 	//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #endif
 
-	uint64_t logicalRegistersPerThread = (sc->useRader && ((sc->stageRadix[sc->numStages - 1] >= sc->fixMinRaderPrime) && (sc->rader_generator[sc->numStages - 1] > 0))) ? sc->min_registers_per_thread : sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]];// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+	uint64_t logicalRegistersPerThread = (sc->rader_generator[sc->numStages - 1] > 0) ? sc->min_registers_per_thread : sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]];// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 	switch (reorderType) {
 	case 1: {//grouped_c2c
 		char shiftX[500] = "";
@@ -14269,7 +14546,1472 @@ static inline VkFFTResult appendBluesteinMultiplication(VkFFTSpecializationConst
 	return res;
 }
 
-static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageID) {
+static inline VkFFTResult appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageID, uint64_t strided) {
+	VkFFTResult res = VKFFT_SUCCESS;
+	double double_PI = 3.1415926535897932384626433832795;
+	char vecType[30];
+	char LFending[4] = "";
+	char tempNum[50] = "";
+	if (!strcmp(floatType, "float")) sprintf(LFending, "f");
+#if(VKFFT_BACKEND==0)
+	if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
+	if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
+	char cosDef[20] = "cos";
+	char sinDef[20] = "sin";
+	if (!strcmp(floatType, "double")) sprintf(LFending, "LF");
+#elif(VKFFT_BACKEND==1)
+	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+	char cosDef[20] = "__cosf";
+	char sinDef[20] = "__sinf";
+	if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+#elif(VKFFT_BACKEND==2)
+	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+	char cosDef[20] = "__cosf";
+	char sinDef[20] = "__sinf";
+	if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+#elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
+	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
+	char cosDef[20] = "native_cos";
+	char sinDef[20] = "native_sin";
+	//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
+#endif
+	char stageNormalization[50] = "";
+	uint64_t normalizationValue = 1;
+	if ((((sc->actualInverse) && (sc->normalize)) || (sc->convolutionStep && (stageAngle > 0))) && (stageSize == 1) && (sc->axis_upload_id == 0) && (!(sc->useBluesteinFFT && (stageAngle < 0)))) {
+		if ((sc->performDCT) && (sc->actualInverse)) {
+			if (sc->performDCT == 1)
+				normalizationValue = (sc->sourceFFTSize - 1) * 2;
+			else
+				normalizationValue = sc->sourceFFTSize * 2;
+		}
+		else
+			normalizationValue = sc->sourceFFTSize;
+	}
+	if (sc->useBluesteinFFT && (stageAngle > 0) && (stageSize == 1) && (sc->axis_upload_id == 0)) {
+		normalizationValue *= sc->fft_dim_full;
+	}
+	if (normalizationValue != 1) {
+		sprintf(stageNormalization, "%.17e%s", 1.0 / (double)(normalizationValue), LFending);
+	}
+	char convolutionInverse[10] = "";
+	sc->useCoalescedLUTUploadToSM = 0;
+	if (sc->convolutionStep) {
+		if (stageAngle < 0)
+			sprintf(convolutionInverse, ", 0");
+		else
+			sprintf(convolutionInverse, ", 1");
+	}
+	res = appendBarrierVkFFT(sc, 1);
+	if (res != VKFFT_SUCCESS) return res;
+
+
+	res = appendZeropadStart(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
+	if (res != VKFFT_SUCCESS) return res;
+	//rotate the stage
+	char* gl_LocalInvocationID = (strided) ? sc->gl_LocalInvocationID_y : sc->gl_LocalInvocationID_x;
+	if (stageSize > 1) {
+		uint64_t num_logical_subgroups = (strided) ? sc->localSize[1] : sc->localSize[0];
+		uint64_t num_logical_groups = (uint64_t)ceil((sc->fftDim) / (double)(num_logical_subgroups));
+		for (uint64_t t = 0; t < num_logical_groups; t++) {
+			if (((1 + t) * num_logical_subgroups) > sc->fftDim) {
+				uint64_t current_group_cut = sc->fftDim - t * num_logical_subgroups;
+				sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", gl_LocalInvocationID, current_group_cut);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = (%s+%" PRIu64 ") %% (%" PRIu64 ");\n", sc->stageInvocationID, gl_LocalInvocationID, t * num_logical_subgroups, stageSize);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+
+			if (sc->LUT)
+				sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID*%" PRIu64 " + %" PRIu64 ";\n", stageRadix, stageSizeSum);
+			else
+				sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			if (sc->LUT) {
+				sc->tempLen = sprintf(sc->tempStr, "		%s = twiddleLUT[LUTId+(%s+ %" PRIu64 ") / %" PRIu64 "];\n\n", sc->w, gl_LocalInvocationID, t * num_logical_subgroups, sc->fftDim / stageRadix);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				if (!sc->inverse) {
+					sc->tempLen = sprintf(sc->tempStr, "		%s.y = -%s.y;\n", sc->w, sc->w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			else {
+				if (!strcmp(floatType, "float")) {
+					sc->tempLen = sprintf(sc->tempStr, "		%s.x = %s(angle*%.17e%s*((%s+ %" PRIu64 ") / %" PRIu64 "));\n", sc->w, cosDef, 2.0 / stageRadix, LFending, gl_LocalInvocationID, t * num_logical_subgroups, sc->fftDim / stageRadix);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "		%s.y = %s(angle*%.17e%s*((%s+ %" PRIu64 ") / %" PRIu64 "));\n", sc->w, sinDef, 2.0 / stageRadix, LFending, gl_LocalInvocationID, t * num_logical_subgroups, sc->fftDim / stageRadix);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+				}
+				if (!strcmp(floatType, "double")) {
+					sc->tempLen = sprintf(sc->tempStr, "		%s = sincos_20(angle*%.17e%s*((%s+ %" PRIu64 ") / %" PRIu64 "));\n", sc->w, 2.0 / stageRadix, LFending, gl_LocalInvocationID, t * num_logical_subgroups, sc->fftDim / stageRadix);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f \\n \", %s, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, sc->w, sc->w);
+			//res = VkAppendLine(sc);
+			//if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = (%s+ %" PRIu64 ");\n", sc->sdataID, gl_LocalInvocationID, t * num_logical_subgroups);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+
+			if (sc->resolveBankConflictFirstStages == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+	%s = (%s / %" PRIu64 ") * %" PRIu64 " + %s %% %" PRIu64 ";", sc->sdataID, sc->sdataID, sc->numSharedBanks / 2, sc->numSharedBanks / 2 + 1, sc->sdataID, sc->numSharedBanks / 2);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			if (strided) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				if (sc->localSize[1] > 1) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = sdata[%s];\n", sc->regIDs[0], sc->sdataID);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+
+			res = VkMulComplex(sc, sc->temp, sc->regIDs[0], sc->w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+
+			sc->tempLen = sprintf(sc->tempStr, "\
+		sdata[%s] = %s;\n", sc->sdataID, sc->temp);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			if (((1 + t) * num_logical_subgroups) > sc->fftDim) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+		res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
+		if (res != VKFFT_SUCCESS) return res;
+		res = appendZeropadEnd(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		res = appendBarrierVkFFT(sc, 1);
+		if (res != VKFFT_SUCCESS) return res;
+		res = appendZeropadStart(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
+		if (res != VKFFT_SUCCESS) return res;
+	}
+	uint64_t raderTranspose = ((sc->currentRaderContainer->containerFFTNum < 8) || (sc->currentRaderContainer->numStages == 1) || (strided)) ? 0 : 1;
+
+	// read x0 - to be used in the end
+	{
+		uint64_t locStageRadix = sc->currentRaderContainer->stageRadix[0];
+		uint64_t logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		uint64_t locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
+		uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
+		uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
+		uint64_t subLogicalGroupSize = (uint64_t)ceil(locFFTDim / (double)logicalStoragePerThread); // hopefully it is not <1, will fix 
+
+		if (!raderTranspose) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s %% %" PRIu64 ";\n", sc->raderIDx, gl_LocalInvocationID, subLogicalGroupSize); //local id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s / %" PRIu64 ";\n", sc->raderIDx2, gl_LocalInvocationID, subLogicalGroupSize); //global prime id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s / %" PRIu64 ";\n", sc->raderIDx, gl_LocalInvocationID, sc->currentRaderContainer->containerFFTNum); //local id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s %% %" PRIu64 ";\n", sc->raderIDx2, gl_LocalInvocationID, sc->currentRaderContainer->containerFFTNum); //global prime id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (!raderTranspose) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx2, sc->currentRaderContainer->containerFFTNum);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx, subLogicalGroupSize);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s;\n", sc->sdataID, sc->raderIDx2);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		if (strided) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			if (sc->localSize[1] > 1) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+		sc->tempLen = sprintf(sc->tempStr, "\
+	%s = sdata[%s];\n", sc->x0[0], sc->sdataID);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+
+		sc->tempLen = sprintf(sc->tempStr, "\
+	}\n");
+		res = VkAppendLine(sc);
+	}
+	// read x0 for x0+x1 - 0-element
+	{
+		uint64_t locStageRadix = sc->currentRaderContainer->stageRadix[sc->currentRaderContainer->numStages - 1];
+		uint64_t logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		uint64_t locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
+		uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
+		uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
+		uint64_t subLogicalGroupSize = (uint64_t)ceil(locFFTDim / (double)logicalStoragePerThread); // hopefully it is not <1, will fix 
+		if (!raderTranspose) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s %% %" PRIu64 ";\n", sc->raderIDx, gl_LocalInvocationID, subLogicalGroupSize); //local id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s / %" PRIu64 ";\n", sc->raderIDx2, gl_LocalInvocationID, subLogicalGroupSize); //global prime id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s / %" PRIu64 ";\n", sc->raderIDx, gl_LocalInvocationID, sc->currentRaderContainer->containerFFTNum); //local id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s %% %" PRIu64 ";\n", sc->raderIDx2, gl_LocalInvocationID, sc->currentRaderContainer->containerFFTNum); //global prime id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (!raderTranspose) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx2, sc->currentRaderContainer->containerFFTNum);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx, subLogicalGroupSize);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+		sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s == 0) {\n", sc->raderIDx);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+
+		sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s;\n", sc->sdataID, sc->raderIDx2);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		if (strided) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			if (sc->localSize[1] > 1) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+		sc->tempLen = sprintf(sc->tempStr, "\
+		%s = sdata[%s];\n", sc->x0[1], sc->sdataID);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+	}
+	if (sc->currentRaderContainer->numStages == 1) {
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
+		if (res != VKFFT_SUCCESS) return res;
+		res = appendZeropadEnd(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		res = appendBarrierVkFFT(sc, 1);
+		if (res != VKFFT_SUCCESS) return res;
+		res = appendZeropadStart(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
+		if (res != VKFFT_SUCCESS) return res;
+	}
+	uint64_t locStageSize = 1;
+	uint64_t locStageSizeSum = 0;
+	double locStageAngle = -double_PI;
+	uint64_t shift = 0;
+	for (uint64_t rader_stage = 0; rader_stage < sc->currentRaderContainer->numStages; rader_stage++) {
+		uint64_t locStageRadix = sc->currentRaderContainer->stageRadix[rader_stage];
+		uint64_t logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		uint64_t locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
+		uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
+		uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
+		uint64_t subLogicalGroupSize = (uint64_t)ceil(locFFTDim / (double)logicalStoragePerThread); // hopefully it is not <1, will fix 
+		uint64_t locFFTDimStride = locFFTDim;
+		if (shift <= sc->sharedShiftRaderFFT) locFFTDimStride = locFFTDim + shift;
+		//local radix
+		if ((rader_stage == 0) || (!raderTranspose)) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s %% %" PRIu64 ";\n", sc->raderIDx, gl_LocalInvocationID, subLogicalGroupSize); //local id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s / %" PRIu64 ";\n", sc->raderIDx2, gl_LocalInvocationID, subLogicalGroupSize); //global prime id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s / %" PRIu64 ";\n", sc->raderIDx, gl_LocalInvocationID, sc->currentRaderContainer->containerFFTNum); //local id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s %% %" PRIu64 ";\n", sc->raderIDx2, gl_LocalInvocationID, sc->currentRaderContainer->containerFFTNum); //global prime id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t k = 0; k < sc->registerBoost; k++) {
+			if ((rader_stage == 0) || (!raderTranspose)) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx2, sc->currentRaderContainer->containerFFTNum);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx, subLogicalGroupSize);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			for (uint64_t j = 0; j < logicalRegistersPerThread / locStageRadix; j++) {
+				if (subLogicalGroupSize * ((j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) continue;
+				if (subLogicalGroupSize * ((1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+					uint64_t current_group_cut = locFFTDim / locStageRadix - (j + k * logicalRegistersPerThread / locStageRadix) * subLogicalGroupSize;
+
+					sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx, current_group_cut);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+
+				sc->tempLen = sprintf(sc->tempStr, "\
+		%s = (%s+ %" PRIu64 ") %% (%" PRIu64 ");\n", sc->stageInvocationID, sc->raderIDx, (j + k * logicalRegistersPerThread / locStageRadix) * subLogicalGroupSize, locStageSize);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				if (sc->LUT)
+					sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID + %" PRIu64 ";\n", locStageSizeSum + sc->currentRaderContainer->RaderRadixOffsetLUT);
+				else
+					sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", locStageAngle, LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				for (uint64_t i = 0; i < locStageRadix; i++) {
+					uint64_t g = sc->currentRaderContainer->generator;
+					if (rader_stage == 0) {
+						if (sc->inline_rader_g_pow == 1) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+			%s= g_pow_%" PRIu64 "[%s + %" PRIu64 "];\n", sc->sdataID, stageRadix, sc->raderIDx, j * subLogicalGroupSize + i * locFFTDim / locStageRadix);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else if (sc->inline_rader_g_pow == 2) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+			%s= g_pow[%s + %" PRIu64 "];\n", sc->sdataID, sc->raderIDx, j * subLogicalGroupSize + i * locFFTDim / locStageRadix + sc->currentRaderContainer->raderUintLUToffset);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "\
+			%s= (%s + %" PRIu64 ");\n\
+			%s=1;\n\
+			while (%s != 0)\n\
+			{\n\
+				%s = (%s * %" PRIu64 ") %% %" PRIu64 ";\n\
+				%s--;\n\
+			}\n", sc->inoutID, sc->raderIDx, j * subLogicalGroupSize + i * locFFTDim / locStageRadix, sc->sdataID, sc->inoutID, sc->sdataID, sc->sdataID, g, stageRadix, sc->inoutID);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + %s*%" PRIu64 ";\n", sc->sdataID, sc->raderIDx2, sc->sdataID, sc->currentRaderContainer->containerFFTNum);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						if (!raderTranspose) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + %" PRIu64 " + %s*%" PRIu64 ";\n", sc->sdataID, sc->raderIDx, j * subLogicalGroupSize + i * locFFTDim / locStageRadix + sc->fftDim / stageRadix, sc->raderIDx2, locFFTDimStride);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "\
+		%s = (%s + %" PRIu64 ")*%" PRIu64 " + %s + %" PRIu64 ";\n", sc->sdataID, sc->raderIDx, j * subLogicalGroupSize + i * locFFTDim / locStageRadix, sc->currentRaderContainer->containerFFTNum, sc->raderIDx2, sc->fftDim / stageRadix);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+
+					uint64_t id = j + i * logicalRegistersPerThread / locStageRadix;
+					id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
+					if (!strided) {
+						if (sc->resolveBankConflictFirstStages == 1) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+	%s = (%s / %" PRIu64 ") * %" PRIu64 " + %s %% %" PRIu64 ";", sc->sdataID, sc->sdataID, sc->numSharedBanks / 2, sc->numSharedBanks / 2 + 1, sc->sdataID, sc->numSharedBanks / 2);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					if (strided) {
+						sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						if (sc->localSize[1] > 1) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					sc->tempLen = sprintf(sc->tempStr, "\
+		%s = sdata[%s];\n", sc->regIDs[id], sc->sdataID);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+
+				char** regID = (char**)malloc(sizeof(char*) * locStageRadix);
+				if (regID) {
+					for (uint64_t i = 0; i < locStageRadix; i++) {
+						regID[i] = (char*)malloc(sizeof(char) * 50);
+						if (!regID[i]) {
+							for (uint64_t j = 0; j < i; j++) {
+								free(regID[j]);
+								regID[j] = 0;
+							}
+							free(regID);
+							regID = 0;
+							return VKFFT_ERROR_MALLOC_FAILED;
+						}
+						uint64_t id = j + k * logicalRegistersPerThread / locStageRadix + i * logicalStoragePerThread / locStageRadix;
+						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
+						sprintf(regID[i], "%s", sc->regIDs[id]);
+					}
+					res = inlineRadixKernelVkFFT(sc, floatType, uintType, locStageRadix, locStageSize, locStageSizeSum, locStageAngle, regID);
+					if (res != VKFFT_SUCCESS) return res;
+					for (uint64_t i = 0; i < locStageRadix; i++) {
+						uint64_t id = j + k * logicalRegistersPerThread / locStageRadix + i * logicalStoragePerThread / locStageRadix;
+						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
+						sprintf(sc->regIDs[id], "%s", regID[i]);
+					}
+					for (uint64_t i = 0; i < locStageRadix; i++) {
+						free(regID[i]);
+						regID[i] = 0;
+					}
+					free(regID);
+					regID = 0;
+				}
+				else
+					return VKFFT_ERROR_MALLOC_FAILED;
+
+				if (subLogicalGroupSize * ((1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+					sc->tempLen = sprintf(sc->tempStr, "		}\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (rader_stage != sc->currentRaderContainer->numStages - 1) {
+			res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendZeropadEnd(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendZeropadStart(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		//local shuffle
+		char** tempID;
+		tempID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
+		if (tempID) {
+			for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				tempID[i] = (char*)malloc(sizeof(char) * 50);
+				if (!tempID[i]) {
+					for (uint64_t j = 0; j < i; j++) {
+						free(tempID[j]);
+						tempID[j] = 0;
+					}
+					free(tempID);
+					tempID = 0;
+					return VKFFT_ERROR_MALLOC_FAILED;
+				}
+			}
+			for (uint64_t k = 0; k < sc->registerBoost; ++k) {
+				uint64_t t = 0;
+
+				if ((rader_stage == 0) || (!raderTranspose)) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx2, sc->currentRaderContainer->containerFFTNum);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx, subLogicalGroupSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				//last stage - save x1
+				if (rader_stage == sc->currentRaderContainer->numStages - 1) {
+
+					sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s == 0) {\n", sc->raderIDx);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					res = VkAddComplex(sc, sc->x0[1], sc->x0[1], sc->regIDs[0]);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (!strided) {
+					if (rader_stage != 0) {
+						shift = (subLogicalGroupSize > (locFFTDim % (sc->numSharedBanks / 2))) ? subLogicalGroupSize - locFFTDim % (sc->numSharedBanks / 2) : 0;
+						if (shift <= sc->sharedShiftRaderFFT) locFFTDimStride = locFFTDim + shift;
+					}
+					else {
+						if (sc->sharedShiftRaderFFT > 0) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
+							if (res != VKFFT_SUCCESS) return res;
+							res = appendZeropadEnd(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "\
+		sharedStride = %" PRIu64 ";\n", sc->sharedStrideRaderFFT);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							res = appendZeropadStart(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
+							if (res != VKFFT_SUCCESS) return res;
+							if ((rader_stage == 0) || (!raderTranspose)) {
+								sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx2, sc->currentRaderContainer->containerFFTNum);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							else {
+								sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx, subLogicalGroupSize);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						shift = ((locFFTDim % (sc->numSharedBanks / 2))) ? 0 : 1;
+						if (shift <= sc->sharedShiftRaderFFT) locFFTDimStride = locFFTDim + shift;
+					}
+				}
+				for (uint64_t j = 0; j < logicalRegistersPerThread / locStageRadix; j++) {
+					if (subLogicalGroupSize * ((j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
+						if (subLogicalGroupSize * ((1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+							uint64_t current_group_cut = locFFTDim / locStageRadix - (j + k * logicalRegistersPerThread / locStageRadix) * subLogicalGroupSize;
+							sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s  < %" PRIu64 ") {\n", sc->raderIDx, current_group_cut);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sprintf(tempNum, "%" PRIu64 "", j * subLogicalGroupSize);
+						res = VkAddReal(sc, sc->stageInvocationID, sc->raderIDx, tempNum);
+						if (res != VKFFT_SUCCESS) return res;
+						res = VkMovReal(sc, sc->blockInvocationID, sc->stageInvocationID);
+						if (res != VKFFT_SUCCESS) return res;
+						sprintf(tempNum, "%" PRIu64 "", locStageSize);
+						res = VkModReal(sc, sc->stageInvocationID, sc->stageInvocationID, tempNum);
+						if (res != VKFFT_SUCCESS) return res;
+						res = VkSubReal(sc, sc->blockInvocationID, sc->blockInvocationID, sc->stageInvocationID);
+						if (res != VKFFT_SUCCESS) return res;
+						sprintf(tempNum, "%" PRIu64 "", locStageRadix);
+						res = VkMulReal(sc, sc->inoutID, sc->blockInvocationID, tempNum);
+						if (res != VKFFT_SUCCESS) return res;
+						res = VkAddReal(sc, sc->inoutID, sc->inoutID, sc->stageInvocationID);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					/*sc->tempLen = sprintf(sc->tempStr, "\
+	stageInvocationID = (gl_LocalInvocationID.x + %" PRIu64 ") %% (%" PRIu64 ");\n\
+	blockInvocationID = (gl_LocalInvocationID.x + %" PRIu64 ") - stageInvocationID;\n\
+	inoutID = stageInvocationID + blockInvocationID * %" PRIu64 ";\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);*/
+
+					for (uint64_t i = 0; i < locStageRadix; i++) {
+						uint64_t id = j + k * logicalRegistersPerThread / locStageRadix + i * logicalStoragePerThread / locStageRadix;
+						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
+						sprintf(tempID[t + k * sc->registers_per_thread], "%s", sc->regIDs[id]);
+						t++;
+						if (subLogicalGroupSize * ((j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
+							sprintf(tempNum, "%" PRIu64 "", i * locStageSize);
+							res = VkAddReal(sc, sc->combinedID, sc->inoutID, tempNum);
+							if (res != VKFFT_SUCCESS) return res;
+
+							//last stage - mult rader kernel
+							if (rader_stage == sc->currentRaderContainer->numStages - 1) {
+								if (sc->inline_rader_kernel) {
+									sc->tempLen = sprintf(sc->tempStr, "\
+		%s.x = r_rader_kernel_%" PRIu64 "[%s];\n\
+		%s.y = i_rader_kernel_%" PRIu64 "[%s];\n", sc->w, stageRadix, sc->combinedID, sc->w, stageRadix, sc->combinedID);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								else {
+									sc->tempLen = sprintf(sc->tempStr, "\
+		%s = twiddleLUT[%s+%" PRIu64 "];\n", sc->w, sc->combinedID, sc->currentRaderContainer->RaderKernelOffsetLUT);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								/*sc->tempLen = sprintf(sc->tempStr, "\
+		printf(\"%%f %%f - %%f %%f\\n\", %s.x, %s.y, %s.x, %s.y);\n", sc->regIDs[id], sc->regIDs[id], sc->w, sc->w);
+					res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;*/
+								res = VkMulComplex(sc, sc->regIDs[id], sc->regIDs[id], sc->w, sc->temp);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							if (rader_stage != sc->currentRaderContainer->numStages - 1) {
+								if (!raderTranspose) {
+									sprintf(tempNum, "%" PRIu64 "", sc->fftDim / stageRadix);
+									res = VkAddReal(sc, sc->sdataID, sc->combinedID, tempNum);
+									if (res != VKFFT_SUCCESS) return res;
+									sprintf(tempNum, "%s * %" PRIu64 "", sc->raderIDx2, locFFTDimStride);
+									res = VkAddReal(sc, sc->sdataID, sc->sdataID, tempNum);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								else {
+									sprintf(tempNum, "%" PRIu64 "", sc->currentRaderContainer->containerFFTNum);
+									res = VkMulReal(sc, sc->sdataID, sc->combinedID, tempNum);
+									if (res != VKFFT_SUCCESS) return res;
+									sprintf(tempNum, "%" PRIu64 "", sc->fftDim / stageRadix);
+									res = VkAddReal(sc, sc->sdataID, sc->sdataID, tempNum);
+									if (res != VKFFT_SUCCESS) return res;
+									sprintf(tempNum, "%s", sc->raderIDx2);
+									res = VkAddReal(sc, sc->sdataID, sc->sdataID, tempNum);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								if (!strided) {
+									if (0 && (locStageSize <= sc->numSharedBanks / 2) && (locFFTsCombined > sc->numSharedBanks / 2) && (sc->sharedStrideBankConflictFirstStages != locFFTDim / sc->registerBoost) && ((locFFTDim & (locFFTDim - 1)) == 0) && (locStageSize * locStageRadix != locFFTDim)) {
+										if (sc->resolveBankConflictFirstStages == 0) {
+											sc->resolveBankConflictFirstStages = 1;
+											sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %" PRIu64 ";", sc->sharedStride, sc->sharedStrideBankConflictFirstStages);
+											res = VkAppendLine(sc);
+											if (res != VKFFT_SUCCESS) return res;
+										}
+										sc->tempLen = sprintf(sc->tempStr, "\
+	%s = (%s / %" PRIu64 ") * %" PRIu64 " + %s %% %" PRIu64 ";", sc->sdataID, sc->sdataID, sc->numSharedBanks / 2, sc->numSharedBanks / 2 + 1, sc->sdataID, sc->numSharedBanks / 2);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+
+									}
+									else {
+										if (sc->resolveBankConflictFirstStages == 1) {
+											sc->resolveBankConflictFirstStages = 0;
+											sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %" PRIu64 ";", sc->sharedStride, sc->sharedStrideReadWriteConflict);
+											res = VkAppendLine(sc);
+											if (res != VKFFT_SUCCESS) return res;
+										}
+									}
+								}
+								if (strided) {
+									res = VkMulReal(sc, sc->sdataID, sc->sdataID, sc->sharedStride);
+									if (res != VKFFT_SUCCESS) return res;
+									res = VkAddReal(sc, sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								else {
+									if (sc->localSize[1] > 1) {
+										res = VkMulReal(sc, sc->combinedID, sc->gl_LocalInvocationID_y, sc->sharedStride);
+										if (res != VKFFT_SUCCESS) return res;
+										res = VkAddReal(sc, sc->sdataID, sc->sdataID, sc->combinedID);
+										if (res != VKFFT_SUCCESS) return res;
+									}
+								}
+								//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "", i * stageSize);
+								res = VkSharedStore(sc, sc->sdataID, sc->regIDs[id]);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						/*sc->tempLen = sprintf(sc->tempStr, "\
+sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;\n", i * stageSize, sc->regIDs[id], stageNormalization);*/
+					}
+					if (subLogicalGroupSize * ((j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
+						if (subLogicalGroupSize * ((1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+							sc->tempLen = sprintf(sc->tempStr, "	}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+				sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				for (uint64_t j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
+					sprintf(tempID[t + k * sc->registers_per_thread], "%s", sc->regIDs[t + k * sc->registers_per_thread]);
+					t++;
+				}
+				t = 0;
+			}
+			if (rader_stage != sc->currentRaderContainer->numStages - 1) {
+				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+					//printf("0 - %s\n", resID[i]);
+					sprintf(sc->regIDs[i], "%s", tempID[i]);
+					//sprintf(resID[i], "%s", tempID[i]);
+					//printf("1 - %s\n", resID[i]);
+				}
+			}
+			for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				free(tempID[i]);
+				tempID[i] = 0;
+			}
+			free(tempID);
+			tempID = 0;
+		}
+		else
+			return VKFFT_ERROR_MALLOC_FAILED;
+
+		if (rader_stage > 0) {
+			switch (locStageRadix) {
+			case 2:
+				locStageSizeSum += locStageSize;
+				break;
+			case 3:
+				locStageSizeSum += locStageSize * 2;
+				break;
+			case 4:
+				locStageSizeSum += locStageSize * 2;
+				break;
+			case 5:
+				locStageSizeSum += locStageSize * 4;
+				break;
+			case 6:
+				locStageSizeSum += locStageSize * 5;
+				break;
+			case 7:
+				locStageSizeSum += locStageSize * 6;
+				break;
+			case 8:
+				locStageSizeSum += locStageSize * 3;
+				break;
+			case 9:
+				locStageSizeSum += locStageSize * 8;
+				break;
+			case 10:
+				locStageSizeSum += locStageSize * 9;
+				break;
+			case 11:
+				locStageSizeSum += locStageSize * 10;
+				break;
+			case 12:
+				locStageSizeSum += locStageSize * 11;
+				break;
+			case 13:
+				locStageSizeSum += locStageSize * 12;
+				break;
+			case 14:
+				locStageSizeSum += locStageSize * 13;
+				break;
+			case 15:
+				locStageSizeSum += locStageSize * 14;
+				break;
+			case 16:
+				locStageSizeSum += locStageSize * 4;
+				break;
+			case 32:
+				locStageSizeSum += locStageSize * 5;
+				break;
+			default:
+				locStageSizeSum += locStageSize * (locStageRadix);
+				break;
+			}
+		}
+		locStageSize *= locStageRadix;
+		locStageAngle /= locStageRadix;
+
+		if (rader_stage != sc->currentRaderContainer->numStages - 1) {
+			res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendZeropadEnd(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendBarrierVkFFT(sc, 1);
+			if (res != VKFFT_SUCCESS) return res;
+			res = appendZeropadStart(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+	}
+
+	//iFFT
+	locStageSize = 1;
+	locStageAngle = double_PI;
+	locStageSizeSum = 0;
+	for (int64_t rader_stage = sc->currentRaderContainer->numStages - 1; rader_stage >= 0; rader_stage--) {
+		uint64_t locStageRadix = sc->currentRaderContainer->stageRadix[rader_stage];
+		uint64_t logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		uint64_t locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
+		uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
+		uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
+		uint64_t subLogicalGroupSize = (uint64_t)ceil(locFFTDim / (double)logicalStoragePerThread); // hopefully it is not <1, will fix 
+		uint64_t locFFTDimStride = locFFTDim; //different length due to all -1 cutoffs
+		if (shift <= sc->sharedShiftRaderFFT) locFFTDimStride = locFFTDim + shift;
+		//local radix
+		if (!raderTranspose) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s %% %" PRIu64 ";\n", sc->raderIDx, gl_LocalInvocationID, subLogicalGroupSize); //local id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s / %" PRIu64 ";\n", sc->raderIDx2, gl_LocalInvocationID, subLogicalGroupSize); //global prime id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s / %" PRIu64 ";\n", sc->raderIDx, gl_LocalInvocationID, sc->currentRaderContainer->containerFFTNum); //local id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s %% %" PRIu64 ";\n", sc->raderIDx2, gl_LocalInvocationID, sc->currentRaderContainer->containerFFTNum); //global prime id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t k = 0; k < sc->registerBoost; k++) {
+			if (!raderTranspose) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx2, sc->currentRaderContainer->containerFFTNum);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx, subLogicalGroupSize);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			for (uint64_t j = 0; j < logicalRegistersPerThread / locStageRadix; j++) {
+				if (subLogicalGroupSize * ((j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) continue;
+				if (subLogicalGroupSize * ((1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+					uint64_t current_group_cut = locFFTDim / locStageRadix - (j + k * logicalRegistersPerThread / locStageRadix) * subLogicalGroupSize;
+					sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s  < %" PRIu64 ") {\n", sc->raderIDx, current_group_cut);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+
+				sc->tempLen = sprintf(sc->tempStr, "\
+		%s = (%s+ %" PRIu64 ") %% (%" PRIu64 ");\n", sc->stageInvocationID, sc->raderIDx, (j + k * logicalRegistersPerThread / locStageRadix) * subLogicalGroupSize, locStageSize);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				if (sc->LUT)
+					sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID + %" PRIu64 ";\n", locStageSizeSum + sc->currentRaderContainer->RaderRadixOffsetLUTiFFT);
+				else
+					sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", locStageAngle, LFending);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				if (rader_stage != sc->currentRaderContainer->numStages - 1) {
+					for (uint64_t i = 0; i < locStageRadix; i++) {
+						uint64_t id = j + i * logicalRegistersPerThread / locStageRadix;
+						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
+						if (!raderTranspose) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+		%s = (%s + %" PRIu64 ") + %s*%" PRIu64 ";\n", sc->sdataID, sc->raderIDx, j * subLogicalGroupSize + i * locFFTDim / locStageRadix + sc->fftDim / stageRadix, sc->raderIDx2, locFFTDimStride);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "\
+		%s = (%s + %" PRIu64 ")*%" PRIu64 " + %s + %" PRIu64 ";\n", sc->sdataID, sc->raderIDx, j * subLogicalGroupSize + i * locFFTDim / locStageRadix, sc->currentRaderContainer->containerFFTNum, sc->raderIDx2, sc->fftDim / stageRadix);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (!strided) {
+							if (sc->resolveBankConflictFirstStages == 1) {
+								sc->tempLen = sprintf(sc->tempStr, "\
+	%s = (%s / %" PRIu64 ") * %" PRIu64 " + %s %% %" PRIu64 ";", sc->sdataID, sc->sdataID, sc->numSharedBanks / 2, sc->numSharedBanks / 2 + 1, sc->sdataID, sc->numSharedBanks / 2);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						if (strided) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							if (sc->localSize[1] > 1) {
+								sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+						sc->tempLen = sprintf(sc->tempStr, "\
+		%s = sdata[%s];\n", sc->regIDs[id], sc->sdataID);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+				}
+				char** regID = (char**)malloc(sizeof(char*) * locStageRadix);
+				if (regID) {
+					for (uint64_t i = 0; i < locStageRadix; i++) {
+						regID[i] = (char*)malloc(sizeof(char) * 50);
+						if (!regID[i]) {
+							for (uint64_t j = 0; j < i; j++) {
+								free(regID[j]);
+								regID[j] = 0;
+							}
+							free(regID);
+							regID = 0;
+							return VKFFT_ERROR_MALLOC_FAILED;
+						}
+						uint64_t id = j + k * logicalRegistersPerThread / locStageRadix + i * logicalStoragePerThread / locStageRadix;
+						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
+						sprintf(regID[i], "%s", sc->regIDs[id]);
+					}
+					res = inlineRadixKernelVkFFT(sc, floatType, uintType, locStageRadix, locStageSize, locStageSizeSum, locStageAngle, regID);
+					if (res != VKFFT_SUCCESS) return res;
+					for (uint64_t i = 0; i < locStageRadix; i++) {
+						uint64_t id = j + k * logicalRegistersPerThread / locStageRadix + i * logicalStoragePerThread / locStageRadix;
+						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
+						sprintf(sc->regIDs[id], "%s", regID[i]);
+					}
+					for (uint64_t i = 0; i < locStageRadix; i++) {
+						free(regID[i]);
+						regID[i] = 0;
+					}
+					free(regID);
+					regID = 0;
+				}
+				else
+					return VKFFT_ERROR_MALLOC_FAILED;
+				if (subLogicalGroupSize * ((1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+					sc->tempLen = sprintf(sc->tempStr, "		}\n");
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+			sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
+		if (res != VKFFT_SUCCESS) return res;
+		res = appendZeropadEnd(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		res = appendBarrierVkFFT(sc, 1);
+		if (res != VKFFT_SUCCESS) return res;
+		if (!strided) {
+			if (rader_stage == 0) {
+				if (sc->sharedStrideRaderFFT > 0) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		sharedStride = %" PRIu64 ";\n", sc->fftDim);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+			}
+		}
+		res = appendZeropadStart(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
+		if (res != VKFFT_SUCCESS) return res;
+		//local shuffle
+		char** tempID;
+		tempID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
+		if (tempID) {
+			for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				tempID[i] = (char*)malloc(sizeof(char) * 50);
+				if (!tempID[i]) {
+					for (uint64_t j = 0; j < i; j++) {
+						free(tempID[j]);
+						tempID[j] = 0;
+					}
+					free(tempID);
+					tempID = 0;
+					return VKFFT_ERROR_MALLOC_FAILED;
+				}
+			}
+			for (uint64_t k = 0; k < sc->registerBoost; ++k) {
+				uint64_t t = 0;
+				if (!raderTranspose) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx2, sc->currentRaderContainer->containerFFTNum);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx, subLogicalGroupSize);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (rader_stage == 0) {
+					res = VkMovReal(sc, sc->stageInvocationID, sc->raderIDx2);
+					if (res != VKFFT_SUCCESS) return res;
+					res = VkMovReal(sc, sc->blockInvocationID, sc->stageInvocationID);
+					if (res != VKFFT_SUCCESS) return res;
+					sprintf(tempNum, "%" PRIu64 "", stageSize);
+					res = VkModReal(sc, sc->stageInvocationID, sc->stageInvocationID, tempNum);
+					if (res != VKFFT_SUCCESS) return res;
+					res = VkSubReal(sc, sc->blockInvocationID, sc->blockInvocationID, sc->stageInvocationID);
+					if (res != VKFFT_SUCCESS) return res;
+					sprintf(tempNum, "%" PRIu64 "", stageRadix);
+					res = VkMulReal(sc, sc->raderIDx2, sc->blockInvocationID, tempNum);
+					if (res != VKFFT_SUCCESS) return res;
+					res = VkAddReal(sc, sc->raderIDx2, sc->raderIDx2, sc->stageInvocationID);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				if (!strided) {
+					if (rader_stage != sc->currentRaderContainer->numStages - 1) {
+						shift = (subLogicalGroupSize > (locFFTDim % (sc->numSharedBanks / 2))) ? subLogicalGroupSize - locFFTDim % (sc->numSharedBanks / 2) : 0;
+						if (shift <= sc->sharedShiftRaderFFT) locFFTDimStride = locFFTDim + shift;
+					}
+					else {
+						shift = ((locFFTDim % (sc->numSharedBanks / 2))) ? 0 : 1;
+						if (shift <= sc->sharedShiftRaderFFT) locFFTDimStride = locFFTDim + shift;
+					}
+				}
+				for (uint64_t j = 0; j < logicalRegistersPerThread / locStageRadix; j++) {
+					if (subLogicalGroupSize * ((j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
+						if (subLogicalGroupSize * ((1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+							uint64_t current_group_cut = locFFTDim / locStageRadix - (j + k * logicalRegistersPerThread / locStageRadix) * subLogicalGroupSize;
+							sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s  < %" PRIu64 ") {\n", sc->raderIDx, current_group_cut);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						sprintf(tempNum, "%" PRIu64 "", j * subLogicalGroupSize);
+						res = VkAddReal(sc, sc->stageInvocationID, sc->raderIDx, tempNum);
+						if (res != VKFFT_SUCCESS) return res;
+						res = VkMovReal(sc, sc->blockInvocationID, sc->stageInvocationID);
+						if (res != VKFFT_SUCCESS) return res;
+						sprintf(tempNum, "%" PRIu64 "", locStageSize);
+						res = VkModReal(sc, sc->stageInvocationID, sc->stageInvocationID, tempNum);
+						if (res != VKFFT_SUCCESS) return res;
+						res = VkSubReal(sc, sc->blockInvocationID, sc->blockInvocationID, sc->stageInvocationID);
+						if (res != VKFFT_SUCCESS) return res;
+						sprintf(tempNum, "%" PRIu64 "", locStageRadix);
+						res = VkMulReal(sc, sc->inoutID, sc->blockInvocationID, tempNum);
+						if (res != VKFFT_SUCCESS) return res;
+						res = VkAddReal(sc, sc->inoutID, sc->inoutID, sc->stageInvocationID);
+						if (res != VKFFT_SUCCESS) return res;
+
+					}
+					/*sc->tempLen = sprintf(sc->tempStr, "\
+	stageInvocationID = (gl_LocalInvocationID.x + %" PRIu64 ") %% (%" PRIu64 ");\n\
+	blockInvocationID = (gl_LocalInvocationID.x + %" PRIu64 ") - stageInvocationID;\n\
+	inoutID = stageInvocationID + blockInvocationID * %" PRIu64 ";\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);*/
+
+					for (uint64_t i = 0; i < locStageRadix; i++) {
+						uint64_t id = j + k * logicalRegistersPerThread / locStageRadix + i * logicalStoragePerThread / locStageRadix;
+						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
+						sprintf(tempID[t + k * sc->registers_per_thread], "%s", sc->regIDs[id]);
+						t++;
+						if (subLogicalGroupSize * ((j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
+							sprintf(tempNum, "%" PRIu64 "", i * locStageSize);
+							res = VkAddReal(sc, sc->combinedID, sc->inoutID, tempNum);
+							if (res != VKFFT_SUCCESS) return res;
+
+							if (rader_stage == 0) {
+								locFFTDimStride = locFFTDim;
+								//last stage - add x0
+
+								uint64_t g = sc->currentRaderContainer->generator;
+								if (sc->inline_rader_g_pow == 1) {
+									sc->tempLen = sprintf(sc->tempStr, "\
+			%s= g_pow_%" PRIu64 "[%" PRIu64 "-%s];\n", sc->combinedID, stageRadix, stageRadix - 1, sc->combinedID);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								else if (sc->inline_rader_g_pow == 2) {
+									sc->tempLen = sprintf(sc->tempStr, "\
+			%s= g_pow[%" PRIu64 "-%s];\n", sc->combinedID, stageRadix - 1 + sc->currentRaderContainer->raderUintLUToffset, sc->combinedID);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								else {
+									sc->tempLen = sprintf(sc->tempStr, "\
+			%s= (%" PRIu64 "-%s);\n\
+			%s=1;\n\
+			while (%s != 0)\n\
+			{\n\
+				%s = (%s * %" PRIu64 ") %% %" PRIu64 ";\n\
+				%s--;\n\
+			}\n", sc->inoutID, stageRadix - 1, sc->combinedID, sc->sdataID, sc->inoutID, sc->combinedID, sc->combinedID, g, stageRadix, sc->inoutID);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								if (sc->inverse) {
+									sprintf(tempNum, "(%" PRIu64 "-%s)*%" PRIu64 "", (stageRadix), sc->combinedID, stageSize);
+								}
+								else {
+									sprintf(tempNum, "%s*%" PRIu64 "", sc->combinedID, stageSize);
+								}
+								res = VkAddReal(sc, sc->sdataID, sc->raderIDx2, tempNum);
+								if (res != VKFFT_SUCCESS) return res;
+								//normalization is in kernel
+								/*sprintf(tempNum, "%.17e%s", 1.0 / locFFTDim, LFending);
+								res = VkMulComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], tempNum);
+								if (res != VKFFT_SUCCESS) return res;*/
+								res = VkAddComplex(sc, sc->regIDs[id], sc->regIDs[id], sc->x0[0]);
+								if (res != VKFFT_SUCCESS) return res;
+
+							}
+							else {
+								if (!raderTranspose) {
+									sprintf(tempNum, "%" PRIu64 "", sc->fftDim / stageRadix);
+									res = VkAddReal(sc, sc->sdataID, sc->combinedID, tempNum);
+									if (res != VKFFT_SUCCESS) return res;
+									sprintf(tempNum, "%s * %" PRIu64 "", sc->raderIDx2, locFFTDimStride);
+									res = VkAddReal(sc, sc->sdataID, sc->sdataID, tempNum);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+								else {
+									sprintf(tempNum, "%" PRIu64 "", sc->currentRaderContainer->containerFFTNum);
+									res = VkMulReal(sc, sc->sdataID, sc->combinedID, tempNum);
+									if (res != VKFFT_SUCCESS) return res;
+									sprintf(tempNum, "%" PRIu64 "", sc->fftDim / stageRadix);
+									res = VkAddReal(sc, sc->sdataID, sc->sdataID, tempNum);
+									if (res != VKFFT_SUCCESS) return res;
+									sprintf(tempNum, "%s", sc->raderIDx2);
+									res = VkAddReal(sc, sc->sdataID, sc->sdataID, tempNum);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+							}
+							if (!strided) {
+								if (0 && (locStageSize <= sc->numSharedBanks / 2) && (locFFTsCombined > sc->numSharedBanks / 2) && (sc->sharedStrideBankConflictFirstStages != locFFTDim / sc->registerBoost) && ((locFFTDim & (locFFTDim - 1)) == 0) && (locStageSize * locStageRadix != locFFTDim)) {
+									if (sc->resolveBankConflictFirstStages == 0) {
+										sc->resolveBankConflictFirstStages = 1;
+										sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %" PRIu64 ";", sc->sharedStride, sc->sharedStrideBankConflictFirstStages);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+									}
+									sc->tempLen = sprintf(sc->tempStr, "\
+	%s = (%s / %" PRIu64 ") * %" PRIu64 " + %s %% %" PRIu64 ";", sc->sdataID, sc->sdataID, sc->numSharedBanks / 2, sc->numSharedBanks / 2 + 1, sc->sdataID, sc->numSharedBanks / 2);
+									res = VkAppendLine(sc);
+									if (res != VKFFT_SUCCESS) return res;
+
+								}
+								else {
+									if (sc->resolveBankConflictFirstStages == 1) {
+										sc->resolveBankConflictFirstStages = 0;
+										sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %" PRIu64 ";", sc->sharedStride, sc->sharedStrideReadWriteConflict);
+										res = VkAppendLine(sc);
+										if (res != VKFFT_SUCCESS) return res;
+									}
+								}
+							}
+							if (strided) {
+								res = VkMulReal(sc, sc->sdataID, sc->sdataID, sc->sharedStride);
+								if (res != VKFFT_SUCCESS) return res;
+								res = VkAddReal(sc, sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							else {
+								if (sc->localSize[1] > 1) {
+									res = VkMulReal(sc, sc->combinedID, sc->gl_LocalInvocationID_y, sc->sharedStride);
+									if (res != VKFFT_SUCCESS) return res;
+									res = VkAddReal(sc, sc->sdataID, sc->sdataID, sc->combinedID);
+									if (res != VKFFT_SUCCESS) return res;
+								}
+							}
+							//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "", i * stageSize);
+							if ((((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle > 0))) && (rader_stage == 0)) {
+								if (strcmp(stageNormalization, "")) {
+									res = VkMulComplexNumber(sc, sc->regIDs[id], sc->regIDs[id], stageNormalization);
+								}
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							res = VkSharedStore(sc, sc->sdataID, sc->regIDs[id]);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f \\n \", %s, %s.x, %s.y);\n\n", sc->sdataID, sc->regIDs[id], sc->regIDs[id]);
+							//res = VkAppendLine(sc);
+							//if (res != VKFFT_SUCCESS) return res;
+						}
+						/*sc->tempLen = sprintf(sc->tempStr, "\
+sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;\n", i * stageSize, sc->regIDs[id], stageNormalization);*/
+					}
+					if (subLogicalGroupSize * ((j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
+						if (subLogicalGroupSize * ((1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+							sc->tempLen = sprintf(sc->tempStr, "	}\n");
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+				sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				for (uint64_t j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
+					sprintf(tempID[t + k * sc->registers_per_thread], "%s", sc->regIDs[t + k * sc->registers_per_thread]);
+					t++;
+				}
+				t = 0;
+			}
+			for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				//printf("0 - %s\n", resID[i]);
+				sprintf(sc->regIDs[i], "%s", tempID[i]);
+				//sprintf(resID[i], "%s", tempID[i]);
+				//printf("1 - %s\n", resID[i]);
+			}
+			for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				free(tempID[i]);
+				tempID[i] = 0;
+			}
+			free(tempID);
+			tempID = 0;
+		}
+		else
+			return VKFFT_ERROR_MALLOC_FAILED;
+
+		if (rader_stage < sc->currentRaderContainer->numStages - 1) {
+			switch (locStageRadix) {
+			case 2:
+				locStageSizeSum += locStageSize;
+				break;
+			case 3:
+				locStageSizeSum += locStageSize * 2;
+				break;
+			case 4:
+				locStageSizeSum += locStageSize * 2;
+				break;
+			case 5:
+				locStageSizeSum += locStageSize * 4;
+				break;
+			case 6:
+				locStageSizeSum += locStageSize * 5;
+				break;
+			case 7:
+				locStageSizeSum += locStageSize * 6;
+				break;
+			case 8:
+				locStageSizeSum += locStageSize * 3;
+				break;
+			case 9:
+				locStageSizeSum += locStageSize * 8;
+				break;
+			case 10:
+				locStageSizeSum += locStageSize * 9;
+				break;
+			case 11:
+				locStageSizeSum += locStageSize * 10;
+				break;
+			case 12:
+				locStageSizeSum += locStageSize * 11;
+				break;
+			case 13:
+				locStageSizeSum += locStageSize * 12;
+				break;
+			case 14:
+				locStageSizeSum += locStageSize * 13;
+				break;
+			case 15:
+				locStageSizeSum += locStageSize * 14;
+				break;
+			case 16:
+				locStageSizeSum += locStageSize * 4;
+				break;
+			case 32:
+				locStageSizeSum += locStageSize * 5;
+				break;
+			default:
+				locStageSizeSum += locStageSize * (locStageRadix);
+				break;
+			}
+		}
+		locStageSize *= locStageRadix;
+		locStageAngle /= locStageRadix;
+		res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
+		if (res != VKFFT_SUCCESS) return res;
+		res = appendZeropadEnd(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		res = appendBarrierVkFFT(sc, 1);
+		if (res != VKFFT_SUCCESS) return res;
+		res = appendZeropadStart(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
+		if (res != VKFFT_SUCCESS) return res;
+	}
+
+	{
+		uint64_t locStageRadix = sc->currentRaderContainer->stageRadix[sc->currentRaderContainer->numStages - 1];
+		uint64_t logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		uint64_t locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
+		uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
+		uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
+		uint64_t subLogicalGroupSize = (uint64_t)ceil(locFFTDim / (double)logicalStoragePerThread); // hopefully it is not <1, will fix 
+		if (!raderTranspose) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s %% %" PRIu64 ";\n", sc->raderIDx, gl_LocalInvocationID, subLogicalGroupSize); //local id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s / %" PRIu64 ";\n", sc->raderIDx2, gl_LocalInvocationID, subLogicalGroupSize); //global prime id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s / %" PRIu64 ";\n", sc->raderIDx, gl_LocalInvocationID, sc->currentRaderContainer->containerFFTNum); //local id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s %% %" PRIu64 ";\n", sc->raderIDx2, gl_LocalInvocationID, sc->currentRaderContainer->containerFFTNum); //global prime id
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		if (!raderTranspose) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx2, sc->currentRaderContainer->containerFFTNum);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s < %" PRIu64 ") {\n", sc->raderIDx, subLogicalGroupSize);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		sc->tempLen = sprintf(sc->tempStr, "\
+		if (%s == 0) {\n", sc->raderIDx);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+
+		res = VkMovReal(sc, sc->stageInvocationID, sc->raderIDx2);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkMovReal(sc, sc->blockInvocationID, sc->stageInvocationID);
+		if (res != VKFFT_SUCCESS) return res;
+		sprintf(tempNum, "%" PRIu64 "", stageSize);
+		res = VkModReal(sc, sc->stageInvocationID, sc->stageInvocationID, tempNum);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkSubReal(sc, sc->blockInvocationID, sc->blockInvocationID, sc->stageInvocationID);
+		if (res != VKFFT_SUCCESS) return res;
+		sprintf(tempNum, "%" PRIu64 "", stageRadix);
+		res = VkMulReal(sc, sc->raderIDx2, sc->blockInvocationID, tempNum);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkAddReal(sc, sc->raderIDx2, sc->raderIDx2, sc->stageInvocationID);
+		if (res != VKFFT_SUCCESS) return res;
+
+		sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s;\n", sc->sdataID, sc->raderIDx2);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+
+		if (strided) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		else {
+			if (sc->localSize[1] > 1) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+		if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle > 0))) {
+			if (strcmp(stageNormalization, "")) {
+				res = VkMulComplexNumber(sc, sc->x0[1], sc->x0[1], stageNormalization);
+			}
+			if (res != VKFFT_SUCCESS) return res;
+		}
+
+		sc->tempLen = sprintf(sc->tempStr, "\
+		sdata[%s] = %s;\n", sc->sdataID, sc->x0[1]);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, "\
+		}\n");
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
+		if (res != VKFFT_SUCCESS) return res;
+		res = appendZeropadEnd(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		res = appendBarrierVkFFT(sc, 1);
+		if (res != VKFFT_SUCCESS) return res;
+	}
+	return res;
+}
+static inline VkFFTResult appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageID, uint64_t strided) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	double double_PI = 3.1415926535897932384626433832795;
 	char vecType[30];
@@ -14333,14 +16075,22 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 	res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
 	if (res != VKFFT_SUCCESS) return res;
 
-	uint64_t num_logical_subgroups = sc->localSize[0] / ((stageRadix + 1) / 2);
+	uint64_t num_logical_subgroups = (strided) ? sc->localSize[1] / ((stageRadix + 1) / 2) : sc->localSize[0] / ((stageRadix + 1) / 2);
 	uint64_t num_logical_groups = (uint64_t)ceil((sc->fftDim / stageRadix) / (double)(num_logical_subgroups));
 	uint64_t require_cutoff_check = ((sc->fftDim == (num_logical_subgroups * num_logical_groups * stageRadix))) ? 0 : 1;
-	uint64_t require_cutoff_check2 = ((sc->localSize[0] % ((stageRadix + 1) / 2)) == 0) ? 0 : 1;
-	sc->tempLen = sprintf(sc->tempStr, "	%s= %s %% %" PRIu64 ";\n", sc->raderIDx, sc->gl_LocalInvocationID_x, (stageRadix + 1) / 2);
+	uint64_t require_cutoff_check2;
+	char* gl_LocalInvocationID = (strided) ? sc->gl_LocalInvocationID_y : sc->gl_LocalInvocationID_x;
+
+	if (strided) {
+		require_cutoff_check2 = ((sc->localSize[1] % ((stageRadix + 1) / 2)) == 0) ? 0 : 1;
+	}
+	else {
+		require_cutoff_check2 = ((sc->localSize[0] % ((stageRadix + 1) / 2)) == 0) ? 0 : 1;
+	}
+	sc->tempLen = sprintf(sc->tempStr, "	%s= %s %% %" PRIu64 ";\n", sc->raderIDx, gl_LocalInvocationID, (stageRadix + 1) / 2);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
-	sc->tempLen = sprintf(sc->tempStr, "	%s= %s / %" PRIu64 ";\n", sc->raderIDx2, sc->gl_LocalInvocationID_x, (stageRadix + 1) / 2);
+	sc->tempLen = sprintf(sc->tempStr, "	%s= %s / %" PRIu64 ";\n", sc->raderIDx2, gl_LocalInvocationID, (stageRadix + 1) / 2);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 
@@ -14348,10 +16098,18 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 		for (uint64_t j = 0; j < 1; j++) {
 			if (stageSize > 1) {
 				if (require_cutoff_check2) {
-					sc->tempLen = sprintf(sc->tempStr, "\
+					if (strided) {
+						sc->tempLen = sprintf(sc->tempStr, "\
+		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_y, sc->localSize[1] - sc->localSize[1] % ((stageRadix + 1) / 2));
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "\
 		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_x, sc->localSize[0] - sc->localSize[0] % ((stageRadix + 1) / 2));
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
 				}
 				for (uint64_t t = 0; t < num_logical_groups; t++) {
 					if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
@@ -14404,12 +16162,19 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 		%s = (%s) * %" PRIu64 " + %s + %" PRIu64 ";\n", sc->sdataID, sc->raderIDx, sc->fftDim / stageRadix, sc->raderIDx2, t * num_logical_subgroups);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-
-					if (sc->localSize[1] > 1) {
+					if (strided) {
 						sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+		%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						if (sc->localSize[1] > 1) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
 					}
 					sc->tempLen = sprintf(sc->tempStr, "\
 		%s = sdata[%s];\n", sc->regIDs[0], sc->sdataID);
@@ -14472,12 +16237,19 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 		%s = (%" PRIu64 " + %s) * %" PRIu64 " + %s + %" PRIu64 ";\n", sc->sdataID, (stageRadix + 1) / 2, sc->raderIDx, sc->fftDim / stageRadix, sc->raderIDx2, t * num_logical_subgroups);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-
-					if (sc->localSize[1] > 1) {
+					if (strided) {
 						sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+		%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						if (sc->localSize[1] > 1) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
 					}
 					sc->tempLen = sprintf(sc->tempStr, "\
 		%s = sdata[%s];\n", sc->regIDs[0], sc->sdataID);
@@ -14520,10 +16292,18 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 				if (res != VKFFT_SUCCESS) return res;
 			}
 			if (require_cutoff_check2) {
-				sc->tempLen = sprintf(sc->tempStr, "\
+				if (strided) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_y, sc->localSize[1] - sc->localSize[1] % ((stageRadix + 1) / 2));
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "\
 		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_x, sc->localSize[0] - sc->localSize[0] % ((stageRadix + 1) / 2));
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
 			}
 			//save x0
 			for (uint64_t t = 0; t < num_logical_groups; t++) {
@@ -14533,18 +16313,33 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-
-				if (sc->localSize[1] > 1) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s + %" PRIu64 " + sharedStride * %s;\n", sc->sdataID, sc->raderIDx2, t * num_logical_subgroups, sc->gl_LocalInvocationID_y);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
+				if (strided) {
+					if (sc->localSize[0] > 1) {
+						sc->tempLen = sprintf(sc->tempStr, "\
+		%s = (%s + %" PRIu64 ") * sharedStride + %s;\n", sc->sdataID, sc->raderIDx2, t * num_logical_subgroups, sc->gl_LocalInvocationID_x);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + %" PRIu64 ";\n", sc->sdataID, sc->raderIDx2, t * num_logical_subgroups);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
 				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "\
+					if (sc->localSize[1] > 1) {
+						sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + %" PRIu64 " + sharedStride * %s;\n", sc->sdataID, sc->raderIDx2, t * num_logical_subgroups, sc->gl_LocalInvocationID_y);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "\
 		%s = %s + %" PRIu64 ";\n", sc->sdataID, sc->raderIDx2, t * num_logical_subgroups);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
 				}
 				sc->tempLen = sprintf(sc->tempStr, "\
 		%s = sdata[%s];\n", sc->x0[t], sc->sdataID);
@@ -14564,10 +16359,16 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 
-			uint64_t g = sc->rader_generator[stageID];
-			if (sc->inline_rader_g_pow) {
+			uint64_t g = sc->currentRaderContainer->generator;
+			if (sc->inline_rader_g_pow == 1) {
 				sc->tempLen = sprintf(sc->tempStr, "\
 			%s= g_pow_%" PRIu64 "[%s-1];\n", sc->sdataID, stageRadix, sc->raderIDx);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else if (sc->inline_rader_g_pow == 2) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+			%s= g_pow[%s-1+%" PRIu64 "];\n", sc->sdataID, sc->raderIDx, sc->currentRaderContainer->raderUintLUToffset);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
@@ -14595,11 +16396,19 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 			%s = %s * %" PRIu64 " + %s + %" PRIu64 ";\n", sc->combinedID, sc->sdataID, sc->fftDim / stageRadix, sc->raderIDx2, t * num_logical_subgroups);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				if (sc->localSize[1] > 1) {
+				if (strided) {
 					sc->tempLen = sprintf(sc->tempStr, "\
-			%s = %s + sharedStride * %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_y);
+			%s = %s * sharedStride + %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_x);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					if (sc->localSize[1] > 1) {
+						sc->tempLen = sprintf(sc->tempStr, "\
+			%s = %s + sharedStride * %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_y);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
 				}
 				sc->tempLen = sprintf(sc->tempStr, "\
 			%s = sdata[%s];\n", sc->regIDs[t * 2], sc->combinedID);
@@ -14613,9 +16422,15 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 					if (res != VKFFT_SUCCESS) return res;
 				}
 			}
-			if (sc->inline_rader_g_pow) {
+			if (sc->inline_rader_g_pow == 1) {
 				sc->tempLen = sprintf(sc->tempStr, "\
 			%s= g_pow_%" PRIu64 "[%s+ %" PRIu64 "];\n", sc->sdataID, stageRadix, sc->raderIDx, (stageRadix - 1) / 2 - 1);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else if (sc->inline_rader_g_pow == 2) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+			%s= g_pow[%s+ %" PRIu64 "];\n", sc->sdataID, sc->raderIDx, (stageRadix - 1) / 2 - 1 + sc->currentRaderContainer->raderUintLUToffset);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
@@ -14644,11 +16459,19 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 			%s = %s * %" PRIu64 " + %s + %" PRIu64 ";\n", sc->combinedID, sc->sdataID, sc->fftDim / stageRadix, sc->raderIDx2, t * num_logical_subgroups);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				if (sc->localSize[1] > 1) {
+				if (strided) {
 					sc->tempLen = sprintf(sc->tempStr, "\
-			%s = %s + sharedStride * %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_y);
+			%s = %s * sharedStride + %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_x);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					if (sc->localSize[1] > 1) {
+						sc->tempLen = sprintf(sc->tempStr, "\
+			%s = %s + sharedStride * %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_y);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
 				}
 				sc->tempLen = sprintf(sc->tempStr, "\
 			%s = sdata[%s];\n", sc->regIDs[2 * t + 1], sc->combinedID);
@@ -14681,7 +16504,7 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
 			//load deconv kernel
-			{
+			if (!sc->inline_rader_kernel) {
 				for (uint64_t t = 0; t < (uint64_t)ceil((stageRadix - 1) / ((double)(sc->localSize[0] * sc->localSize[1]))); t++) {
 					sc->tempLen = sprintf(sc->tempStr, "\
 		%s = %s + %s *  %" PRIu64 " + %" PRIu64 ";\n", sc->combinedID, sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->localSize[0], t * sc->localSize[0] * sc->localSize[1]);
@@ -14695,7 +16518,7 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 					}
 					if (sc->LUT) {
 						sc->tempLen = sprintf(sc->tempStr, "\
-		%s = twiddleLUT[%s+%" PRIu64 "];\n", sc->w, sc->combinedID, sc->RaderKernelOffsetLUT[stageID]);
+		%s = twiddleLUT[%s+%" PRIu64 "];\n", sc->w, sc->combinedID, sc->currentRaderContainer->RaderKernelOffsetLUT);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 						if (sc->inverse) {
@@ -14709,9 +16532,15 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 						if (res != VKFFT_SUCCESS) return res;
 					}
 					else {
-						if (sc->inline_rader_g_pow) {
+						if (sc->inline_rader_g_pow == 1) {
 							sc->tempLen = sprintf(sc->tempStr, "\
 			%s= g_pow_%" PRIu64 "[%" PRIu64 " - %s];\n", sc->sdataID, stageRadix, stageRadix - 1, sc->combinedID);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else if (sc->inline_rader_g_pow == 2) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+			%s= g_pow[%" PRIu64 " - %s];\n", sc->sdataID, stageRadix - 1 + sc->currentRaderContainer->raderUintLUToffset, sc->combinedID);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
@@ -14772,10 +16601,18 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 			if (res != VKFFT_SUCCESS) return res;
 
 			if (require_cutoff_check2) {
-				sc->tempLen = sprintf(sc->tempStr, "\
+				if (strided) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_y, sc->localSize[1] - sc->localSize[1] % ((stageRadix + 1) / 2));
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "\
 		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_x, sc->localSize[0] - sc->localSize[0] % ((stageRadix + 1) / 2));
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
 			}
 			//x0 is ready
 
@@ -14962,17 +16799,28 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 		%s = (%s) * %" PRIu64 " + %s + %" PRIu64 ";\n", sc->sdataID, sc->raderIDx, sc->fftDim / stageRadix, sc->raderIDx2, t * num_logical_subgroups);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-
-				if (sc->localSize[1] > 1) {
+				if (strided) {
 					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+		%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + %" PRIu64 " * sharedStride;\n", sc->combinedID, sc->sdataID, (stageRadix - 1) / 2 * sc->fftDim / stageRadix);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				sc->tempLen = sprintf(sc->tempStr, "\
+				else {
+					if (sc->localSize[1] > 1) {
+						sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					sc->tempLen = sprintf(sc->tempStr, "\
 		%s = %s + %" PRIu64 ";\n", sc->combinedID, sc->sdataID, (stageRadix - 1) / 2 * sc->fftDim / stageRadix);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
 
 				sc->tempLen = sprintf(sc->tempStr, "\
 		%s.x = %s.x - %s.x;\n", sc->temp, sc->regIDs[2 * t], sc->regIDs[2 * t + 1]);
@@ -15030,10 +16878,18 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
 			if (res != VKFFT_SUCCESS) return res;
 			if (require_cutoff_check2) {
-				sc->tempLen = sprintf(sc->tempStr, "\
+				if (strided) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_y, sc->localSize[1] - sc->localSize[1] % ((stageRadix + 1) / 2));
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "\
 		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_x, sc->localSize[0] - sc->localSize[0] % ((stageRadix + 1) / 2));
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
 			}
 
 			sc->tempLen = sprintf(sc->tempStr, "\
@@ -15073,12 +16929,19 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 		%s = ((%" PRIu64 "+%s) %% %" PRIu64 ");\n", sc->sdataID, stageRadix - 1 - i, sc->raderIDx, (stageRadix - 1));
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-
-				sc->tempLen = sprintf(sc->tempStr, "\
+				if (sc->inline_rader_kernel) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		%s.x = r_rader_kernel_%" PRIu64 "[%s];\n\
+		%s.y = i_rader_kernel_%" PRIu64 "[%s];\n", sc->w, stageRadix, sc->sdataID, sc->w, stageRadix, sc->sdataID);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "\
 		%s = sdata[%s+%" PRIu64 "];\n", sc->w, sc->sdataID, sc->RaderKernelOffsetShared[stageID]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
 				sc->tempLen = sprintf(sc->tempStr, "\
 		}\n");
 				res = VkAppendLine(sc);
@@ -15097,23 +16960,36 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 		%s = %s+ %" PRIu64 ";\n", sc->sdataID, sc->raderIDx2, t * num_logical_subgroups + (1 + i) * sc->fftDim / stageRadix);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-
-					if (sc->localSize[1] > 1) {
+					if (strided) {
 						sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+		%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						if (sc->localSize[1] > 1) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+		%s = %s + sharedStride * %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
 					}
 					sc->tempLen = sprintf(sc->tempStr, "\
 		%s = sdata[%s];\n", sc->regIDs[0], sc->sdataID);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-
-					sc->tempLen = sprintf(sc->tempStr, "\
+					if (strided) {
+						sc->tempLen = sprintf(sc->tempStr, "\
+		%s += %" PRIu64 "*sharedStride;\n", sc->sdataID, (stageRadix - 1) / 2 * sc->fftDim / stageRadix);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						sc->tempLen = sprintf(sc->tempStr, "\
 		%s += %" PRIu64 " ;\n", sc->sdataID, (stageRadix - 1) / 2 * sc->fftDim / stageRadix);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
 					sc->tempLen = sprintf(sc->tempStr, "\
 		%s = sdata[%s];\n", sc->temp, sc->sdataID);
 					res = VkAppendLine(sc);
@@ -15163,10 +17039,18 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 						if (res != VKFFT_SUCCESS) return res;
 
 						if (require_cutoff_check2) {
-							sc->tempLen = sprintf(sc->tempStr, "\
+							if (strided) {
+								sc->tempLen = sprintf(sc->tempStr, "\
+		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_y, sc->localSize[1] - sc->localSize[1] % ((stageRadix + 1) / 2));
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							else {
+								sc->tempLen = sprintf(sc->tempStr, "\
 		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_x, sc->localSize[0] - sc->localSize[0] % ((stageRadix + 1) / 2));
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
 						}
 						sc->tempLen = sprintf(sc->tempStr, "\
 		if(%s < %" PRIu64 "){\n", sc->raderIDx, (stageRadix + 1) / 2);
@@ -15201,10 +17085,18 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 					if (res != VKFFT_SUCCESS) return res;
 
 					if (require_cutoff_check2) {
-						sc->tempLen = sprintf(sc->tempStr, "\
+						if (strided) {
+							sc->tempLen = sprintf(sc->tempStr, "\
+		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_y, sc->localSize[1] - sc->localSize[1] % ((stageRadix + 1) / 2));
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "\
 		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_x, sc->localSize[0] - sc->localSize[0] % ((stageRadix + 1) / 2));
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
 					}
 					sc->tempLen = sprintf(sc->tempStr, "\
 		if(%s < %" PRIu64 "){\n", sc->raderIDx, (stageRadix + 1) / 2);
@@ -15264,10 +17156,18 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 			if (res != VKFFT_SUCCESS) return res;
 
 			if (require_cutoff_check2) {
-				sc->tempLen = sprintf(sc->tempStr, "\
+				if (strided) {
+					sc->tempLen = sprintf(sc->tempStr, "\
+		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_y, sc->localSize[1] - sc->localSize[1] % ((stageRadix + 1) / 2));
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					sc->tempLen = sprintf(sc->tempStr, "\
 		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_x, sc->localSize[0] - sc->localSize[0] % ((stageRadix + 1) / 2));
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+				}
 			}
 
 			sc->tempLen = sprintf(sc->tempStr, "\
@@ -15277,9 +17177,15 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 			//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f \\n \", %s, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, sc->regIDs[1], sc->regIDs[1]);
 			//res = VkAppendLine(sc);
 			//if (res != VKFFT_SUCCESS) return res;
-			if (sc->inline_rader_g_pow) {
+			if (sc->inline_rader_g_pow == 1) {
 				sc->tempLen = sprintf(sc->tempStr, "\
 			%s= g_pow_%" PRIu64 "[%" PRIu64 "-%s];\n", sc->sdataID, stageRadix, stageRadix - 1, sc->raderIDx);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else if (sc->inline_rader_g_pow == 2) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+			%s= g_pow[%" PRIu64 "-%s];\n", sc->sdataID, stageRadix - 1 + sc->currentRaderContainer->raderUintLUToffset, sc->raderIDx);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
@@ -15331,12 +17237,19 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 			%s = %s + %s * %" PRIu64 " + %s;\n", sc->combinedID, sc->inoutID, sc->sdataID, stageSize, sc->stageInvocationID);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-
-				if (sc->localSize[1] > 1) {
+				if (strided) {
 					sc->tempLen = sprintf(sc->tempStr, "\
-			%s = %s + sharedStride * %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_y);
+			%s = %s * sharedStride + %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_x);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+				}
+				else {
+					if (sc->localSize[1] > 1) {
+						sc->tempLen = sprintf(sc->tempStr, "\
+			%s = %s + sharedStride * %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_y);
+						res = VkAppendLine(sc);
+						if (res != VKFFT_SUCCESS) return res;
+					}
 				}
 				if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle > 0))) {
 					if (strcmp(stageNormalization, "")) {
@@ -15360,9 +17273,15 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 		if(%s < %" PRIu64 "){\n", sc->raderIDx, (stageRadix - 1) / 2);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			if (sc->inline_rader_g_pow) {
+			if (sc->inline_rader_g_pow == 1) {
 				sc->tempLen = sprintf(sc->tempStr, "\
 			%s= g_pow_%" PRIu64 "[%" PRIu64 "-%s];\n", sc->sdataID, stageRadix, (stageRadix - 1) / 2, sc->raderIDx);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else if (sc->inline_rader_g_pow == 2) {
+				sc->tempLen = sprintf(sc->tempStr, "\
+			%s= g_pow[%" PRIu64 "-%s];\n", sc->sdataID, (stageRadix - 1) / 2 + sc->currentRaderContainer->raderUintLUToffset, sc->raderIDx);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
@@ -15401,1189 +17320,19 @@ static inline VkFFTResult appendRaderStageNonStrided(VkFFTSpecializationConstant
 			%s = %s + %s * %" PRIu64 " + %s;\n", sc->combinedID, sc->inoutID, sc->sdataID, stageSize, sc->stageInvocationID);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-
-				if (sc->localSize[1] > 1) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-			%s = %s + sharedStride * %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_y);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle > 0))) {
-					if (strcmp(stageNormalization, "")) {
-						res = VkMulComplexNumber(sc, sc->regIDs[2 * t + 1], sc->regIDs[2 * t + 1], stageNormalization);
-					}
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s]=%s;\n", sc->combinedID, sc->regIDs[2 * t + 1]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-			}
-			sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			if (require_cutoff_check2) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-			res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
-			if (res != VKFFT_SUCCESS) return res;
-			res = appendZeropadEnd(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			res = appendBarrierVkFFT(sc, 1);
-			if (res != VKFFT_SUCCESS) return res;
-		}
-	}
-
-	return res;
-}
-static inline VkFFTResult appendRaderStageStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageID) {
-	VkFFTResult res = VKFFT_SUCCESS;
-	double double_PI = 3.1415926535897932384626433832795;
-	char vecType[30];
-	char LFending[4] = "";
-	char tempNum[50] = "";
-	if (!strcmp(floatType, "float")) sprintf(LFending, "f");
-#if(VKFFT_BACKEND==0)
-	if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
-	if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
-	char cosDef[20] = "cos";
-	char sinDef[20] = "sin";
-	if (!strcmp(floatType, "double")) sprintf(LFending, "LF");
-#elif(VKFFT_BACKEND==1)
-	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
-	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
-	char cosDef[20] = "__cosf";
-	char sinDef[20] = "__sinf";
-	if (!strcmp(floatType, "double")) sprintf(LFending, "l");
-#elif(VKFFT_BACKEND==2)
-	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
-	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
-	char cosDef[20] = "__cosf";
-	char sinDef[20] = "__sinf";
-	if (!strcmp(floatType, "double")) sprintf(LFending, "l");
-#elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
-	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
-	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
-	char cosDef[20] = "native_cos";
-	char sinDef[20] = "native_sin";
-	//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
-#endif
-	char stageNormalization[50] = "";
-	uint64_t normalizationValue = 1;
-	if ((((sc->actualInverse) && (sc->normalize)) || (sc->convolutionStep && (stageAngle > 0))) && (stageSize == 1) && (sc->axis_upload_id == 0) && (!(sc->useBluesteinFFT && (stageAngle < 0)))) {
-		if ((sc->performDCT) && (sc->actualInverse)) {
-			if (sc->performDCT == 1)
-				normalizationValue = (sc->sourceFFTSize - 1) * 2;
-			else
-				normalizationValue = sc->sourceFFTSize * 2;
-		}
-		else
-			normalizationValue = sc->sourceFFTSize;
-	}
-	if (sc->useBluesteinFFT && (stageAngle > 0) && (stageSize == 1) && (sc->axis_upload_id == 0)) {
-		normalizationValue *= sc->fft_dim_full;
-	}
-	if (normalizationValue != 1) {
-		sprintf(stageNormalization, "%.17e%s", 1.0 / (double)(normalizationValue), LFending);
-	}
-	char convolutionInverse[10] = "";
-	if (sc->convolutionStep) {
-		if (stageAngle < 0)
-			sprintf(convolutionInverse, ", 0");
-		else
-			sprintf(convolutionInverse, ", 1");
-	}
-	res = appendBarrierVkFFT(sc, 1);
-	if (res != VKFFT_SUCCESS) return res;
-	res = appendZeropadStart(sc);
-	if (res != VKFFT_SUCCESS) return res;
-	res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
-	if (res != VKFFT_SUCCESS) return res;
-
-	uint64_t num_logical_subgroups = sc->localSize[1] / ((stageRadix + 1) / 2);
-	uint64_t num_logical_groups = (uint64_t)ceil((sc->fftDim / stageRadix) / (double)(num_logical_subgroups));
-	uint64_t require_cutoff_check = ((sc->fftDim == (num_logical_subgroups * num_logical_groups * stageRadix))) ? 0 : 1;
-	uint64_t require_cutoff_check2 = ((sc->localSize[1] % ((stageRadix + 1) / 2)) == 0) ? 0 : 1;
-	sc->tempLen = sprintf(sc->tempStr, "	%s= %s %% %" PRIu64 ";\n", sc->raderIDx, sc->gl_LocalInvocationID_y, (stageRadix + 1) / 2);
-	res = VkAppendLine(sc);
-	if (res != VKFFT_SUCCESS) return res;
-	sc->tempLen = sprintf(sc->tempStr, "	%s= %s / %" PRIu64 ";\n", sc->raderIDx2, sc->gl_LocalInvocationID_y, (stageRadix + 1) / 2);
-	res = VkAppendLine(sc);
-	if (res != VKFFT_SUCCESS) return res;
-
-	for (uint64_t k = 0; k < sc->registerBoost; k++) {
-		for (uint64_t j = 0; j < 1; j++) {
-			if (stageSize > 1) {
-				if (require_cutoff_check2) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_y, sc->localSize[1] - sc->localSize[1] % ((stageRadix + 1) / 2));
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				for (uint64_t t = 0; t < num_logical_groups; t++) {
-					if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->raderIDx2, sc->fftDim / stageRadix - t * num_logical_subgroups);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = (%s+%" PRIu64 ") %% (%" PRIu64 ");\n", sc->stageInvocationID, sc->raderIDx2, t * num_logical_subgroups, stageSize);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-
-					if (sc->LUT)
-						sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID*%" PRIu64 " + %" PRIu64 ";\n", stageRadix, stageSizeSum);
-					else
-						sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					if (sc->LUT) {
-						sc->tempLen = sprintf(sc->tempStr, "		%s = twiddleLUT[LUTId+%s];\n\n", sc->w, sc->raderIDx);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-						if (!sc->inverse) {
-							sc->tempLen = sprintf(sc->tempStr, "		%s.y = -%s.y;\n", sc->w, sc->w);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-					}
-					else {
-						if (!strcmp(floatType, "float")) {
-							sc->tempLen = sprintf(sc->tempStr, "		%s.x = %s(angle*%.17e%s*(%s));\n", sc->w, cosDef, 2.0 / stageRadix, LFending, sc->raderIDx);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-							sc->tempLen = sprintf(sc->tempStr, "		%s.y = %s(angle*%.17e%s*(%s));\n", sc->w, sinDef, 2.0 / stageRadix, LFending, sc->raderIDx);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
-						}
-						if (!strcmp(floatType, "double")) {
-							sc->tempLen = sprintf(sc->tempStr, "		%s = sincos_20(angle*%.17e%s*(%s));\n", sc->w, 2.0 / stageRadix, LFending, sc->raderIDx);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-					}
-					//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f \\n \", %s, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, sc->w, sc->w);
-					//res = VkAppendLine(sc);
-					//if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = (%s) * %" PRIu64 " + %s + %" PRIu64 ";\n", sc->sdataID, sc->raderIDx, sc->fftDim / stageRadix, sc->raderIDx2, t * num_logical_subgroups);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-
-					if (sc->localSize[0] > 1) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = sdata[%s];\n", sc->regIDs[0], sc->sdataID);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-
-					res = VkMulComplex(sc, sc->temp, sc->regIDs[0], sc->w, 0);
-					if (res != VKFFT_SUCCESS) return res;
-
-					sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s] = %s;\n", sc->sdataID, sc->temp);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-
-					sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->raderIDx, (stageRadix - 1) / 2);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = (%s+%" PRIu64 ") %% (%" PRIu64 ");\n", sc->stageInvocationID, sc->raderIDx2, t * num_logical_subgroups, stageSize);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-
-					if (sc->LUT)
-						sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID*%" PRIu64 " + %" PRIu64 ";\n", stageRadix, stageSizeSum);
-					else
-						sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					if (sc->LUT) {
-						sc->tempLen = sprintf(sc->tempStr, "		%s = twiddleLUT[LUTId+%s+%" PRIu64 "];\n\n", sc->w, sc->raderIDx, (stageRadix + 1) / 2);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-						if (!sc->inverse) {
-							sc->tempLen = sprintf(sc->tempStr, "		%s.y = -%s.y;\n", sc->w, sc->w);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-					}
-					else {
-						if (!strcmp(floatType, "float")) {
-							sc->tempLen = sprintf(sc->tempStr, "		%s.x = %s(angle*%.17e%s*(%" PRIu64 " + %s));\n", sc->w, cosDef, 2.0 / stageRadix, LFending, (stageRadix + 1) / 2, sc->raderIDx);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-							sc->tempLen = sprintf(sc->tempStr, "		%s.y = %s(angle*%.17e%s*(%" PRIu64 " + %s));\n", sc->w, sinDef, 2.0 / stageRadix, LFending, (stageRadix + 1) / 2, sc->raderIDx);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
-						}
-						if (!strcmp(floatType, "double")) {
-							sc->tempLen = sprintf(sc->tempStr, "		%s = sincos_20(angle*%.17e%s*(%" PRIu64 " + %s));\n", sc->w, 2.0 / stageRadix, LFending, (stageRadix + 1) / 2, sc->raderIDx);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-					}
-					//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f \\n \", %s, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, sc->w, sc->w);
-					//res = VkAppendLine(sc);
-					//if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = (%" PRIu64 " + %s) * %" PRIu64 " + %s + %" PRIu64 ";\n", sc->sdataID, (stageRadix + 1) / 2, sc->raderIDx, sc->fftDim / stageRadix, sc->raderIDx2, t * num_logical_subgroups);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-
-					if (sc->localSize[0] > 1) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = sdata[%s];\n", sc->regIDs[0], sc->sdataID);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-
-					res = VkMulComplex(sc, sc->temp, sc->regIDs[0], sc->w, 0);
-					if (res != VKFFT_SUCCESS) return res;
-
-					sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s] = %s;\n", sc->sdataID, sc->temp);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-				}
-				if (require_cutoff_check2) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
-				if (res != VKFFT_SUCCESS) return res;
-				res = appendZeropadEnd(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				res = appendBarrierVkFFT(sc, 1);
-				if (res != VKFFT_SUCCESS) return res;
-				res = appendZeropadStart(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-			if (require_cutoff_check2) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_y, sc->localSize[1] - sc->localSize[1] % ((stageRadix + 1) / 2));
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-			//save x0
-			for (uint64_t t = 0; t < num_logical_groups; t++) {
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->raderIDx2, sc->fftDim / stageRadix - t * num_logical_subgroups);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-
-				if (sc->localSize[0] > 1) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = (%s + %" PRIu64 ") * sharedStride + %s;\n", sc->sdataID, sc->raderIDx2, t * num_logical_subgroups, sc->gl_LocalInvocationID_x);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				else {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s + %" PRIu64 ";\n", sc->sdataID, sc->raderIDx2, t * num_logical_subgroups);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s = sdata[%s];\n", sc->x0[t], sc->sdataID);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-			}
-			//generator index + shuffle 
-			sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s>0){\n", sc->raderIDx);
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-
-			uint64_t g = sc->rader_generator[stageID];
-			if (sc->inline_rader_g_pow) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s= g_pow_%" PRIu64 "[%s-1];\n", sc->sdataID, stageRadix, sc->raderIDx);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-			else {
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s= (%s-1);\n\
-			%s=1;\n\
-			while (%s != 0)\n\
-			{\n\
-				%s = (%s * %" PRIu64 ") %% %" PRIu64 ";\n\
-				%s--;\n\
-			}\n", sc->inoutID, sc->raderIDx, sc->sdataID, sc->inoutID, sc->sdataID, sc->sdataID, g, stageRadix, sc->inoutID);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-			for (uint64_t t = 0; t < num_logical_groups; t++) {
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->raderIDx2, sc->fftDim / stageRadix - t * num_logical_subgroups);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s = %s * %" PRIu64 " + %s + %" PRIu64 ";\n", sc->combinedID, sc->sdataID, sc->fftDim / stageRadix, sc->raderIDx2, t * num_logical_subgroups);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				if (sc->localSize[0] > 1) {
+				if (strided) {
 					sc->tempLen = sprintf(sc->tempStr, "\
 			%s = %s * sharedStride + %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_x);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s = sdata[%s];\n", sc->regIDs[t * 2], sc->combinedID);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-			}
-			if (sc->inline_rader_g_pow) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s= g_pow_%" PRIu64 "[%s+ %" PRIu64 "];\n", sc->sdataID, stageRadix, sc->raderIDx, (stageRadix - 1) / 2 - 1);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-			else {
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s= (%s+ %" PRIu64 ");\n\
-			%s=1;\n\
-			while (%s != 0)\n\
-			{\n\
-				%s = (%s * %" PRIu64 ") %% %" PRIu64 ";\n\
-				%s--;\n\
-			}\n", sc->inoutID, sc->raderIDx, (stageRadix - 1) / 2 - 1, sc->sdataID, sc->inoutID, sc->sdataID, sc->sdataID, g, stageRadix, sc->inoutID);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-
-			for (uint64_t t = 0; t < num_logical_groups; t++) {
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->raderIDx2, sc->fftDim / stageRadix - t * num_logical_subgroups);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s = %s * %" PRIu64 " + %s + %" PRIu64 ";\n", sc->combinedID, sc->sdataID, sc->fftDim / stageRadix, sc->raderIDx2, t * num_logical_subgroups);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				if (sc->localSize[0] > 1) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-			%s = %s * sharedStride + %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_x);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s = sdata[%s];\n", sc->regIDs[2 * t + 1], sc->combinedID);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-			}
-			sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-
-			if (require_cutoff_check2) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-
-			res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
-			if (res != VKFFT_SUCCESS) return res;
-			res = appendZeropadEnd(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			res = appendBarrierVkFFT(sc, 1);
-			if (res != VKFFT_SUCCESS) return res;
-			//load deconv kernel
-			{
-				for (uint64_t t = 0; t < (uint64_t)ceil((stageRadix - 1) / ((double)(sc->localSize[0] * sc->localSize[1]))); t++) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s + %s *  %" PRIu64 " + %" PRIu64 ";\n", sc->combinedID, sc->gl_LocalInvocationID_x, sc->gl_LocalInvocationID_y, sc->localSize[0], t * sc->localSize[0] * sc->localSize[1]);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					if (t == ((uint64_t)ceil((stageRadix - 1) / ((double)(sc->localSize[0] * sc->localSize[1]))) - 1)) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s < %" PRIu64 "){\n", sc->combinedID, (stageRadix - 1));
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-					if (sc->LUT) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		%s = twiddleLUT[%s+%" PRIu64 "];\n", sc->w, sc->combinedID, sc->RaderKernelOffsetLUT[stageID]);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-						if (sc->inverse) {
-							sc->tempLen = sprintf(sc->tempStr, "		%s.y = -%s.y;\n", sc->w, sc->w);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-						sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s+%" PRIu64 "] = %s;\n", sc->combinedID, sc->RaderKernelOffsetShared[stageID], sc->w);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-					else {
-						if (sc->inline_rader_g_pow) {
-							sc->tempLen = sprintf(sc->tempStr, "\
-			%s= g_pow_%" PRIu64 "[%" PRIu64 " - %s];\n", sc->sdataID, stageRadix, stageRadix - 1, sc->combinedID);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-						else {
-							sc->tempLen = sprintf(sc->tempStr, "\
-			%s= (%" PRIu64 " - %s);\n\
-			%s=1;\n\
-			while (%s != 0)\n\
-			{\n\
-				%s = (%s * %" PRIu64 ") %% %" PRIu64 ";\n\
-				%s--;\n\
-			}\n", sc->inoutID, stageRadix - 1, sc->combinedID, sc->sdataID, sc->inoutID, sc->sdataID, sc->sdataID, g, stageRadix, sc->inoutID);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-						if (!strcmp(floatType, "float")) {
-							sc->tempLen = sprintf(sc->tempStr, "		%s.x = %s(%.17e%s*%s);\n", sc->w, cosDef, 2.0 * double_PI / stageRadix, LFending, sc->sdataID);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-							if (!sc->inverse) {
-								sc->tempLen = sprintf(sc->tempStr, "		%s.y = -%s(%.17e%s*%s);\n", sc->w, sinDef, 2.0 * double_PI / stageRadix, LFending, sc->sdataID);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
-							else {
-								sc->tempLen = sprintf(sc->tempStr, "		%s.y = %s(%.17e%s*%s);\n", sc->w, sinDef, 2.0 * double_PI / stageRadix, LFending, sc->sdataID);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
-							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
-						}
-						if (!strcmp(floatType, "double")) {
-							sc->tempLen = sprintf(sc->tempStr, "		%s = sincos_20(%.17e%s*%s);\n", sc->w, 2.0 * double_PI / stageRadix, LFending, sc->sdataID);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-							if (!sc->inverse) {
-								sc->tempLen = sprintf(sc->tempStr, "		%s.y = -%s.y;\n", sc->w, sc->w);
-								res = VkAppendLine(sc);
-								if (res != VKFFT_SUCCESS) return res;
-							}
-						}
-						sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s+%" PRIu64 "] = %s;\n", sc->combinedID, sc->RaderKernelOffsetShared[stageID], sc->w);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-					if (t == ((uint64_t)ceil((stageRadix - 1) / ((double)(sc->localSize[0] * sc->localSize[1]))) - 1)) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-				}
-			}
-			res = appendZeropadStart(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
-			if (res != VKFFT_SUCCESS) return res;
-
-			if (require_cutoff_check2) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_y, sc->localSize[1] - sc->localSize[1] % ((stageRadix + 1) / 2));
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-			//x0 is ready
-
-			//no subgroups
-			/* {
-				sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s==0){\n", sc->gl_LocalInvocationID_x);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s.x = 0;\n\
-		%s.y = 0;\n", sc->regIDs[0], sc->regIDs[0]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s = 0;\n", sc->combinedID);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				if (sc->localSize[1] > 1) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s + sharedStride * (%s);\n", sc->sdataID, sc->combinedID, sc->gl_LocalInvocationID_y);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "\
-		while(%s<%" PRIu64 "){\n\
-		%s.x += sdata[%s].x;\n\
-		%s.y += sdata[%s].y;\n\
-		%s++; %s++;}\n", sc->combinedID, stageRadix, sc->regIDs[0], sc->sdataID, sc->regIDs[0], sc->sdataID, sc->combinedID, sc->sdataID);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		while(%s<%" PRIu64 "){\n\
-		%s.x += sdata[%s].x;\n\
-		%s.y += sdata[%s].y;\n\
-		%s++;}\n", sc->combinedID, stageRadix, sc->regIDs[0], sc->combinedID, sc->regIDs[0], sc->combinedID, sc->combinedID);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s = 0;\n", sc->sdataID);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				if (sc->localSize[1] > 1) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s + sharedStride * (%s);\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_y);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s] = %s;\n", sc->sdataID, sc->regIDs[0]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}*/
-			//subgroups
-			/* {
-				uint64_t numGroupsQuant = ((((sc->localSize[0] * sc->localSize[1] * sc->localSize[2]) % sc->warpSize) == 0) || (sc->numSubgroups == 1)) ? sc->numSubgroups : sc->numSubgroups - 1;
-				if (numGroupsQuant != sc->numSubgroups) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->gl_SubgroupID, numGroupsQuant);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				for (uint64_t t = 0; t < (uint64_t)ceil(sc->localSize[1] / (double)numGroupsQuant); t++) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s.x = 0;\n", sc->regIDs[0]);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s.y = 0;\n", sc->regIDs[0]);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					uint64_t quant = (sc->warpSize < (sc->localSize[0] * sc->localSize[1] * sc->localSize[2])) ? sc->warpSize : (sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
-					for (uint64_t t2 = 0; t2 < (uint64_t)ceil(stageRadix / (double)quant); t2++) {
-						if ((t == (uint64_t)ceil(sc->localSize[1] / (double)numGroupsQuant) - 1) && (sc->localSize[1] > 1) && ((sc->localSize[1] % numGroupsQuant) != 0)) {
-							sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->gl_SubgroupID, sc->localSize[1] % numGroupsQuant);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-						if (t2 == (uint64_t)ceil(stageRadix / (double)quant) - 1) {
-							sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->gl_SubgroupInvocationID, stageRadix % quant);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-						sc->tempLen = sprintf(sc->tempStr, "\
-		%s = (%s+%" PRIu64 ") * %" PRIu64 ";\n", sc->sdataID, sc->gl_SubgroupInvocationID, t2 * quant, sc->fftDim / stageRadix);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-
-						if (sc->localSize[1] > 1) {
-							sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s + sharedStride * (%s+%" PRIu64 ");\n", sc->sdataID, sc->sdataID, sc->gl_SubgroupID, t * numGroupsQuant);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-						sc->tempLen = sprintf(sc->tempStr, "\
-		%s = sdata[%s];\n", sc->regIDs[1], sc->sdataID);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-						res = VkAddComplex(sc, sc->regIDs[0], sc->regIDs[0], sc->regIDs[1]);
-						if (res != VKFFT_SUCCESS) return res;
-						if (t2 == (uint64_t)ceil(stageRadix / (double)quant) - 1) {
-							sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-						if ((t == (uint64_t)ceil(sc->localSize[1] / (double)numGroupsQuant) - 1) && (sc->localSize[1] > 1) && ((sc->localSize[1] % numGroupsQuant) != 0)) {
-							sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-					}
-
-					res = VkSubgroupAdd(sc, sc->regIDs[0], sc->regIDs[0], 1);
-					if (res != VKFFT_SUCCESS) return res;
-
-					if ((t == (uint64_t)ceil(sc->localSize[1] / (double)numGroupsQuant) - 1) && (sc->localSize[1] > 1) && ((sc->localSize[1] % numGroupsQuant) != 0)) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->gl_SubgroupID, sc->localSize[1] % numGroupsQuant);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-					sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s==0){\n", sc->gl_SubgroupInvocationID);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = 0;\n", sc->sdataID);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-
 					if (sc->localSize[1] > 1) {
 						sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s + sharedStride * (%s+%" PRIu64 ");\n", sc->sdataID, sc->sdataID, sc->gl_SubgroupID, t * numGroupsQuant);
+			%s = %s + sharedStride * %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_y);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
-					sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s] = %s;\n", sc->sdataID, sc->regIDs[0]);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					if ((t == (uint64_t)ceil(sc->localSize[1] / (double)numGroupsQuant) - 1) && (sc->localSize[1] > 1) && ((sc->localSize[1] % numGroupsQuant) != 0)) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-				}
-				if (numGroupsQuant != sc->numSubgroups) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-			}*/
-			sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s > 0){\n", sc->raderIDx);
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			for (uint64_t t = 0; t < num_logical_groups; t++) {
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->raderIDx2, sc->fftDim / stageRadix - t * num_logical_subgroups);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s = (%s) * %" PRIu64 " + %s + %" PRIu64 ";\n", sc->sdataID, sc->raderIDx, sc->fftDim / stageRadix, sc->raderIDx2, t * num_logical_subgroups);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				if (sc->localSize[0] > 1) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s + %" PRIu64 " * sharedStride;\n", sc->combinedID, sc->sdataID, (stageRadix - 1) / 2 * sc->fftDim / stageRadix);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s.x = %s.x - %s.x;\n", sc->temp, sc->regIDs[2 * t], sc->regIDs[2 * t + 1]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s.x += %s.x;\n", sc->regIDs[2 * t], sc->regIDs[2 * t + 1]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s.y = %s.y + %s.y;\n", sc->temp, sc->regIDs[2 * t], sc->regIDs[2 * t + 1]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s.y -= %s.y;\n", sc->regIDs[2 * t], sc->regIDs[2 * t + 1]);
-				res = VkAppendLine(sc);
-				sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s] = %s;\n", sc->sdataID, sc->regIDs[2 * t]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s] = %s;\n", sc->combinedID, sc->temp);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-			}
-			//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f %%f %%f \\n \", %s, %s.x, %s.y, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, sc->regIDs[0], sc->regIDs[0], sc->temp, sc->temp);
-			//res = VkAppendLine(sc);
-			//if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-
-			if (require_cutoff_check2) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-			res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
-			if (res != VKFFT_SUCCESS) return res;
-			res = appendZeropadEnd(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			res = appendBarrierVkFFT(sc, 1);
-			if (res != VKFFT_SUCCESS) return res;
-			res = appendZeropadStart(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
-			if (res != VKFFT_SUCCESS) return res;
-			if (require_cutoff_check2) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_y, sc->localSize[1] - sc->localSize[1] % ((stageRadix + 1) / 2));
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-
-			sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s < %" PRIu64 "){\n", sc->raderIDx, (stageRadix + 1) / 2);
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			for (uint64_t t = 0; t < num_logical_groups; t++) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s.x = 0;\n", sc->regIDs[2 * t + 1]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s.y = 0;\n", sc->regIDs[2 * t + 1]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-			sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s == %" PRIu64 "){\n", sc->raderIDx, (stageRadix - 1) / 2);
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "\
-		%s.x = 1; %s.y = 0;\n", sc->w, sc->w);
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			for (uint64_t i = 0; i < (stageRadix - 1) / 2; i++) {
-
-				sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s < %" PRIu64 "){\n", sc->raderIDx, (stageRadix - 1) / 2);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s = ((%" PRIu64 "+%s) %% %" PRIu64 ");\n", sc->sdataID, stageRadix - 1 - i, sc->raderIDx, (stageRadix - 1));
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s = sdata[%s+%" PRIu64 "];\n", sc->w, sc->sdataID, sc->RaderKernelOffsetShared[stageID]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				for (uint64_t t = 0; t < num_logical_groups; t++) {
-#if(VKFFT_BACKEND != 2) //AMD compiler fix
-					if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->raderIDx2, sc->fftDim / stageRadix - t * num_logical_subgroups);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-#endif
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s + %" PRIu64 ";\n", sc->sdataID, sc->raderIDx2, t * num_logical_subgroups + (1 + i) * sc->fftDim / stageRadix);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-
-					if (sc->localSize[0] > 1) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		%s = %s * sharedStride + %s;\n", sc->sdataID, sc->sdataID, sc->gl_LocalInvocationID_x);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = sdata[%s];\n", sc->regIDs[0], sc->sdataID);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s += %" PRIu64 "* sharedStride;\n", sc->sdataID, (stageRadix - 1) / 2 * sc->fftDim / stageRadix);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-
-					sc->tempLen = sprintf(sc->tempStr, "\
-		%s = sdata[%s];\n", sc->temp, sc->sdataID);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-#if(VKFFT_BACKEND == 2) //AMD compiler fix
-					if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s>=%" PRIu64 "){%s.x =0;%s.y=0;%s.x=0;%s.y=0;}\n", sc->raderIDx2, sc->fftDim / stageRadix - t * num_logical_subgroups, sc->temp, sc->temp, sc->regIDs[0], sc->regIDs[0]);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-#endif
-					sprintf(tempNum, "%s", sc->x0[t]);
-					res = VkFMA3Complex(sc, tempNum, sc->regIDs[2 * t + 1], sc->regIDs[0], sc->w, sc->temp);
-					if (res != VKFFT_SUCCESS) return res;
-#if(VKFFT_BACKEND != 2) //AMD compiler fix
-					if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-#endif
-#if(VKFFT_BACKEND == 2) //AMD compiler fix
-					if ((uint64_t)ceil((sc->localSize[0] * sc->localSize[1]) / ((double)sc->warpSize)) * sc->warpSize * (1 + sc->registers_per_thread + sc->usedLocRegs) > 2048) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-
-						if (require_cutoff_check2) {
-							sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-
-						res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
-						if (res != VKFFT_SUCCESS) return res;
-						res = appendZeropadEnd(sc);
-						if (res != VKFFT_SUCCESS) return res;
-						res = appendBarrierVkFFT(sc, 1);
-						if (res != VKFFT_SUCCESS) return res;
-						res = appendZeropadStart(sc);
-						if (res != VKFFT_SUCCESS) return res;
-						res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
-						if (res != VKFFT_SUCCESS) return res;
-
-						if (require_cutoff_check2) {
-							sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_x, sc->localSize[0] - sc->localSize[0] % ((stageRadix + 1) / 2));
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-						sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s < %" PRIu64 "){\n", sc->raderIDx, (stageRadix + 1) / 2);
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-#endif
-				}
-#if(VKFFT_BACKEND == 2) //AMD compiler fix
-				if ((uint64_t)ceil((sc->localSize[0] * sc->localSize[1]) / ((double)sc->warpSize)) * sc->warpSize * (1 + sc->registers_per_thread + sc->usedLocRegs) <= 2048) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-
-					if (require_cutoff_check2) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-
-					res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
-					if (res != VKFFT_SUCCESS) return res;
-					res = appendZeropadEnd(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					res = appendBarrierVkFFT(sc, 1);
-					if (res != VKFFT_SUCCESS) return res;
-					res = appendZeropadStart(sc);
-					if (res != VKFFT_SUCCESS) return res;
-					res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
-					if (res != VKFFT_SUCCESS) return res;
-
-					if (require_cutoff_check2) {
-						sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_x, sc->localSize[0] - sc->localSize[0] % ((stageRadix + 1) / 2));
-						res = VkAppendLine(sc);
-						if (res != VKFFT_SUCCESS) return res;
-					}
-					sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s < %" PRIu64 "){\n", sc->raderIDx, (stageRadix + 1) / 2);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-#endif
-			}
-			for (uint64_t t = 0; t < num_logical_groups; t++) {
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->raderIDx2, sc->fftDim / stageRadix - t * num_logical_subgroups);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				sprintf(tempNum, "%s", sc->x0[t]);
-
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s.x = %s.x-%s.x;\n\
-		%s.y = %s.y+%s.y;\n", sc->regIDs[2 * t], tempNum, sc->regIDs[2 * t + 1], sc->regIDs[2 * t], tempNum, sc->regIDs[2 * t + 1]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "\
-		%s.x = %s.x+%s.x;\n\
-		%s.y = %s.y-%s.y;\n", sc->regIDs[2 * t + 1], tempNum, sc->regIDs[2 * t + 1], sc->regIDs[2 * t + 1], tempNum, sc->regIDs[2 * t + 1]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-			}
-			sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-
-			if (require_cutoff_check2) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-
-			res = VkAppendLineFromInput(sc, sc->disableThreadsEnd);
-			if (res != VKFFT_SUCCESS) return res;
-			res = appendZeropadEnd(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			res = appendBarrierVkFFT(sc, 1);
-			if (res != VKFFT_SUCCESS) return res;
-			res = appendZeropadStart(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			res = VkAppendLineFromInput(sc, sc->disableThreadsStart);
-			if (res != VKFFT_SUCCESS) return res;
-
-			if (require_cutoff_check2) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->gl_LocalInvocationID_y, sc->localSize[1] - sc->localSize[1] % ((stageRadix + 1) / 2));
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-
-			sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s < %" PRIu64 "){\n", sc->raderIDx, (stageRadix - 1) / 2);
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f \\n \", %s, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, sc->regIDs[1], sc->regIDs[1]);
-			//res = VkAppendLine(sc);
-			//if (res != VKFFT_SUCCESS) return res;
-			if (sc->inline_rader_g_pow) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s= g_pow_%" PRIu64 "[%" PRIu64 "-%s];\n", sc->sdataID, stageRadix, stageRadix - 1, sc->raderIDx);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-			else {
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s= (%" PRIu64 "-%s);\n\
-			%s=1;\n\
-			while (%s != 0)\n\
-			{\n\
-				%s = (%s * %" PRIu64 ") %% %" PRIu64 ";\n\
-				%s--;\n\
-			}\n", sc->inoutID, stageRadix - 1, sc->raderIDx, sc->sdataID, sc->inoutID, sc->sdataID, sc->sdataID, g, stageRadix, sc->inoutID);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-			sc->tempLen = sprintf(sc->tempStr, "\
-		}else{\n");
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "\
-		%s = 0;\n", sc->sdataID);
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			for (uint64_t t = 0; t < num_logical_groups; t++) {
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->raderIDx2, sc->fftDim / stageRadix - t * num_logical_subgroups);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-
-				sprintf(tempNum, "%" PRIu64 "", t * num_logical_subgroups);
-				res = VkAddReal(sc, sc->combinedID, sc->raderIDx2, tempNum);
-				if (res != VKFFT_SUCCESS) return res;
-				sprintf(tempNum, "%" PRIu64 "", stageSize);
-				res = VkModReal(sc, sc->stageInvocationID, sc->combinedID, tempNum);
-				if (res != VKFFT_SUCCESS) return res;
-				res = VkSubReal(sc, sc->blockInvocationID, sc->combinedID, sc->stageInvocationID);
-				if (res != VKFFT_SUCCESS) return res;
-				sprintf(tempNum, "%" PRIu64 "", stageRadix);
-				res = VkMulReal(sc, sc->inoutID, sc->blockInvocationID, tempNum);
-				if (res != VKFFT_SUCCESS) return res;
-
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s = %s + %s * %" PRIu64 " + %s;\n", sc->combinedID, sc->inoutID, sc->sdataID, stageSize, sc->stageInvocationID);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				if (sc->localSize[0] > 1) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-			%s = %s * sharedStride + %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_x);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle > 0))) {
-					if (strcmp(stageNormalization, "")) {
-						res = VkMulComplexNumber(sc, sc->regIDs[2 * t + 1], sc->regIDs[2 * t + 1], stageNormalization);
-					}
-					if (res != VKFFT_SUCCESS) return res;
-				}
-				sc->tempLen = sprintf(sc->tempStr, "\
-		sdata[%s]=%s;\n", sc->combinedID, sc->regIDs[2 * t]);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		}\n");
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-			}
-			sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s < %" PRIu64 "){\n", sc->raderIDx, (stageRadix - 1) / 2);
-			res = VkAppendLine(sc);
-			if (res != VKFFT_SUCCESS) return res;
-			if (sc->inline_rader_g_pow) {
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s= g_pow_%" PRIu64 "[%" PRIu64 "-%s];\n", sc->sdataID, stageRadix, (stageRadix - 1) / 2, sc->raderIDx);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-			else {
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s= (%" PRIu64 "-%s);\n\
-			%s=1;\n\
-			while (%s != 0)\n\
-			{\n\
-				%s = (%s * %" PRIu64 ") %% %" PRIu64 ";\n\
-				%s--;\n\
-			}\n", sc->inoutID, (stageRadix - 1) / 2, sc->raderIDx, sc->sdataID, sc->inoutID, sc->sdataID, sc->sdataID, g, stageRadix, sc->inoutID);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-			}
-			for (uint64_t t = 0; t < num_logical_groups; t++) {
-				if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-		if(%s<%" PRIu64 "){\n", sc->raderIDx2, sc->fftDim / stageRadix - t * num_logical_subgroups);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
-				}
-
-				sprintf(tempNum, "%" PRIu64 "", t * num_logical_subgroups);
-				res = VkAddReal(sc, sc->combinedID, sc->raderIDx2, tempNum);
-				if (res != VKFFT_SUCCESS) return res;
-				sprintf(tempNum, "%" PRIu64 "", stageSize);
-				res = VkModReal(sc, sc->stageInvocationID, sc->combinedID, tempNum);
-				if (res != VKFFT_SUCCESS) return res;
-				res = VkSubReal(sc, sc->blockInvocationID, sc->combinedID, sc->stageInvocationID);
-				if (res != VKFFT_SUCCESS) return res;
-				sprintf(tempNum, "%" PRIu64 "", stageRadix);
-				res = VkMulReal(sc, sc->inoutID, sc->blockInvocationID, tempNum);
-				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "\
-			%s = %s + %s * %" PRIu64 " + %s;\n", sc->combinedID, sc->inoutID, sc->sdataID, stageSize, sc->stageInvocationID);
-				res = VkAppendLine(sc);
-				if (res != VKFFT_SUCCESS) return res;
-
-				if (sc->localSize[0] > 1) {
-					sc->tempLen = sprintf(sc->tempStr, "\
-			%s = %s * sharedStride + %s;\n", sc->combinedID, sc->combinedID, sc->gl_LocalInvocationID_x);
-					res = VkAppendLine(sc);
-					if (res != VKFFT_SUCCESS) return res;
 				}
 				if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle > 0))) {
 					if (strcmp(stageNormalization, "")) {
@@ -16621,6 +17370,7 @@ static inline VkFFTResult appendRaderStageStrided(VkFFTSpecializationConstantsLa
 			if (res != VKFFT_SUCCESS) return res;
 		}
 	}
+
 	return res;
 }
 
@@ -16686,7 +17436,7 @@ static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstant
 		numLUTelementsStage = 5;
 		break;
 	default:
-		if (stageRadix < sc->fixMinRaderPrime)
+		if (stageRadix < sc->fixMinRaderPrimeMult)
 			numLUTelementsStage = stageRadix - 1;
 		else
 			numLUTelementsStage = stageRadix;
@@ -17024,7 +17774,7 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 		numLUTelementsStage = 5;
 		break;
 	default:
-		if (stageRadix < sc->fixMinRaderPrime)
+		if (stageRadix < sc->fixMinRaderPrimeMult)
 			numLUTelementsStage = stageRadix - 1;
 		else
 			numLUTelementsStage = stageRadix;
@@ -17263,20 +18013,43 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 }
 static inline VkFFTResult appendRadixStage(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageID, uint64_t shuffleType) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	if ((stageRadix >= sc->fixMinRaderPrime) && (sc->rader_generator[stageID] > 0)) {
-		switch (shuffleType) {
-		case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144: {
-			res = appendRaderStageNonStrided(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, stageRadix, stageID);
-			if (res != VKFFT_SUCCESS) return res;
-			//appendBarrierVkFFT(sc, 1);
-			break;
+	if (sc->rader_generator[stageID]) {
+		for (uint64_t i = 0; i < sc->numRaderPrimes; i++) {
+			if (sc->raderContainer[i].prime == stageRadix) {
+				sc->currentRaderContainer = &sc->raderContainer[i];
+			}
 		}
-		case 1: case 2: case 111: case 121: case 131: case 141: case 143: case 145: {
-			res = appendRaderStageStrided(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, stageRadix, stageID);
-			if (res != VKFFT_SUCCESS) return res;
-			//appendBarrierVkFFT(sc, 1);
-			break;
+		if (sc->currentRaderContainer->type) {
+			switch (shuffleType) {
+			case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144: {
+				res = appendMultRaderStage(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, stageRadix, stageID, 0);
+				if (res != VKFFT_SUCCESS) return res;
+				//appendBarrierVkFFT(sc, 1);
+				break;
+			}
+			case 1: case 2: case 111: case 121: case 131: case 141: case 143: case 145: {
+				res = appendMultRaderStage(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, stageRadix, stageID, 1);
+				if (res != VKFFT_SUCCESS) return res;
+				//appendBarrierVkFFT(sc, 1);
+				break;
+			}
+			}
 		}
+		else {
+			switch (shuffleType) {
+			case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144: {
+				res = appendFFTRaderStage(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, stageRadix, stageID, 0);
+				if (res != VKFFT_SUCCESS) return res;
+				//appendBarrierVkFFT(sc, 1);
+				break;
+			}
+			case 1: case 2: case 111: case 121: case 131: case 141: case 143: case 145: {
+				res = appendFFTRaderStage(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, stageRadix, stageID, 1);
+				if (res != VKFFT_SUCCESS) return res;
+				//appendBarrierVkFFT(sc, 1);
+				break;
+			}
+			}
 		}
 	}
 	else {
@@ -18030,7 +18803,7 @@ static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstants
 }
 static inline VkFFTResult appendRadixShuffle(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageRadixNext, uint64_t stageID, uint64_t shuffleType) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	if ((stageRadix < sc->fixMinRaderPrime) || (sc->rader_generator[stageID] == 0)) {
+	if (sc->rader_generator[stageID] == 0) {
 		switch (shuffleType) {
 		case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144: {
 			res = appendRadixShuffleNonStrided(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, stageRadix, stageRadixNext);
@@ -19257,7 +20030,7 @@ static inline VkFFTResult setWriteFromRegisters(VkFFTSpecializationConstantsLayo
 	switch (writeType) {
 	case 0: //single_c2c
 	{
-		if ((sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) || ((sc->stageRadix[sc->numStages - 1] >= sc->fixMinRaderPrime) && (sc->rader_generator[sc->numStages - 1] > 0))) {
+		if ((sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) || (sc->rader_generator[sc->numStages - 1] > 0)) {
 			sc->writeFromRegisters = 0;
 		}
 		else
@@ -19266,7 +20039,7 @@ static inline VkFFTResult setWriteFromRegisters(VkFFTSpecializationConstantsLayo
 	}
 	case 1: //grouped_c2c
 	{
-		if ((sc->localSize[1] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) || ((sc->stageRadix[sc->numStages - 1] >= sc->fixMinRaderPrime) && (sc->rader_generator[sc->numStages - 1] > 0))) {
+		if ((sc->localSize[1] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) || (sc->rader_generator[sc->numStages - 1] > 0)) {
 			sc->writeFromRegisters = 0;
 			res = appendBarrierVkFFT(sc, 1);
 			if (res != VKFFT_SUCCESS) return res;
@@ -19277,7 +20050,7 @@ static inline VkFFTResult setWriteFromRegisters(VkFFTSpecializationConstantsLayo
 	}
 	case 2: //single_c2c_strided
 	{
-		if ((sc->localSize[1] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) || ((sc->stageRadix[sc->numStages - 1] >= sc->fixMinRaderPrime) && (sc->rader_generator[sc->numStages - 1] > 0))) {
+		if ((sc->localSize[1] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) || (sc->rader_generator[sc->numStages - 1] > 0)) {
 			sc->writeFromRegisters = 0;
 		}
 		else
@@ -19291,7 +20064,7 @@ static inline VkFFTResult setWriteFromRegisters(VkFFTSpecializationConstantsLayo
 	}
 	case 6: //single_c2r
 	{
-		if ((sc->axisSwapped) || (sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) || ((sc->stageRadix[sc->numStages - 1] >= sc->fixMinRaderPrime) && (sc->rader_generator[sc->numStages - 1] > 0))) {
+		if ((sc->axisSwapped) || (sc->localSize[1] > 1) || (sc->localSize[0] * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim) || (sc->rader_generator[sc->numStages - 1] > 0)) {
 			sc->writeFromRegisters = 0;
 		}
 		else
@@ -19492,7 +20265,7 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		uint64_t used_registers_write = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
-
+		if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 		if (sc->reorderFourStep) {
 			if (sc->fftDim == sc->fft_dim_full) {
 				for (uint64_t k = 0; k < sc->registerBoost; k++) {
@@ -19512,7 +20285,7 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 						if (res != VKFFT_SUCCESS) return res;
 						if (sc->axisSwapped) {
 							if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1]);
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[0], sc->size[sc->axis_id + 1]);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
@@ -19524,7 +20297,7 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 						}
 						else {
 							if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1]);
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim, sc->gl_WorkGroupID_y, shiftY2, sc->localSize[1], sc->size[sc->axis_id + 1]);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
@@ -19729,6 +20502,7 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 		else {
 			if (sc->fftDim == sc->fft_dim_full) {
 				uint64_t used_registers_write = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
+				if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 				for (uint64_t k = 0; k < sc->registerBoost; k++) {
 					for (uint64_t i = 0; i < used_registers_write; i++) {
 						if (sc->localSize[1] == 1)
@@ -19746,7 +20520,7 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 						if (res != VKFFT_SUCCESS) return res;
 						if (sc->axisSwapped) {
 							if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[0], sc->size[sc->axis_id + 1]);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
@@ -19758,7 +20532,7 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 						}
 						else {
 							if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
-								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
+								sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + %s*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim, sc->gl_WorkGroupID_y, sc->localSize[1], sc->size[sc->axis_id + 1]);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
@@ -19970,6 +20744,7 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		uint64_t used_registers_write = (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]);
+		if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 		if ((sc->reorderFourStep) && (sc->stageStartSize == 1)) {
 			for (uint64_t k = 0; k < sc->registerBoost; k++) {
 				for (uint64_t i = 0; i < used_registers_write; i++) {
@@ -20127,6 +20902,7 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		uint64_t used_registers_write = (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]);
+		if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 		for (uint64_t k = 0; k < sc->registerBoost; k++) {
 			for (uint64_t i = 0; i < used_registers_write; i++) {
 				sc->tempLen = sprintf(sc->tempStr, "		inoutID = (%s%s) %% (%" PRIu64 ") + %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") * (%" PRIu64 ");\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, (i + k * used_registers_write) * sc->localSize[1], sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim);
@@ -20477,7 +21253,7 @@ if (%s==%" PRIu64 ") \n\
 		}
 		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		uint64_t used_registers_write = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
-
+		if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 		//res = appendZeropadStart(sc);
 		//if (res != VKFFT_SUCCESS) return res;
 		if (sc->reorderFourStep) {
@@ -21745,6 +22521,7 @@ if (%s==%" PRIu64 ") \n\
 			sprintf(shiftY2, " + consts.workGroupShiftY ");
 		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		uint64_t used_registers_write = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
+		if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 		if (sc->reorderFourStep) {
 			//Not implemented
 		}
@@ -21948,6 +22725,7 @@ if (%s==%" PRIu64 ") \n\
 			sprintf(shiftY2, " + consts.workGroupShiftY ");
 		//uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		uint64_t used_registers_write = (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]);
+		if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 		if (sc->reorderFourStep) {
 			//Not implemented
 		}
@@ -22650,7 +23428,7 @@ if (%s==%" PRIu64 ") \n\
 		if (sc->performWorkGroupShift[1])
 			sprintf(shiftY2, " + consts.workGroupShiftY ");
 		uint64_t used_registers_write = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
-
+		if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 		if (sc->reorderFourStep) {
 			//Not implemented
 		}
@@ -22897,7 +23675,7 @@ if (%s==%" PRIu64 ") \n\
 		if (sc->performWorkGroupShift[1])
 			sprintf(shiftY2, " + consts.workGroupShiftY ");
 		uint64_t used_registers_write = (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]);
-
+		if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 		if (sc->reorderFourStep) {
 			//Not implemented
 		}
@@ -23096,6 +23874,7 @@ if (%s==%" PRIu64 ") \n\
 			sprintf(shiftY2, " + consts.workGroupShiftY ");
 		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		uint64_t used_registers_write = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
+		if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 		if (sc->reorderFourStep) {
 			//Not implemented
 		}
@@ -23638,6 +24417,7 @@ if (%s==%" PRIu64 ") \n\
 			sprintf(shiftY2, " + consts.workGroupShiftY ");
 		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		uint64_t used_registers_write = (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]);
+		if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 		if (sc->reorderFourStep) {
 			//Not implemented
 		}
@@ -23823,8 +24603,11 @@ if (%s==%" PRIu64 ") \n\
 static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint64_t type) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	//appendLicense(output);
-	sc->oldLocale = setlocale(LC_ALL, NULL);
-	setlocale(LC_ALL, "C");
+	if (!sc->disableSetLocale) {
+		const char* loc_oldLocale = setlocale(LC_ALL, NULL);
+		strcpy(sc->oldLocale, loc_oldLocale);
+		setlocale(LC_ALL, "C");
+	}
 	sc->output = output;
 	sc->tempStr = (char*)malloc(sizeof(char) * sc->maxTempLength);
 	if (!sc->tempStr) return VKFFT_ERROR_MALLOC_FAILED;
@@ -23858,12 +24641,32 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 	sprintf(sc->gl_LocalInvocationID_x, "gl_LocalInvocationID.x");
 	sprintf(sc->gl_LocalInvocationID_y, "gl_LocalInvocationID.y");
 	sprintf(sc->gl_LocalInvocationID_z, "gl_LocalInvocationID.z");
-	sprintf(sc->gl_GlobalInvocationID_x, "gl_GlobalInvocationID.x");
-	sprintf(sc->gl_GlobalInvocationID_y, "gl_GlobalInvocationID.y");
-	sprintf(sc->gl_GlobalInvocationID_z, "gl_GlobalInvocationID.z");
-	sprintf(sc->gl_WorkGroupID_x, "gl_WorkGroupID.x");
-	sprintf(sc->gl_WorkGroupID_y, "gl_WorkGroupID.y");
-	sprintf(sc->gl_WorkGroupID_z, "gl_WorkGroupID.z");
+	switch (sc->swapComputeWorkGroupID) {
+	case 0:
+		sprintf(sc->gl_GlobalInvocationID_x, "gl_GlobalInvocationID.x");
+		sprintf(sc->gl_GlobalInvocationID_y, "gl_GlobalInvocationID.y");
+		sprintf(sc->gl_GlobalInvocationID_z, "gl_GlobalInvocationID.z");
+		sprintf(sc->gl_WorkGroupID_x, "gl_WorkGroupID.x");
+		sprintf(sc->gl_WorkGroupID_y, "gl_WorkGroupID.y");
+		sprintf(sc->gl_WorkGroupID_z, "gl_WorkGroupID.z");
+		break;
+	case 1:
+		sprintf(sc->gl_GlobalInvocationID_x, "(gl_LocalInvocationID.x + gl_WorkGroupID.y * gl_WorkGroupSize.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(gl_LocalInvocationID.y + gl_WorkGroupID.x * gl_WorkGroupSize.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "gl_GlobalInvocationID.z");
+		sprintf(sc->gl_WorkGroupID_x, "gl_WorkGroupID.y");
+		sprintf(sc->gl_WorkGroupID_y, "gl_WorkGroupID.x");
+		sprintf(sc->gl_WorkGroupID_z, "gl_WorkGroupID.z");
+		break;
+	case 2:
+		sprintf(sc->gl_GlobalInvocationID_x, "(gl_LocalInvocationID.x + gl_WorkGroupID.z * gl_WorkGroupSize.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "gl_GlobalInvocationID.y");
+		sprintf(sc->gl_GlobalInvocationID_z, "(gl_LocalInvocationID.z + gl_WorkGroupID.x * gl_WorkGroupSize.z)");
+		sprintf(sc->gl_WorkGroupID_x, "gl_WorkGroupID.z");
+		sprintf(sc->gl_WorkGroupID_y, "gl_WorkGroupID.y");
+		sprintf(sc->gl_WorkGroupID_z, "gl_WorkGroupID.x");
+		break;
+	}
 	sprintf(sc->gl_WorkGroupSize_x, "gl_WorkGroupSize.x");
 	sprintf(sc->gl_WorkGroupSize_y, "gl_WorkGroupSize.y");
 	sprintf(sc->gl_WorkGroupSize_z, "gl_WorkGroupSize.z");
@@ -23887,12 +24690,32 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 	sprintf(sc->gl_LocalInvocationID_x, "threadIdx.x");
 	sprintf(sc->gl_LocalInvocationID_y, "threadIdx.y");
 	sprintf(sc->gl_LocalInvocationID_z, "threadIdx.z");
-	sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.x * blockDim.x)");
-	sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.y * blockDim.y)");
-	sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.z * blockDim.z)");
-	sprintf(sc->gl_WorkGroupID_x, "blockIdx.x");
-	sprintf(sc->gl_WorkGroupID_y, "blockIdx.y");
-	sprintf(sc->gl_WorkGroupID_z, "blockIdx.z");
+	switch (sc->swapComputeWorkGroupID) {
+	case 0:
+		sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.x * blockDim.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.y * blockDim.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.z * blockDim.z)");
+		sprintf(sc->gl_WorkGroupID_x, "blockIdx.x");
+		sprintf(sc->gl_WorkGroupID_y, "blockIdx.y");
+		sprintf(sc->gl_WorkGroupID_z, "blockIdx.z");
+		break;
+	case 1:
+		sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.y * blockDim.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.x * blockDim.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.z * blockDim.z)");
+		sprintf(sc->gl_WorkGroupID_x, "blockIdx.y");
+		sprintf(sc->gl_WorkGroupID_y, "blockIdx.x");
+		sprintf(sc->gl_WorkGroupID_z, "blockIdx.z");
+		break;
+	case 2:
+		sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.z * blockDim.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.y * blockDim.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.x * blockDim.z)");
+		sprintf(sc->gl_WorkGroupID_x, "blockIdx.z");
+		sprintf(sc->gl_WorkGroupID_y, "blockIdx.y");
+		sprintf(sc->gl_WorkGroupID_z, "blockIdx.x");
+		break;
+	}
 	sprintf(sc->gl_WorkGroupSize_x, "blockDim.x");
 	sprintf(sc->gl_WorkGroupSize_y, "blockDim.y");
 	sprintf(sc->gl_WorkGroupSize_z, "blockDim.z");
@@ -23916,12 +24739,32 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 	sprintf(sc->gl_LocalInvocationID_x, "threadIdx.x");
 	sprintf(sc->gl_LocalInvocationID_y, "threadIdx.y");
 	sprintf(sc->gl_LocalInvocationID_z, "threadIdx.z");
-	sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.x * blockDim.x)");
-	sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.y * blockDim.y)");
-	sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.z * blockDim.z)");
-	sprintf(sc->gl_WorkGroupID_x, "blockIdx.x");
-	sprintf(sc->gl_WorkGroupID_y, "blockIdx.y");
-	sprintf(sc->gl_WorkGroupID_z, "blockIdx.z");
+	switch (sc->swapComputeWorkGroupID) {
+	case 0:
+		sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.x * blockDim.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.y * blockDim.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.z * blockDim.z)");
+		sprintf(sc->gl_WorkGroupID_x, "blockIdx.x");
+		sprintf(sc->gl_WorkGroupID_y, "blockIdx.y");
+		sprintf(sc->gl_WorkGroupID_z, "blockIdx.z");
+		break;
+	case 1:
+		sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.y * blockDim.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.x * blockDim.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.z * blockDim.z)");
+		sprintf(sc->gl_WorkGroupID_x, "blockIdx.y");
+		sprintf(sc->gl_WorkGroupID_y, "blockIdx.x");
+		sprintf(sc->gl_WorkGroupID_z, "blockIdx.z");
+		break;
+	case 2:
+		sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.z * blockDim.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.y * blockDim.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.x * blockDim.z)");
+		sprintf(sc->gl_WorkGroupID_x, "blockIdx.z");
+		sprintf(sc->gl_WorkGroupID_y, "blockIdx.y");
+		sprintf(sc->gl_WorkGroupID_z, "blockIdx.x");
+		break;
+	}
 	sprintf(sc->gl_WorkGroupSize_x, "blockDim.x");
 	sprintf(sc->gl_WorkGroupSize_y, "blockDim.y");
 	sprintf(sc->gl_WorkGroupSize_z, "blockDim.z");
@@ -23945,12 +24788,32 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 	sprintf(sc->gl_LocalInvocationID_x, "get_local_id(0)");
 	sprintf(sc->gl_LocalInvocationID_y, "get_local_id(1)");
 	sprintf(sc->gl_LocalInvocationID_z, "get_local_id(2)");
-	sprintf(sc->gl_GlobalInvocationID_x, "get_global_id(0)");
-	sprintf(sc->gl_GlobalInvocationID_y, "get_global_id(1)");
-	sprintf(sc->gl_GlobalInvocationID_z, "get_global_id(2)");
-	sprintf(sc->gl_WorkGroupID_x, "get_group_id(0)");
-	sprintf(sc->gl_WorkGroupID_y, "get_group_id(1)");
-	sprintf(sc->gl_WorkGroupID_z, "get_group_id(2)");
+	switch (sc->swapComputeWorkGroupID) {
+	case 0:
+		sprintf(sc->gl_GlobalInvocationID_x, "get_global_id(0)");
+		sprintf(sc->gl_GlobalInvocationID_y, "get_global_id(1)");
+		sprintf(sc->gl_GlobalInvocationID_z, "get_global_id(2)");
+		sprintf(sc->gl_WorkGroupID_x, "get_group_id(0)");
+		sprintf(sc->gl_WorkGroupID_y, "get_group_id(1)");
+		sprintf(sc->gl_WorkGroupID_z, "get_group_id(2)");
+		break;
+	case 1:
+		sprintf(sc->gl_GlobalInvocationID_x, "(get_local_id(0) + get_group_id(1) * get_local_size(0))");
+		sprintf(sc->gl_GlobalInvocationID_y, "(get_local_id(1) + get_group_id(0) * get_local_size(1))");
+		sprintf(sc->gl_GlobalInvocationID_z, "get_global_id(2)");
+		sprintf(sc->gl_WorkGroupID_x, "get_group_id(1)");
+		sprintf(sc->gl_WorkGroupID_y, "get_group_id(0)");
+		sprintf(sc->gl_WorkGroupID_z, "get_group_id(2)");
+		break;
+	case 2:
+		sprintf(sc->gl_GlobalInvocationID_x, "(get_local_id(0) + get_group_id(2) * get_local_size(0))");
+		sprintf(sc->gl_GlobalInvocationID_y, "get_global_id(1)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(get_local_id(2) + get_group_id(0) * get_local_size(2))");
+		sprintf(sc->gl_WorkGroupID_x, "get_group_id(2)");
+		sprintf(sc->gl_WorkGroupID_y, "get_group_id(1)");
+		sprintf(sc->gl_WorkGroupID_z, "get_group_id(0)");
+		break;
+	}
 	sprintf(sc->gl_WorkGroupSize_x, "get_local_size(0)");
 	sprintf(sc->gl_WorkGroupSize_y, "get_local_size(1)");
 	sprintf(sc->gl_WorkGroupSize_z, "get_local_size(2)");
@@ -24498,16 +25361,27 @@ static inline void freeShaderGenVkFFT(VkFFTSpecializationConstantsLayout* sc) {
 		free(sc->regIDs);
 		sc->regIDs = 0;
 	}
-	if (sc->oldLocale)
-	{
-		setlocale(LC_ALL, sc->oldLocale);
+	if (!sc->disableSetLocale) {
+		if (sc->oldLocale)
+		{
+			setlocale(LC_ALL, sc->oldLocale);
+			memset(sc->oldLocale, 0, 100*sizeof(char));
+		}
+	}
+	if (sc->numRaderPrimes) {
+		free(sc->raderContainer);
+		sc->raderContainer = 0;
+		sc->currentRaderContainer = 0;
 	}
 }
 static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeInputMemory, const char* floatTypeOutputMemory, const char* floatTypeKernelMemory, const char* uintType, uint64_t type) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	//appendLicense(output);
-	sc->oldLocale = setlocale(LC_ALL, NULL);
-	setlocale(LC_ALL, "C");
+	if (!sc->disableSetLocale) {
+		const char* loc_oldLocale = setlocale(LC_ALL, NULL);
+		strcpy(sc->oldLocale, loc_oldLocale);
+		setlocale(LC_ALL, "C");
+	}
 	sc->output = output;
 	sc->tempStr = (char*)malloc(sizeof(char) * sc->maxTempLength);
 	if (!sc->tempStr) return VKFFT_ERROR_MALLOC_FAILED;
@@ -24516,7 +25390,9 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 	char vecType[30];
 	char vecTypeInput[30];
 	char vecTypeOutput[30];
+	char uintType_32[30];
 #if(VKFFT_BACKEND==0)
+	sprintf(uintType_32, "uint");
 	if (!strcmp(floatType, "half")) sprintf(vecType, "f16vec2");
 	if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
@@ -24529,18 +25405,39 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 	sprintf(sc->gl_LocalInvocationID_x, "gl_LocalInvocationID.x");
 	sprintf(sc->gl_LocalInvocationID_y, "gl_LocalInvocationID.y");
 	sprintf(sc->gl_LocalInvocationID_z, "gl_LocalInvocationID.z");
-	sprintf(sc->gl_GlobalInvocationID_x, "gl_GlobalInvocationID.x");
-	sprintf(sc->gl_GlobalInvocationID_y, "gl_GlobalInvocationID.y");
-	sprintf(sc->gl_GlobalInvocationID_z, "gl_GlobalInvocationID.z");
-	sprintf(sc->gl_WorkGroupID_x, "gl_WorkGroupID.x");
-	sprintf(sc->gl_WorkGroupID_y, "gl_WorkGroupID.y");
-	sprintf(sc->gl_WorkGroupID_z, "gl_WorkGroupID.z");
+	switch (sc->swapComputeWorkGroupID) {
+	case 0:
+		sprintf(sc->gl_GlobalInvocationID_x, "gl_GlobalInvocationID.x");
+		sprintf(sc->gl_GlobalInvocationID_y, "gl_GlobalInvocationID.y");
+		sprintf(sc->gl_GlobalInvocationID_z, "gl_GlobalInvocationID.z");
+		sprintf(sc->gl_WorkGroupID_x, "gl_WorkGroupID.x");
+		sprintf(sc->gl_WorkGroupID_y, "gl_WorkGroupID.y");
+		sprintf(sc->gl_WorkGroupID_z, "gl_WorkGroupID.z");
+		break;
+	case 1:
+		sprintf(sc->gl_GlobalInvocationID_x, "(gl_LocalInvocationID.x + gl_WorkGroupID.y * gl_WorkGroupSize.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(gl_LocalInvocationID.y + gl_WorkGroupID.x * gl_WorkGroupSize.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "gl_GlobalInvocationID.z");
+		sprintf(sc->gl_WorkGroupID_x, "gl_WorkGroupID.y");
+		sprintf(sc->gl_WorkGroupID_y, "gl_WorkGroupID.x");
+		sprintf(sc->gl_WorkGroupID_z, "gl_WorkGroupID.z");
+		break;
+	case 2:
+		sprintf(sc->gl_GlobalInvocationID_x, "(gl_LocalInvocationID.x + gl_WorkGroupID.z * gl_WorkGroupSize.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "gl_GlobalInvocationID.y");
+		sprintf(sc->gl_GlobalInvocationID_z, "(gl_LocalInvocationID.z + gl_WorkGroupID.x * gl_WorkGroupSize.z)");
+		sprintf(sc->gl_WorkGroupID_x, "gl_WorkGroupID.z");
+		sprintf(sc->gl_WorkGroupID_y, "gl_WorkGroupID.y");
+		sprintf(sc->gl_WorkGroupID_z, "gl_WorkGroupID.x");
+		break;
+	}
 	sprintf(sc->gl_WorkGroupSize_x, "gl_WorkGroupSize.x");
 	sprintf(sc->gl_WorkGroupSize_y, "gl_WorkGroupSize.y");
 	sprintf(sc->gl_WorkGroupSize_z, "gl_WorkGroupSize.z");
 	sprintf(sc->gl_SubgroupInvocationID, "gl_SubgroupInvocationID");
 	sprintf(sc->gl_SubgroupID, "gl_SubgroupID");
 #elif(VKFFT_BACKEND==1)
+	sprintf(uintType_32, "unsigned int");
 	if (!strcmp(floatType, "half")) sprintf(vecType, "f16vec2");
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
@@ -24553,18 +25450,39 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 	sprintf(sc->gl_LocalInvocationID_x, "threadIdx.x");
 	sprintf(sc->gl_LocalInvocationID_y, "threadIdx.y");
 	sprintf(sc->gl_LocalInvocationID_z, "threadIdx.z");
-	sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.x * blockDim.x)");
-	sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.y * blockDim.y)");
-	sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.z * blockDim.z)");
-	sprintf(sc->gl_WorkGroupID_x, "blockIdx.x");
-	sprintf(sc->gl_WorkGroupID_y, "blockIdx.y");
-	sprintf(sc->gl_WorkGroupID_z, "blockIdx.z");
+	switch (sc->swapComputeWorkGroupID) {
+	case 0:
+		sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.x * blockDim.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.y * blockDim.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.z * blockDim.z)");
+		sprintf(sc->gl_WorkGroupID_x, "blockIdx.x");
+		sprintf(sc->gl_WorkGroupID_y, "blockIdx.y");
+		sprintf(sc->gl_WorkGroupID_z, "blockIdx.z");
+		break;
+	case 1:
+		sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.y * blockDim.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.x * blockDim.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.z * blockDim.z)");
+		sprintf(sc->gl_WorkGroupID_x, "blockIdx.y");
+		sprintf(sc->gl_WorkGroupID_y, "blockIdx.x");
+		sprintf(sc->gl_WorkGroupID_z, "blockIdx.z");
+		break;
+	case 2:
+		sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.z * blockDim.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.y * blockDim.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.x * blockDim.z)");
+		sprintf(sc->gl_WorkGroupID_x, "blockIdx.z");
+		sprintf(sc->gl_WorkGroupID_y, "blockIdx.y");
+		sprintf(sc->gl_WorkGroupID_z, "blockIdx.x");
+		break;
+	}
 	sprintf(sc->gl_WorkGroupSize_x, "blockDim.x");
 	sprintf(sc->gl_WorkGroupSize_y, "blockDim.y");
 	sprintf(sc->gl_WorkGroupSize_z, "blockDim.z");
 	sprintf(sc->gl_SubgroupInvocationID, "(threadIdx.x %% %" PRIu64 ")", sc->warpSize);
 	sprintf(sc->gl_SubgroupID, "(threadIdx.x / %" PRIu64 ")", sc->warpSize);
 #elif(VKFFT_BACKEND==2)
+	sprintf(uintType_32, "unsigned int");
 	if (!strcmp(floatType, "half")) sprintf(vecType, "f16vec2");
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
@@ -24577,18 +25495,39 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 	sprintf(sc->gl_LocalInvocationID_x, "threadIdx.x");
 	sprintf(sc->gl_LocalInvocationID_y, "threadIdx.y");
 	sprintf(sc->gl_LocalInvocationID_z, "threadIdx.z");
-	sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.x * blockDim.x)");
-	sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.y * blockDim.y)");
-	sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.z * blockDim.z)");
-	sprintf(sc->gl_WorkGroupID_x, "blockIdx.x");
-	sprintf(sc->gl_WorkGroupID_y, "blockIdx.y");
-	sprintf(sc->gl_WorkGroupID_z, "blockIdx.z");
+	switch (sc->swapComputeWorkGroupID) {
+	case 0:
+		sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.x * blockDim.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.y * blockDim.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.z * blockDim.z)");
+		sprintf(sc->gl_WorkGroupID_x, "blockIdx.x");
+		sprintf(sc->gl_WorkGroupID_y, "blockIdx.y");
+		sprintf(sc->gl_WorkGroupID_z, "blockIdx.z");
+		break;
+	case 1:
+		sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.y * blockDim.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.x * blockDim.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.z * blockDim.z)");
+		sprintf(sc->gl_WorkGroupID_x, "blockIdx.y");
+		sprintf(sc->gl_WorkGroupID_y, "blockIdx.x");
+		sprintf(sc->gl_WorkGroupID_z, "blockIdx.z");
+		break;
+	case 2:
+		sprintf(sc->gl_GlobalInvocationID_x, "(threadIdx.x + blockIdx.z * blockDim.x)");
+		sprintf(sc->gl_GlobalInvocationID_y, "(threadIdx.y + blockIdx.y * blockDim.y)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(threadIdx.z + blockIdx.x * blockDim.z)");
+		sprintf(sc->gl_WorkGroupID_x, "blockIdx.z");
+		sprintf(sc->gl_WorkGroupID_y, "blockIdx.y");
+		sprintf(sc->gl_WorkGroupID_z, "blockIdx.x");
+		break;
+	}
 	sprintf(sc->gl_WorkGroupSize_x, "blockDim.x");
 	sprintf(sc->gl_WorkGroupSize_y, "blockDim.y");
 	sprintf(sc->gl_WorkGroupSize_z, "blockDim.z");
 	sprintf(sc->gl_SubgroupInvocationID, "(threadIdx.x %% %" PRIu64 ")", sc->warpSize);
 	sprintf(sc->gl_SubgroupID, "(threadIdx.x / %" PRIu64 ")", sc->warpSize);
 #elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+	sprintf(uintType_32, "unsigned int");
 	if (!strcmp(floatType, "half")) sprintf(vecType, "f16vec2");
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
@@ -24601,12 +25540,32 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 	sprintf(sc->gl_LocalInvocationID_x, "get_local_id(0)");
 	sprintf(sc->gl_LocalInvocationID_y, "get_local_id(1)");
 	sprintf(sc->gl_LocalInvocationID_z, "get_local_id(2)");
-	sprintf(sc->gl_GlobalInvocationID_x, "get_global_id(0)");
-	sprintf(sc->gl_GlobalInvocationID_y, "get_global_id(1)");
-	sprintf(sc->gl_GlobalInvocationID_z, "get_global_id(2)");
-	sprintf(sc->gl_WorkGroupID_x, "get_group_id(0)");
-	sprintf(sc->gl_WorkGroupID_y, "get_group_id(1)");
-	sprintf(sc->gl_WorkGroupID_z, "get_group_id(2)");
+	switch (sc->swapComputeWorkGroupID) {
+	case 0:
+		sprintf(sc->gl_GlobalInvocationID_x, "get_global_id(0)");
+		sprintf(sc->gl_GlobalInvocationID_y, "get_global_id(1)");
+		sprintf(sc->gl_GlobalInvocationID_z, "get_global_id(2)");
+		sprintf(sc->gl_WorkGroupID_x, "get_group_id(0)");
+		sprintf(sc->gl_WorkGroupID_y, "get_group_id(1)");
+		sprintf(sc->gl_WorkGroupID_z, "get_group_id(2)");
+		break;
+	case 1:
+		sprintf(sc->gl_GlobalInvocationID_x, "(get_local_id(0) + get_group_id(1) * get_local_size(0))");
+		sprintf(sc->gl_GlobalInvocationID_y, "(get_local_id(1) + get_group_id(0) * get_local_size(1))");
+		sprintf(sc->gl_GlobalInvocationID_z, "get_global_id(2)");
+		sprintf(sc->gl_WorkGroupID_x, "get_group_id(1)");
+		sprintf(sc->gl_WorkGroupID_y, "get_group_id(0)");
+		sprintf(sc->gl_WorkGroupID_z, "get_group_id(2)");
+		break;
+	case 2:
+		sprintf(sc->gl_GlobalInvocationID_x, "(get_local_id(0) + get_group_id(2) * get_local_size(0))");
+		sprintf(sc->gl_GlobalInvocationID_y, "get_global_id(1)");
+		sprintf(sc->gl_GlobalInvocationID_z, "(get_local_id(2) + get_group_id(0) * get_local_size(2))");
+		sprintf(sc->gl_WorkGroupID_x, "get_group_id(2)");
+		sprintf(sc->gl_WorkGroupID_y, "get_group_id(1)");
+		sprintf(sc->gl_WorkGroupID_z, "get_group_id(0)");
+		break;
+	}
 	sprintf(sc->gl_WorkGroupSize_x, "get_local_size(0)");
 	sprintf(sc->gl_WorkGroupSize_y, "get_local_size(1)");
 	sprintf(sc->gl_WorkGroupSize_z, "get_local_size(2)");
@@ -24703,6 +25662,14 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 	}
 	if (sc->LUT) {
 		res = appendLUTLayoutVkFFT(sc, id, floatType);
+		if (res != VKFFT_SUCCESS) {
+			freeShaderGenVkFFT(sc);
+			return res;
+		}
+		id++;
+	}
+	if (sc->raderUintLUT) {
+		res = appendRaderUintLUTLayoutVkFFT(sc, id);
 		if (res != VKFFT_SUCCESS) {
 			freeShaderGenVkFFT(sc);
 			return res;
@@ -24854,6 +25821,14 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 			return res;
 		}
 	}
+	if (sc->raderUintLUT) {
+		sc->tempLen = sprintf(sc->tempStr, ", %s* g_pow", uintType_32);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) {
+			freeShaderGenVkFFT(sc);
+			return res;
+		}
+	}
 	if (sc->BluesteinConvolutionStep) {
 		sc->tempLen = sprintf(sc->tempStr, ", %s* BluesteinConvolutionKernel", vecType);
 		res = VkAppendLine(sc);
@@ -24993,6 +25968,14 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 			return res;
 		}
 	}
+	if (sc->raderUintLUT) {
+		sc->tempLen = sprintf(sc->tempStr, ", %s* g_pow", uintType_32);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) {
+			freeShaderGenVkFFT(sc);
+			return res;
+		}
+	}
 	if (sc->BluesteinConvolutionStep) {
 		sc->tempLen = sprintf(sc->tempStr, ", %s* BluesteinConvolutionKernel", vecType);
 		res = VkAppendLine(sc);
@@ -25126,6 +26109,14 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 			return res;
 		}
 	}
+	if (sc->raderUintLUT) {
+		sc->tempLen = sprintf(sc->tempStr, ", __global %s* g_pow", uintType_32);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) {
+			freeShaderGenVkFFT(sc);
+			return res;
+		}
+	}
 	if (sc->BluesteinConvolutionStep) {
 		sc->tempLen = sprintf(sc->tempStr, ", __global %s* BluesteinConvolutionKernel", vecType);
 		res = VkAppendLine(sc);
@@ -25206,7 +26197,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		freeShaderGenVkFFT(sc);
 		return res;
 	}
-	if (((sc->stageRadix[0] < sc->fixMinRaderPrime) || (sc->rader_generator[0] == 0))) {
+	if (!sc->useRader) {
 		res = appendBoostThreadDataReorder(sc, floatType, uintType, locType, 1);
 		if (res != VKFFT_SUCCESS) {
 			freeShaderGenVkFFT(sc);
@@ -25450,7 +26441,8 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 			stageAngle /= sc->stageRadix[i];
 		}
 	}
-	if (((sc->stageRadix[sc->numStages - 1] < sc->fixMinRaderPrime) || (sc->rader_generator[sc->numStages - 1] == 0))) {
+	if (!sc->useRader) {
+		//if (((sc->stageRadix[sc->numStages - 1] < sc->fixMinRaderPrimeMult) || (sc->rader_generator[sc->numStages - 1] == 0))) {
 		res = appendBoostThreadDataReorder(sc, floatType, uintType, locType, 0);
 		if (res != VKFFT_SUCCESS) {
 			freeShaderGenVkFFT(sc);
@@ -25587,6 +26579,51 @@ static inline VkFFTResult transferDataFromCPU(VkFFTApplication* app, void* arr, 
 	vkFreeMemory(app->configuration.device[0], stagingBufferMemory, 0);
 	return resFFT;
 }
+static inline VkFFTResult transferDataToCPU(VkFFTApplication* app, void* arr, VkBuffer* buffer, VkDeviceSize bufferSize) {
+	VkResult res = VK_SUCCESS;
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+	uint64_t stagingBufferSize = bufferSize;
+	VkBuffer stagingBuffer = { 0 };
+	VkDeviceMemory stagingBufferMemory = { 0 };
+	resFFT = allocateFFTBuffer(app, &stagingBuffer, &stagingBufferMemory, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
+	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+	commandBufferAllocateInfo.commandPool = app->configuration.commandPool[0];
+	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	commandBufferAllocateInfo.commandBufferCount = 1;
+	VkCommandBuffer commandBuffer = { 0 };
+	res = vkAllocateCommandBuffers(app->configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
+	VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
+	VkBufferCopy copyRegion = { 0 };
+	copyRegion.srcOffset = 0;
+	copyRegion.dstOffset = 0;
+	copyRegion.size = stagingBufferSize;
+	vkCmdCopyBuffer(commandBuffer, buffer[0], stagingBuffer, 1, &copyRegion);
+	res = vkEndCommandBuffer(commandBuffer);
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffer;
+	res = vkQueueSubmit(app->configuration.queue[0], 1, &submitInfo, app->configuration.fence[0]);
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+	res = vkWaitForFences(app->configuration.device[0], 1, app->configuration.fence, VK_TRUE, 100000000000);
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+	res = vkResetFences(app->configuration.device[0], 1, app->configuration.fence);
+	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
+	vkFreeCommandBuffers(app->configuration.device[0], app->configuration.commandPool[0], 1, &commandBuffer);
+	void* data;
+	res = vkMapMemory(app->configuration.device[0], stagingBufferMemory, 0, stagingBufferSize, 0, &data);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
+	memcpy(arr, data, stagingBufferSize);
+	vkUnmapMemory(app->configuration.device[0], stagingBufferMemory);
+	vkDestroyBuffer(app->configuration.device[0], stagingBuffer, 0);
+	vkFreeMemory(app->configuration.device[0], stagingBufferMemory, 0);
+	return resFFT;
+}
 #endif
 static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
 #if(VKFFT_BACKEND==0)
@@ -25709,6 +26746,12 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 		}
 	}
 #endif
+	if (app->numRaderFFTPrimes) {
+		for (uint64_t i = 0; i < app->numRaderFFTPrimes; i++) {
+			free(app->raderFFTkernel[i]);
+			app->raderFFTkernel[i] = 0;
+		}
+	}
 	if (!app->configuration.userTempBuffer) {
 		if (app->configuration.allocateTempBuffer) {
 			app->configuration.allocateTempBuffer = 0;
@@ -25755,6 +26798,32 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 		}
 	}
 	for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
+		if (app->configuration.useRaderUintLUT) {
+			for (uint64_t j = 0; j < 4; j++) {
+				if (app->bufferRaderUintLUT[i][j]) {
+#if(VKFFT_BACKEND==0)
+					vkDestroyBuffer(app->configuration.device[0], app->bufferRaderUintLUT[i][j], 0);
+					app->bufferRaderUintLUT[i][j] = 0;
+					vkFreeMemory(app->configuration.device[0], app->bufferRaderUintLUTDeviceMemory[i][j], 0);
+					app->bufferRaderUintLUTDeviceMemory[i][j] = 0;
+#elif(VKFFT_BACKEND==1)
+					res_t = cudaFree(app->bufferRaderUintLUT[i][j]);
+					app->bufferRaderUintLUT[i][j] = 0;
+#elif(VKFFT_BACKEND==2)
+					res_t = hipFree(app->bufferRaderUintLUT[i][j]);
+					app->bufferRaderUintLUT[i][j] = 0;
+#elif(VKFFT_BACKEND==3)
+					cl_int res = 0;
+					res = clReleaseMemObject(app->bufferRaderUintLUT[i][j]);
+					app->bufferRaderUintLUT[i][j] = 0;
+#elif(VKFFT_BACKEND==4)
+					ze_result_t res = ZE_RESULT_SUCCESS;
+					res = zeMemFree(app->configuration.context[0], app->bufferRaderUintLUT[i][j]);
+					app->bufferRaderUintLUT[i][j] = 0;
+#endif
+				}
+			}
+		}
 		if (app->useBluesteinFFT[i]) {
 #if(VKFFT_BACKEND==0)
 			if (app->bufferBluestein[i] != 0) {
@@ -27248,6 +28317,557 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t fft_length, uint64
 	else isGoodSequence[0] = 1;
 	return VKFFT_SUCCESS;
 }
+static inline VkFFTResult VkFFTGetRegistersPerThreadOptimizeShared(uint64_t fft_length, uint64_t* loc_multipliers, uint64_t* registers_per_thread_per_radix, uint64_t* registers_per_thread, uint64_t* min_registers_per_thread) {
+	//try to split sequence in supported radix to optimize sm usage
+	uint64_t numStages = 20;
+	uint64_t fft_length_copy;
+	uint64_t stages[20];
+	uint64_t k = 0;
+	for (uint64_t i = 0; i < 33; i++) {
+		registers_per_thread_per_radix[i] = 0;
+	}
+	registers_per_thread[0] = 0;
+	min_registers_per_thread[0] = -1;
+
+	for (uint64_t i = 1; i < numStages; i++) {
+		fft_length_copy = fft_length;
+		uint64_t min_comb_radix = (uint64_t)floor(pow(fft_length_copy, 1.0 / i));
+		if (min_comb_radix <= 16) {
+			for (uint64_t j = 0; j < 20; j++) {
+				stages[j] = 0;
+			}
+			k = 0;
+			for (uint64_t j = min_comb_radix; j <= 16; j++) {
+				if (k < i) {
+					if ((fft_length_copy % j) == 0) {
+						fft_length_copy /= j;
+						min_comb_radix = (uint64_t)floor(pow(fft_length_copy, 1.0 / (i - k - 1)));
+
+						stages[k] = j;
+						j = min_comb_radix - 1;
+						k++;
+					}
+				}
+			}
+			if ((fft_length_copy == 1) && (k == i)) break;
+		}
+	}
+	for (uint64_t i = 0; i < k; i++) {
+		for (uint64_t j = 2; j <= stages[i]; j++) {
+			if ((stages[i] % j) == 0) {
+				if (registers_per_thread_per_radix[j] < stages[i])
+					registers_per_thread_per_radix[j] = stages[i];
+			}
+		}
+	}
+	for (uint64_t i = 0; i < 33; i++) {
+		if ((registers_per_thread_per_radix[i] != 0) && (registers_per_thread_per_radix[i] > registers_per_thread[0])) registers_per_thread[0] = registers_per_thread_per_radix[i];
+	}
+
+	for (uint64_t i = 0; i < 33; i++) {
+		if (registers_per_thread_per_radix[i] != 0) {
+			double ratio = (registers_per_thread[0] / (double)registers_per_thread_per_radix[i]);
+			uint64_t ratio_ceil = (uint64_t)ceil(ratio);
+			uint64_t ratio_floor = (uint64_t)floor(ratio);
+			double ratio2 = ((registers_per_thread_per_radix[i] * ratio_ceil) / (double)registers_per_thread[0]);
+			double ratio3 = (registers_per_thread[0] / (double)(registers_per_thread_per_radix[i] * ratio_floor));
+			if (ratio2 > ratio3) registers_per_thread_per_radix[i] *= ratio_floor;
+			else {
+				registers_per_thread_per_radix[i] *= ratio_ceil;
+			}
+		}
+	}
+	registers_per_thread[0] = 0;
+	for (uint64_t i = 0; i < 33; i++) {
+		if ((registers_per_thread_per_radix[i] != 0) && (registers_per_thread_per_radix[i] < min_registers_per_thread[0])) min_registers_per_thread[0] = registers_per_thread_per_radix[i];
+		if ((registers_per_thread_per_radix[i] != 0) && (registers_per_thread_per_radix[i] > registers_per_thread[0])) registers_per_thread[0] = registers_per_thread_per_radix[i];
+	}
+	return VKFFT_SUCCESS;
+}
+static inline VkFFTResult VkFFTConstructRaderTree(VkFFTApplication* app, VkFFTRaderContainer** raderContainer_input, uint64_t* tempSequence, uint64_t* numRaderPrimes, uint64_t fft_radix_part) {
+	VkFFTResult res = VKFFT_SUCCESS;
+	uint64_t locTempSequence = tempSequence[0];
+	uint64_t tempSequence_copy = tempSequence[0];
+	uint64_t limit = ((tempSequence[0] + 1) > app->configuration.fixMaxRaderPrimeFFT) ? app->configuration.fixMaxRaderPrimeFFT : (tempSequence[0] + 1);
+	for (uint64_t i = app->configuration.fixMinRaderPrimeMult; i < limit; i++) {
+		if (locTempSequence % i == 0) {
+			numRaderPrimes[0]++;
+			while (locTempSequence % i == 0) locTempSequence /= i;
+		}
+	}
+	for (uint64_t i = app->configuration.fixMinRaderPrimeMult; i < app->configuration.fixMaxRaderPrimeMult; i++) {
+		if (locTempSequence % i == 0) {
+			numRaderPrimes[0]++;
+			while (locTempSequence % i == 0) locTempSequence /= i;
+		}
+	}
+
+	raderContainer_input[0] = (VkFFTRaderContainer*)calloc(sizeof(VkFFTRaderContainer), numRaderPrimes[0]);
+	if (raderContainer_input[0] == 0) return VKFFT_ERROR_MALLOC_FAILED;
+	VkFFTRaderContainer* raderContainer = raderContainer_input[0];
+	uint64_t tempSequence_temp = 1;
+	limit = ((tempSequence[0] + 1) > app->configuration.fixMaxRaderPrimeFFT) ? app->configuration.fixMaxRaderPrimeFFT : (tempSequence[0] + 1);
+	for (uint64_t i = app->configuration.fixMinRaderPrimeMult; i < limit; i++) {
+		if (tempSequence[0] % i == 0) {
+			if (i < app->configuration.fixMinRaderPrimeFFT) {
+				tempSequence_temp *= i;
+				tempSequence[0] /= i;
+				i--;
+				continue;
+			}
+			//Sophie Germain safe prime check
+			uint64_t tempSequence2 = i - 1;
+			for (uint64_t j = 2; j < app->configuration.fixMinRaderPrimeMult; j++) {
+				if (tempSequence2 % j == 0) {
+					tempSequence2 /= j;
+					j--;
+				}
+			}
+			if (tempSequence2 != 1) {
+				tempSequence_temp *= i;
+				tempSequence[0] /= i;
+				i--;
+				continue;
+			}
+			tempSequence[0] /= i;
+			for (uint64_t j = 0; j < numRaderPrimes[0]; j++) {
+				if (raderContainer[j].prime == i)
+				{
+					raderContainer[j].multiplier++;
+					j = numRaderPrimes[0];
+				}
+				else if (raderContainer[j].prime == 0) {
+					raderContainer[j].type = 0;
+					raderContainer[j].prime = i;
+					raderContainer[j].multiplier = 1;
+					j = numRaderPrimes[0];
+				}
+			}
+			i--;
+		}
+	}
+	tempSequence[0] *= tempSequence_temp;
+	for (uint64_t i = app->configuration.fixMinRaderPrimeMult; i < app->configuration.fixMaxRaderPrimeMult; i++) {
+		if (tempSequence[0] % i == 0) {
+			tempSequence[0] /= i;
+			for (uint64_t j = 0; j < numRaderPrimes[0]; j++) {
+				if (raderContainer[j].prime == i)
+				{
+					raderContainer[j].multiplier++;
+					j = numRaderPrimes[0];
+				}
+				else if (raderContainer[j].prime == 0) {
+					raderContainer[j].type = 1;
+					raderContainer[j].prime = i;
+					raderContainer[j].multiplier = 1;
+					j = numRaderPrimes[0];
+				}
+			}
+			i--;
+		}
+	}
+	//main loop for all primes
+	for (uint64_t i = 0; i < numRaderPrimes[0]; i++) {
+		//generator loop
+		for (uint64_t r = 2; r < raderContainer[i].prime; r++) {
+			uint64_t test = r;
+			for (uint64_t iter = 0; iter < raderContainer[i].prime - 2; iter++) {
+				if (test == 1) {
+					test = 0;
+					iter = raderContainer[i].prime;
+				}
+				test = ((test * r) % raderContainer[i].prime);
+			}
+			if (test == 1) {
+				raderContainer[i].generator = r;
+				r = raderContainer[i].prime;
+			}
+		}
+
+		//subsplit and information initialization
+		if (raderContainer[i].type) {//Multiplication
+			raderContainer[i].registers_per_thread = 2;
+			raderContainer[i].min_registers_per_thread = 2;
+		}
+		else {//FFT
+			locTempSequence = raderContainer[i].prime - 1;
+			raderContainer[i].containerFFTDim = raderContainer[i].prime - 1;
+			raderContainer[i].containerFFTNum = fft_radix_part * tempSequence_copy / raderContainer[i].prime;
+			uint64_t stageID = 0;
+			for (uint64_t j = 2; j < app->configuration.fixMinRaderPrimeMult; j++) {
+				if (locTempSequence % j == 0) {
+					locTempSequence /= j;
+					raderContainer[i].loc_multipliers[j]++;
+					//raderContainer[i].stageRadix[stageID] = j;
+					//raderContainer[i].numThreadLaunches[stageID] = fft_radix_part * (tempSequence_copy / raderContainer[i].prime) * ((raderContainer[i].prime-1) / j);
+					//stageID++;
+					j--;
+				}
+			}
+			//uint64_t isGoodSequence;
+			//if (raderContainer[i].containerFFTNum<8)
+			res = VkFFTGetRegistersPerThreadOptimizeShared(raderContainer[i].prime - 1, raderContainer[i].loc_multipliers, raderContainer[i].registers_per_thread_per_radix, &raderContainer[i].registers_per_thread, &raderContainer[i].min_registers_per_thread);
+			//else
+				//res = VkFFTGetRegistersPerThread(raderContainer[i].prime - 1, 0, 0, 1, raderContainer[i].loc_multipliers, raderContainer[i].registers_per_thread_per_radix, &raderContainer[i].registers_per_thread, &raderContainer[i].min_registers_per_thread, &isGoodSequence);
+			if (res != VKFFT_SUCCESS) return res;
+			if (locTempSequence != 1) {
+				res = VkFFTConstructRaderTree(app, &raderContainer[i].container, &locTempSequence, &raderContainer[i].numSubPrimes, fft_radix_part * tempSequence_copy / raderContainer[i].prime);
+				if (res != VKFFT_SUCCESS) return res;
+				for (uint64_t j = 0; j < raderContainer[i].numSubPrimes; j++) {
+					for (uint64_t t = 0; t < raderContainer[i].container[j].multiplier; t++) {
+						raderContainer[i].stageRadix[stageID] = raderContainer[i].container[j].prime;
+						stageID++;
+					}
+				}
+			}
+			raderContainer[i].numStages = stageID;
+		}
+	}
+	return res;
+}
+static inline VkFFTResult VkFFTOptimizeRaderFFTRegisters(VkFFTRaderContainer* raderContainer, uint64_t numRaderPrimes, uint64_t fftDim, uint64_t* min_registers_per_thread, uint64_t* registers_per_thread, uint64_t* registers_per_thread_per_radix) {
+	VkFFTResult res = VKFFT_SUCCESS;
+	uint64_t minDelta = -1;
+	for (int64_t i = 0; i < numRaderPrimes; i++) {
+		if (raderContainer[i].type == 0) {
+			if (raderContainer[i].min_registers_per_thread / min_registers_per_thread[0] >= 2) {
+				min_registers_per_thread[0] *= (raderContainer[i].min_registers_per_thread / min_registers_per_thread[0]);
+				for (uint64_t j = 0; j < 33; j++) {
+					if ((registers_per_thread_per_radix[j] > 0) && (registers_per_thread_per_radix[j] < min_registers_per_thread[0])) registers_per_thread_per_radix[j] *= (uint64_t)ceil(min_registers_per_thread[0] / (double)registers_per_thread_per_radix[j]);
+				}
+				for (uint64_t j = 0; j < 33; j++) {
+					if (registers_per_thread_per_radix[j] > registers_per_thread[0]) registers_per_thread[0] = registers_per_thread_per_radix[j];
+				}
+			}
+			else if (min_registers_per_thread[0] / raderContainer[i].min_registers_per_thread >= 2) {
+				raderContainer[i].min_registers_per_thread *= (min_registers_per_thread[0] / raderContainer[i].min_registers_per_thread);
+				for (uint64_t j = 0; j < 33; j++) {
+					if ((raderContainer[i].registers_per_thread_per_radix[j] > 0) && (raderContainer[i].registers_per_thread_per_radix[j] < raderContainer[i].min_registers_per_thread)) raderContainer[i].registers_per_thread_per_radix[j] *= (uint64_t)ceil(raderContainer[i].min_registers_per_thread / (double)raderContainer[i].registers_per_thread_per_radix[j]);
+				}
+				for (uint64_t j = 0; j < 33; j++) {
+					if (raderContainer[i].registers_per_thread_per_radix[j] > raderContainer[i].registers_per_thread) raderContainer[i].registers_per_thread = raderContainer[i].registers_per_thread_per_radix[j];
+				}
+			}
+
+			if (raderContainer[i].min_registers_per_thread < min_registers_per_thread[0]) {
+				for (uint64_t j = 0; j < 33; j++) {
+					if (raderContainer[i].registers_per_thread_per_radix[j] > 0) {
+						while (raderContainer[i].registers_per_thread_per_radix[j] < min_registers_per_thread[0])
+							raderContainer[i].registers_per_thread_per_radix[j] += j;
+						if (raderContainer[i].registers_per_thread_per_radix[j] > raderContainer[i].registers_per_thread)
+							raderContainer[i].registers_per_thread = raderContainer[i].registers_per_thread_per_radix[j];
+					}
+				}
+			}
+
+			for (int64_t j = 2; j < 33; j++) {
+				if (raderContainer[i].registers_per_thread_per_radix[j] != 0) {
+					while (((uint64_t)ceil(fftDim / (double)min_registers_per_thread[0])) < (raderContainer[i].containerFFTNum * (uint64_t)ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[j]))) {
+						raderContainer[i].registers_per_thread_per_radix[j] += j;
+					}
+					if (raderContainer[i].registers_per_thread_per_radix[j] > raderContainer[i].registers_per_thread) raderContainer[i].registers_per_thread = raderContainer[i].registers_per_thread_per_radix[j];
+				}
+			}
+			if (raderContainer[i].registers_per_thread > registers_per_thread[0]) registers_per_thread[0] = raderContainer[i].registers_per_thread;
+		}
+	}
+	//try to increase registers usage closer to registers_per_thread across all primes
+	for (int64_t i = 0; i < numRaderPrimes; i++) {
+		if (raderContainer[i].type == 0) {
+			for (int64_t j = 2; j < 33; j++) {
+				if (raderContainer[i].registers_per_thread_per_radix[j] > 0) {
+					while ((raderContainer[i].registers_per_thread_per_radix[j] + j) <= registers_per_thread[0] + 1) {// fix
+						raderContainer[i].registers_per_thread_per_radix[j] += j;
+					}
+				}
+			}
+			raderContainer[i].registers_per_thread = 0;
+			raderContainer[i].min_registers_per_thread = -1;
+			for (int64_t j = 2; j < 33; j++) {
+				if (raderContainer[i].registers_per_thread_per_radix[j] > 0) {
+					if (raderContainer[i].registers_per_thread_per_radix[j] < raderContainer[i].min_registers_per_thread) {
+						raderContainer[i].min_registers_per_thread = raderContainer[i].registers_per_thread_per_radix[j];
+					}
+					if (raderContainer[i].registers_per_thread_per_radix[j] > raderContainer[i].registers_per_thread) {
+						raderContainer[i].registers_per_thread = raderContainer[i].registers_per_thread_per_radix[j];
+					}
+				}
+			}
+		}
+	}
+	//subprimes optimization
+	for (int64_t i = 0; i < numRaderPrimes; i++) {
+		if (raderContainer[i].numSubPrimes) {
+			res = VkFFTOptimizeRaderFFTRegisters(raderContainer[i].container, raderContainer[i].numSubPrimes, fftDim, min_registers_per_thread, registers_per_thread, registers_per_thread_per_radix);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+	}
+	return res;
+}
+static inline VkFFTResult VkFFTOptimizeRadixKernels(uint64_t* registers_per_thread_per_radix, uint64_t* loc_multipliers, uint64_t registerBoost, uint64_t* maxNonPow2Radix, uint64_t* reqLocRegs, VkFFTRaderContainer* raderContainer, uint64_t numRaderPrimes) {
+	VkFFTResult res = VKFFT_SUCCESS;
+	if (numRaderPrimes) {
+		for (uint64_t i = 0; i < numRaderPrimes; i++) {
+			res = VkFFTOptimizeRadixKernels(raderContainer[i].registers_per_thread_per_radix, raderContainer[i].loc_multipliers, 1, maxNonPow2Radix, reqLocRegs, raderContainer[i].container, raderContainer[i].numSubPrimes);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+	}
+	//optimize used radix kernels
+	if (((registers_per_thread_per_radix[32] > 0) || ((registers_per_thread_per_radix[2] % 32) == 0)) && ((registers_per_thread_per_radix[32]) % 32 == 0) && (loc_multipliers[2] >= 5)) {
+		loc_multipliers[32] = loc_multipliers[2] / 5;
+		loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[32] * 5;
+		if ((registers_per_thread_per_radix[2] % 32) == 0) registers_per_thread_per_radix[32] = registers_per_thread_per_radix[2];
+	}
+	if (((registers_per_thread_per_radix[16] > 0) || ((registers_per_thread_per_radix[2] % 16) == 0)) && ((registers_per_thread_per_radix[16]) % 16 == 0) && (loc_multipliers[2] >= 4)) {
+		loc_multipliers[16] = loc_multipliers[2] / 4;
+		loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[16] * 4;
+		if ((registers_per_thread_per_radix[2] % 16) == 0) registers_per_thread_per_radix[16] = registers_per_thread_per_radix[2];//if we got 16 regs, why not use r16 kernel
+	}
+	if ((registers_per_thread_per_radix[15] > 0) && ((registers_per_thread_per_radix[15]) % 15 == 0) && (loc_multipliers[3] >= 1) && (loc_multipliers[5] >= 1)) {
+		loc_multipliers[15] = (loc_multipliers[3] > loc_multipliers[5]) ? loc_multipliers[5] : loc_multipliers[3];
+		loc_multipliers[3] = loc_multipliers[3] - loc_multipliers[15];
+		loc_multipliers[5] = loc_multipliers[5] - loc_multipliers[15];
+	}
+	if ((registers_per_thread_per_radix[14] > 0) && ((registers_per_thread_per_radix[14]) % 14 == 0) && (loc_multipliers[2] >= 1) && (loc_multipliers[7] >= 1)) {
+		loc_multipliers[14] = (loc_multipliers[2] > loc_multipliers[7]) ? loc_multipliers[7] : loc_multipliers[2];
+		loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[14];
+		loc_multipliers[7] = loc_multipliers[7] - loc_multipliers[14];
+	}
+	if ((registers_per_thread_per_radix[12] > 0) && ((registers_per_thread_per_radix[12]) % 12 == 0) && (loc_multipliers[2] >= 2) && (loc_multipliers[3] >= 1)) {
+		loc_multipliers[12] = (loc_multipliers[2] > 2 * loc_multipliers[3]) ? loc_multipliers[3] : loc_multipliers[2] / 2;
+		loc_multipliers[2] = loc_multipliers[2] - 2 * loc_multipliers[12];
+		loc_multipliers[3] = loc_multipliers[3] - loc_multipliers[12];
+	}
+	if ((registers_per_thread_per_radix[10] > 0) && ((registers_per_thread_per_radix[10]) % 10 == 0) && (loc_multipliers[2] >= 1) && (loc_multipliers[5] >= 1)) {
+		loc_multipliers[10] = (loc_multipliers[2] > loc_multipliers[5]) ? loc_multipliers[5] : loc_multipliers[2];
+		loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[10];
+		loc_multipliers[5] = loc_multipliers[5] - loc_multipliers[10];
+	}
+	if ((registers_per_thread_per_radix[9] > 0) && ((registers_per_thread_per_radix[9]) % 9 == 0) && (loc_multipliers[3] >= 2)) {
+		loc_multipliers[9] = loc_multipliers[3] / 2;
+		loc_multipliers[3] = loc_multipliers[3] - loc_multipliers[9] * 2;
+	}
+	if (((registers_per_thread_per_radix[8] > 0) || ((registers_per_thread_per_radix[2] % 8) == 0)) && ((registers_per_thread_per_radix[8]) % 8 == 0) && (loc_multipliers[2] >= 3)) {
+		loc_multipliers[8] = loc_multipliers[2] / 3;
+		loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[8] * 3;
+		if ((registers_per_thread_per_radix[2] % 8) == 0) registers_per_thread_per_radix[8] = registers_per_thread_per_radix[2];
+	}
+	if ((registers_per_thread_per_radix[6] > 0) && ((registers_per_thread_per_radix[6]) % 6 == 0) && (loc_multipliers[2] >= 1) && (loc_multipliers[3] >= 1)) {
+		loc_multipliers[6] = (loc_multipliers[2] > loc_multipliers[3]) ? loc_multipliers[3] : loc_multipliers[2];
+		loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[6];
+		loc_multipliers[3] = loc_multipliers[3] - loc_multipliers[6];
+	}
+	if (((registers_per_thread_per_radix[4] > 0) || ((registers_per_thread_per_radix[2] % 4) == 0)) && ((registers_per_thread_per_radix[4]) % 4 == 0) && (loc_multipliers[2] >= 2)) {
+		loc_multipliers[4] = loc_multipliers[2] / 2;
+		loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[4] * 2;
+		if ((registers_per_thread_per_radix[2] % 4) == 0) registers_per_thread_per_radix[4] = registers_per_thread_per_radix[2];
+	}
+	if ((registerBoost == 2) && (loc_multipliers[2] == 0)) {
+		if (loc_multipliers[4] > 0) {
+			loc_multipliers[4]--;
+			loc_multipliers[2] = 2;
+		}
+		else if (loc_multipliers[8] > 0) {
+			loc_multipliers[8]--;
+			loc_multipliers[4]++;
+			loc_multipliers[2]++;
+		}
+		else if (loc_multipliers[16] > 0) {
+			loc_multipliers[16]--;
+			loc_multipliers[8]++;
+			loc_multipliers[2]++;
+		}
+		else if (loc_multipliers[32] > 0) {
+			loc_multipliers[32]--;
+			loc_multipliers[16]++;
+			loc_multipliers[2]++;
+		}
+	}
+	if ((registerBoost == 4) && (loc_multipliers[4] == 0)) {
+		if (loc_multipliers[8] > 0) {
+			loc_multipliers[8]--;
+			loc_multipliers[4]++;
+			loc_multipliers[2]++;
+		}
+		else if (loc_multipliers[16] > 0) {
+			if (loc_multipliers[2] == 0) {
+				loc_multipliers[16]--;
+				loc_multipliers[4] = 2;
+			}
+			else {
+				loc_multipliers[16]--;
+				loc_multipliers[4]++;
+				loc_multipliers[2]--;
+				loc_multipliers[8]++;
+			}
+		}
+		else if (loc_multipliers[32] > 0) {
+			if (loc_multipliers[2] == 0) {
+				loc_multipliers[32]--;
+				loc_multipliers[8]++;
+				loc_multipliers[4]++;
+			}
+			else {
+				loc_multipliers[32]--;
+				loc_multipliers[16]++;
+				loc_multipliers[4]++;
+				loc_multipliers[2]--;
+			}
+		}
+	}
+	for (uint64_t i = 2; i < 33; i++) {
+		uint64_t usedLocRegs = 0;
+		if (loc_multipliers[i] > 0) {
+			switch (i) {
+			case 6:
+				usedLocRegs = 3;
+				break;
+			case 9:
+				usedLocRegs = 3;
+				break;
+			case 10:
+				usedLocRegs = 5;
+				break;
+			case 12:
+				usedLocRegs = 3;
+				break;
+			case 14:
+				usedLocRegs = 7;
+				break;
+			case 15:
+				usedLocRegs = 5;
+				break;
+			default:
+				usedLocRegs = i;
+				break;
+			}
+		}
+		if ((loc_multipliers[i] > 0) && ((i & (i - 1)) != 0) && (i > maxNonPow2Radix[0])) {
+			maxNonPow2Radix[0] = i;
+		}
+		if ((usedLocRegs > reqLocRegs[0]) && ((i & (i - 1)) != 0)) {
+			reqLocRegs[0] = usedLocRegs;
+		}
+	}
+	return res;
+}
+static inline VkFFTResult VkFFTGetRaderFFTStages(VkFFTRaderContainer* raderContainer, uint64_t numRaderPrimes, uint64_t* stageid, uint64_t* stageRadix, uint64_t* stage_rader_generator) {
+	VkFFTResult res = VKFFT_SUCCESS;
+	for (int64_t i = 0; i < numRaderPrimes; i++) {
+		if (raderContainer[i].multiplier > 0) {
+			stageRadix[stageid[0]] = raderContainer[i].prime;
+			stage_rader_generator[stageid[0]] = raderContainer[i].generator;
+			raderContainer[i].multiplier--;
+			i--;
+			stageid[0]++;
+			//axes[k].specializationConstants.numStages++;
+			//find primitive root
+		}
+	}
+	for (int64_t i = 0; i < numRaderPrimes; i++) {
+		if (raderContainer[i].type == 0) {
+			if (raderContainer[i].numSubPrimes > 0) {
+				res = VkFFTGetRaderFFTStages(raderContainer[i].container, raderContainer[i].numSubPrimes, &raderContainer[i].numStages, raderContainer[i].stageRadix, raderContainer[i].stage_rader_generator);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			for (uint64_t j = 32; j > 1; j--) {
+				if (raderContainer[i].loc_multipliers[j] > 0) {
+					raderContainer[i].stageRadix[raderContainer[i].numStages] = j;
+					raderContainer[i].loc_multipliers[j]--;
+					j++;
+					raderContainer[i].numStages++;
+				}
+			}
+			/*//make that convolution step uses min_regs radix - max working threads
+			uint64_t stage_id_swap = axes[k].specializationConstants.raderContainer[i].numStages - 1;
+			uint64_t temp_radix = axes[k].specializationConstants.raderContainer[i].stageRadix[axes[k].specializationConstants.raderContainer[i].numStages - 1];
+			uint64_t temp_regs = axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[axes[k].specializationConstants.raderContainer[i].stageRadix[axes[k].specializationConstants.raderContainer[i].numStages - 1]];
+
+			for (uint64_t j = 0; j < axes[k].specializationConstants.raderContainer[i].numStages-1; j++) {
+				if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[axes[k].specializationConstants.raderContainer[i].stageRadix[j]] < axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[axes[k].specializationConstants.raderContainer[i].stageRadix[stage_id_swap]])
+					stage_id_swap = j;
+			}
+			axes[k].specializationConstants.raderContainer[i].stageRadix[axes[k].specializationConstants.raderContainer[i].numStages - 1] = axes[k].specializationConstants.raderContainer[i].stageRadix[stage_id_swap];
+			axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[axes[k].specializationConstants.raderContainer[i].stageRadix[axes[k].specializationConstants.raderContainer[i].numStages - 1]] = axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[axes[k].specializationConstants.raderContainer[i].stageRadix[stage_id_swap]];
+			axes[k].specializationConstants.raderContainer[i].stageRadix[stage_id_swap] = temp_radix;
+			axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[axes[k].specializationConstants.raderContainer[i].stageRadix[stage_id_swap]] = temp_regs;
+
+			//make that first step uses second to min_regs radix
+			stage_id_swap = 0;
+			temp_radix = axes[k].specializationConstants.raderContainer[i].stageRadix[0];
+			temp_regs = axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[axes[k].specializationConstants.raderContainer[i].stageRadix[0]];
+
+			for (uint64_t j = 1; j < axes[k].specializationConstants.raderContainer[i].numStages - 1; j++) {
+				if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[axes[k].specializationConstants.raderContainer[i].stageRadix[j]] < axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[axes[k].specializationConstants.raderContainer[i].stageRadix[stage_id_swap]])
+					stage_id_swap = j;
+			}
+			axes[k].specializationConstants.raderContainer[i].stageRadix[0] = axes[k].specializationConstants.raderContainer[i].stageRadix[stage_id_swap];
+			axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[axes[k].specializationConstants.raderContainer[i].stageRadix[0]] = axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[axes[k].specializationConstants.raderContainer[i].stageRadix[stage_id_swap]];
+			axes[k].specializationConstants.raderContainer[i].stageRadix[stage_id_swap] = temp_radix;
+			axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[axes[k].specializationConstants.raderContainer[i].stageRadix[stage_id_swap]] = temp_regs;
+			*/
+		}
+	}
+	return res;
+}
+static inline VkFFTResult VkFFTMinMaxRegisterCheck(uint64_t numStages, uint64_t* stageRadix, uint64_t* min_registers_per_thread, uint64_t* registers_per_thread, uint64_t* registers_per_thread_per_radix, VkFFTRaderContainer* raderContainer, uint64_t numRaderPrimes, uint64_t* stage_rader_generator) {
+	VkFFTResult res = VKFFT_SUCCESS;
+	for (int64_t j = 0; j < numStages; j++) {
+		if (stage_rader_generator[j] == 0) {
+			if (registers_per_thread_per_radix[stageRadix[j]] > 0) {
+				if (registers_per_thread_per_radix[stageRadix[j]] < min_registers_per_thread[0]) {
+					min_registers_per_thread[0] = registers_per_thread_per_radix[stageRadix[j]];
+				}
+				if (registers_per_thread_per_radix[stageRadix[j]] > registers_per_thread[0]) {
+					registers_per_thread[0] = registers_per_thread_per_radix[stageRadix[j]];
+				}
+			}
+		}
+		else {
+			for (int64_t i = 0; i < numRaderPrimes; i++) {
+				if (raderContainer[i].prime == stageRadix[j]) {
+					if (raderContainer[i].type == 0) {
+						for (int64_t j2 = 0; j2 < raderContainer[i].numStages; j2++) {
+							if (raderContainer[i].stage_rader_generator[j] == 0) {
+								if (raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j2]] > 0) {
+									if (raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j2]] < min_registers_per_thread[0]) {
+										min_registers_per_thread[0] = raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j2]];
+									}
+									if (raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j2]] > registers_per_thread[0]) {
+										registers_per_thread[0] = raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j2]];
+									}
+								}
+							}
+							else {
+								res = VkFFTMinMaxRegisterCheck(raderContainer[i].numStages, raderContainer[i].stageRadix, min_registers_per_thread, registers_per_thread, raderContainer[i].registers_per_thread_per_radix, raderContainer[i].container, raderContainer[i].numSubPrimes, raderContainer[i].stage_rader_generator);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return res;
+}
+static inline VkFFTResult VkFFTGetRaderFFTThreadsNum(VkFFTRaderContainer* raderContainer, uint64_t numRaderPrimes, uint64_t* numThreads) {
+	VkFFTResult res = VKFFT_SUCCESS;
+
+	for (int64_t i = 0; i < numRaderPrimes; i++) {
+		if (raderContainer[i].type == 0) {
+			if (raderContainer[i].numSubPrimes > 0) {
+				res = VkFFTGetRaderFFTThreadsNum(raderContainer[i].container, raderContainer[i].numSubPrimes, numThreads);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			for (int64_t j = 0; j < raderContainer[i].numStages; j++) {
+				if (raderContainer[i].stage_rader_generator[j] == 0) {
+					if (raderContainer[i].containerFFTNum * (uint64_t)ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j]]) > numThreads[0]) numThreads[0] = raderContainer[i].containerFFTNum * (uint64_t)ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j]]);
+				}
+			}
+		}
+	}
+	return res;
+}
 
 static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t axis_id, uint64_t supportAxis) {
 	VkFFTResult res = VKFFT_SUCCESS;
@@ -27306,21 +28926,72 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	}
 
 	uint64_t tempSequence = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
-	for (uint64_t i = 2; i < app->configuration.fixMinRaderPrime; i++) {
+	for (uint64_t i = 2; i < app->configuration.fixMinRaderPrimeMult; i++) {
 		if (tempSequence % i == 0) {
 			tempSequence /= i;
 			multipliers[i]++;
 			i--;
 		}
 	}
-	{
+	// verify that we haven't checked for 3 steps being not enought for Rader before
+	if (!app->useBluesteinFFT[axis_id]) {
+		uint64_t useRaderFFT = 0;
+		uint64_t useRaderMult = 0;
 		uint64_t rader_primes[20];
 		uint64_t rader_multipliers[20];
 		for (uint64_t i = 0; i < 20; i++) {
 			rader_multipliers[i] = 0;
 			rader_primes[i] = 0;
 		}
-		for (uint64_t i = app->configuration.fixMinRaderPrime; i < app->configuration.fixMaxRaderPrime; i++) {
+		uint64_t tempSequence_temp = 1;
+		uint64_t maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / (app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
+		uint64_t limit_max_rader_prime = ((axis_id == nonStridedAxisId) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] <= maxSequenceLengthSharedMemory)) ? maxSequenceLengthSharedMemory : maxSequenceLengthSharedMemoryStrided_temp;
+		if (limit_max_rader_prime > app->configuration.fixMaxRaderPrimeFFT) limit_max_rader_prime = app->configuration.fixMaxRaderPrimeFFT;
+		for (uint64_t i = app->configuration.fixMinRaderPrimeMult; i < limit_max_rader_prime; i++) {
+			if (tempSequence % i == 0) {
+				if (i < app->configuration.fixMinRaderPrimeFFT) {
+					tempSequence_temp *= i;
+					tempSequence /= i;
+					i--;
+					continue;
+				}
+				//Sophie Germain safe prime check
+				uint64_t tempSequence2 = i - 1;
+				for (uint64_t j = 2; j < app->configuration.fixMinRaderPrimeMult; j++) {
+					if (tempSequence2 % j == 0) {
+						tempSequence2 /= j;
+						j--;
+					}
+				}
+				if (tempSequence2 != 1) {
+					maxSequenceLengthSharedMemory = (usedSharedMemory - (i - 1) * complexSize) / complexSize;
+					maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? (usedSharedMemory - (i - 1) * complexSize) / (app->configuration.coalescedMemory) : (usedSharedMemory - (i - 1) * complexSize) / complexSize;
+					limit_max_rader_prime = ((axis_id == nonStridedAxisId) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] <= maxSequenceLengthSharedMemory)) ? maxSequenceLengthSharedMemory : maxSequenceLengthSharedMemoryStrided_temp;
+					tempSequence_temp *= i;
+					tempSequence /= i;
+					i--;
+					continue;
+				}
+				tempSequence /= i;
+				for (uint64_t j = 0; j < 20; j++) {
+					if (rader_primes[j] == i)
+					{
+						rader_multipliers[j]++;
+						j = 20;
+					}
+					else if (rader_primes[j] == 0) {
+						rader_primes[j] = i;
+						rader_multipliers[j]++;
+						j = 20;
+					}
+
+				}
+				useRaderFFT = i;
+				i--;
+			}
+		}
+		tempSequence *= tempSequence_temp;
+		for (uint64_t i = app->configuration.fixMinRaderPrimeMult; i < app->configuration.fixMaxRaderPrimeMult; i++) {
 			if (tempSequence % i == 0) {
 				tempSequence /= i;
 				for (uint64_t j = 0; j < 20; j++) {
@@ -27336,22 +29007,25 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					}
 
 				}
-				axes->specializationConstants.useRader = i;
+				useRaderMult = i;
 				i--;
 			}
 		}
-	}
-	if (axes->specializationConstants.useRader) {
-		app->configuration.useLUT = 1; // workaround, Rader is better with LUT
-		if (tempSequence == 1) usedSharedMemory -= (axes->specializationConstants.useRader - 1) * complexSize; //reserve memory for Rader 
+		if (tempSequence != 1) {
+			useRaderFFT = 0;
+			useRaderMult = 0;
+		}
+		if (useRaderMult) {
+			if (tempSequence == 1) usedSharedMemory -= (useRaderMult - 1) * complexSize; //reserve memory for Rader 
+		//check once again
+			if ((axis_id == 0) && (app->configuration.performR2C) && (app->configuration.size[axis_id] > maxSingleSizeNonStrided)) {
+				FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
+				FFTPlan->actualPerformR2CPerAxis[axis_id] = 0;
+				FFTPlan->multiUploadR2C = 1;
+			}
+		}
 		maxSequenceLengthSharedMemory = usedSharedMemory / complexSize;
 		maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
-		//check once again
-		if ((axis_id == 0) && (app->configuration.performR2C) && (app->configuration.size[axis_id] > maxSingleSizeNonStrided)) {
-			FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
-			FFTPlan->actualPerformR2CPerAxis[axis_id] = 0;
-			FFTPlan->multiUploadR2C = 1;
-		}
 	}
 	//initial Bluestein check
 	if (tempSequence != 1) {
@@ -27524,25 +29198,6 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	}
 	uint64_t isPowOf2 = (pow(2, (uint64_t)log2(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id])) == FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]) ? 1 : 0;
 	uint64_t locNumBatches = (app->configuration.numberBatches > app->actualNumBatches) ? app->configuration.numberBatches : app->actualNumBatches;
-	if (app->configuration.tempBufferSize[0] == 0) {
-		if ((app->configuration.performR2C) && (axis_id == 0)) {
-			if (FFTPlan->multiUploadR2C)
-				app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
-		}
-		else {
-			app->configuration.tempBufferSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
-		}
-	}
-	if (app->useBluesteinFFT[axis_id]) {
-		if ((app->configuration.performR2C) && (axis_id == 0)) {
-			if (FFTPlan->multiUploadR2C) {
-				if ((FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
-			}
-		}
-		else {
-			if (FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
-		}
-	}
 	//return VKFFT_ERROR_UNSUPPORTED_RADIX;
 	uint64_t registerBoost = 1;
 	for (uint64_t i = 1; i <= app->configuration.registerBoost; i++) {
@@ -27855,6 +29510,25 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		//printf("sequence length exceeds boundaries\n");
 		return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
 	}
+	if (app->configuration.tempBufferSize[0] == 0) {
+		if ((app->configuration.performR2C) && (axis_id == 0)) {
+			if (FFTPlan->multiUploadR2C)
+				app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+		}
+		else {
+			app->configuration.tempBufferSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+		}
+	}
+	if (app->useBluesteinFFT[axis_id]) {
+		if ((app->configuration.performR2C) && (axis_id == 0)) {
+			if (FFTPlan->multiUploadR2C) {
+				if ((FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+			}
+		}
+		else {
+			if (FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+		}
+	}
 	if (((app->configuration.reorderFourStep) && (!app->useBluesteinFFT[axis_id]))) {
 		for (uint64_t i = 0; i < numPasses; i++) {
 			if ((locAxisSplit[0] % 2 != 0) && (locAxisSplit[i] % 2 == 0)) {
@@ -27882,67 +29556,85 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	for (uint64_t k = 0; k < numPasses; k++) {
 		tempSequence = locAxisSplit[k];
 		uint64_t loc_multipliers[33]; //split the smaller sequence
-		uint64_t rader_multipliers[20]; //split the smaller sequence
-		uint64_t* rader_generator = axes[k].specializationConstants.rader_generator_sorted; //split the smaller sequence
-		uint64_t* rader_primes = axes[k].specializationConstants.rader_primes;
+		//split the smaller sequence
+		//uint64_t rader_multipliers[20]; //split the smaller sequence
+		//uint64_t* rader_generator = axes[k].specializationConstants.rader_generator_sorted; //split the smaller sequence
+		//uint64_t* rader_primes = axes[k].specializationConstants.rader_primes;
 
 		for (uint64_t i = 0; i < 33; i++) {
 			loc_multipliers[i] = 0;
 		}
-		for (uint64_t i = 0; i < 20; i++) {
-			rader_multipliers[i] = 0;
-			rader_primes[i] = 0;
-		}
-		for (uint64_t i = 2; i < app->configuration.fixMinRaderPrime; i++) {
+
+		for (uint64_t i = 2; i < app->configuration.fixMinRaderPrimeMult; i++) {
 			if (tempSequence % i == 0) {
 				tempSequence /= i;
 				loc_multipliers[i]++;
 				i--;
 			}
 		}
-		if (tempSequence == 1) axes[k].specializationConstants.useRader = 0;
-		for (uint64_t i = app->configuration.fixMinRaderPrime; i < app->configuration.fixMaxRaderPrime; i++) {
-			if (tempSequence % i == 0) {
-				tempSequence /= i;
-				for (uint64_t j = 0; j < 20; j++) {
-					if (rader_primes[j] == i)
-					{
-						rader_multipliers[j]++;
-						j = 20;
-					}
-					else if (rader_primes[j] == 0) {
-						rader_primes[j] = i;
-						for (uint64_t r = 2; r < rader_primes[j]; r++) {
-							uint64_t test = r;
-							for (uint64_t iter = 0; iter < rader_primes[j] - 2; iter++) {
-								if (test == 1) {
-									test = 0;
-									iter = rader_primes[j];
-								}
-								test = ((test * r) % rader_primes[j]);
-							}
-							if (test == 1) {
-								rader_generator[j] = r;
-								r = rader_primes[j];
-							}
-						}
-						rader_multipliers[j]++;
-						j = 20;
-					}
+		axes[k].specializationConstants.useRader = 0;
+		axes[k].specializationConstants.useRaderMult = 0;
+		axes[k].specializationConstants.useRaderFFT = 0;
+		if (tempSequence != 1) {
+			res = VkFFTConstructRaderTree(app, &axes[k].specializationConstants.raderContainer, &tempSequence, &axes[k].specializationConstants.numRaderPrimes, locAxisSplit[k] / tempSequence);
+			if (res != VKFFT_SUCCESS) return res;
+		}
 
-				}
-				axes[k].specializationConstants.useRader = i;
-				i--;
+		for (int64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+			if (axes[k].specializationConstants.raderContainer[i].type == 0) {
+				if (axes[k].specializationConstants.useRaderFFT < axes[k].specializationConstants.raderContainer[i].prime) axes[k].specializationConstants.useRaderFFT = axes[k].specializationConstants.raderContainer[i].prime;
+			}
+			else {
+				if (axes[k].specializationConstants.useRaderMult < axes[k].specializationConstants.raderContainer[i].prime) axes[k].specializationConstants.useRaderMult = axes[k].specializationConstants.raderContainer[i].prime;
 			}
 		}
+		if (axes[k].specializationConstants.useRaderMult) {
+			app->configuration.useLUT = 1; // workaround, Mult Rader is better with LUT
+		}
+
+		axes[k].specializationConstants.useRader = axes[k].specializationConstants.numRaderPrimes;
+
+		if ((axes[k].specializationConstants.useRader) && (app->configuration.useRaderUintLUT)) {
+			app->configuration.useLUT = 1; // useRaderUintLUT forces LUT
+		}
+
 		uint64_t registers_per_thread_per_radix[33];
 		uint64_t registers_per_thread = 0;
 		uint64_t min_registers_per_thread = -1;
 		uint64_t isGoodSequence = 0;
 		uint64_t extraSharedMemoryForPow2 = ((app->configuration.sharedMemorySizePow2 < app->configuration.sharedMemorySize) || ((locAxisSplit[k] < maxSingleSizeNonStrided) && ((axis_id == nonStridedAxisId))) || ((locAxisSplit[k] < maxSingleSizeStrided) && ((axis_id != nonStridedAxisId)))) ? 1 : 0;
 
-		res = VkFFTGetRegistersPerThread(locAxisSplit[k], extraSharedMemoryForPow2, max_rhs / locAxisSplit[k], axes[k].specializationConstants.useRader, loc_multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
+		res = VkFFTGetRegistersPerThread(locAxisSplit[k], extraSharedMemoryForPow2, max_rhs / locAxisSplit[k], axes[k].specializationConstants.numRaderPrimes, loc_multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
 		if (res != VKFFT_SUCCESS) return res;
+		//first optimizer pass
+		if (axes[k].specializationConstants.numRaderPrimes) {
+			res = VkFFTOptimizeRaderFFTRegisters(axes[k].specializationConstants.raderContainer, axes[k].specializationConstants.numRaderPrimes, locAxisSplit[k], &min_registers_per_thread, &registers_per_thread, registers_per_thread_per_radix);
+			if (res != VKFFT_SUCCESS) return res;
+			/*for (int64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
+					if (axes[k].specializationConstants.raderContainer[i].min_registers_per_thread / min_registers_per_thread >= 2) {
+						min_registers_per_thread *= (axes[k].specializationConstants.raderContainer[i].min_registers_per_thread / min_registers_per_thread);
+						for (uint64_t j = 0; j < 33; j++) {
+							if ((registers_per_thread_per_radix[j] > 0) && (registers_per_thread_per_radix[j] < min_registers_per_thread)) registers_per_thread_per_radix[j] *= (uint64_t)ceil(min_registers_per_thread / (double)registers_per_thread_per_radix[j]);
+						}
+						for (uint64_t j = 0; j < 33; j++) {
+							if (registers_per_thread_per_radix[j] > registers_per_thread) registers_per_thread = registers_per_thread_per_radix[j];
+						}
+					}
+					else if (min_registers_per_thread / axes[k].specializationConstants.raderContainer[i].min_registers_per_thread >= 2) {
+						axes[k].specializationConstants.raderContainer[i].min_registers_per_thread *= (min_registers_per_thread / axes[k].specializationConstants.raderContainer[i].min_registers_per_thread);
+						for (uint64_t j = 0; j < 33; j++) {
+							if ((axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] > 0) && (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] < axes[k].specializationConstants.raderContainer[i].min_registers_per_thread)) axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] *= (uint64_t)ceil(axes[k].specializationConstants.raderContainer[i].min_registers_per_thread / (double)axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j]);
+						}
+						for (uint64_t j = 0; j < 33; j++) {
+							if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] > axes[k].specializationConstants.raderContainer[i].registers_per_thread) axes[k].specializationConstants.raderContainer[i].registers_per_thread = axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j];
+						}
+					}
+					if (axes[k].specializationConstants.raderContainer[i].registers_per_thread > registers_per_thread) registers_per_thread = axes[k].specializationConstants.raderContainer[i].registers_per_thread;
+					if (axes[k].specializationConstants.raderContainer[i].min_registers_per_thread < min_registers_per_thread) min_registers_per_thread = axes[k].specializationConstants.raderContainer[i].min_registers_per_thread;
+				}
+			}*/
+		}
 
 		if ((registerBoost == 4) && (registers_per_thread % 4 != 0)) {
 			registers_per_thread *= 2;
@@ -27954,23 +29646,20 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		uint64_t maxBatchCoalesced = ((axis_id == 0) && (((k == 0) && ((!app->configuration.reorderFourStep) || (app->useBluesteinFFT[axis_id]))) || (numPasses == 1))) ? 1 : app->configuration.coalescedMemory / complexSize;
 		uint64_t estimate_rader_threadnum = 0;
 		uint64_t scale_registers_rader = 0;
-		uint64_t scale_radix_registers_rader[33];
 		uint64_t rader_min_registers = min_registers_per_thread;
-		for (uint64_t i = 0; i < 33; i++) {
-			scale_radix_registers_rader[i] = 1;
-		}
-		if (axes[k].specializationConstants.useRader) {
-			for (int64_t i = 0; i < 20; i++) {
-				if (rader_primes[i] > 0) {
-					uint64_t temp_rader = (uint64_t)ceil((locAxisSplit[k] / (double)((rader_min_registers / 2 + scale_registers_rader) * 2)) / (double)((rader_primes[i] + 1) / 2));
-					uint64_t active_rader = (uint64_t)ceil((locAxisSplit[k] / rader_primes[i]) / (double)temp_rader);
+
+		if (axes[k].specializationConstants.useRaderMult) {
+			for (int64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+				if (axes[k].specializationConstants.raderContainer[i].type == 1) {
+					uint64_t temp_rader = (uint64_t)ceil((locAxisSplit[k] / (double)((rader_min_registers / 2 + scale_registers_rader) * 2)) / (double)((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2));
+					uint64_t active_rader = (uint64_t)ceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)temp_rader);
 					if (active_rader > 1) {
-						if ((((double)active_rader - (locAxisSplit[k] / rader_primes[i]) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((locAxisSplit[k] / rader_primes[i]) / (double)(active_rader - 1)) * ((rader_primes[i] + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
+						if ((((double)active_rader - (locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)(active_rader - 1)) * ((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
 					}
 
-					uint64_t local_estimate_rader_threadnum = (uint64_t)ceil((locAxisSplit[k] / rader_primes[i]) / (double)active_rader) * ((rader_primes[i] + 1) / 2) * maxBatchCoalesced;
+					uint64_t local_estimate_rader_threadnum = (uint64_t)ceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)active_rader) * ((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2) * maxBatchCoalesced;
 					if ((maxBatchCoalesced * locAxisSplit[k] / ((rader_min_registers / 2 + scale_registers_rader) * 2 * registerBoost)) > local_estimate_rader_threadnum) local_estimate_rader_threadnum = (maxBatchCoalesced * locAxisSplit[k] / ((rader_min_registers / 2 + scale_registers_rader) * 2 * registerBoost));
-					if ((local_estimate_rader_threadnum > app->configuration.maxThreadsNum) || ((app->configuration.vendorID == 0x10DE) && (((locAxisSplit[k] / min_registers_per_thread) > 256) || (local_estimate_rader_threadnum > 256)) && (((rader_min_registers / 2 + scale_registers_rader) * 2) <= 4))) {
+					if ((local_estimate_rader_threadnum > app->configuration.maxThreadsNum) || ((((locAxisSplit[k] / min_registers_per_thread) > 256) || (local_estimate_rader_threadnum > 256)) && (((rader_min_registers / 2 + scale_registers_rader) * 2) <= 4))) {
 						scale_registers_rader++;
 						i = -1;
 					}
@@ -27984,8 +29673,18 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			for (uint64_t i = 2; i < 33; i++) {
 				if (registers_per_thread_per_radix[i] != 0) {
 					if (registers_per_thread / registers_per_thread_per_radix[i] >= 2) {
-						scale_radix_registers_rader[i] = (registers_per_thread / registers_per_thread_per_radix[i]);
-						registers_per_thread_per_radix[i] *= scale_radix_registers_rader[i];
+						registers_per_thread_per_radix[i] *= (registers_per_thread / registers_per_thread_per_radix[i]);
+					}
+				}
+			}
+			for (int64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
+					for (uint64_t j = 2; j < 33; j++) {
+						if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] != 0) {
+							if (registers_per_thread / axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] >= 2) {
+								axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] *= (registers_per_thread / axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j]);
+							}
+						}
 					}
 				}
 			}
@@ -27994,6 +29693,16 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				if ((registers_per_thread_per_radix[i] > 0) && (registers_per_thread_per_radix[i] < new_min_registers)) new_min_registers = registers_per_thread_per_radix[i];
 				if (registers_per_thread_per_radix[i] > registers_per_thread) {
 					registers_per_thread = registers_per_thread_per_radix[i];
+				}
+			}
+			for (int64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
+					for (uint64_t j = 2; j < 33; j++) {
+						if ((axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] > 0) && (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] < new_min_registers)) new_min_registers = axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j];
+						if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] > registers_per_thread) {
+							registers_per_thread = axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j];
+						}
+					}
 				}
 			}
 			min_registers_per_thread = (new_min_registers == -1) ? registers_per_thread : new_min_registers;
@@ -28020,7 +29729,15 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					registers_per_thread_per_radix[i] *= scaleRegistersNum;
 				}
 			}
-
+			for (int64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
+					for (uint64_t j = 2; j < 33; j++) {
+						if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] != 0) {
+							axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] *= scaleRegistersNum;
+						}
+					}
+				}
+			}
 			if (min_registers_per_thread > registers_per_thread) {
 				uint64_t temp = min_registers_per_thread;
 				min_registers_per_thread = registers_per_thread;
@@ -28034,7 +29751,19 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					min_registers_per_thread = registers_per_thread_per_radix[i];
 				}
 			}
-			if ((loc_multipliers[3] >= 2) && (((registers_per_thread / min_registers_per_thread) % 3) == 0)) {
+			for (int64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
+					for (uint64_t j = 2; j < 33; j++) {
+						if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] > registers_per_thread) {
+							registers_per_thread = axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j];
+						}
+						if ((axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] > 0) && (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] < min_registers_per_thread)) {
+							min_registers_per_thread = axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j];
+						}
+					}
+				}
+			}
+			if ((loc_multipliers[3] >= 2) && (((registers_per_thread / min_registers_per_thread) % 3) == 0) && (axes[k].specializationConstants.numRaderPrimes == 0)) {
 				registers_per_thread /= 3;
 				for (uint64_t i = 2; i < 33; i++) {
 					if (registers_per_thread_per_radix[i] % 9 == 0) {
@@ -28051,162 +29780,18 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				}
 			}
 		}
-
-		//optimize used radix kernels
-		if ((registers_per_thread_per_radix[32] > 0) && ((registers_per_thread_per_radix[32] / scale_radix_registers_rader[32]) % 32 == 0)) {
-			loc_multipliers[32] = loc_multipliers[2] / 5;
-			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[32] * 5;
-		}
-		if ((registers_per_thread_per_radix[16] > 0) && ((registers_per_thread_per_radix[16] / scale_radix_registers_rader[16]) % 16 == 0)) {
-			loc_multipliers[16] = loc_multipliers[2] / 4;
-			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[16] * 4;
-		}
-		if ((registers_per_thread_per_radix[15] > 0) && ((registers_per_thread_per_radix[15] / scale_radix_registers_rader[15]) % 15 == 0)) {
-			loc_multipliers[15] = (loc_multipliers[3] > loc_multipliers[5]) ? loc_multipliers[5] : loc_multipliers[3];
-			loc_multipliers[3] = loc_multipliers[3] - loc_multipliers[15];
-			loc_multipliers[5] = loc_multipliers[5] - loc_multipliers[15];
-		}
-		if ((registers_per_thread_per_radix[14] > 0) && ((registers_per_thread_per_radix[14] / scale_radix_registers_rader[14]) % 14 == 0)) {
-			loc_multipliers[14] = (loc_multipliers[2] > loc_multipliers[7]) ? loc_multipliers[7] : loc_multipliers[2];
-			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[14];
-			loc_multipliers[7] = loc_multipliers[7] - loc_multipliers[14];
-		}
-		if ((registers_per_thread_per_radix[12] > 0) && ((registers_per_thread_per_radix[12] / scale_radix_registers_rader[12]) % 12 == 0)) {
-			loc_multipliers[12] = (loc_multipliers[2] > 2 * loc_multipliers[3]) ? loc_multipliers[3] : loc_multipliers[2] / 2;
-			loc_multipliers[2] = loc_multipliers[2] - 2 * loc_multipliers[12];
-			loc_multipliers[3] = loc_multipliers[3] - loc_multipliers[12];
-		}
-		if ((registers_per_thread_per_radix[10] > 0) && ((registers_per_thread_per_radix[10] / scale_radix_registers_rader[10]) % 10 == 0)) {
-			loc_multipliers[10] = (loc_multipliers[2] > loc_multipliers[5]) ? loc_multipliers[5] : loc_multipliers[2];
-			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[10];
-			loc_multipliers[5] = loc_multipliers[5] - loc_multipliers[10];
-		}
-		if ((registers_per_thread_per_radix[9] > 0) && ((registers_per_thread_per_radix[9] / scale_radix_registers_rader[9]) % 9 == 0)) {
-			loc_multipliers[9] = loc_multipliers[3] / 2;
-			loc_multipliers[3] = loc_multipliers[3] - loc_multipliers[9] * 2;
-		}
-		if ((registers_per_thread_per_radix[8] > 0) && ((registers_per_thread_per_radix[8] / scale_radix_registers_rader[8]) % 8 == 0)) {
-			loc_multipliers[8] = loc_multipliers[2] / 3;
-			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[8] * 3;
-		}
-		if ((registers_per_thread_per_radix[6] > 0) && ((registers_per_thread_per_radix[6] / scale_radix_registers_rader[6]) % 6 == 0)) {
-			loc_multipliers[6] = (loc_multipliers[2] > loc_multipliers[3]) ? loc_multipliers[3] : loc_multipliers[2];
-			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[6];
-			loc_multipliers[3] = loc_multipliers[3] - loc_multipliers[6];
-		}
-		if ((registers_per_thread_per_radix[4] > 0) && ((registers_per_thread_per_radix[4] / scale_radix_registers_rader[4]) % 4 == 0)) {
-			loc_multipliers[4] = loc_multipliers[2] / 2;
-			loc_multipliers[2] = loc_multipliers[2] - loc_multipliers[4] * 2;
-		}
-		if ((registerBoost == 2) && (loc_multipliers[2] == 0)) {
-			if (loc_multipliers[4] > 0) {
-				loc_multipliers[4]--;
-				loc_multipliers[2] = 2;
-			}
-			else if (loc_multipliers[8] > 0) {
-				loc_multipliers[8]--;
-				loc_multipliers[4]++;
-				loc_multipliers[2]++;
-			}
-			else if (loc_multipliers[16] > 0) {
-				loc_multipliers[16]--;
-				loc_multipliers[8]++;
-				loc_multipliers[2]++;
-			}
-			else if (loc_multipliers[32] > 0) {
-				loc_multipliers[32]--;
-				loc_multipliers[16]++;
-				loc_multipliers[2]++;
-			}
-		}
-		if ((registerBoost == 4) && (loc_multipliers[4] == 0)) {
-			if (loc_multipliers[8] > 0) {
-				loc_multipliers[8]--;
-				loc_multipliers[4]++;
-				loc_multipliers[2]++;
-			}
-			else if (loc_multipliers[16] > 0) {
-				if (loc_multipliers[2] == 0) {
-					loc_multipliers[16]--;
-					loc_multipliers[4] = 2;
-				}
-				else {
-					loc_multipliers[16]--;
-					loc_multipliers[4]++;
-					loc_multipliers[2]--;
-					loc_multipliers[8]++;
-				}
-			}
-			else if (loc_multipliers[32] > 0) {
-				if (loc_multipliers[2] == 0) {
-					loc_multipliers[32]--;
-					loc_multipliers[8]++;
-					loc_multipliers[4]++;
-				}
-				else {
-					loc_multipliers[32]--;
-					loc_multipliers[16]++;
-					loc_multipliers[4]++;
-					loc_multipliers[2]--;
-				}
-			}
+		//second optimizer pass
+		if (axes[k].specializationConstants.numRaderPrimes) {
+			res = VkFFTOptimizeRaderFFTRegisters(axes[k].specializationConstants.raderContainer, axes[k].specializationConstants.numRaderPrimes, locAxisSplit[k], &min_registers_per_thread, &registers_per_thread, registers_per_thread_per_radix);
+			if (res != VKFFT_SUCCESS) return res;
 		}
 
 		axes[k].specializationConstants.maxNonPow2Radix = 1;
 		axes[k].specializationConstants.usedLocRegs = 1;
-		for (uint64_t i = 2; i < 33; i++) {
-			uint64_t usedLocRegs = 0;
-			if (loc_multipliers[i] > 0) {
-				switch (i) {
-				case 6:
-					usedLocRegs = 3;
-					break;
-				case 9:
-					usedLocRegs = 3;
-					break;
-				case 10:
-					usedLocRegs = 5;
-					break;
-				case 12:
-					usedLocRegs = 3;
-					break;
-				case 14:
-					usedLocRegs = 7;
-					break;
-				case 15:
-					usedLocRegs = 5;
-					break;
-				default:
-					usedLocRegs = i;
-					break;
-				}
-			}
-			if ((loc_multipliers[i] > 0) && ((i & (i - 1)) != 0)) {
-				axes[k].specializationConstants.maxNonPow2Radix = i;
-			}
-			if ((usedLocRegs > axes[k].specializationConstants.usedLocRegs) && ((i & (i - 1)) != 0)) {
-				axes[k].specializationConstants.usedLocRegs = usedLocRegs;
-			}
-		}
-		//add more registers for Rader FFT if needed
-		if (axes[k].specializationConstants.useRader) {
-			axes[k].specializationConstants.rader_min_registers = rader_min_registers;
-			for (uint64_t i = 0; i < 20; i++) {
-				if (rader_primes[i] > 0) {
-					uint64_t temp_rader = (uint64_t)ceil((locAxisSplit[k] / (double)axes[k].specializationConstants.rader_min_registers) / (double)((rader_primes[i] + 1) / 2));
-					uint64_t active_rader = (uint64_t)ceil((locAxisSplit[k] / rader_primes[i]) / (double)temp_rader);
-					if (active_rader > 1) {
-						if ((((double)active_rader - (locAxisSplit[k] / rader_primes[i]) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((locAxisSplit[k] / rader_primes[i]) / (double)(active_rader - 1)) * ((rader_primes[i] + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
-					}
-					axes[k].specializationConstants.raderRegisters = (active_rader * 2 > axes[k].specializationConstants.raderRegisters) ? active_rader * 2 : axes[k].specializationConstants.raderRegisters;
-					if (active_rader * 2 > registers_per_thread) registers_per_thread = active_rader * 2;
-				}
-			}
-			if (axes[k].specializationConstants.raderRegisters < axes[k].specializationConstants.rader_min_registers)	axes[k].specializationConstants.raderRegisters = axes[k].specializationConstants.rader_min_registers;
-		}
-		axes[k].specializationConstants.registerBoost = registerBoost;
-		axes[k].specializationConstants.registers_per_thread = registers_per_thread;
-		axes[k].specializationConstants.min_registers_per_thread = min_registers_per_thread;
+
+		res = VkFFTOptimizeRadixKernels(registers_per_thread_per_radix, loc_multipliers, registerBoost, &axes[k].specializationConstants.maxNonPow2Radix, &axes[k].specializationConstants.usedLocRegs, axes[k].specializationConstants.raderContainer, axes[k].specializationConstants.numRaderPrimes);
+		if (res != VKFFT_SUCCESS) return res;
+
 		for (uint64_t i = 2; i < 33; i++) {
 			axes[k].specializationConstants.registers_per_thread_per_radix[i] = registers_per_thread_per_radix[i];
 		}
@@ -28229,37 +29814,62 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				}
 			}
 		}
-		uint64_t stageid = 0;
-		for (uint64_t i = 0; i < 20; i++) {
-			if ((rader_primes[i] > 0) && (rader_multipliers[i] > 0)) {
-				axes[k].specializationConstants.stageRadix[stageid] = rader_primes[i];
-				axes[k].specializationConstants.rader_generator[stageid] = rader_generator[i];
-				rader_multipliers[i]--;
-				i--;
-				stageid++;
-				axes[k].specializationConstants.numStages++;
-				//find primitive root
-			}
-		}
+
+		res = VkFFTGetRaderFFTStages(axes[k].specializationConstants.raderContainer, axes[k].specializationConstants.numRaderPrimes, &axes[k].specializationConstants.numStages, axes[k].specializationConstants.stageRadix, axes[k].specializationConstants.rader_generator);
+		if (res != VKFFT_SUCCESS) return res;
+
 		for (uint64_t i = 32; i > 1; i--) {
 			if (loc_multipliers[i] > 0) {
-				axes[k].specializationConstants.stageRadix[stageid] = i;
+				axes[k].specializationConstants.stageRadix[axes[k].specializationConstants.numStages] = i;
 				loc_multipliers[i]--;
 				i++;
-				stageid++;
 				axes[k].specializationConstants.numStages++;
 			}
 		}
+
+		//add more registers for Rader FFT if needed
+		if (axes[k].specializationConstants.useRaderMult) {
+			axes[k].specializationConstants.rader_min_registers = rader_min_registers;
+			for (uint64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+				if (axes[k].specializationConstants.raderContainer[i].type == 1) {
+					uint64_t temp_rader = (uint64_t)ceil((locAxisSplit[k] / (double)axes[k].specializationConstants.rader_min_registers) / (double)((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2));
+					uint64_t active_rader = (uint64_t)ceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)temp_rader);
+					if (active_rader > 1) {
+						if ((((double)active_rader - (locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)(active_rader - 1)) * ((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
+					}
+					axes[k].specializationConstants.raderRegisters = (active_rader * 2 > axes[k].specializationConstants.raderRegisters) ? active_rader * 2 : axes[k].specializationConstants.raderRegisters;
+					if (active_rader * 2 > registers_per_thread) registers_per_thread = active_rader * 2;
+				}
+			}
+			if (axes[k].specializationConstants.raderRegisters < axes[k].specializationConstants.rader_min_registers)	axes[k].specializationConstants.raderRegisters = axes[k].specializationConstants.rader_min_registers;
+		}
+
+		//final check up on all registers, increase if bigger
+		registers_per_thread = 0;
+		min_registers_per_thread = -1;
+		if (axes[k].specializationConstants.useRaderMult) {
+			registers_per_thread = axes[k].specializationConstants.raderRegisters;
+			min_registers_per_thread = axes[k].specializationConstants.rader_min_registers;
+		}
+		res = VkFFTMinMaxRegisterCheck(axes[k].specializationConstants.numStages, axes[k].specializationConstants.stageRadix, &min_registers_per_thread, &registers_per_thread, axes[k].specializationConstants.registers_per_thread_per_radix, axes[k].specializationConstants.raderContainer, axes[k].specializationConstants.numRaderPrimes, axes[k].specializationConstants.rader_generator);;
+		if (res != VKFFT_SUCCESS) return res;
+		axes[k].specializationConstants.minRaderFFTThreadNum = 0;
+		res = VkFFTGetRaderFFTThreadsNum(axes[k].specializationConstants.raderContainer, axes[k].specializationConstants.numRaderPrimes, &axes[k].specializationConstants.minRaderFFTThreadNum);
+		if (res != VKFFT_SUCCESS) return res;
+		axes[k].specializationConstants.registerBoost = registerBoost;
+		axes[k].specializationConstants.registers_per_thread = registers_per_thread;
+		axes[k].specializationConstants.min_registers_per_thread = min_registers_per_thread;
 
 		if (switchRegisterBoost > 0) {
 			axes[k].specializationConstants.stageRadix[axes[k].specializationConstants.numStages] = switchRegisterBoost;
 			axes[k].specializationConstants.numStages++;
 		}
 		else {
+			//try to read directly to registers
 			if (min_registers_per_thread != registers_per_thread) {
 				for (uint64_t i = 0; i < axes[k].specializationConstants.numStages; i++) {
 					if (axes[k].specializationConstants.registers_per_thread_per_radix[axes[k].specializationConstants.stageRadix[i]] == min_registers_per_thread) {
-						stageid = axes[k].specializationConstants.stageRadix[i];
+						uint64_t stageid = axes[k].specializationConstants.stageRadix[i];
 						axes[k].specializationConstants.stageRadix[i] = axes[k].specializationConstants.stageRadix[0];
 						axes[k].specializationConstants.stageRadix[0] = stageid;
 						if (axes[k].specializationConstants.useRader) {
@@ -28286,18 +29896,19 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 	kernelPreparationConfiguration.size[0] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 	kernelPreparationConfiguration.size[1] = 1;
 	kernelPreparationConfiguration.size[2] = 1;
-	kernelPreparationConfiguration.doublePrecision = app->configuration.doublePrecision;
+	kernelPreparationConfiguration.doublePrecision = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory);
 	kernelPreparationConfiguration.useLUT = 1;
 	kernelPreparationConfiguration.registerBoost = 1;
 	kernelPreparationConfiguration.disableReorderFourStep = 1;
+	kernelPreparationConfiguration.fixMinRaderPrimeFFT = 17;
+	kernelPreparationConfiguration.fixMinRaderPrimeMult = 17;
+	kernelPreparationConfiguration.fixMaxRaderPrimeFFT = 17;
+	kernelPreparationConfiguration.fixMaxRaderPrimeMult = 17;
+
 	kernelPreparationConfiguration.saveApplicationToString = app->configuration.saveApplicationToString;
 	kernelPreparationConfiguration.loadApplicationFromString = app->configuration.loadApplicationFromString;
 	if (kernelPreparationConfiguration.loadApplicationFromString) {
-#if((VKFFT_BACKEND==0)||(VKFFT_BACKEND==2)||(VKFFT_BACKEND==4))
-		kernelPreparationConfiguration.loadApplicationString = (void*)((uint32_t*)app->configuration.loadApplicationString + app->currentApplicationStringPos);
-#else
 		kernelPreparationConfiguration.loadApplicationString = (void*)((char*)app->configuration.loadApplicationString + app->currentApplicationStringPos);
-#endif
 	}
 	kernelPreparationConfiguration.performBandwidthBoost = (app->configuration.performBandwidthBoost > 0) ? app->configuration.performBandwidthBoost : 1;
 	if (axis_id == 0) kernelPreparationConfiguration.performBandwidthBoost = 0;
@@ -29049,6 +30660,424 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 	deleteVkFFT(&kernelPreparationApplication);
 	return resFFT;
 }
+static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkFFTAxis* axis) {
+	//generate Rader FFTKernel
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+	double double_PI = 3.1415926535897932384626433832795;
+	if (axis->specializationConstants.useRader) {
+		for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
+			if (axis->specializationConstants.raderContainer[i].type == 0) {
+				for (uint64_t j = 0; j < 30; j++) {
+					if (app->rader_primes[j] == axis->specializationConstants.raderContainer[i].prime) {
+						axis->specializationConstants.raderContainer[i].raderFFTkernel = app->raderFFTkernel[j];
+					}
+				}
+				if (axis->specializationConstants.raderContainer[i].raderFFTkernel) continue;
+
+				uint64_t write_id = app->numRaderFFTPrimes;
+				app->rader_primes[write_id] = axis->specializationConstants.raderContainer[i].prime;
+				app->numRaderFFTPrimes++;
+
+				if (app->configuration.loadApplicationFromString) continue;
+				VkFFTApplication kernelPreparationApplication = {};
+				VkFFTConfiguration kernelPreparationConfiguration = {};
+
+				kernelPreparationConfiguration.FFTdim = 1;
+				kernelPreparationConfiguration.size[0] = axis->specializationConstants.raderContainer[i].prime - 1;
+				kernelPreparationConfiguration.size[1] = 1;
+				kernelPreparationConfiguration.size[2] = 1;
+				kernelPreparationConfiguration.doublePrecision = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory);
+				kernelPreparationConfiguration.useLUT = 1;
+				kernelPreparationConfiguration.fixMinRaderPrimeFFT = 17;
+				kernelPreparationConfiguration.fixMinRaderPrimeMult = 17;
+				kernelPreparationConfiguration.fixMaxRaderPrimeFFT = 17;
+				kernelPreparationConfiguration.fixMaxRaderPrimeMult = 17;
+
+				kernelPreparationConfiguration.device = app->configuration.device;
+#if(VKFFT_BACKEND==0)
+				kernelPreparationConfiguration.queue = app->configuration.queue; //to allocate memory for LUT, we have to pass a queue, vkGPU->fence, commandPool and physicalDevice pointers 
+				kernelPreparationConfiguration.fence = app->configuration.fence;
+				kernelPreparationConfiguration.commandPool = app->configuration.commandPool;
+				kernelPreparationConfiguration.physicalDevice = app->configuration.physicalDevice;
+				kernelPreparationConfiguration.isCompilerInitialized = 1;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+				kernelPreparationConfiguration.tempBufferDeviceMemory = app->configuration.tempBufferDeviceMemory;
+#elif(VKFFT_BACKEND==3)
+				kernelPreparationConfiguration.context = app->configuration.context;
+#elif(VKFFT_BACKEND==4)
+				kernelPreparationConfiguration.context = app->configuration.context;
+				kernelPreparationConfiguration.commandQueue = app->configuration.commandQueue;
+				kernelPreparationConfiguration.commandQueueID = app->configuration.commandQueueID;
+#endif			
+
+				uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * kernelPreparationConfiguration.size[0] * kernelPreparationConfiguration.size[1] * kernelPreparationConfiguration.size[2];
+				if (kernelPreparationConfiguration.doublePrecision) bufferSize *= sizeof(double) / sizeof(float);
+
+				kernelPreparationConfiguration.bufferSize = &bufferSize;
+				resFFT = initializeVkFFT(&kernelPreparationApplication, kernelPreparationConfiguration);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
+
+				if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+					double* raderFFTkernel = (double*)malloc((axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(double) * 2);
+					if (!raderFFTkernel) return VKFFT_ERROR_MALLOC_FAILED;
+					axis->specializationConstants.raderContainer[i].raderFFTkernel = (void*)raderFFTkernel;
+					app->raderFFTkernel[write_id] = (void*)raderFFTkernel;
+					app->rader_buffer_size[write_id] = (axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(double) * 2;
+					for (uint64_t j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
+						uint64_t g_pow = 1;
+						for (uint64_t t = 0; t < axis->specializationConstants.raderContainer[i].prime - 1 - j; t++) {
+							g_pow = (g_pow * axis->specializationConstants.raderContainer[i].generator) % axis->specializationConstants.raderContainer[i].prime;
+						}
+						raderFFTkernel[2 * j] = cos(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
+						raderFFTkernel[2 * j + 1] = -sin(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
+					}
+				}
+				else {
+					float* raderFFTkernel = (float*)malloc((axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(float) * 2);
+					if (!raderFFTkernel) return VKFFT_ERROR_MALLOC_FAILED;
+					axis->specializationConstants.raderContainer[i].raderFFTkernel = (void*)raderFFTkernel;
+					app->raderFFTkernel[write_id] = (void*)raderFFTkernel;
+					app->rader_buffer_size[write_id] = (axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(float) * 2;
+					for (uint64_t j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
+						uint64_t g_pow = 1;
+						for (uint64_t t = 0; t < axis->specializationConstants.raderContainer[i].prime - 1 - j; t++) {
+							g_pow = (g_pow * axis->specializationConstants.raderContainer[i].generator) % axis->specializationConstants.raderContainer[i].prime;
+						}
+						raderFFTkernel[2 * j] = (float)cos(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
+						raderFFTkernel[2 * j + 1] = (float)(-sin(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime));
+					}
+				}
+#if(VKFFT_BACKEND==0)
+				VkDeviceMemory bufferRaderFFTDeviceMemory;
+				VkBuffer bufferRaderFFT;
+#elif(VKFFT_BACKEND==1)
+				void* bufferRaderFFT;
+#elif(VKFFT_BACKEND==2)
+				void* bufferRaderFFT;
+#elif(VKFFT_BACKEND==3)
+				cl_mem bufferRaderFFT;
+#elif(VKFFT_BACKEND==4)
+				void* bufferRaderFFT;
+#endif
+#if(VKFFT_BACKEND==0)
+				VkResult res = VK_SUCCESS;
+				resFFT = allocateFFTBuffer(app, &bufferRaderFFT, &bufferRaderFFTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+				if (resFFT != VKFFT_SUCCESS) return resFFT;
+#elif(VKFFT_BACKEND==1)
+				cudaError_t res = cudaSuccess;
+				res = cudaMalloc(&bufferRaderFFT, bufferSize);
+				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+#elif(VKFFT_BACKEND==2)
+				hipError_t res = hipSuccess;
+				res = hipMalloc(&bufferRaderFFT, bufferSize);
+				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+#elif(VKFFT_BACKEND==3)
+				cl_int res = CL_SUCCESS;
+				bufferRaderFFT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_WRITE, bufferSize, 0, &res);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+				cl_command_queue commandQueue = clCreateCommandQueue(app->configuration.context[0], app->configuration.device[0], 0, &res);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
+#elif(VKFFT_BACKEND==4)
+				ze_result_t res = ZE_RESULT_SUCCESS;
+				ze_device_mem_alloc_desc_t device_desc = {};
+				device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+				res = zeMemAllocDevice(app->configuration.context[0], &device_desc, bufferSize, sizeof(float), app->configuration.device[0], &bufferRaderFFT);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+#endif
+
+#if(VKFFT_BACKEND==0)
+				resFFT = transferDataFromCPU(&kernelPreparationApplication, axis->specializationConstants.raderContainer[i].raderFFTkernel, &bufferRaderFFT, bufferSize);
+				if (resFFT != VKFFT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return resFFT;
+				}
+#elif(VKFFT_BACKEND==1)
+				res = cudaMemcpy(bufferRaderFFT, axis->specializationConstants.raderContainer[i].raderFFTkernel, bufferSize, cudaMemcpyHostToDevice);
+				if (res != cudaSuccess) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_COPY;
+				}
+#elif(VKFFT_BACKEND==2)
+				res = hipMemcpy(bufferRaderFFT, axis->specializationConstants.raderContainer[i].raderFFTkernel, bufferSize, hipMemcpyHostToDevice);
+				if (res != hipSuccess) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_COPY;
+				}
+#elif(VKFFT_BACKEND==3)
+				res = clEnqueueWriteBuffer(commandQueue, bufferRaderFFT, CL_TRUE, 0, bufferSize, axis->specializationConstants.raderContainer[i].raderFFTkernel, 0, NULL, NULL);
+				if (res != CL_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_COPY;
+				}
+#elif(VKFFT_BACKEND==4)
+				ze_command_queue_desc_t commandQueueCopyDesc = {
+						ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
+						0,
+						app->configuration.commandQueueID,
+						0, // index
+						0, // flags
+						ZE_COMMAND_QUEUE_MODE_DEFAULT,
+						ZE_COMMAND_QUEUE_PRIORITY_NORMAL
+				};
+				ze_command_list_handle_t copyCommandList;
+				res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
+				if (res != ZE_RESULT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+				}
+				res = zeCommandListAppendMemoryCopy(copyCommandList, bufferRaderFFT, axis->specializationConstants.raderContainer[i].raderFFTkernel, bufferSize, 0, 0, 0);
+				if (res != ZE_RESULT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_COPY;
+				}
+				res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
+				if (res != ZE_RESULT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+				}
+#endif
+#if(VKFFT_BACKEND==0)
+				{
+					VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+					commandBufferAllocateInfo.commandPool = kernelPreparationApplication.configuration.commandPool[0];
+					commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+					commandBufferAllocateInfo.commandBufferCount = 1;
+					VkCommandBuffer commandBuffer = {};
+					res = vkAllocateCommandBuffers(kernelPreparationApplication.configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
+					if (res != 0) {
+						free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+						deleteVkFFT(&kernelPreparationApplication);
+						return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
+					}
+					VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+					commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+					res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
+					if (res != 0) {
+						free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+						deleteVkFFT(&kernelPreparationApplication);
+						return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
+					}
+					VkFFTLaunchParams launchParams = {};
+					launchParams.commandBuffer = &commandBuffer;
+					launchParams.buffer = &bufferRaderFFT;
+					//Record commands
+					resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+					if (resFFT != VKFFT_SUCCESS) {
+						free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+						deleteVkFFT(&kernelPreparationApplication);
+						return resFFT;
+					}
+					res = vkEndCommandBuffer(commandBuffer);
+					if (res != 0) {
+						free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+						deleteVkFFT(&kernelPreparationApplication);
+						return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+					}
+					VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+					submitInfo.commandBufferCount = 1;
+					submitInfo.pCommandBuffers = &commandBuffer;
+					res = vkQueueSubmit(kernelPreparationApplication.configuration.queue[0], 1, &submitInfo, kernelPreparationApplication.configuration.fence[0]);
+					if (res != 0) {
+						free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+						deleteVkFFT(&kernelPreparationApplication);
+						return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+					}
+					res = vkWaitForFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence, VK_TRUE, 100000000000);
+					if (res != 0) {
+						free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+						deleteVkFFT(&kernelPreparationApplication);
+						return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+					}
+					res = vkResetFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence);
+					if (res != 0) {
+						free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+						deleteVkFFT(&kernelPreparationApplication);
+						return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
+					}
+					vkFreeCommandBuffers(kernelPreparationApplication.configuration.device[0], kernelPreparationApplication.configuration.commandPool[0], 1, &commandBuffer);
+				}
+#elif(VKFFT_BACKEND==1)
+				VkFFTLaunchParams launchParams = {};
+				launchParams.buffer = &bufferRaderFFT;
+				resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+				if (resFFT != VKFFT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return resFFT;
+				}
+				res = cudaDeviceSynchronize();
+				if (res != cudaSuccess) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+				}
+#elif(VKFFT_BACKEND==2)
+				VkFFTLaunchParams launchParams = {};
+				launchParams.buffer = &bufferRaderFFT;
+				resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+				if (resFFT != VKFFT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return resFFT;
+				}
+				res = hipDeviceSynchronize();
+				if (res != hipSuccess) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+				}
+#elif(VKFFT_BACKEND==3)
+				VkFFTLaunchParams launchParams = {};
+				launchParams.commandQueue = &commandQueue;
+				launchParams.buffer = &bufferRaderFFT;
+				resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+				if (resFFT != VKFFT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return resFFT;
+				}
+				res = clFinish(commandQueue);
+				if (res != CL_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+				}
+#elif(VKFFT_BACKEND==4)
+				ze_command_list_desc_t commandListDescription = {};
+				commandListDescription.stype = ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC;
+				ze_command_list_handle_t commandList = {};
+				res = zeCommandListCreate(app->configuration.context[0], app->configuration.device[0], &commandListDescription, &commandList);
+				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+				VkFFTLaunchParams launchParams = {};
+				launchParams.commandList = &commandList;
+				launchParams.buffer = &bufferRaderFFT;
+				resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+				if (resFFT != VKFFT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return resFFT;
+				}
+				res = zeCommandListClose(commandList);
+				if (res != ZE_RESULT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+				}
+				res = zeCommandQueueExecuteCommandLists(app->configuration.commandQueue[0], 1, &commandList, 0);
+				if (res != ZE_RESULT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+				}
+				res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
+				if (res != ZE_RESULT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+				}
+				res = zeCommandListDestroy(commandList);
+				if (res != ZE_RESULT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
+				}
+#endif
+#if(VKFFT_BACKEND==0)
+				resFFT = transferDataToCPU(&kernelPreparationApplication, axis->specializationConstants.raderContainer[i].raderFFTkernel, &bufferRaderFFT, bufferSize);
+				if (resFFT != VKFFT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return resFFT;
+				}
+#elif(VKFFT_BACKEND==1)
+				res = cudaMemcpy(axis->specializationConstants.raderContainer[i].raderFFTkernel, bufferRaderFFT, bufferSize, cudaMemcpyDeviceToHost);
+				if (res != cudaSuccess) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_COPY;
+				}
+#elif(VKFFT_BACKEND==2)
+				res = hipMemcpy(axis->specializationConstants.raderContainer[i].raderFFTkernel, bufferRaderFFT, bufferSize, hipMemcpyDeviceToHost);
+				if (res != hipSuccess) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_COPY;
+				}
+#elif(VKFFT_BACKEND==3)
+				res = clEnqueueReadBuffer(commandQueue, bufferRaderFFT, CL_TRUE, 0, bufferSize, axis->specializationConstants.raderContainer[i].raderFFTkernel, 0, NULL, NULL);
+				if (res != CL_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_COPY;
+				}
+#elif(VKFFT_BACKEND==4)
+				ze_command_queue_desc_t commandQueueCopyDesc = {
+						ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
+						0,
+						app->configuration.commandQueueID,
+						0, // index
+						0, // flags
+						ZE_COMMAND_QUEUE_MODE_DEFAULT,
+						ZE_COMMAND_QUEUE_PRIORITY_NORMAL
+				};
+				ze_command_list_handle_t copyCommandList;
+				res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
+				if (res != ZE_RESULT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+				}
+				res = zeCommandListAppendMemoryCopy(copyCommandList, axis->specializationConstants.raderContainer[i].raderFFTkernel, bufferRaderFFT, bufferSize, 0, 0, 0);
+				if (res != ZE_RESULT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_COPY;
+				}
+				res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
+				if (res != ZE_RESULT_SUCCESS) {
+					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+				}
+#endif
+
+#if(VKFFT_BACKEND==0)
+				kernelPreparationApplication.configuration.isCompilerInitialized = 0;
+#elif(VKFFT_BACKEND==3)
+				res = clReleaseCommandQueue(commandQueue);
+				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
+#endif
+				deleteVkFFT(&kernelPreparationApplication);
+			}
+		}
+		if (app->configuration.loadApplicationFromString) {
+			uint64_t offset = 0;
+			for (uint64_t i = 0; i < app->numRaderFFTPrimes; i++) {
+				if (!app->raderFFTkernel[i]) {
+					uint64_t current_size = 0;
+					if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+						current_size = (axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(double) * 2;
+					}
+					else {
+						current_size = (axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(float) * 2;
+					}
+					app->raderFFTkernel[i] = (void*)malloc(current_size);
+					if (!app->raderFFTkernel[i]) return VKFFT_ERROR_MALLOC_FAILED;
+					axis->specializationConstants.raderContainer[i].raderFFTkernel = app->raderFFTkernel[i];
+					memcpy(app->raderFFTkernel[i], (char*)app->configuration.loadApplicationString + app->applicationStringOffsetRader + offset, current_size);
+					offset += current_size;
+				}
+			}
+		}
+	}
+	return resFFT;
+}
 static inline VkFFTResult VkFFTCheckUpdateBufferSet(VkFFTApplication* app, VkFFTAxis* axis, uint64_t planStage, VkFFTLaunchParams* launchParams) {
 	uint64_t performBufferSetUpdate = planStage;
 	uint64_t performOffsetUpdate = planStage;
@@ -29573,6 +31602,15 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 					}
 #endif
 				}
+				if ((i == axis->specializationConstants.RaderUintLUTBindingID) && (axis->specializationConstants.raderUintLUT)) {
+#if(VKFFT_BACKEND==0)
+					if (axis->specializationConstants.performBufferSetUpdate) {
+						descriptorBufferInfo.buffer = axis->bufferRaderUintLUT;
+						descriptorBufferInfo.offset = 0;
+						descriptorBufferInfo.range = axis->bufferRaderUintLUTSize;
+					}
+#endif
+				}
 				if ((i == axis->specializationConstants.BluesteinConvolutionBindingID) && (app->useBluesteinFFT[axis_id]) && (axis_upload_id == 0)) {
 #if(VKFFT_BACKEND==0)
 					if (axis->specializationConstants.performBufferSetUpdate) {
@@ -30024,6 +32062,8 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 	axis->specializationConstants.warpSize = app->configuration.warpSize;
 	axis->specializationConstants.numSharedBanks = app->configuration.numSharedBanks;
 	axis->specializationConstants.useUint64 = app->configuration.useUint64;
+	axis->specializationConstants.disableSetLocale = app->configuration.disableSetLocale;
+
 	axis->specializationConstants.numAxisUploads = FFTPlan->numAxisUploads[0];
 	axis->specializationConstants.reorderFourStep = ((FFTPlan->numAxisUploads[0] > 1) && (!app->useBluesteinFFT[0])) ? app->configuration.reorderFourStep : 0;
 	uint64_t complexSize;
@@ -30657,7 +32697,20 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 
 		uint64_t tempSize[3] = { (uint64_t)ceil((app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2]) / (double)(2 * axis->axisBlock[0])), 1, 1 };
 		tempSize[2] *= app->configuration.numberKernels * app->configuration.numberBatches * app->configuration.coordinateFeatures;
-
+		if ((app->configuration.maxComputeWorkGroupCount[0] > app->configuration.maxComputeWorkGroupCount[1]) && (tempSize[1] > app->configuration.maxComputeWorkGroupCount[1]) && (tempSize[1] > tempSize[0]) && (tempSize[1] >= tempSize[2])) {
+			uint64_t temp_tempSize = tempSize[0];
+			tempSize[0] = tempSize[1];
+			tempSize[1] = temp_tempSize;
+			axis->specializationConstants.swapComputeWorkGroupID = 1;
+		}
+		else {
+			if ((app->configuration.maxComputeWorkGroupCount[0] > app->configuration.maxComputeWorkGroupCount[2]) && (tempSize[2] > app->configuration.maxComputeWorkGroupCount[2]) && (tempSize[2] > tempSize[0]) && (tempSize[2] >= tempSize[1])) {
+				uint64_t temp_tempSize = tempSize[0];
+				tempSize[0] = tempSize[2];
+				tempSize[2] = temp_tempSize;
+				axis->specializationConstants.swapComputeWorkGroupID = 2;
+			}
+		}
 		if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
 		else  axis->specializationConstants.performWorkGroupShift[0] = 0;
 		if (tempSize[1] > app->configuration.maxComputeWorkGroupCount[1]) axis->specializationConstants.performWorkGroupShift[1] = 1;
@@ -30853,10 +32906,10 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		}
 #if(VKFFT_BACKEND==0)
 		uint32_t* code;
-		size_t codeSize;
+		uint64_t codeSize;
 		if (app->configuration.loadApplicationFromString) {
-			uint32_t* localStrPointer = (uint32_t*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-			codeSize = localStrPointer[0];
+			char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
+			memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
 			code = (uint32_t*)malloc(codeSize);
 			if (!code) {
 				free(code0);
@@ -30864,8 +32917,8 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			memcpy(code, localStrPointer + 1, codeSize);
-			app->currentApplicationStringPos += codeSize / (sizeof(uint32_t)) + 1;
+			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
+			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
 		}
 		else
 		{
@@ -30961,6 +33014,15 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				/* .maxTaskWorkGroupSizeX_NV = */ 32,
 				/* .maxTaskWorkGroupSizeY_NV = */ 1,
 				/* .maxTaskWorkGroupSizeZ_NV = */ 1,
+				/* .maxMeshViewCountNV = */ 4,
+				/* .max_mesh_output_vertices_ext = */ 256,
+				/* .max_mesh_output_primitives_ext = */ 512,
+				/* .max_mesh_work_group_size_x_ext = */ 32,
+				/* .max_mesh_work_group_size_y_ext = */ 1,
+				/* .max_mesh_work_group_size_z_ext = */ 1,
+				/* .max_task_work_group_size_x_ext = */ 32,
+				/* .max_task_work_group_size_y_ext = */ 1,
+				/* .max_task_work_group_size_z_ext = */ 1,
 				/* .maxMeshViewCountNV = */ 4,
 				/* .maxDualSourceDrawBuffersEXT = */ 1,
 
@@ -31111,10 +33173,10 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		}
 #elif(VKFFT_BACKEND==1)
 		char* code;
-		size_t codeSize;
+		uint64_t codeSize;
 		if (app->configuration.loadApplicationFromString) {
 			char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-			codeSize = strtol(localStrPointer, &localStrPointer, 10);
+			memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
 			code = (char*)malloc(codeSize);
 			if (!code) {
 				free(code0);
@@ -31122,9 +33184,8 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			memcpy(code, localStrPointer + 1, codeSize - 1);
-			code[codeSize - 1] = '\0';
-			app->currentApplicationStringPos += codeSize + (uint64_t)(floor(log10((double)codeSize))) + 1;
+			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
+			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
 		}
 		else {
 			nvrtcProgram prog;
@@ -31143,12 +33204,21 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				deleteVkFFT(app);
 				return VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM;
 			}
-			//const char opts[20] = "--fmad=false";
+			char* opts[5];
+			opts[0] = (char*)malloc(sizeof(char) * 50);
+			if (!opts[0]) {
+				free(code0);
+				code0 = 0;
+				deleteVkFFT(app);
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+			sprintf(opts[0], "--gpu-architecture=sm_%" PRIu64 "%" PRIu64 "", app->configuration.computeCapabilityMajor, app->configuration.computeCapabilityMinor);
 			//result = nvrtcAddNameExpression(prog, "&consts");
 			//if (result != NVRTC_SUCCESS) printf("1.5 error: %s\n", nvrtcGetErrorString(result));
 			result = nvrtcCompileProgram(prog,  // prog
-				0,     // numOptions
-				0); // options
+				1,     // numOptions
+				(const char* const*)opts); // options
+			free(opts[0]);
 			if (result != NVRTC_SUCCESS) {
 				printf("nvrtcCompileProgram error: %s\n", nvrtcGetErrorString(result));
 				char* log = (char*)malloc(sizeof(char) * 4000000);
@@ -31170,9 +33240,17 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					return VKFFT_ERROR_FAILED_TO_COMPILE_PROGRAM;
 				}
 			}
+#if (CUDA_VERSION >= 11030)
+			result = nvrtcGetCUBINSize(prog, &codeSize);
+#else
 			result = nvrtcGetPTXSize(prog, &codeSize);
+#endif
 			if (result != NVRTC_SUCCESS) {
+#if (CUDA_VERSION >= 11030)
+				printf("nvrtcGetCUBINSize error: %s\n", nvrtcGetErrorString(result));
+#else
 				printf("nvrtcGetPTXSize error: %s\n", nvrtcGetErrorString(result));
+#endif
 				free(code0);
 				code0 = 0;
 				deleteVkFFT(app);
@@ -31187,9 +33265,17 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
 			axis->binary = code;
+#if (CUDA_VERSION >= 11030)
+			result = nvrtcGetCUBIN(prog, code);
+#else
 			result = nvrtcGetPTX(prog, code);
+#endif
 			if (result != NVRTC_SUCCESS) {
+#if (CUDA_VERSION >= 11030)
+				printf("nvrtcGetCUBIN error: %s\n", nvrtcGetErrorString(result));
+#else
 				printf("nvrtcGetPTX error: %s\n", nvrtcGetErrorString(result));
+#endif
 				free(code);
 				code = 0;
 				free(code0);
@@ -31260,10 +33346,10 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		}
 #elif(VKFFT_BACKEND==2)
 		uint32_t* code;
-		size_t codeSize;
+		uint64_t codeSize;
 		if (app->configuration.loadApplicationFromString) {
-			uint32_t* localStrPointer = (uint32_t*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-			codeSize = localStrPointer[0];
+			char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
+			memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
 			code = (uint32_t*)malloc(codeSize);
 			if (!code) {
 				free(code0);
@@ -31271,8 +33357,8 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			memcpy(code, localStrPointer + 1, codeSize);
-			app->currentApplicationStringPos += codeSize / (sizeof(uint32_t)) + 1;
+			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
+			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
 		}
 		else
 		{
@@ -31300,6 +33386,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					return VKFFT_ERROR_FAILED_TO_ADD_NAME_EXPRESSION;
 				}
 			}
+
 			result = hiprtcCompileProgram(prog,  // prog
 				0,     // numOptions
 				0); // options
@@ -31418,9 +33505,10 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 #elif(VKFFT_BACKEND==3)
 		if (app->configuration.loadApplicationFromString) {
 			char* code;
-			size_t codeSize;
+			uint64_t codeSize;
+
 			char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-			codeSize = strtol(localStrPointer, &localStrPointer, 10);
+			memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
 			code = (char*)malloc(codeSize);
 			if (!code) {
 				free(code0);
@@ -31428,9 +33516,8 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			memcpy(code, localStrPointer + 1, codeSize - 2);
-			code[codeSize - 2] = '\0';
-			app->currentApplicationStringPos += codeSize + (uint64_t)(floor(log10((double)codeSize)));
+			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
+			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
 
 			axis->program = clCreateProgramWithBinary(app->configuration.context[0], 1, app->configuration.device, &codeSize, (const unsigned char**)(&code), 0, &res);
 			if (res != CL_SUCCESS) {
@@ -31519,10 +33606,10 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		}
 #elif(VKFFT_BACKEND==4)
 		uint32_t* code;
-		size_t codeSize;
+		uint64_t codeSize;
 		if (app->configuration.loadApplicationFromString) {
-			uint32_t* localStrPointer = (uint32_t*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-			codeSize = localStrPointer[0];
+			char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
+			memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
 			code = (uint32_t*)malloc(codeSize);
 			if (!code) {
 				free(code0);
@@ -31530,8 +33617,9 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			memcpy(code, localStrPointer + 1, codeSize);
-			app->currentApplicationStringPos += codeSize / (sizeof(uint32_t)) + 1;
+			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
+			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
+
 			const char* pBuildFlags = (app->configuration.useUint64) ? "-ze-opt-greater-than-4GB-buffer-required" : 0;
 			ze_module_desc_t moduleDesc = {
 				ZE_STRUCTURE_TYPE_MODULE_DESC,
@@ -31704,10 +33792,17 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axis->specializationConstants.warpSize = app->configuration.warpSize;
 	axis->specializationConstants.numSharedBanks = app->configuration.numSharedBanks;
 	axis->specializationConstants.useUint64 = app->configuration.useUint64;
+	axis->specializationConstants.disableSetLocale = app->configuration.disableSetLocale;
+
 	axis->specializationConstants.numAxisUploads = FFTPlan->numAxisUploads[axis_id];
-	axis->specializationConstants.fixMinRaderPrime = app->configuration.fixMinRaderPrime;
-	axis->specializationConstants.fixMaxRaderPrime = app->configuration.fixMaxRaderPrime;
-	axis->specializationConstants.inline_rader_g_pow = 1;
+	axis->specializationConstants.fixMinRaderPrimeMult = app->configuration.fixMinRaderPrimeMult;
+	axis->specializationConstants.fixMaxRaderPrimeMult = app->configuration.fixMaxRaderPrimeMult;
+	axis->specializationConstants.fixMinRaderPrimeFFT = app->configuration.fixMinRaderPrimeFFT;
+	axis->specializationConstants.fixMaxRaderPrimeFFT = app->configuration.fixMaxRaderPrimeFFT;
+
+	axis->specializationConstants.raderUintLUT = (axis->specializationConstants.useRader) ? app->configuration.useRaderUintLUT : 0;
+	axis->specializationConstants.inline_rader_g_pow = (axis->specializationConstants.raderUintLUT) ? 2 : 1;
+	axis->specializationConstants.inline_rader_kernel = (app->configuration.useLUT) ? 0 : 1;
 	uint64_t complexSize;
 	if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory)
 		complexSize = (2 * sizeof(double));
@@ -31725,9 +33820,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	uint64_t allowedSharedMemory = app->configuration.sharedMemorySize;
 	uint64_t allowedSharedMemoryPow2 = app->configuration.sharedMemorySizePow2;
 
-	if (axis->specializationConstants.useRader) {
-		allowedSharedMemory -= (axis->specializationConstants.useRader - 1)* complexSize;
-		allowedSharedMemoryPow2 -= (axis->specializationConstants.useRader - 1)* complexSize;
+	if (axis->specializationConstants.useRaderMult) {
+		allowedSharedMemory -= (axis->specializationConstants.useRaderMult - 1) * complexSize;
+		allowedSharedMemoryPow2 -= (axis->specializationConstants.useRaderMult - 1) * complexSize;
 	}
 
 	uint64_t maxSequenceLengthSharedMemory = allowedSharedMemory / complexSize;
@@ -31869,6 +33964,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		}
 #endif
 	}
+	//generate Rader Kernels
+	resFFT = VkFFTGenerateRaderFFTKernel(app, axis);
+	if (resFFT != VKFFT_SUCCESS) {
+		deleteVkFFT(app);
+		return resFFT;
+	}
 	//allocate LUT
 	if (app->configuration.useLUT) {
 		double double_PI = 3.1415926535897932384626433832795;
@@ -31933,7 +34034,141 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			dimMult *= axis->specializationConstants.stageRadix[i];
 		}
 		axis->specializationConstants.maxStageSumLUT = maxStageSum;
+
 		dimMult = 1;
+		for (uint64_t k = 0; k < axis->specializationConstants.numRaderPrimes; k++) {
+			if (axis->specializationConstants.raderContainer[k].type == 0) {
+				axis->specializationConstants.raderContainer[k].RaderRadixOffsetLUT = maxStageSum;
+				for (uint64_t i = 0; i < axis->specializationConstants.raderContainer[k].numStages; i++) {
+					if (i > 0) {
+						switch (axis->specializationConstants.raderContainer[k].stageRadix[i]) {
+						case 2:
+							maxStageSum += dimMult;
+							break;
+						case 3:
+							maxStageSum += dimMult * 2;
+							break;
+						case 4:
+							maxStageSum += dimMult * 2;
+							break;
+						case 5:
+							maxStageSum += dimMult * 4;
+							break;
+						case 6:
+							maxStageSum += dimMult * 5;
+							break;
+						case 7:
+							maxStageSum += dimMult * 6;
+							break;
+						case 8:
+							maxStageSum += dimMult * 3;
+							break;
+						case 9:
+							maxStageSum += dimMult * 8;
+							break;
+						case 10:
+							maxStageSum += dimMult * 9;
+							break;
+						case 11:
+							maxStageSum += dimMult * 10;
+							break;
+						case 12:
+							maxStageSum += dimMult * 11;
+							break;
+						case 13:
+							maxStageSum += dimMult * 12;
+							break;
+						case 14:
+							maxStageSum += dimMult * 13;
+							break;
+						case 15:
+							maxStageSum += dimMult * 14;
+							break;
+						case 16:
+							maxStageSum += dimMult * 4;
+							break;
+						case 32:
+							maxStageSum += dimMult * 5;
+							break;
+						default:
+							maxStageSum += dimMult * (axis->specializationConstants.raderContainer[k].stageRadix[i]);
+							break;
+						}
+					}
+					dimMult *= axis->specializationConstants.raderContainer[k].stageRadix[i];
+				}
+				axis->specializationConstants.maxStageSumLUT = maxStageSum;
+				dimMult = 1;
+			}
+		}
+		//iFFT LUT
+		dimMult = 1;
+		for (uint64_t k = 0; k < axis->specializationConstants.numRaderPrimes; k++) {
+			if (axis->specializationConstants.raderContainer[k].type == 0) {
+				axis->specializationConstants.raderContainer[k].RaderRadixOffsetLUTiFFT = maxStageSum;
+				for (int64_t i = axis->specializationConstants.raderContainer[k].numStages - 1; i >= 0; i--) {
+					if (i < axis->specializationConstants.raderContainer[k].numStages - 1) {
+						switch (axis->specializationConstants.raderContainer[k].stageRadix[i]) {
+						case 2:
+							maxStageSum += dimMult;
+							break;
+						case 3:
+							maxStageSum += dimMult * 2;
+							break;
+						case 4:
+							maxStageSum += dimMult * 2;
+							break;
+						case 5:
+							maxStageSum += dimMult * 4;
+							break;
+						case 6:
+							maxStageSum += dimMult * 5;
+							break;
+						case 7:
+							maxStageSum += dimMult * 6;
+							break;
+						case 8:
+							maxStageSum += dimMult * 3;
+							break;
+						case 9:
+							maxStageSum += dimMult * 8;
+							break;
+						case 10:
+							maxStageSum += dimMult * 9;
+							break;
+						case 11:
+							maxStageSum += dimMult * 10;
+							break;
+						case 12:
+							maxStageSum += dimMult * 11;
+							break;
+						case 13:
+							maxStageSum += dimMult * 12;
+							break;
+						case 14:
+							maxStageSum += dimMult * 13;
+							break;
+						case 15:
+							maxStageSum += dimMult * 14;
+							break;
+						case 16:
+							maxStageSum += dimMult * 4;
+							break;
+						case 32:
+							maxStageSum += dimMult * 5;
+							break;
+						default:
+							maxStageSum += dimMult * (axis->specializationConstants.raderContainer[k].stageRadix[i]);
+							break;
+						}
+					}
+					dimMult *= axis->specializationConstants.raderContainer[k].stageRadix[i];
+				}
+				axis->specializationConstants.maxStageSumLUT = maxStageSum;
+				dimMult = 1;
+			}
+		}
+
 		if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
 			if (axis_upload_id > 0) {
 				if ((app->configuration.performDCT == 2) || (app->configuration.performDCT == 3)) {
@@ -31967,24 +34202,11 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				}
 			}
 			if (axis->specializationConstants.useRader) {
-				uint64_t sharedOffset = 0;
-				for (uint64_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					if ((axis->specializationConstants.stageRadix[i] >= axis->specializationConstants.fixMinRaderPrime) && (axis->specializationConstants.rader_generator[i] > 0)) {
-						int64_t id = -1;
-						for (uint64_t j = 0; j < i; j++) {
-							if (axis->specializationConstants.stageRadix[j] == axis->specializationConstants.stageRadix[i]) {
-								id = j;
-							}
-						}
-						if (id >= 0) {
-							axis->specializationConstants.RaderKernelOffsetLUT[i] = axis->specializationConstants.RaderKernelOffsetLUT[id];
-						}
-						else {
-							axis->specializationConstants.RaderKernelOffsetLUT[i] = axis->bufferLUTSize / (2 * sizeof(double));
-							axis->bufferLUTSize += (axis->specializationConstants.stageRadix[i] - 1) * 2 * sizeof(double);
-						}
+				for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
+					if (!axis->specializationConstants.inline_rader_kernel) {
+						axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT = axis->bufferLUTSize / (2 * sizeof(double));
+						axis->bufferLUTSize += (axis->specializationConstants.raderContainer[i].prime - 1) * 2 * sizeof(double);
 					}
-
 				}
 			}
 			if (axis->bufferLUTSize == 0) axis->bufferLUTSize = sizeof(double);
@@ -32005,7 +34227,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 						localStageSum += localStageSize;
 					}
 				}
-				else if ((axis->specializationConstants.stageRadix[i] >= app->configuration.fixMinRaderPrime) && (axis->specializationConstants.rader_generator[i] > 0)) {
+				else if (axis->specializationConstants.rader_generator[i] > 0) {
 					for (uint64_t j = 0; j < localStageSize; j++) {
 						for (int64_t k = (axis->specializationConstants.stageRadix[i] - 1); k >= 0; k--) {
 							tempLUT[2 * (k + localStageSum)] = cos(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
@@ -32025,27 +34247,79 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				}
 				localStageSize *= axis->specializationConstants.stageRadix[i];
 			}
+
+
 			if (axis->specializationConstants.useRader) {
-				for (uint64_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					if ((axis->specializationConstants.stageRadix[i] >= axis->specializationConstants.fixMinRaderPrime) && (axis->specializationConstants.rader_generator[i] > 0)) {
-						int64_t id = -1;
-						for (uint64_t j = 0; j < i; j++) {
-							if (axis->specializationConstants.stageRadix[j] == axis->specializationConstants.stageRadix[i]) {
-								id = j;
-							}
-						}
-						if (id < 0) {
-							for (uint64_t j = 0; j < (axis->specializationConstants.stageRadix[i] - 1); j++) {//fix later
+				for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
+					if (axis->specializationConstants.raderContainer[i].type) {
+						if (!axis->specializationConstants.inline_rader_kernel) {
+							for (uint64_t j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
 								uint64_t g_pow = 1;
-								for (uint64_t t = 0; t < axis->specializationConstants.stageRadix[i] - 1 - j; t++) {
-									g_pow = (g_pow * axis->specializationConstants.rader_generator[i]) % axis->specializationConstants.stageRadix[i];
+								for (uint64_t t = 0; t < axis->specializationConstants.raderContainer[i].prime - 1 - j; t++) {
+									g_pow = (g_pow * axis->specializationConstants.raderContainer[i].generator) % axis->specializationConstants.raderContainer[i].prime;
 								}
-								tempLUT[2 * (j + axis->specializationConstants.RaderKernelOffsetLUT[i])] = cos(2.0 * g_pow * double_PI / axis->specializationConstants.stageRadix[i]);
-								tempLUT[2 * (j + axis->specializationConstants.RaderKernelOffsetLUT[i]) + 1] = -sin(2.0 * g_pow * double_PI / axis->specializationConstants.stageRadix[i]);
+								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT)] = cos(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
+								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT) + 1] = (-sin(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime));
 							}
 						}
 					}
+					else {
+						localStageSize = axis->specializationConstants.raderContainer[i].stageRadix[0];
+						localStageSum = 0;
+						for (uint64_t l = 1; l < axis->specializationConstants.raderContainer[i].numStages; l++) {
+							if ((axis->specializationConstants.raderContainer[i].stageRadix[l] & (axis->specializationConstants.raderContainer[i].stageRadix[l] - 1)) == 0) {
+								for (uint64_t k = 0; k < log2(axis->specializationConstants.raderContainer[i].stageRadix[l]); k++) {
+									for (uint64_t j = 0; j < localStageSize; j++) {
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT)] = cos(j * double_PI / localStageSize / pow(2, k));
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT) + 1] = sin(j * double_PI / localStageSize / pow(2, k));
+									}
+									localStageSum += localStageSize;
+								}
+							}
+							else {
+								for (uint64_t k = (axis->specializationConstants.raderContainer[i].stageRadix[l] - 1); k > 0; k--) {
+									for (uint64_t j = 0; j < localStageSize; j++) {
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT)] = cos(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT) + 1] = sin(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
+									}
+									localStageSum += localStageSize;
+								}
+							}
+							localStageSize *= axis->specializationConstants.raderContainer[i].stageRadix[l];
+						}
 
+						localStageSize = axis->specializationConstants.raderContainer[i].stageRadix[axis->specializationConstants.raderContainer[i].numStages - 1];
+						localStageSum = 0;
+						for (int64_t l = (int64_t)axis->specializationConstants.raderContainer[i].numStages - 2; l >= 0; l--) {
+							if ((axis->specializationConstants.raderContainer[i].stageRadix[l] & (axis->specializationConstants.raderContainer[i].stageRadix[l] - 1)) == 0) {
+								for (uint64_t k = 0; k < log2(axis->specializationConstants.raderContainer[i].stageRadix[l]); k++) {
+									for (uint64_t j = 0; j < localStageSize; j++) {
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT)] = cos(j * double_PI / localStageSize / pow(2, k));
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT) + 1] = sin(j * double_PI / localStageSize / pow(2, k));
+									}
+									localStageSum += localStageSize;
+								}
+							}
+							else {
+								for (uint64_t k = (axis->specializationConstants.raderContainer[i].stageRadix[l] - 1); k > 0; k--) {
+									for (uint64_t j = 0; j < localStageSize; j++) {
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT)] = cos(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT) + 1] = sin(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
+									}
+									localStageSum += localStageSize;
+								}
+							}
+							localStageSize *= axis->specializationConstants.raderContainer[i].stageRadix[l];
+						}
+
+						if (!axis->specializationConstants.inline_rader_kernel) {
+							double* raderFFTkernel = (double*)axis->specializationConstants.raderContainer[i].raderFFTkernel;
+							for (uint64_t j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
+								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT)] = raderFFTkernel[2 * j] / (axis->specializationConstants.raderContainer[i].prime - 1);
+								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT) + 1] = raderFFTkernel[2 * j + 1] / (axis->specializationConstants.raderContainer[i].prime - 1);
+							}
+						}
+					}
 				}
 			}
 			if (axis_upload_id > 0) {
@@ -32254,24 +34528,11 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				}
 			}
 			if (axis->specializationConstants.useRader) {
-				uint64_t sharedOffset = 0;
-				for (uint64_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					if ((axis->specializationConstants.stageRadix[i] >= axis->specializationConstants.fixMinRaderPrime) && (axis->specializationConstants.rader_generator[i] > 0)) {
-						int64_t id = -1;
-						for (uint64_t j = 0; j < i; j++) {
-							if (axis->specializationConstants.stageRadix[j] == axis->specializationConstants.stageRadix[i]) {
-								id = j;
-							}
-						}
-						if (id >= 0) {
-							axis->specializationConstants.RaderKernelOffsetLUT[i] = axis->specializationConstants.RaderKernelOffsetLUT[id];
-						}
-						else {
-							axis->specializationConstants.RaderKernelOffsetLUT[i] = axis->bufferLUTSize / (2 * sizeof(float));
-							axis->bufferLUTSize += (axis->specializationConstants.stageRadix[i] - 1) * 2 * sizeof(float);
-						}
+				for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
+					if (!axis->specializationConstants.inline_rader_kernel) {
+						axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT = axis->bufferLUTSize / (2 * sizeof(float));
+						axis->bufferLUTSize += (axis->specializationConstants.raderContainer[i].prime - 1) * 2 * sizeof(float);
 					}
-
 				}
 			}
 			if (axis->bufferLUTSize == 0) axis->bufferLUTSize = sizeof(float);
@@ -32292,7 +34553,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 						localStageSum += localStageSize;
 					}
 				}
-				else if ((axis->specializationConstants.stageRadix[i] >= app->configuration.fixMinRaderPrime) && (axis->specializationConstants.rader_generator[i] > 0)) {
+				else if (axis->specializationConstants.rader_generator[i] > 0) {
 					for (uint64_t j = 0; j < localStageSize; j++) {
 						for (int64_t k = (axis->specializationConstants.stageRadix[i] - 1); k >= 0; k--) {
 							tempLUT[2 * (k + localStageSum)] = (float)cos(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
@@ -32312,29 +34573,79 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				}
 				localStageSize *= axis->specializationConstants.stageRadix[i];
 			}
+
 			if (axis->specializationConstants.useRader) {
-				for (uint64_t i = 0; i < axis->specializationConstants.numStages; i++) {
-					if ((axis->specializationConstants.stageRadix[i] >= axis->specializationConstants.fixMinRaderPrime) && (axis->specializationConstants.rader_generator[i] > 0)) {
-						int64_t id = -1;
-						for (uint64_t j = 0; j < i; j++) {
-							if (axis->specializationConstants.stageRadix[j] == axis->specializationConstants.stageRadix[i]) {
-								id = j;
-							}
-						}
-						if (id < 0) {
-							for (uint64_t j = 0; j < (axis->specializationConstants.stageRadix[i] - 1); j++) {//fix later
+				for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
+					if (axis->specializationConstants.raderContainer[i].type) {
+						if (!axis->specializationConstants.inline_rader_kernel) {
+							for (uint64_t j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
 								uint64_t g_pow = 1;
-								for (uint64_t t = 0; t < axis->specializationConstants.stageRadix[i] - 1 - j; t++) {
-									g_pow = (g_pow * axis->specializationConstants.rader_generator[i]) % axis->specializationConstants.stageRadix[i];
+								for (uint64_t t = 0; t < axis->specializationConstants.raderContainer[i].prime - 1 - j; t++) {
+									g_pow = (g_pow * axis->specializationConstants.raderContainer[i].generator) % axis->specializationConstants.raderContainer[i].prime;
 								}
-								tempLUT[2 * (j + axis->specializationConstants.RaderKernelOffsetLUT[i])] = (float)cos(2.0 * g_pow * double_PI / axis->specializationConstants.stageRadix[i]);
-								tempLUT[2 * (j + axis->specializationConstants.RaderKernelOffsetLUT[i]) + 1] = (float)(-sin(2.0 * g_pow * double_PI / axis->specializationConstants.stageRadix[i]));
+								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT)] = (float)(cos(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime));
+								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT) + 1] = (float)(-sin(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime));
 							}
 						}
 					}
-
+					else {
+						localStageSize = axis->specializationConstants.raderContainer[i].stageRadix[0];
+						localStageSum = 0;
+						for (uint64_t l = 1; l < axis->specializationConstants.raderContainer[i].numStages; l++) {
+							if ((axis->specializationConstants.raderContainer[i].stageRadix[l] & (axis->specializationConstants.raderContainer[i].stageRadix[l] - 1)) == 0) {
+								for (uint64_t k = 0; k < log2(axis->specializationConstants.raderContainer[i].stageRadix[l]); k++) {
+									for (uint64_t j = 0; j < localStageSize; j++) {
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT)] = (float)cos(j * double_PI / localStageSize / pow(2, k));
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT) + 1] = (float)sin(j * double_PI / localStageSize / pow(2, k));
+									}
+									localStageSum += localStageSize;
+								}
+							}
+							else {
+								for (uint64_t k = (axis->specializationConstants.raderContainer[i].stageRadix[l] - 1); k > 0; k--) {
+									for (uint64_t j = 0; j < localStageSize; j++) {
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT)] = (float)cos(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT) + 1] = (float)sin(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
+									}
+									localStageSum += localStageSize;
+								}
+							}
+							localStageSize *= axis->specializationConstants.raderContainer[i].stageRadix[l];
+						}
+						localStageSize = axis->specializationConstants.raderContainer[i].stageRadix[axis->specializationConstants.raderContainer[i].numStages - 1];
+						localStageSum = 0;
+						for (int64_t l = (int64_t)axis->specializationConstants.raderContainer[i].numStages - 2; l >= 0; l--) {
+							if ((axis->specializationConstants.raderContainer[i].stageRadix[l] & (axis->specializationConstants.raderContainer[i].stageRadix[l] - 1)) == 0) {
+								for (uint64_t k = 0; k < log2(axis->specializationConstants.raderContainer[i].stageRadix[l]); k++) {
+									for (uint64_t j = 0; j < localStageSize; j++) {
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT)] = (float)cos(j * double_PI / localStageSize / pow(2, k));
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT) + 1] = (float)sin(j * double_PI / localStageSize / pow(2, k));
+									}
+									localStageSum += localStageSize;
+								}
+							}
+							else {
+								for (uint64_t k = (axis->specializationConstants.raderContainer[i].stageRadix[l] - 1); k > 0; k--) {
+									for (uint64_t j = 0; j < localStageSize; j++) {
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT)] = (float)cos(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT) + 1] = (float)sin(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
+									}
+									localStageSum += localStageSize;
+								}
+							}
+							localStageSize *= axis->specializationConstants.raderContainer[i].stageRadix[l];
+						}
+						if (!axis->specializationConstants.inline_rader_kernel) {
+							float* raderFFTkernel = (float*)axis->specializationConstants.raderContainer[i].raderFFTkernel;
+							for (uint64_t j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
+								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT)] = (float)(raderFFTkernel[2 * j] / (axis->specializationConstants.raderContainer[i].prime - 1));
+								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT) + 1] = (float)(raderFFTkernel[2 * j + 1] / (axis->specializationConstants.raderContainer[i].prime - 1));
+							}
+						}
+					}
 				}
 			}
+
 			if (axis_upload_id > 0) {
 				for (uint64_t i = 0; i < axis->specializationConstants.stageStartSize; i++) {
 					for (uint64_t j = 0; j < axis->specializationConstants.fftDim; j++) {
@@ -32510,8 +34821,140 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			tempLUT = 0;
 		}
 	}
-	if (axis->specializationConstants.useRader)	axis->specializationConstants.additionalRaderSharedSize = (axis->specializationConstants.useRader - 1);
+	if (axis->specializationConstants.useRaderMult)	axis->specializationConstants.additionalRaderSharedSize = (axis->specializationConstants.useRaderMult - 1);
 
+	//allocate RaderUintLUT
+	if (axis->specializationConstants.raderUintLUT) {
+		if (app->bufferRaderUintLUT[axis_id][axis_upload_id] == 0) {
+			app->bufferRaderUintLUTSize[axis_id][axis_upload_id] = 0;
+			for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
+				app->bufferRaderUintLUTSize[axis_id][axis_upload_id] += axis->specializationConstants.raderContainer[i].prime * sizeof(uint32_t);
+			}
+			uint32_t* tempRaderUintLUT = (uint32_t*)malloc(app->bufferRaderUintLUTSize[axis_id][axis_upload_id]);
+			if (!tempRaderUintLUT) {
+				deleteVkFFT(app);
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+			uint64_t current_offset = 0;
+			for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
+				if (axis->specializationConstants.raderContainer[i].prime > 0) {
+					axis->specializationConstants.raderContainer[i].raderUintLUToffset = current_offset;
+					uint64_t g_pow = 1;
+					tempRaderUintLUT[current_offset] = 1;
+					current_offset++;
+					for (uint64_t t = 0; t < axis->specializationConstants.raderContainer[i].prime - 1; t++) {
+						g_pow = (g_pow * axis->specializationConstants.raderContainer[i].generator) % axis->specializationConstants.raderContainer[i].prime;
+						tempRaderUintLUT[current_offset] = g_pow;
+						current_offset++;
+					}
+				}
+			}
+
+#if(VKFFT_BACKEND==0)
+			resFFT = allocateFFTBuffer(app, &app->bufferRaderUintLUT[axis_id][axis_upload_id], &app->bufferRaderUintLUTDeviceMemory[axis_id][axis_upload_id], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, app->bufferRaderUintLUTSize[axis_id][axis_upload_id]);
+			if (resFFT != VKFFT_SUCCESS) {
+				deleteVkFFT(app);
+				free(tempRaderUintLUT);
+				tempRaderUintLUT = 0;
+				return resFFT;
+			}
+			resFFT = transferDataFromCPU(app, tempRaderUintLUT, &app->bufferRaderUintLUT[axis_id][axis_upload_id], app->bufferRaderUintLUTSize[axis_id][axis_upload_id]);
+			if (resFFT != VKFFT_SUCCESS) {
+				deleteVkFFT(app);
+				free(tempRaderUintLUT);
+				tempRaderUintLUT = 0;
+				return resFFT;
+			}
+#elif(VKFFT_BACKEND==1)
+			res = cudaMalloc((void**)&app->bufferRaderUintLUT[axis_id][axis_upload_id], app->bufferRaderUintLUTSize[axis_id][axis_upload_id]);
+			if (res != cudaSuccess) {
+				deleteVkFFT(app);
+				free(tempRaderUintLUT);
+				tempRaderUintLUT = 0;
+				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			}
+			res = cudaMemcpy(app->bufferRaderUintLUT[axis_id][axis_upload_id], tempRaderUintLUT, app->bufferRaderUintLUTSize[axis_id][axis_upload_id], cudaMemcpyHostToDevice);
+			if (res != cudaSuccess) {
+				deleteVkFFT(app);
+				free(tempRaderUintLUT);
+				tempRaderUintLUT = 0;
+				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			}
+#elif(VKFFT_BACKEND==2)
+			res = hipMalloc((void**)&app->bufferRaderUintLUT[axis_id][axis_upload_id], app->bufferRaderUintLUTSize[axis_id][axis_upload_id]);
+			if (res != hipSuccess) {
+				deleteVkFFT(app);
+				free(tempRaderUintLUT);
+				tempRaderUintLUT = 0;
+				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			}
+			res = hipMemcpy(app->bufferRaderUintLUT[axis_id][axis_upload_id], tempRaderUintLUT, app->bufferRaderUintLUTSize[axis_id][axis_upload_id], hipMemcpyHostToDevice);
+			if (res != hipSuccess) {
+				deleteVkFFT(app);
+				free(tempRaderUintLUT);
+				tempRaderUintLUT = 0;
+				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			}
+#elif(VKFFT_BACKEND==3)
+			app->bufferRaderUintLUT[axis_id][axis_upload_id] = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, app->bufferRaderUintLUTSize[axis_id][axis_upload_id], tempRaderUintLUT, &res);
+			if (res != CL_SUCCESS) {
+				deleteVkFFT(app);
+				free(tempRaderUintLUT);
+				tempRaderUintLUT = 0;
+				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			}
+#elif(VKFFT_BACKEND==4)
+			ze_device_mem_alloc_desc_t device_desc = {};
+			device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+			res = zeMemAllocDevice(app->configuration.context[0], &device_desc, app->bufferRaderUintLUTSize[axis_id][axis_upload_id], sizeof(uint32_t), app->configuration.device[0], &app->bufferRaderUintLUT[axis_id][axis_upload_id]);
+			if (res != ZE_RESULT_SUCCESS) {
+				deleteVkFFT(app);
+				free(tempRaderUintLUT);
+				tempRaderUintLUT = 0;
+				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+			}
+			ze_command_queue_desc_t commandQueueCopyDesc = {
+			ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
+			0,
+			app->configuration.commandQueueID,
+			0, // index
+			0, // flags
+			ZE_COMMAND_QUEUE_MODE_DEFAULT,
+			ZE_COMMAND_QUEUE_PRIORITY_NORMAL
+			};
+			ze_command_list_handle_t copyCommandList;
+			res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
+			if (res != ZE_RESULT_SUCCESS) {
+				deleteVkFFT(app);
+				free(tempRaderUintLUT);
+				tempRaderUintLUT = 0;
+				return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+			}
+			res = zeCommandListAppendMemoryCopy(copyCommandList, app->bufferRaderUintLUT[axis_id][axis_upload_id], tempRaderUintLUT, app->bufferRaderUintLUTSize[axis_id][axis_upload_id], 0, 0, 0);
+			if (res != ZE_RESULT_SUCCESS) {
+				deleteVkFFT(app);
+				free(tempRaderUintLUT);
+				tempRaderUintLUT = 0;
+				return VKFFT_ERROR_FAILED_TO_COPY;
+			}
+			res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
+			if (res != ZE_RESULT_SUCCESS) {
+				deleteVkFFT(app);
+				free(tempRaderUintLUT);
+				tempRaderUintLUT = 0;
+				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+			}
+#endif
+			free(tempRaderUintLUT);
+			tempRaderUintLUT = 0;
+		}
+
+		axis->bufferRaderUintLUT = app->bufferRaderUintLUT[axis_id][axis_upload_id];
+#if(VKFFT_BACKEND==0)
+		axis->bufferRaderUintLUTDeviceMemory = app->bufferRaderUintLUTDeviceMemory[axis_id][axis_upload_id];
+#endif
+		axis->bufferRaderUintLUTSize = app->bufferRaderUintLUTSize[axis_id][axis_upload_id];
+	}
 	//configure strides
 
 	uint64_t* axisStride = axis->specializationConstants.inputStride;
@@ -32894,6 +35337,14 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 #endif
 		axis->numBindings++;
 	}
+	if (axis->specializationConstants.raderUintLUT) {
+		axis->specializationConstants.RaderUintLUTBindingID = axis->numBindings;
+		axis->specializationConstants.numBuffersBound[axis->numBindings] = 1;
+#if(VKFFT_BACKEND==0)
+		descriptorPoolSize.descriptorCount++;
+#endif
+		axis->numBindings++;
+	}
 	if ((app->useBluesteinFFT[axis_id]) && (axis_upload_id == 0)) {
 		if (axis->specializationConstants.inverseBluestein)
 			axis->bufferBluesteinFFT = &app->bufferBluesteinIFFT[axis_id];
@@ -33029,28 +35480,30 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		axis->specializationConstants.axisSwapped = 0;
 		uint64_t r2cmult = (axis->specializationConstants.mergeSequencesR2C) ? 2 : 1;
 		if (axis_id == 0) {
-
 			if (axis_upload_id == 0) {
 				axis->axisBlock[0] = (((uint64_t)ceil(axis->specializationConstants.fftDim / (double)axis->specializationConstants.min_registers_per_thread)) / axis->specializationConstants.registerBoost > 1) ? ((uint64_t)ceil(axis->specializationConstants.fftDim / (double)axis->specializationConstants.min_registers_per_thread)) / axis->specializationConstants.registerBoost : 1;
-				if (axis->specializationConstants.useRader) {
+				if (axis->specializationConstants.useRaderMult) {
 					uint64_t locMaxBatchCoalesced = ((axis_id == 0) && (((axis_upload_id == 0) && ((!app->configuration.reorderFourStep) || (app->useBluesteinFFT[axis_id]))) || (axis->specializationConstants.numAxisUploads == 1))) ? 1 : maxBatchCoalesced;
 					uint64_t final_rader_thread_count = 0;
-					for (uint64_t i = 0; i < 20; i++) {
-						if (axis->specializationConstants.rader_primes[i] > 0) {
-							uint64_t temp_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / (double)((axis->specializationConstants.rader_min_registers / 2) * 2)) / (double)((axis->specializationConstants.rader_primes[i] + 1) / 2));
-							uint64_t active_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)temp_rader);
+					for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
+						if (axis->specializationConstants.raderContainer[i].type == 1) {
+							uint64_t temp_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / (double)((axis->specializationConstants.rader_min_registers / 2) * 2)) / (double)((axis->specializationConstants.raderContainer[i].prime + 1) / 2));
+							uint64_t active_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)temp_rader);
 							if (active_rader > 1) {
-								if ((((double)active_rader - (axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)(active_rader - 1)) * ((axis->specializationConstants.rader_primes[i] + 1) / 2)) * locMaxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
+								if ((((double)active_rader - (axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)(active_rader - 1)) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2)) * locMaxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
 							}
-							uint64_t local_estimate_rader_threadnum = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)active_rader) * ((axis->specializationConstants.rader_primes[i] + 1) / 2);
+							uint64_t local_estimate_rader_threadnum = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)active_rader) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2);
 
-							uint64_t temp_rader_thread_count = ((uint64_t)ceil(axis->axisBlock[0] / (double)((axis->specializationConstants.rader_primes[i] + 1) / 2))) * ((axis->specializationConstants.rader_primes[i] + 1) / 2);
+							uint64_t temp_rader_thread_count = ((uint64_t)ceil(axis->axisBlock[0] / (double)((axis->specializationConstants.raderContainer[i].prime + 1) / 2))) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2);
 							if (temp_rader_thread_count < local_estimate_rader_threadnum) temp_rader_thread_count = local_estimate_rader_threadnum;
 							if (temp_rader_thread_count > final_rader_thread_count) final_rader_thread_count = temp_rader_thread_count;
 						}
 					}
 					axis->axisBlock[0] = final_rader_thread_count;
 					if (axis->axisBlock[0] * axis->groupedBatch > maxThreadNum) axis->groupedBatch = locMaxBatchCoalesced;
+				}
+				if (axis->specializationConstants.useRaderFFT) {
+					if (axis->axisBlock[0] < axis->specializationConstants.minRaderFFTThreadNum) axis->axisBlock[0] = axis->specializationConstants.minRaderFFTThreadNum;
 				}
 				if (axis->axisBlock[0] > maxThreadNum) axis->axisBlock[0] = maxThreadNum;
 				if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
@@ -33065,12 +35518,15 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 				uint64_t currentAxisBlock1 = axis->axisBlock[1];
 				for (uint64_t i = currentAxisBlock1; i < 2 * currentAxisBlock1; i++) {
-					if (((FFTPlan->numAxisUploads[0] > 1) && (((FFTPlan->actualFFTSizePerAxis[axis_id][0] / axis->specializationConstants.fftDim) % i) == 0)) || ((FFTPlan->numAxisUploads[0] == 1) && (((FFTPlan->actualFFTSizePerAxis[axis_id][1] / r2cmult) % i) == 0))) {
+					if (((FFTPlan->numAxisUploads[0] > 1) && (!(((FFTPlan->actualFFTSizePerAxis[axis_id][0] / axis->specializationConstants.fftDim) % axis->axisBlock[1]) == 0))) || ((FFTPlan->numAxisUploads[0] == 1) && (!(((FFTPlan->actualFFTSizePerAxis[axis_id][1] / r2cmult) % axis->axisBlock[1]) == 0)))) {
 						if (i * axis->specializationConstants.fftDim * complexSize <= allowedSharedMemory) axis->axisBlock[1] = i;
 						i = 2 * currentAxisBlock1;
 					}
 				}
-
+				if (((axis->specializationConstants.fftDim % 2 == 0) || (axis->axisBlock[0] < app->configuration.numSharedBanks / 4)) && (!(((!axis->specializationConstants.reorderFourStep) || (axis->specializationConstants.useBluesteinFFT)) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim < maxSequenceLengthSharedMemoryPow2) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2])))) {
+					//we plan to swap - this reduces bank conflicts
+					axis->axisBlock[1] = (uint64_t)pow(2, (uint64_t)ceil(log2((double)axis->axisBlock[1])));
+				}
 				if ((FFTPlan->numAxisUploads[0] > 1) && ((uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][0] / axis->specializationConstants.fftDim) < axis->axisBlock[1])) axis->axisBlock[1] = (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][0] / axis->specializationConstants.fftDim);
 				if ((axis->specializationConstants.mergeSequencesR2C != 0) && (axis->specializationConstants.fftDim * axis->axisBlock[1] >= maxSequenceLengthSharedMemory)) {
 					axis->specializationConstants.mergeSequencesR2C = 0;
@@ -33103,7 +35559,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					}
 				}
 				while ((axis->axisBlock[1] * (axis->specializationConstants.fftDim / axis->specializationConstants.registerBoost)) > maxSequenceLengthSharedMemory) axis->axisBlock[1] /= 2;
-				if (((axis->specializationConstants.fftDim % 2 == 0) || (axis->axisBlock[0] < app->configuration.numSharedBanks / 4)) && (!(((!axis->specializationConstants.reorderFourStep) || (axis->specializationConstants.useBluesteinFFT)) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim < maxSequenceLengthSharedMemoryPow2) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2]))) && (!axis->specializationConstants.useRader)) {
+				if (((axis->specializationConstants.fftDim % 2 == 0) || (axis->axisBlock[0] < app->configuration.numSharedBanks / 4)) && (!(((!axis->specializationConstants.reorderFourStep) || (axis->specializationConstants.useBluesteinFFT)) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim < maxSequenceLengthSharedMemoryPow2) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2])))) {
 					/*#if (VKFFT_BACKEND==0)
 										if (((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) != 0)) {
 											uint64_t temp = axis->axisBlock[1];
@@ -33123,18 +35579,18 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			}
 			else {
 				axis->axisBlock[1] = ((uint64_t)ceil(axis->specializationConstants.fftDim / (double)axis->specializationConstants.min_registers_per_thread) / axis->specializationConstants.registerBoost > 1) ? (uint64_t)ceil(axis->specializationConstants.fftDim / (double)axis->specializationConstants.min_registers_per_thread) / axis->specializationConstants.registerBoost : 1;
-				if (axis->specializationConstants.useRader) {
+				if (axis->specializationConstants.useRaderMult) {
 					uint64_t final_rader_thread_count = 0;
-					for (uint64_t i = 0; i < 20; i++) {
-						if (axis->specializationConstants.rader_primes[i] > 0) {
-							uint64_t temp_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / (double)((axis->specializationConstants.rader_min_registers / 2) * 2)) / (double)((axis->specializationConstants.rader_primes[i] + 1) / 2));
-							uint64_t active_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)temp_rader);
+					for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
+						if (axis->specializationConstants.raderContainer[i].type == 1) {
+							uint64_t temp_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / (double)((axis->specializationConstants.rader_min_registers / 2) * 2)) / (double)((axis->specializationConstants.raderContainer[i].prime + 1) / 2));
+							uint64_t active_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)temp_rader);
 							if (active_rader > 1) {
-								if ((((double)active_rader - (axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)(active_rader - 1)) * ((axis->specializationConstants.rader_primes[i] + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
+								if ((((double)active_rader - (axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)(active_rader - 1)) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
 							}
-							uint64_t local_estimate_rader_threadnum = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)active_rader) * ((axis->specializationConstants.rader_primes[i] + 1) / 2);
+							uint64_t local_estimate_rader_threadnum = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)active_rader) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2);
 
-							uint64_t temp_rader_thread_count = ((uint64_t)ceil(axis->axisBlock[1] / (double)((axis->specializationConstants.rader_primes[i] + 1) / 2))) * ((axis->specializationConstants.rader_primes[i] + 1) / 2);
+							uint64_t temp_rader_thread_count = ((uint64_t)ceil(axis->axisBlock[1] / (double)((axis->specializationConstants.raderContainer[i].prime + 1) / 2))) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2);
 							if (temp_rader_thread_count < local_estimate_rader_threadnum) temp_rader_thread_count = local_estimate_rader_threadnum;
 							if (temp_rader_thread_count > final_rader_thread_count) final_rader_thread_count = temp_rader_thread_count;
 						}
@@ -33165,18 +35621,18 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		if (axis_id == 1) {
 
 			axis->axisBlock[1] = ((uint64_t)ceil(axis->specializationConstants.fftDim / (double)axis->specializationConstants.min_registers_per_thread) / axis->specializationConstants.registerBoost > 1) ? ((uint64_t)ceil(axis->specializationConstants.fftDim / (double)axis->specializationConstants.min_registers_per_thread)) / axis->specializationConstants.registerBoost : 1;
-			if (axis->specializationConstants.useRader) {
+			if (axis->specializationConstants.useRaderMult) {
 				uint64_t final_rader_thread_count = 0;
-				for (uint64_t i = 0; i < 20; i++) {
-					if (axis->specializationConstants.rader_primes[i] > 0) {
-						uint64_t temp_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / (double)((axis->specializationConstants.rader_min_registers / 2) * 2)) / (double)((axis->specializationConstants.rader_primes[i] + 1) / 2));
-						uint64_t active_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)temp_rader);
+				for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
+					if (axis->specializationConstants.raderContainer[i].type == 1) {
+						uint64_t temp_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / (double)((axis->specializationConstants.rader_min_registers / 2) * 2)) / (double)((axis->specializationConstants.raderContainer[i].prime + 1) / 2));
+						uint64_t active_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)temp_rader);
 						if (active_rader > 1) {
-							if ((((double)active_rader - (axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)(active_rader - 1)) * ((axis->specializationConstants.rader_primes[i] + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
+							if ((((double)active_rader - (axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)(active_rader - 1)) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
 						}
-						uint64_t local_estimate_rader_threadnum = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)active_rader) * ((axis->specializationConstants.rader_primes[i] + 1) / 2);
+						uint64_t local_estimate_rader_threadnum = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)active_rader) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2);
 
-						uint64_t temp_rader_thread_count = ((uint64_t)ceil(axis->axisBlock[1] / (double)((axis->specializationConstants.rader_primes[i] + 1) / 2))) * ((axis->specializationConstants.rader_primes[i] + 1) / 2);
+						uint64_t temp_rader_thread_count = ((uint64_t)ceil(axis->axisBlock[1] / (double)((axis->specializationConstants.raderContainer[i].prime + 1) / 2))) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2);
 						if (temp_rader_thread_count < local_estimate_rader_threadnum) temp_rader_thread_count = local_estimate_rader_threadnum;
 						if (temp_rader_thread_count > final_rader_thread_count) final_rader_thread_count = temp_rader_thread_count;
 					}
@@ -33202,18 +35658,18 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		}
 		if (axis_id == 2) {
 			axis->axisBlock[1] = ((uint64_t)ceil(axis->specializationConstants.fftDim / (double)axis->specializationConstants.min_registers_per_thread) / axis->specializationConstants.registerBoost > 1) ? ((uint64_t)ceil(axis->specializationConstants.fftDim / (double)axis->specializationConstants.min_registers_per_thread)) / axis->specializationConstants.registerBoost : 1;
-			if (axis->specializationConstants.useRader) {
+			if (axis->specializationConstants.useRaderMult) {
 				uint64_t final_rader_thread_count = 0;
-				for (uint64_t i = 0; i < 20; i++) {
-					if (axis->specializationConstants.rader_primes[i] > 0) {
-						uint64_t temp_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / (double)((axis->specializationConstants.rader_min_registers / 2) * 2)) / (double)((axis->specializationConstants.rader_primes[i] + 1) / 2));
-						uint64_t active_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)temp_rader);
+				for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
+					if (axis->specializationConstants.raderContainer[i].type == 1) {
+						uint64_t temp_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / (double)((axis->specializationConstants.rader_min_registers / 2) * 2)) / (double)((axis->specializationConstants.raderContainer[i].prime + 1) / 2));
+						uint64_t active_rader = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)temp_rader);
 						if (active_rader > 1) {
-							if ((((double)active_rader - (axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)(active_rader - 1)) * ((axis->specializationConstants.rader_primes[i] + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
+							if ((((double)active_rader - (axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)(active_rader - 1)) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
 						}
-						uint64_t local_estimate_rader_threadnum = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.rader_primes[i]) / (double)active_rader) * ((axis->specializationConstants.rader_primes[i] + 1) / 2);
+						uint64_t local_estimate_rader_threadnum = (uint64_t)ceil((axis->specializationConstants.fftDim / axis->specializationConstants.raderContainer[i].prime) / (double)active_rader) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2);
 
-						uint64_t temp_rader_thread_count = ((uint64_t)ceil(axis->axisBlock[1] / (double)((axis->specializationConstants.rader_primes[i] + 1) / 2))) * ((axis->specializationConstants.rader_primes[i] + 1) / 2);
+						uint64_t temp_rader_thread_count = ((uint64_t)ceil(axis->axisBlock[1] / (double)((axis->specializationConstants.raderContainer[i].prime + 1) / 2))) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2);
 						if (temp_rader_thread_count < local_estimate_rader_threadnum) temp_rader_thread_count = local_estimate_rader_threadnum;
 						if (temp_rader_thread_count > final_rader_thread_count) final_rader_thread_count = temp_rader_thread_count;
 					}
@@ -33357,12 +35813,6 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			if (!(axis->specializationConstants.convolutionStep && (app->configuration.matrixConvolution > 1))) tempSize[2] *= app->configuration.coordinateFeatures;
 			//if (app->configuration.performZeropadding[1]) tempSize[1] = (uint64_t)ceil(tempSize[1] / 2.0);
 			//if (app->configuration.performZeropadding[2]) tempSize[2] = (uint64_t)ceil(tempSize[2] / 2.0);
-			if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
-			else  axis->specializationConstants.performWorkGroupShift[0] = 0;
-			if (tempSize[1] > app->configuration.maxComputeWorkGroupCount[1]) axis->specializationConstants.performWorkGroupShift[1] = 1;
-			else  axis->specializationConstants.performWorkGroupShift[1] = 0;
-			if (tempSize[2] > app->configuration.maxComputeWorkGroupCount[2]) axis->specializationConstants.performWorkGroupShift[2] = 1;
-			else  axis->specializationConstants.performWorkGroupShift[2] = 0;
 		}
 		if (axis_id == 1) {
 			tempSize[0] = (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][0] / (double)axis->axisBlock[0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] / (double)axis->specializationConstants.fftDim);
@@ -33372,14 +35822,6 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			if (!(axis->specializationConstants.convolutionStep && (app->configuration.matrixConvolution > 1))) tempSize[2] *= app->configuration.coordinateFeatures;
 			//if (app->configuration.actualPerformR2C == 1) tempSize[0] = (uint64_t)ceil(tempSize[0] / 2.0);
 			//if (app->configuration.performZeropadding[2]) tempSize[2] = (uint64_t)ceil(tempSize[2] / 2.0);
-
-			if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
-			else  axis->specializationConstants.performWorkGroupShift[0] = 0;
-			if (tempSize[1] > app->configuration.maxComputeWorkGroupCount[1]) axis->specializationConstants.performWorkGroupShift[1] = 1;
-			else  axis->specializationConstants.performWorkGroupShift[1] = 0;
-			if (tempSize[2] > app->configuration.maxComputeWorkGroupCount[2]) axis->specializationConstants.performWorkGroupShift[2] = 1;
-			else  axis->specializationConstants.performWorkGroupShift[2] = 0;
-
 		}
 		if (axis_id == 2) {
 			tempSize[0] = (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][0] / (double)axis->axisBlock[0] * FFTPlan->actualFFTSizePerAxis[axis_id][2] / (double)axis->specializationConstants.fftDim);
@@ -33389,14 +35831,27 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			if (!(axis->specializationConstants.convolutionStep && (app->configuration.matrixConvolution > 1))) tempSize[2] *= app->configuration.coordinateFeatures;
 			//if (app->configuration.actualPerformR2C == 1) tempSize[0] = (uint64_t)ceil(tempSize[0] / 2.0);
 
-			if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
-			else  axis->specializationConstants.performWorkGroupShift[0] = 0;
-			if (tempSize[1] > app->configuration.maxComputeWorkGroupCount[1]) axis->specializationConstants.performWorkGroupShift[1] = 1;
-			else  axis->specializationConstants.performWorkGroupShift[1] = 0;
-			if (tempSize[2] > app->configuration.maxComputeWorkGroupCount[2]) axis->specializationConstants.performWorkGroupShift[2] = 1;
-			else  axis->specializationConstants.performWorkGroupShift[2] = 0;
-
 		}
+		if ((app->configuration.maxComputeWorkGroupCount[0] > app->configuration.maxComputeWorkGroupCount[1]) && (tempSize[1] > app->configuration.maxComputeWorkGroupCount[1]) && (tempSize[1] > tempSize[0]) && (tempSize[1] >= tempSize[2])) {
+			uint64_t temp_tempSize = tempSize[0];
+			tempSize[0] = tempSize[1];
+			tempSize[1] = temp_tempSize;
+			axis->specializationConstants.swapComputeWorkGroupID = 1;
+		}
+		else {
+			if ((app->configuration.maxComputeWorkGroupCount[0] > app->configuration.maxComputeWorkGroupCount[2]) && (tempSize[2] > app->configuration.maxComputeWorkGroupCount[2]) && (tempSize[2] > tempSize[0]) && (tempSize[2] >= tempSize[1])) {
+				uint64_t temp_tempSize = tempSize[0];
+				tempSize[0] = tempSize[2];
+				tempSize[2] = temp_tempSize;
+				axis->specializationConstants.swapComputeWorkGroupID = 2;
+			}
+		}
+		if (tempSize[0] > app->configuration.maxComputeWorkGroupCount[0]) axis->specializationConstants.performWorkGroupShift[0] = 1;
+		else  axis->specializationConstants.performWorkGroupShift[0] = 0;
+		if (tempSize[1] > app->configuration.maxComputeWorkGroupCount[1]) axis->specializationConstants.performWorkGroupShift[1] = 1;
+		else  axis->specializationConstants.performWorkGroupShift[1] = 0;
+		if (tempSize[2] > app->configuration.maxComputeWorkGroupCount[2]) axis->specializationConstants.performWorkGroupShift[2] = 1;
+		else  axis->specializationConstants.performWorkGroupShift[2] = 0;
 
 		char floatTypeInputMemory[10];
 		char floatTypeOutputMemory[10];
@@ -33553,10 +36008,10 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		}
 #if(VKFFT_BACKEND==0)
 		uint32_t* code;
-		size_t codeSize;
+		uint64_t codeSize;
 		if (app->configuration.loadApplicationFromString) {
-			uint32_t* localStrPointer = (uint32_t*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-			codeSize = localStrPointer[0];
+			char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
+			memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
 			code = (uint32_t*)malloc(codeSize);
 			if (!code) {
 				free(code0);
@@ -33564,8 +36019,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			memcpy(code, localStrPointer + 1, codeSize);
-			app->currentApplicationStringPos += codeSize / (sizeof(uint32_t)) + 1;
+			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
+			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
 		}
 		else
 		{
@@ -33661,6 +36116,15 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				/* .maxTaskWorkGroupSizeX_NV = */ 32,
 				/* .maxTaskWorkGroupSizeY_NV = */ 1,
 				/* .maxTaskWorkGroupSizeZ_NV = */ 1,
+				/* .maxMeshViewCountNV = */ 4,
+				/* .max_mesh_output_vertices_ext = */ 256,
+				/* .max_mesh_output_primitives_ext = */ 512,
+				/* .max_mesh_work_group_size_x_ext = */ 32,
+				/* .max_mesh_work_group_size_y_ext = */ 1,
+				/* .max_mesh_work_group_size_z_ext = */ 1,
+				/* .max_task_work_group_size_x_ext = */ 32,
+				/* .max_task_work_group_size_y_ext = */ 1,
+				/* .max_task_work_group_size_z_ext = */ 1,
 				/* .maxMeshViewCountNV = */ 4,
 				/* .maxDualSourceDrawBuffersEXT = */ 1,
 
@@ -33814,10 +36278,10 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		}
 #elif(VKFFT_BACKEND==1)
 		char* code;
-		size_t codeSize;
+		uint64_t codeSize;
 		if (app->configuration.loadApplicationFromString) {
 			char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-			codeSize = strtol(localStrPointer, &localStrPointer, 10);
+			memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
 			code = (char*)malloc(codeSize);
 			if (!code) {
 				free(code0);
@@ -33825,10 +36289,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			memcpy(code, localStrPointer + 1, codeSize - 1);
-			code[codeSize - 1] = '\0';
-			//printf("%s\n", code);
-			app->currentApplicationStringPos += codeSize + (uint64_t)(floor(log10((double)codeSize))) + 1;
+			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
+			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
 		}
 		else {
 			nvrtcProgram prog;
@@ -33847,12 +36309,22 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				deleteVkFFT(app);
 				return VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM;
 			}
-			//const char opts[20] = "--fmad=false";
+			char* opts[5];
+			opts[0] = (char*)malloc(sizeof(char) * 50);
+			if (!opts[0]) {
+				free(code0);
+				code0 = 0;
+				deleteVkFFT(app);
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+			sprintf(opts[0], "--gpu-architecture=sm_%" PRIu64 "%" PRIu64 "", app->configuration.computeCapabilityMajor, app->configuration.computeCapabilityMinor);
 			//result = nvrtcAddNameExpression(prog, "&consts");
 			//if (result != NVRTC_SUCCESS) printf("1.5 error: %s\n", nvrtcGetErrorString(result));
 			result = nvrtcCompileProgram(prog,  // prog
-				0,     // numOptions
-				0); // options
+				1,     // numOptions
+				(const char* const*)opts); // options
+			free(opts[0]);
+
 			if (result != NVRTC_SUCCESS) {
 				printf("nvrtcCompileProgram error: %s\n", nvrtcGetErrorString(result));
 				char* log = (char*)malloc(sizeof(char) * 4000000);
@@ -33874,9 +36346,17 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					return VKFFT_ERROR_FAILED_TO_COMPILE_PROGRAM;
 				}
 			}
+#if (CUDA_VERSION >= 11030)
+			result = nvrtcGetCUBINSize(prog, &codeSize);
+#else
 			result = nvrtcGetPTXSize(prog, &codeSize);
+#endif
 			if (result != NVRTC_SUCCESS) {
+#if (CUDA_VERSION >= 11030)
+				printf("nvrtcGetCUBINSize error: %s\n", nvrtcGetErrorString(result));
+#else
 				printf("nvrtcGetPTXSize error: %s\n", nvrtcGetErrorString(result));
+#endif
 				free(code0);
 				code0 = 0;
 				deleteVkFFT(app);
@@ -33891,9 +36371,17 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
 			axis->binary = code;
+#if (CUDA_VERSION >= 11030)
+			result = nvrtcGetCUBIN(prog, code);
+#else
 			result = nvrtcGetPTX(prog, code);
+#endif
 			if (result != NVRTC_SUCCESS) {
+#if (CUDA_VERSION >= 11030)
+				printf("nvrtcGetCUBIN error: %s\n", nvrtcGetErrorString(result));
+#else
 				printf("nvrtcGetPTX error: %s\n", nvrtcGetErrorString(result));
+#endif
 				free(code);
 				code = 0;
 				free(code0);
@@ -33933,6 +36421,18 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_GET_FUNCTION;
 		}
+
+		/*result2 = cuFuncSetCacheConfig(axis->VkFFTKernel, CU_FUNC_CACHE_PREFER_SHARED);
+		if (result2 != CUDA_SUCCESS) {
+			printf("cuFuncSetAttribute error: %d\n", result2);
+			free(code);
+			code = 0;
+			free(code0);
+			code0 = 0;
+			deleteVkFFT(app);
+			return VKFFT_ERROR_FAILED_TO_SET_DYNAMIC_SHARED_MEMORY;
+		}*/
+
 		if (axis->specializationConstants.usedSharedMemory > app->configuration.sharedMemorySizeStatic) {
 			result2 = cuFuncSetAttribute(axis->VkFFTKernel, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, (int)axis->specializationConstants.usedSharedMemory);
 			if (result2 != CUDA_SUCCESS) {
@@ -33964,10 +36464,10 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		}
 #elif(VKFFT_BACKEND==2)
 		uint32_t* code;
-		size_t codeSize;
+		uint64_t codeSize;
 		if (app->configuration.loadApplicationFromString) {
-			uint32_t* localStrPointer = (uint32_t*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-			codeSize = localStrPointer[0];
+			char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
+			memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
 			code = (uint32_t*)malloc(codeSize);
 			if (!code) {
 				free(code0);
@@ -33975,8 +36475,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			memcpy(code, localStrPointer + 1, codeSize);
-			app->currentApplicationStringPos += codeSize / (sizeof(uint32_t)) + 1;
+			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
+			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
 		}
 		else
 		{
@@ -34089,6 +36589,18 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_GET_FUNCTION;
 		}
+
+		/*result2 = hipFuncSetCacheConfig(axis->VkFFTKernel, hipFuncCachePreferShared);
+		if (result2 != hipSuccess) {
+			printf("hipFuncSetAttribute error: %d\n", result2);
+			free(code);
+			code = 0;
+			free(code0);
+			code0 = 0;
+			deleteVkFFT(app);
+			return VKFFT_ERROR_FAILED_TO_SET_DYNAMIC_SHARED_MEMORY;
+		}*/
+
 		if (axis->specializationConstants.usedSharedMemory > app->configuration.sharedMemorySizeStatic) {
 			result2 = hipFuncSetAttribute(axis->VkFFTKernel, hipFuncAttributeMaxDynamicSharedMemorySize, (int)axis->specializationConstants.usedSharedMemory);
 			//result2 = hipFuncSetCacheConfig(axis->VkFFTKernel, hipFuncCachePreferShared);
@@ -34122,19 +36634,18 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 #elif(VKFFT_BACKEND==3)
 		if (app->configuration.loadApplicationFromString) {
 			char* code;
-			size_t codeSize;
+			uint64_t codeSize;
 			char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-			codeSize = strtol(localStrPointer, &localStrPointer, 10);
-			code = (char*)malloc(codeSize - 1);
+			memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
+			code = (char*)malloc(codeSize);
 			if (!code) {
 				free(code0);
 				code0 = 0;
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			memcpy(code, localStrPointer + 1, codeSize - 2);
-			code[codeSize - 2] = '\0';
-			app->currentApplicationStringPos += codeSize + (uint64_t)(floor(log10((double)codeSize)));
+			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
+			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
 
 			axis->program = clCreateProgramWithBinary(app->configuration.context[0], 1, app->configuration.device, &codeSize, (const unsigned char**)(&code), 0, &res);
 			if (res != CL_SUCCESS) {
@@ -34219,10 +36730,10 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		}
 #elif(VKFFT_BACKEND==4)
 		uint32_t* code;
-		size_t codeSize;
+		uint64_t codeSize;
 		if (app->configuration.loadApplicationFromString) {
-			uint32_t* localStrPointer = (uint32_t*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-			codeSize = localStrPointer[0];
+			char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
+			memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
 			code = (uint32_t*)malloc(codeSize);
 			if (!code) {
 				free(code0);
@@ -34230,8 +36741,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			memcpy(code, localStrPointer + 1, codeSize);
-			app->currentApplicationStringPos += codeSize / (sizeof(uint32_t)) + 1;
+			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
+			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
+
 			const char* pBuildFlags = (app->configuration.useUint64) ? "-ze-opt-greater-than-4GB-buffer-required" : 0;
 			ze_module_desc_t moduleDesc = {
 				ZE_STRUCTURE_TYPE_MODULE_DESC,
@@ -34396,10 +36908,10 @@ static inline VkFFTResult initializeBluesteinAutoPadding(VkFFTApplication* app) 
 			break;
 		default: //have not done a test run for Intel, so everything else uses AMD profile
 			if (app->configuration.doublePrecision) {
-				app->configuration.autoCustomBluesteinPaddingPattern = 27;
+				app->configuration.autoCustomBluesteinPaddingPattern = 54;
 			}
 			else {
-				app->configuration.autoCustomBluesteinPaddingPattern = 30;
+				app->configuration.autoCustomBluesteinPaddingPattern = 29;
 			}
 			break;
 		}
@@ -34489,7 +37001,7 @@ static inline VkFFTResult initializeBluesteinAutoPadding(VkFFTApplication* app) 
 				app->configuration.primeSizes[38] = 2185;
 				app->configuration.paddedSizes[38] = 4608;
 				app->configuration.primeSizes[39] = 2305;
-				app->configuration.paddedSizes[39] = 4725;
+				app->configuration.paddedSizes[39] = 4900;
 				app->configuration.primeSizes[40] = 2364;
 				app->configuration.paddedSizes[40] = 4900;
 				app->configuration.primeSizes[41] = 2451;
@@ -34619,92 +37131,146 @@ static inline VkFFTResult initializeBluesteinAutoPadding(VkFFTApplication* app) 
 				app->configuration.primeSizes[7] = 43;
 				app->configuration.paddedSizes[7] = 90;
 				app->configuration.primeSizes[8] = 46;
-				app->configuration.paddedSizes[8] = 112;
-				app->configuration.primeSizes[9] = 57;
-				app->configuration.paddedSizes[9] = 125;
-				app->configuration.primeSizes[10] = 67;
-				app->configuration.paddedSizes[10] = 150;
-				app->configuration.primeSizes[11] = 76;
-				app->configuration.paddedSizes[11] = 256;
-				app->configuration.primeSizes[12] = 129;
-				app->configuration.paddedSizes[12] = 270;
-				app->configuration.primeSizes[13] = 136;
-				app->configuration.paddedSizes[13] = 512;
-				app->configuration.primeSizes[14] = 257;
-				app->configuration.paddedSizes[14] = 625;
-				app->configuration.primeSizes[15] = 314;
-				app->configuration.paddedSizes[15] = 750;
-				app->configuration.primeSizes[16] = 376;
-				app->configuration.paddedSizes[16] = 756;
-				app->configuration.primeSizes[17] = 379;
-				app->configuration.paddedSizes[17] = 768;
-				app->configuration.primeSizes[18] = 386;
-				app->configuration.paddedSizes[18] = 875;
-				app->configuration.primeSizes[19] = 439;
-				app->configuration.paddedSizes[19] = 1024;
-				app->configuration.primeSizes[20] = 513;
-				app->configuration.paddedSizes[20] = 1296;
-				app->configuration.primeSizes[21] = 649;
-				app->configuration.paddedSizes[21] = 1300;
-				app->configuration.primeSizes[22] = 651;
-				app->configuration.paddedSizes[22] = 1323;
-				app->configuration.primeSizes[23] = 663;
-				app->configuration.paddedSizes[23] = 1512;
-				app->configuration.primeSizes[24] = 757;
-				app->configuration.paddedSizes[24] = 1792;
-				app->configuration.primeSizes[25] = 897;
-				app->configuration.paddedSizes[25] = 2016;
-				app->configuration.primeSizes[26] = 1009;
-				app->configuration.paddedSizes[26] = 2048;
+				app->configuration.paddedSizes[8] = 125;
+				app->configuration.primeSizes[9] = 67;
+				app->configuration.paddedSizes[9] = 150;
+				app->configuration.primeSizes[10] = 76;
+				app->configuration.paddedSizes[10] = 175;
+				app->configuration.primeSizes[11] = 89;
+				app->configuration.paddedSizes[11] = 189;
+				app->configuration.primeSizes[12] = 97;
+				app->configuration.paddedSizes[12] = 198;
+				app->configuration.primeSizes[13] = 101;
+				app->configuration.paddedSizes[13] = 243;
+				app->configuration.primeSizes[14] = 123;
+				app->configuration.paddedSizes[14] = 256;
+				app->configuration.primeSizes[15] = 129;
+				app->configuration.paddedSizes[15] = 270;
+				app->configuration.primeSizes[16] = 136;
+				app->configuration.paddedSizes[16] = 512;
+				app->configuration.primeSizes[17] = 257;
+				app->configuration.paddedSizes[17] = 625;
+				app->configuration.primeSizes[18] = 314;
+				app->configuration.paddedSizes[18] = 640;
+				app->configuration.primeSizes[19] = 321;
+				app->configuration.paddedSizes[19] = 702;
+				app->configuration.primeSizes[20] = 353;
+				app->configuration.paddedSizes[20] = 750;
+				app->configuration.primeSizes[21] = 376;
+				app->configuration.paddedSizes[21] = 756;
+				app->configuration.primeSizes[22] = 379;
+				app->configuration.paddedSizes[22] = 768;
+				app->configuration.primeSizes[23] = 386;
+				app->configuration.paddedSizes[23] = 875;
+				app->configuration.primeSizes[24] = 439;
+				app->configuration.paddedSizes[24] = 1024;
+				app->configuration.primeSizes[25] = 513;
+				app->configuration.paddedSizes[25] = 1296;
+				app->configuration.primeSizes[26] = 649;
+				app->configuration.paddedSizes[26] = 1300;
+				app->configuration.primeSizes[27] = 651;
+				app->configuration.paddedSizes[27] = 1323;
+				app->configuration.primeSizes[28] = 663;
+				app->configuration.paddedSizes[28] = 1344;
+				app->configuration.primeSizes[29] = 673;
+				app->configuration.paddedSizes[29] = 1512;
+				app->configuration.primeSizes[30] = 757;
+				app->configuration.paddedSizes[30] = 1792;
+				app->configuration.primeSizes[31] = 897;
+				app->configuration.paddedSizes[31] = 2016;
+				app->configuration.primeSizes[32] = 1009;
+				app->configuration.paddedSizes[32] = 2048;
+				app->configuration.primeSizes[33] = 1025;
+				app->configuration.paddedSizes[33] = 2187;
+				app->configuration.primeSizes[34] = 1095;
+				app->configuration.paddedSizes[34] = 3136;
+				app->configuration.primeSizes[35] = 1569;
+				app->configuration.paddedSizes[35] = 3159;
+				app->configuration.primeSizes[36] = 1581;
+				app->configuration.paddedSizes[36] = 3430;
+				app->configuration.primeSizes[37] = 1717;
+				app->configuration.paddedSizes[37] = 3584;
+				app->configuration.primeSizes[38] = 1793;
+				app->configuration.paddedSizes[38] = 4096;
+				app->configuration.primeSizes[39] = 2049;
+				app->configuration.paddedSizes[39] = 4224;
+				app->configuration.primeSizes[40] = 2113;
+				app->configuration.paddedSizes[40] = 4375;
+				app->configuration.primeSizes[41] = 2189;
+				app->configuration.paddedSizes[41] = 4480;
+				app->configuration.primeSizes[42] = 2241;
+				app->configuration.paddedSizes[42] = 4704;
+				app->configuration.primeSizes[43] = 2353;
+				app->configuration.paddedSizes[43] = 4928;
+				app->configuration.primeSizes[44] = 2465;
+				app->configuration.paddedSizes[44] = 4992;
+				app->configuration.primeSizes[45] = 2497;
+				app->configuration.paddedSizes[45] = 5005;
+				app->configuration.primeSizes[46] = 2504;
+				app->configuration.paddedSizes[46] = 5103;
+				app->configuration.primeSizes[47] = 2553;
+				app->configuration.paddedSizes[47] = 5376;
+				app->configuration.primeSizes[48] = 2689;
+				app->configuration.paddedSizes[48] = 5632;
+				app->configuration.primeSizes[49] = 2817;
+				app->configuration.paddedSizes[49] = 5824;
+				app->configuration.primeSizes[50] = 2913;
+				app->configuration.paddedSizes[50] = 6048;
+				app->configuration.primeSizes[51] = 3026;
+				app->configuration.paddedSizes[51] = 6144;
+				app->configuration.primeSizes[52] = 3073;
+				app->configuration.paddedSizes[52] = 6875;
+				app->configuration.primeSizes[53] = 3439;
+				app->configuration.paddedSizes[53] = 8192;
 			}
 			else {
 				app->configuration.primeSizes[0] = 17;
-				app->configuration.paddedSizes[0] = 35;
+				app->configuration.paddedSizes[0] = 36;
 				app->configuration.primeSizes[1] = 19;
 				app->configuration.paddedSizes[1] = 42;
 				app->configuration.primeSizes[2] = 23;
 				app->configuration.paddedSizes[2] = 64;
 				app->configuration.primeSizes[3] = 34;
-				app->configuration.paddedSizes[3] = 70;
-				app->configuration.primeSizes[4] = 37;
-				app->configuration.paddedSizes[4] = 84;
-				app->configuration.primeSizes[5] = 43;
-				app->configuration.paddedSizes[5] = 88;
-				app->configuration.primeSizes[6] = 46;
-				app->configuration.paddedSizes[6] = 128;
-				app->configuration.primeSizes[7] = 67;
-				app->configuration.paddedSizes[7] = 150;
-				app->configuration.primeSizes[8] = 76;
-				app->configuration.paddedSizes[8] = 162;
-				app->configuration.primeSizes[9] = 82;
-				app->configuration.paddedSizes[9] = 176;
-				app->configuration.primeSizes[10] = 89;
-				app->configuration.paddedSizes[10] = 256;
-				app->configuration.primeSizes[11] = 129;
-				app->configuration.paddedSizes[11] = 512;
-				app->configuration.primeSizes[12] = 257;
-				app->configuration.paddedSizes[12] = 625;
-				app->configuration.primeSizes[13] = 314;
-				app->configuration.paddedSizes[13] = 768;
-				app->configuration.primeSizes[14] = 386;
-				app->configuration.paddedSizes[14] = 1024;
-				app->configuration.primeSizes[15] = 513;
-				app->configuration.paddedSizes[15] = 1296;
-				app->configuration.primeSizes[16] = 649;
-				app->configuration.paddedSizes[16] = 2048;
-				app->configuration.primeSizes[17] = 1025;
-				app->configuration.paddedSizes[17] = 2187;
-				app->configuration.primeSizes[18] = 1095;
-				app->configuration.paddedSizes[18] = 2304;
-				app->configuration.primeSizes[19] = 1153;
-				app->configuration.paddedSizes[19] = 2500;
-				app->configuration.primeSizes[20] = 1251;
-				app->configuration.paddedSizes[20] = 2592;
-				app->configuration.primeSizes[21] = 1297;
-				app->configuration.paddedSizes[21] = 3072;
-				app->configuration.primeSizes[22] = 1537;
-				app->configuration.paddedSizes[22] = 3125;
-				app->configuration.primeSizes[23] = 1564;
+				app->configuration.paddedSizes[3] = 81;
+				app->configuration.primeSizes[4] = 43;
+				app->configuration.paddedSizes[4] = 88;
+				app->configuration.primeSizes[5] = 46;
+				app->configuration.paddedSizes[5] = 125;
+				app->configuration.primeSizes[6] = 67;
+				app->configuration.paddedSizes[6] = 150;
+				app->configuration.primeSizes[7] = 76;
+				app->configuration.paddedSizes[7] = 162;
+				app->configuration.primeSizes[8] = 82;
+				app->configuration.paddedSizes[8] = 175;
+				app->configuration.primeSizes[9] = 89;
+				app->configuration.paddedSizes[9] = 256;
+				app->configuration.primeSizes[10] = 129;
+				app->configuration.paddedSizes[10] = 512;
+				app->configuration.primeSizes[11] = 257;
+				app->configuration.paddedSizes[11] = 625;
+				app->configuration.primeSizes[12] = 314;
+				app->configuration.paddedSizes[12] = 768;
+				app->configuration.primeSizes[13] = 386;
+				app->configuration.paddedSizes[13] = 1024;
+				app->configuration.primeSizes[14] = 513;
+				app->configuration.paddedSizes[14] = 1296;
+				app->configuration.primeSizes[15] = 649;
+				app->configuration.paddedSizes[15] = 2048;
+				app->configuration.primeSizes[16] = 1025;
+				app->configuration.paddedSizes[16] = 2187;
+				app->configuration.primeSizes[17] = 1095;
+				app->configuration.paddedSizes[17] = 2304;
+				app->configuration.primeSizes[18] = 1153;
+				app->configuration.paddedSizes[18] = 2500;
+				app->configuration.primeSizes[19] = 1251;
+				app->configuration.paddedSizes[19] = 2592;
+				app->configuration.primeSizes[20] = 1297;
+				app->configuration.paddedSizes[20] = 3072;
+				app->configuration.primeSizes[21] = 1537;
+				app->configuration.paddedSizes[21] = 3125;
+				app->configuration.primeSizes[22] = 1564;
+				app->configuration.paddedSizes[22] = 3136;
+				app->configuration.primeSizes[23] = 1569;
 				app->configuration.paddedSizes[23] = 4096;
 				app->configuration.primeSizes[24] = 2049;
 				app->configuration.paddedSizes[24] = 4375;
@@ -34713,11 +37279,9 @@ static inline VkFFTResult initializeBluesteinAutoPadding(VkFFTApplication* app) 
 				app->configuration.primeSizes[26] = 2305;
 				app->configuration.paddedSizes[26] = 5184;
 				app->configuration.primeSizes[27] = 2593;
-				app->configuration.paddedSizes[27] = 5632;
-				app->configuration.primeSizes[28] = 2817;
-				app->configuration.paddedSizes[28] = 6561;
-				app->configuration.primeSizes[29] = 3282;
-				app->configuration.paddedSizes[29] = 8192;
+				app->configuration.paddedSizes[27] = 6561;
+				app->configuration.primeSizes[28] = 3282;
+				app->configuration.paddedSizes[28] = 8192;
 			}
 			break;
 		}
@@ -34787,6 +37351,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	app->configuration.sharedMemorySize = physicalDeviceProperties.limits.maxComputeSharedMemorySize;
 	app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(physicalDeviceProperties.limits.maxComputeSharedMemorySize));
 	app->configuration.vendorID = physicalDeviceProperties.vendorID;
+	app->configuration.useRaderUintLUT = 1;
 	switch (physicalDeviceProperties.vendorID) {
 	case 0x10DE://NVIDIA
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
@@ -34837,12 +37402,27 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	if (inputLaunchConfiguration.stream != 0)	app->configuration.stream = inputLaunchConfiguration.stream;
 	app->configuration.streamID = 0;
 	int value = 0;
+	res = cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, app->configuration.device[0]);
+	if (res != CUDA_SUCCESS) {
+		deleteVkFFT(app);
+		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
+	}
+	app->configuration.computeCapabilityMajor = value;
+
+	res = cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, app->configuration.device[0]);
+	if (res != CUDA_SUCCESS) {
+		deleteVkFFT(app);
+		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
+	}
+	app->configuration.computeCapabilityMinor = value;
+
 	res = cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, app->configuration.device[0]);
 	if (res != CUDA_SUCCESS) {
 		deleteVkFFT(app);
 		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
 	}
 	app->configuration.maxThreadsNum = value;
+
 	res = cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_X, app->configuration.device[0]);
 	if (res != CUDA_SUCCESS) {
 		deleteVkFFT(app);
@@ -34899,6 +37479,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	app->configuration.warpSize = value;
 	//we don't need this in CUDA
 	app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(app->configuration.sharedMemorySize));
+	app->configuration.useRaderUintLUT = 0;
 	if (app->configuration.num_streams > 1) {
 		app->configuration.stream_event = (cudaEvent_t*)malloc(app->configuration.num_streams * sizeof(cudaEvent_t));
 		if (!app->configuration.stream_event) {
@@ -34932,12 +37513,27 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	if (inputLaunchConfiguration.stream != 0)	app->configuration.stream = inputLaunchConfiguration.stream;
 	app->configuration.streamID = 0;
 	int value = 0;
+	res = hipDeviceGetAttribute(&value, hipDeviceAttributeComputeCapabilityMajor, app->configuration.device[0]);
+	if (res != hipSuccess) {
+		deleteVkFFT(app);
+		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
+	}
+	app->configuration.computeCapabilityMajor = value;
+
+	res = hipDeviceGetAttribute(&value, hipDeviceAttributeComputeCapabilityMinor, app->configuration.device[0]);
+	if (res != hipSuccess) {
+		deleteVkFFT(app);
+		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
+	}
+	app->configuration.computeCapabilityMinor = value;
+
 	res = hipDeviceGetAttribute(&value, hipDeviceAttributeMaxThreadsPerBlock, app->configuration.device[0]);
 	if (res != hipSuccess) {
 		deleteVkFFT(app);
 		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
 	}
 	app->configuration.maxThreadsNum = value;
+
 	res = hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimX, app->configuration.device[0]);
 	if (res != hipSuccess) {
 		deleteVkFFT(app);
@@ -34989,6 +37585,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	}
 	app->configuration.warpSize = value;
 	app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(app->configuration.sharedMemorySize));
+	app->configuration.useRaderUintLUT = 0;
 	if (app->configuration.num_streams > 1) {
 		app->configuration.stream_event = (hipEvent_t*)malloc(app->configuration.num_streams * sizeof(hipEvent_t));
 		if (!app->configuration.stream_event) {
@@ -35036,6 +37633,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
 	}
 	app->configuration.maxThreadsNum = value_int64;
+
 	res = clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, sizeof(cl_uint), &value_cl_uint, 0);
 	if (res != 0) {
 		deleteVkFFT(app);
@@ -35071,6 +37669,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	app->configuration.sharedMemorySize = sharedMemorySize;
 	app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(sharedMemorySize));
 	app->configuration.vendorID = vendorID;
+	app->configuration.useRaderUintLUT = 1;
 	switch (vendorID) {
 	case 0x10DE://NVIDIA
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
@@ -35156,6 +37755,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	app->configuration.registerBoost4Step = 1;
 	app->configuration.swapTo3Stage4Step = 0;
 	app->configuration.vendorID = 0x8086;
+	app->configuration.useRaderUintLUT = 1;
 #endif
 
 	resFFT = initializeBluesteinAutoPadding(app);
@@ -35404,24 +38004,29 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	if (inputLaunchConfiguration.inverseReturnToInputBuffer != 0)	app->configuration.inverseReturnToInputBuffer = inputLaunchConfiguration.inverseReturnToInputBuffer;
 
 	if (inputLaunchConfiguration.useLUT != 0)	app->configuration.useLUT = inputLaunchConfiguration.useLUT;
+	
 	if (inputLaunchConfiguration.fixMaxRadixBluestein != 0) app->configuration.fixMaxRadixBluestein = inputLaunchConfiguration.fixMaxRadixBluestein;
 	if (inputLaunchConfiguration.forceBluesteinSequenceSize != 0) app->configuration.forceBluesteinSequenceSize = inputLaunchConfiguration.forceBluesteinSequenceSize;
 
-	app->configuration.fixMinRaderPrime = 17;
+	app->configuration.fixMinRaderPrimeMult = 17;
+	app->configuration.fixMaxRaderPrimeMult = 89;
+	if (inputLaunchConfiguration.fixMinRaderPrimeMult != 0) app->configuration.fixMinRaderPrimeMult = inputLaunchConfiguration.fixMinRaderPrimeMult;
+	if (inputLaunchConfiguration.fixMaxRaderPrimeMult != 0) app->configuration.fixMaxRaderPrimeMult = inputLaunchConfiguration.fixMaxRaderPrimeMult;
 
 	switch (app->configuration.vendorID) {
 	case 0x10DE://NVIDIA
-		app->configuration.fixMaxRaderPrime = 89;
+		app->configuration.fixMinRaderPrimeFFT = 17;
 		break;
 	case 0x1002://AMD profile
-		app->configuration.fixMaxRaderPrime = 89;
+		app->configuration.fixMinRaderPrimeFFT = 29;
 		break;
 	default:
-		app->configuration.fixMaxRaderPrime = 37; //limited, as performance is untested
+		app->configuration.fixMinRaderPrimeFFT = 17;
 		break;
 	}
-	if (inputLaunchConfiguration.fixMinRaderPrime != 0) app->configuration.fixMinRaderPrime = inputLaunchConfiguration.fixMinRaderPrime;
-	if (inputLaunchConfiguration.fixMaxRaderPrime != 0) app->configuration.fixMaxRaderPrime = inputLaunchConfiguration.fixMaxRaderPrime;
+	app->configuration.fixMaxRaderPrimeFFT = 16384;
+	if (inputLaunchConfiguration.fixMinRaderPrimeFFT != 0) app->configuration.fixMinRaderPrimeFFT = inputLaunchConfiguration.fixMinRaderPrimeFFT;
+	if (inputLaunchConfiguration.fixMaxRaderPrimeFFT != 0) app->configuration.fixMaxRaderPrimeFFT = inputLaunchConfiguration.fixMaxRaderPrimeFFT;
 
 	if (inputLaunchConfiguration.performR2C != 0) {
 		app->configuration.performR2C = inputLaunchConfiguration.performR2C;
@@ -35529,6 +38134,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	app->configuration.maxTempLength = 5000;
 	if (inputLaunchConfiguration.maxTempLength != 0) app->configuration.maxTempLength = inputLaunchConfiguration.maxTempLength;
 
+	if (inputLaunchConfiguration.useRaderUintLUT != 0)	app->configuration.useRaderUintLUT = inputLaunchConfiguration.useRaderUintLUT;
 	if (inputLaunchConfiguration.halfThreads != 0)	app->configuration.halfThreads = inputLaunchConfiguration.halfThreads;
 	if (inputLaunchConfiguration.swapTo3Stage4Step != 0)	app->configuration.swapTo3Stage4Step = inputLaunchConfiguration.swapTo3Stage4Step;
 	if (app->configuration.performDCT > 0) app->configuration.performBandwidthBoost = -1;
@@ -35541,6 +38147,8 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 
 	if (inputLaunchConfiguration.loadApplicationString != 0)	app->configuration.loadApplicationString = inputLaunchConfiguration.loadApplicationString;
 	if (inputLaunchConfiguration.saveApplicationToString != 0)	app->configuration.saveApplicationToString = inputLaunchConfiguration.saveApplicationToString;
+	if (inputLaunchConfiguration.disableSetLocale != 0)	app->configuration.disableSetLocale = inputLaunchConfiguration.disableSetLocale;
+
 	if (inputLaunchConfiguration.loadApplicationFromString != 0) {
 		app->configuration.loadApplicationFromString = inputLaunchConfiguration.loadApplicationFromString;
 		if (app->configuration.saveApplicationToString != 0) {
@@ -35551,7 +38159,9 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			deleteVkFFT(app);
 			return VKFFT_ERROR_EMPTY_applicationString;
 		}
-		app->currentApplicationStringPos = 0;
+		memcpy(&app->applicationStringSize, app->configuration.loadApplicationString, sizeof(uint64_t));
+		memcpy(&app->applicationStringOffsetRader, (char*)app->configuration.loadApplicationString + 2 * sizeof(uint64_t), sizeof(uint64_t));
+		app->currentApplicationStringPos = 5 * sizeof(uint64_t);
 	}
 	//temporary set:
 	app->configuration.registerBoost4Step = 1;
@@ -35565,6 +38175,16 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 				//app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
 				resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, i, 0);
+				if (resFFT == VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH) {
+					//try again with Rader disabled - sequences like 89^4 can still be done with Bluestein FFT
+					uint64_t temp_fixMaxRaderPrimeFFT = app->configuration.fixMaxRaderPrimeFFT;
+					app->configuration.fixMaxRaderPrimeFFT = app->configuration.fixMinRaderPrimeFFT;
+					uint64_t temp_fixMaxRaderPrimeMult = app->configuration.fixMaxRaderPrimeMult;
+					app->configuration.fixMaxRaderPrimeMult = app->configuration.fixMinRaderPrimeMult;
+					resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, i, 0);
+					app->configuration.fixMaxRaderPrimeFFT = temp_fixMaxRaderPrimeFFT;
+					app->configuration.fixMaxRaderPrimeMult = temp_fixMaxRaderPrimeMult;
+				}
 				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
 					return resFFT;
@@ -35613,6 +38233,16 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 				//app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
 				resFFT = VkFFTScheduler(app, app->localFFTPlan, i, 0);
+				if (resFFT == VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH) {
+					//try again with Rader disabled - sequences like 89^4 can still be done with Bluestein FFT
+					uint64_t temp_fixMaxRaderPrimeFFT = app->configuration.fixMaxRaderPrimeFFT;
+					app->configuration.fixMaxRaderPrimeFFT = app->configuration.fixMinRaderPrimeFFT;
+					uint64_t temp_fixMaxRaderPrimeMult = app->configuration.fixMaxRaderPrimeMult;
+					app->configuration.fixMaxRaderPrimeMult = app->configuration.fixMinRaderPrimeMult;
+					resFFT = VkFFTScheduler(app, app->localFFTPlan, i, 0);
+					app->configuration.fixMaxRaderPrimeFFT = temp_fixMaxRaderPrimeFFT;
+					app->configuration.fixMaxRaderPrimeMult = temp_fixMaxRaderPrimeMult;
+				}
 				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
 					return resFFT;
@@ -35669,35 +38299,34 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	}
 
 	if (inputLaunchConfiguration.saveApplicationToString != 0) {
-#if((VKFFT_BACKEND==0)||(VKFFT_BACKEND==2)||(VKFFT_BACKEND==4))
-		uint64_t totalBinarySize = 0;
+		uint64_t totalBinarySize = 5 * sizeof(uint64_t);
 		if (!app->configuration.makeForwardPlanOnly) {
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 				for (uint64_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
-					totalBinarySize += app->localFFTPlan_inverse->axes[i][j].binarySize + sizeof(uint32_t);
+					totalBinarySize += app->localFFTPlan_inverse->axes[i][j].binarySize + sizeof(uint64_t);
 				}
 				if (app->useBluesteinFFT[i] && (app->localFFTPlan_inverse->numAxisUploads[i] > 1)) {
 					for (uint64_t j = 1; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
-						totalBinarySize += app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binarySize + sizeof(uint32_t);
+						totalBinarySize += app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binarySize + sizeof(uint64_t);
 					}
 				}
 				if ((app->localFFTPlan_inverse->multiUploadR2C) && (i == 0)) {
-					totalBinarySize += app->localFFTPlan_inverse->R2Cdecomposition.binarySize + sizeof(uint32_t);
+					totalBinarySize += app->localFFTPlan_inverse->R2Cdecomposition.binarySize + sizeof(uint64_t);
 				}
 			}
 		}
 		if (!app->configuration.makeInversePlanOnly) {
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 				for (uint64_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++) {
-					totalBinarySize += app->localFFTPlan->axes[i][j].binarySize + sizeof(uint32_t);
+					totalBinarySize += app->localFFTPlan->axes[i][j].binarySize + sizeof(uint64_t);
 				}
 				if (app->useBluesteinFFT[i] && (app->localFFTPlan->numAxisUploads[i] > 1)) {
 					for (uint64_t j = 1; j < app->localFFTPlan->numAxisUploads[i]; j++) {
-						totalBinarySize += app->localFFTPlan->inverseBluesteinAxes[i][j].binarySize + sizeof(uint32_t);
+						totalBinarySize += app->localFFTPlan->inverseBluesteinAxes[i][j].binarySize + sizeof(uint64_t);
 					}
 				}
 				if ((app->localFFTPlan->multiUploadR2C) && (i == 0)) {
-					totalBinarySize += app->localFFTPlan->R2Cdecomposition.binarySize + sizeof(uint32_t);
+					totalBinarySize += app->localFFTPlan->R2Cdecomposition.binarySize + sizeof(uint64_t);
 				}
 			}
 		}
@@ -35706,66 +38335,80 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 				totalBinarySize += app->applicationBluesteinStringSize[i];
 			}
 		}
+		if (app->numRaderFFTPrimes > 0) {
+			app->applicationStringOffsetRader = totalBinarySize;
+			for (uint64_t i = 0; i < app->numRaderFFTPrimes; i++) {
+				totalBinarySize += app->rader_buffer_size[i];
+			}
+		}
 		app->saveApplicationString = calloc(totalBinarySize, 1);
 		if (!app->saveApplicationString) {
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
 		app->applicationStringSize = totalBinarySize;
-		uint64_t currentPos = 0;
-		uint32_t* localApplicationStringCast = (uint32_t*)app->saveApplicationString;
+		char* localApplicationStringCast = (char*)app->saveApplicationString;
+		memcpy(localApplicationStringCast, &totalBinarySize, sizeof(uint64_t));
+		memcpy(localApplicationStringCast + 2, &app->applicationStringOffsetRader, sizeof(uint64_t));
+		uint64_t currentPos = 5 * sizeof(uint64_t);
 		if (!app->configuration.makeForwardPlanOnly) {
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 				for (uint64_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
-					localApplicationStringCast[currentPos] = (uint32_t)app->localFFTPlan_inverse->axes[i][j].binarySize;
-					currentPos++;
+					memcpy(localApplicationStringCast + currentPos, &app->localFFTPlan_inverse->axes[i][j].binarySize, sizeof(uint64_t));
+					currentPos += sizeof(uint64_t);
 					memcpy(localApplicationStringCast + currentPos, app->localFFTPlan_inverse->axes[i][j].binary, app->localFFTPlan_inverse->axes[i][j].binarySize);
-					currentPos += app->localFFTPlan_inverse->axes[i][j].binarySize / sizeof(uint32_t);
+					currentPos += app->localFFTPlan_inverse->axes[i][j].binarySize;
 				}
 				if (app->useBluesteinFFT[i] && (app->localFFTPlan_inverse->numAxisUploads[i] > 1)) {
 					for (uint64_t j = 1; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
-						localApplicationStringCast[currentPos] = (uint32_t)app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binarySize;
-						currentPos++;
+						memcpy(localApplicationStringCast + currentPos, &app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binarySize, sizeof(uint64_t));
+						currentPos += sizeof(uint64_t);
 						memcpy(localApplicationStringCast + currentPos, app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binary, app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binarySize);
-						currentPos += app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binarySize / sizeof(uint32_t);
+						currentPos += app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binarySize;
 					}
 				}
 				if ((app->localFFTPlan_inverse->multiUploadR2C) && (i == 0)) {
-					localApplicationStringCast[currentPos] = (uint32_t)app->localFFTPlan_inverse->R2Cdecomposition.binarySize;
-					currentPos++;
+					memcpy(localApplicationStringCast + currentPos, &app->localFFTPlan_inverse->R2Cdecomposition.binarySize, sizeof(uint64_t));
+					currentPos += sizeof(uint64_t);
 					memcpy(localApplicationStringCast + currentPos, app->localFFTPlan_inverse->R2Cdecomposition.binary, app->localFFTPlan_inverse->R2Cdecomposition.binarySize);
-					currentPos += app->localFFTPlan_inverse->R2Cdecomposition.binarySize / sizeof(uint32_t);
+					currentPos += app->localFFTPlan_inverse->R2Cdecomposition.binarySize;
 				}
 			}
 		}
 		if (!app->configuration.makeInversePlanOnly) {
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 				for (uint64_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++) {
-					localApplicationStringCast[currentPos] = (uint32_t)app->localFFTPlan->axes[i][j].binarySize;
-					currentPos++;
+					memcpy(localApplicationStringCast + currentPos, &app->localFFTPlan->axes[i][j].binarySize, sizeof(uint64_t));
+					currentPos += sizeof(uint64_t);
 					memcpy(localApplicationStringCast + currentPos, app->localFFTPlan->axes[i][j].binary, app->localFFTPlan->axes[i][j].binarySize);
-					currentPos += app->localFFTPlan->axes[i][j].binarySize / sizeof(uint32_t);
+					currentPos += app->localFFTPlan->axes[i][j].binarySize;
 				}
 				if (app->useBluesteinFFT[i] && (app->localFFTPlan->numAxisUploads[i] > 1)) {
 					for (uint64_t j = 1; j < app->localFFTPlan->numAxisUploads[i]; j++) {
-						localApplicationStringCast[currentPos] = (uint32_t)app->localFFTPlan->inverseBluesteinAxes[i][j].binarySize;
-						currentPos++;
+						memcpy(localApplicationStringCast + currentPos, &app->localFFTPlan->inverseBluesteinAxes[i][j].binarySize, sizeof(uint64_t));
+						currentPos += sizeof(uint64_t);
 						memcpy(localApplicationStringCast + currentPos, app->localFFTPlan->inverseBluesteinAxes[i][j].binary, app->localFFTPlan->inverseBluesteinAxes[i][j].binarySize);
-						currentPos += app->localFFTPlan->inverseBluesteinAxes[i][j].binarySize / sizeof(uint32_t);
+						currentPos += app->localFFTPlan->inverseBluesteinAxes[i][j].binarySize;
 					}
 				}
 				if ((app->localFFTPlan->multiUploadR2C) && (i == 0)) {
-					localApplicationStringCast[currentPos] = (uint32_t)app->localFFTPlan->R2Cdecomposition.binarySize;
-					currentPos++;
+					memcpy(localApplicationStringCast + currentPos, &app->localFFTPlan->R2Cdecomposition.binarySize, sizeof(uint64_t));
+					currentPos += sizeof(uint64_t);
 					memcpy(localApplicationStringCast + currentPos, app->localFFTPlan->R2Cdecomposition.binary, app->localFFTPlan->R2Cdecomposition.binarySize);
-					currentPos += app->localFFTPlan->R2Cdecomposition.binarySize / sizeof(uint32_t);
+					currentPos += app->localFFTPlan->R2Cdecomposition.binarySize;
 				}
 			}
 		}
 		for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 			if (app->useBluesteinFFT[i]) {
 				memcpy(localApplicationStringCast + currentPos, app->applicationBluesteinString[i], app->applicationBluesteinStringSize[i]);
-				currentPos += app->applicationBluesteinStringSize[i] / sizeof(uint32_t);
+				currentPos += app->applicationBluesteinStringSize[i];
+			}
+		}
+		if (app->numRaderFFTPrimes > 0) {
+			for (uint64_t i = 0; i < app->numRaderFFTPrimes; i++) {
+				memcpy(localApplicationStringCast + currentPos, app->raderFFTkernel[i], app->rader_buffer_size[i]);
+				currentPos += app->rader_buffer_size[i];
 			}
 		}
 		for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
@@ -35774,99 +38417,6 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 				app->applicationBluesteinString[i] = 0;
 			}
 		}
-#else
-		uint64_t totalBinarySize = 1;
-		if (!app->configuration.makeForwardPlanOnly) {
-			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
-				for (uint64_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
-					totalBinarySize += app->localFFTPlan_inverse->axes[i][j].binarySize + (uint64_t)(floor(log10((double)app->localFFTPlan_inverse->axes[i][j].binarySize))) + 1;
-				}
-				if (app->useBluesteinFFT[i] && (app->localFFTPlan_inverse->numAxisUploads[i] > 1)) {
-					for (uint64_t j = 1; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
-						totalBinarySize += app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binarySize + (uint64_t)(floor(log10((double)app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binarySize))) + 1;
-					}
-				}
-				if ((app->localFFTPlan_inverse->multiUploadR2C) && (i == 0)) {
-					totalBinarySize += app->localFFTPlan_inverse->R2Cdecomposition.binarySize + (uint64_t)(floor(log10((double)app->localFFTPlan_inverse->R2Cdecomposition.binarySize))) + 1;
-				}
-			}
-		}
-		if (!app->configuration.makeInversePlanOnly) {
-			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
-				for (uint64_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++) {
-					totalBinarySize += app->localFFTPlan->axes[i][j].binarySize + (uint64_t)(floor(log10((double)app->localFFTPlan->axes[i][j].binarySize))) + 1;
-				}
-				if (app->useBluesteinFFT[i] && (app->localFFTPlan->numAxisUploads[i] > 1)) {
-					for (uint64_t j = 1; j < app->localFFTPlan->numAxisUploads[i]; j++) {
-						totalBinarySize += app->localFFTPlan->inverseBluesteinAxes[i][j].binarySize + (uint64_t)(floor(log10((double)app->localFFTPlan->inverseBluesteinAxes[i][j].binarySize))) + 1;
-					}
-				}
-				if ((app->localFFTPlan->multiUploadR2C) && (i == 0)) {
-					totalBinarySize += app->localFFTPlan->R2Cdecomposition.binarySize + (uint64_t)(floor(log10((double)app->localFFTPlan->R2Cdecomposition.binarySize))) + 1;
-				}
-			}
-		}
-		for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
-			if (app->useBluesteinFFT[i]) {
-				totalBinarySize += app->applicationBluesteinStringSize[i] - 1;
-			}
-		}
-		app->saveApplicationString = (char*)calloc(totalBinarySize, 1);
-		if (!app->saveApplicationString) {
-			deleteVkFFT(app);
-			return VKFFT_ERROR_MALLOC_FAILED;
-		}
-		app->applicationStringSize = totalBinarySize;
-		uint64_t currentPos = 0;
-		char* localApplicationStringCast = (char*)app->saveApplicationString;
-		if (!app->configuration.makeForwardPlanOnly) {
-			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
-				for (uint64_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
-					currentPos += sprintf(localApplicationStringCast + currentPos, "%" PRIu64 "\n", app->localFFTPlan_inverse->axes[i][j].binarySize);
-					currentPos += sprintf(localApplicationStringCast + currentPos, "%s", (char*)app->localFFTPlan_inverse->axes[i][j].binary);
-				}
-				if (app->useBluesteinFFT[i] && (app->localFFTPlan_inverse->numAxisUploads[i] > 1)) {
-					for (uint64_t j = 1; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
-						currentPos += sprintf(localApplicationStringCast + currentPos, "%" PRIu64 "\n", app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binarySize);
-						currentPos += sprintf(localApplicationStringCast + currentPos, "%s", (char*)app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binary);
-					}
-				}
-				if ((app->localFFTPlan_inverse->multiUploadR2C) && (i == 0)) {
-					currentPos += sprintf(localApplicationStringCast + currentPos, "%" PRIu64 "\n", app->localFFTPlan_inverse->R2Cdecomposition.binarySize);
-					currentPos += sprintf(localApplicationStringCast + currentPos, "%s", (char*)app->localFFTPlan_inverse->R2Cdecomposition.binary);
-				}
-			}
-		}
-		if (!app->configuration.makeInversePlanOnly) {
-			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
-				for (uint64_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++) {
-					currentPos += sprintf(localApplicationStringCast + currentPos, "%" PRIu64 "\n", app->localFFTPlan->axes[i][j].binarySize);
-					currentPos += sprintf(localApplicationStringCast + currentPos, "%s", (char*)app->localFFTPlan->axes[i][j].binary);
-				}
-				if (app->useBluesteinFFT[i] && (app->localFFTPlan->numAxisUploads[i] > 1)) {
-					for (uint64_t j = 1; j < app->localFFTPlan->numAxisUploads[i]; j++) {
-						currentPos += sprintf(localApplicationStringCast + currentPos, "%" PRIu64 "\n", app->localFFTPlan->inverseBluesteinAxes[i][j].binarySize);
-						currentPos += sprintf(localApplicationStringCast + currentPos, "%s", (char*)app->localFFTPlan->inverseBluesteinAxes[i][j].binary);
-					}
-				}
-				if ((app->localFFTPlan->multiUploadR2C) && (i == 0)) {
-					currentPos += sprintf(localApplicationStringCast + currentPos, "%" PRIu64 "\n", app->localFFTPlan->R2Cdecomposition.binarySize);
-					currentPos += sprintf(localApplicationStringCast + currentPos, "%s", (char*)app->localFFTPlan->R2Cdecomposition.binary);
-				}
-			}
-		}
-		for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
-			if (app->useBluesteinFFT[i]) {
-				currentPos += sprintf(localApplicationStringCast + currentPos, "%s", (char*)app->applicationBluesteinString[i]);
-			}
-		}
-		for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
-			if (app->applicationBluesteinString[i] != 0) {
-				free(app->applicationBluesteinString[i]);
-				app->applicationBluesteinString[i] = 0;
-			}
-		}
-#endif
 	}
 #if(VKFFT_BACKEND==0)
 	if (app->configuration.isCompilerInitialized) {
@@ -35878,37 +38428,31 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 }
 static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axis, uint64_t* dispatchBlock) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-	uint64_t maxBlockSize[3] = { (uint64_t)pow(2,(uint64_t)log2(app->configuration.maxComputeWorkGroupCount[0])),(uint64_t)pow(2,(uint64_t)log2(app->configuration.maxComputeWorkGroupCount[1])),(uint64_t)pow(2,(uint64_t)log2(app->configuration.maxComputeWorkGroupCount[2])) };
-	uint64_t blockNumber[3] = { (uint64_t)ceil(dispatchBlock[0] / (double)maxBlockSize[0]),(uint64_t)ceil(dispatchBlock[1] / (double)maxBlockSize[1]),(uint64_t)ceil(dispatchBlock[2] / (double)maxBlockSize[2]) };
+	if (axis->specializationConstants.swapComputeWorkGroupID == 1) {
+		uint64_t temp = dispatchBlock[0];
+		dispatchBlock[0] = dispatchBlock[1];
+		dispatchBlock[1] = temp;
+	}
+	if (axis->specializationConstants.swapComputeWorkGroupID == 2) {
+		uint64_t temp = dispatchBlock[0];
+		dispatchBlock[0] = dispatchBlock[2];
+		dispatchBlock[2] = temp;
+	}
+	uint64_t blockNumber[3] = { (uint64_t)ceil(dispatchBlock[0] / (double)app->configuration.maxComputeWorkGroupCount[0]),(uint64_t)ceil(dispatchBlock[1] / (double)app->configuration.maxComputeWorkGroupCount[1]),(uint64_t)ceil(dispatchBlock[2] / (double)app->configuration.maxComputeWorkGroupCount[2]) };
+	uint64_t blockSize[3] = { (uint64_t)ceil(dispatchBlock[0] / (double)blockNumber[0]), (uint64_t)ceil(dispatchBlock[1] / (double)blockNumber[1]), (uint64_t)ceil(dispatchBlock[2] / (double)blockNumber[2]) };
+	uint64_t lastBlockSize[3] = { blockSize[0],blockSize[1],blockSize[2] };
+	uint64_t dispatchSize[3] = { 1,1,1 };
 	if (blockNumber[0] == 0) blockNumber[0] = 1;
 	if (blockNumber[1] == 0) blockNumber[1] = 1;
 	if (blockNumber[2] == 0) blockNumber[2] = 1;
-	if ((blockNumber[0] > 1) && (blockNumber[0] * maxBlockSize[0] != dispatchBlock[0])) {
-		for (uint64_t i = app->configuration.maxComputeWorkGroupCount[0]; i > 0; i--) {
-			if (dispatchBlock[0] % i == 0) {
-				maxBlockSize[0] = i;
-				blockNumber[0] = dispatchBlock[0] / i;
-				i = 1;
-			}
-		}
+	if ((blockNumber[0] > 1) && (blockNumber[0] * blockSize[0] != dispatchBlock[0])) {
+		lastBlockSize[0] = dispatchBlock[0] % blockSize[0];
 	}
-	if ((blockNumber[1] > 1) && (blockNumber[1] * maxBlockSize[1] != dispatchBlock[1])) {
-		for (uint64_t i = app->configuration.maxComputeWorkGroupCount[1]; i > 0; i--) {
-			if (dispatchBlock[1] % i == 0) {
-				maxBlockSize[1] = i;
-				blockNumber[1] = dispatchBlock[1] / i;
-				i = 1;
-			}
-		}
+	if ((blockNumber[1] > 1) && (blockNumber[1] * blockSize[1] != dispatchBlock[1])) {
+		lastBlockSize[1] = dispatchBlock[1] % blockSize[1];
 	}
-	if ((blockNumber[2] > 1) && (blockNumber[2] * maxBlockSize[2] != dispatchBlock[2])) {
-		for (uint64_t i = app->configuration.maxComputeWorkGroupCount[2]; i > 0; i--) {
-			if (dispatchBlock[2] % i == 0) {
-				maxBlockSize[2] = i;
-				blockNumber[2] = dispatchBlock[2] / i;
-				i = 1;
-			}
-		}
+	if ((blockNumber[2] > 1) && (blockNumber[2] * blockSize[2] != dispatchBlock[2])) {
+		lastBlockSize[2] = dispatchBlock[2] % blockSize[2];
 	}
 	if (app->configuration.specifyOffsetsAtLaunch) {
 		axis->updatePushConstants = 1;
@@ -35916,20 +38460,20 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 	//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 "\n", dispatchBlock[0], dispatchBlock[1], dispatchBlock[2]);
 	//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 "\n", blockNumber[0], blockNumber[1], blockNumber[2]);
 	for (uint64_t i = 0; i < 3; i++)
-		if (blockNumber[i] == 1) maxBlockSize[i] = dispatchBlock[i];
+		if (blockNumber[i] == 1) blockSize[i] = dispatchBlock[i];
 	for (uint64_t i = 0; i < blockNumber[0]; i++) {
 		for (uint64_t j = 0; j < blockNumber[1]; j++) {
 			for (uint64_t k = 0; k < blockNumber[2]; k++) {
-				if (axis->pushConstants.workGroupShift[0] != i * maxBlockSize[0]) {
-					axis->pushConstants.workGroupShift[0] = i * maxBlockSize[0];
+				if (axis->pushConstants.workGroupShift[0] != i * blockSize[0]) {
+					axis->pushConstants.workGroupShift[0] = i * blockSize[0];
 					axis->updatePushConstants = 1;
 				}
-				if (axis->pushConstants.workGroupShift[1] != j * maxBlockSize[1]) {
-					axis->pushConstants.workGroupShift[1] = j * maxBlockSize[1];
+				if (axis->pushConstants.workGroupShift[1] != j * blockSize[1]) {
+					axis->pushConstants.workGroupShift[1] = j * blockSize[1];
 					axis->updatePushConstants = 1;
 				}
-				if (axis->pushConstants.workGroupShift[2] != k * maxBlockSize[2]) {
-					axis->pushConstants.workGroupShift[2] = k * maxBlockSize[2];
+				if (axis->pushConstants.workGroupShift[2] != k * blockSize[2]) {
+					axis->pushConstants.workGroupShift[2] = k * blockSize[2];
 					axis->updatePushConstants = 1;
 				}
 				if (axis->updatePushConstants) {
@@ -35994,6 +38538,9 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 						}
 					}
 				}
+				dispatchSize[0] = (i == blockNumber[0] - 1) ? lastBlockSize[0] : blockSize[0];
+				dispatchSize[1] = (j == blockNumber[1] - 1) ? lastBlockSize[1] : blockSize[1];
+				dispatchSize[2] = (k == blockNumber[2] - 1) ? lastBlockSize[2] : blockSize[2];
 #if(VKFFT_BACKEND==0)
 				if (axis->pushConstants.structSize > 0) {
 					if (app->configuration.useUint64) {
@@ -36003,9 +38550,9 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 						vkCmdPushConstants(app->configuration.commandBuffer[0], axis->pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, (uint32_t)axis->pushConstants.structSize, axis->pushConstants.dataUint32);
 					}
 				}
-				vkCmdDispatch(app->configuration.commandBuffer[0], (uint32_t)maxBlockSize[0], (uint32_t)maxBlockSize[1], (uint32_t)maxBlockSize[2]);
+				vkCmdDispatch(app->configuration.commandBuffer[0], (uint32_t)dispatchSize[0], (uint32_t)dispatchSize[1], (uint32_t)dispatchSize[2]);
 #elif(VKFFT_BACKEND==1)
-				void* args[6];
+				void* args[10];
 				CUresult result = CUDA_SUCCESS;
 				args[0] = axis->inputBuffer;
 				args[1] = axis->outputBuffer;
@@ -36016,6 +38563,10 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 				}
 				if (axis->specializationConstants.LUT) {
 					args[args_id] = &axis->bufferLUT;
+					args_id++;
+				}
+				if (axis->specializationConstants.raderUintLUT) {
+					args[args_id] = &axis->bufferRaderUintLUT;
 					args_id++;
 				}
 				if (axis->specializationConstants.useBluesteinFFT && axis->specializationConstants.BluesteinConvolutionStep) {
@@ -36047,20 +38598,20 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 				}
 				if (app->configuration.num_streams >= 1) {
 					result = cuLaunchKernel(axis->VkFFTKernel,
-						(unsigned int)maxBlockSize[0], (unsigned int)maxBlockSize[1], (unsigned int)maxBlockSize[2],     // grid dim
+						(unsigned int)dispatchSize[0], (unsigned int)dispatchSize[1], (unsigned int)dispatchSize[2],     // grid dim
 						(unsigned int)axis->specializationConstants.localSize[0], (unsigned int)axis->specializationConstants.localSize[1], (unsigned int)axis->specializationConstants.localSize[2],   // block dim
 						(unsigned int)axis->specializationConstants.usedSharedMemory, app->configuration.stream[app->configuration.streamID],             // shared mem and stream
 						args, 0);
 				}
 				else {
 					result = cuLaunchKernel(axis->VkFFTKernel,
-						(unsigned int)maxBlockSize[0], (unsigned int)maxBlockSize[1], (unsigned int)maxBlockSize[2],     // grid dim
+						(unsigned int)dispatchSize[0], (unsigned int)dispatchSize[1], (unsigned int)dispatchSize[2],     // grid dim
 						(unsigned int)axis->specializationConstants.localSize[0], (unsigned int)axis->specializationConstants.localSize[1], (unsigned int)axis->specializationConstants.localSize[2],   // block dim
 						(unsigned int)axis->specializationConstants.usedSharedMemory, 0,             // shared mem and stream
 						args, 0);
 				}
 				if (result != CUDA_SUCCESS) {
-					printf("cuLaunchKernel error: %d, %" PRIu64 " %" PRIu64 " %" PRIu64 " - %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", result, maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
+					printf("cuLaunchKernel error: %d, %" PRIu64 " %" PRIu64 " %" PRIu64 " - %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", result, dispatchSize[0], dispatchSize[1], dispatchSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
 					return VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL;
 				}
 				if (app->configuration.num_streams > 1) {
@@ -36073,7 +38624,7 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 				}
 #elif(VKFFT_BACKEND==2)
 				hipError_t result = hipSuccess;
-				void* args[6];
+				void* args[10];
 				args[0] = axis->inputBuffer;
 				args[1] = axis->outputBuffer;
 				uint64_t args_id = 2;
@@ -36083,6 +38634,10 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 				}
 				if (axis->specializationConstants.LUT) {
 					args[args_id] = &axis->bufferLUT;
+					args_id++;
+				}
+				if (axis->specializationConstants.raderUintLUT) {
+					args[args_id] = &axis->bufferRaderUintLUT;
 					args_id++;
 				}
 				if (axis->specializationConstants.useBluesteinFFT && axis->specializationConstants.BluesteinConvolutionStep) {
@@ -36115,20 +38670,20 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 				//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n",maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
 				if (app->configuration.num_streams >= 1) {
 					result = hipModuleLaunchKernel(axis->VkFFTKernel,
-						(unsigned int)maxBlockSize[0], (unsigned int)maxBlockSize[1], (unsigned int)maxBlockSize[2],     // grid dim
+						(unsigned int)dispatchSize[0], (unsigned int)dispatchSize[1], (unsigned int)dispatchSize[2],     // grid dim
 						(unsigned int)axis->specializationConstants.localSize[0], (unsigned int)axis->specializationConstants.localSize[1], (unsigned int)axis->specializationConstants.localSize[2],   // block dim
 						(unsigned int)axis->specializationConstants.usedSharedMemory, app->configuration.stream[app->configuration.streamID],             // shared mem and stream
 						args, 0);
 				}
 				else {
 					result = hipModuleLaunchKernel(axis->VkFFTKernel,
-						(unsigned int)maxBlockSize[0], (unsigned int)maxBlockSize[1], (unsigned int)maxBlockSize[2],     // grid dim
+						(unsigned int)dispatchSize[0], (unsigned int)dispatchSize[1], (unsigned int)dispatchSize[2],     // grid dim
 						(unsigned int)axis->specializationConstants.localSize[0], (unsigned int)axis->specializationConstants.localSize[1], (unsigned int)axis->specializationConstants.localSize[2],   // block dim
 						(unsigned int)axis->specializationConstants.usedSharedMemory, 0,             // shared mem and stream
 						args, 0);
 				}
 				if (result != hipSuccess) {
-					printf("hipModuleLaunchKernel error: %d, %" PRIu64 " %" PRIu64 " %" PRIu64 " - %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", result, maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
+					printf("hipModuleLaunchKernel error: %d, %" PRIu64 " %" PRIu64 " %" PRIu64 " - %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", result, dispatchSize[0], dispatchSize[1], dispatchSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
 					return VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL;
 				}
 				if (app->configuration.num_streams > 1) {
@@ -36141,7 +38696,7 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 				}
 #elif(VKFFT_BACKEND==3)
 				cl_int result = CL_SUCCESS;
-				void* args[6];
+				void* args[10];
 				args[0] = axis->inputBuffer;
 				result = clSetKernelArg(axis->kernel, 0, sizeof(cl_mem), args[0]);
 				if (result != CL_SUCCESS) {
@@ -36163,6 +38718,14 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 				}
 				if (axis->specializationConstants.LUT) {
 					args[args_id] = &axis->bufferLUT;
+					result = clSetKernelArg(axis->kernel, (cl_uint)args_id, sizeof(cl_mem), args[args_id]);
+					if (result != CL_SUCCESS) {
+						return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
+					}
+					args_id++;
+				}
+				if (axis->specializationConstants.raderUintLUT) {
+					args[args_id] = &axis->bufferRaderUintLUT;
 					result = clSetKernelArg(axis->kernel, (cl_uint)args_id, sizeof(cl_mem), args[args_id]);
 					if (result != CL_SUCCESS) {
 						return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
@@ -36202,7 +38765,7 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 					args_id++;
 				}
 				size_t local_work_size[3] = { (size_t)axis->specializationConstants.localSize[0], (size_t)axis->specializationConstants.localSize[1],(size_t)axis->specializationConstants.localSize[2] };
-				size_t global_work_size[3] = { (size_t)maxBlockSize[0] * local_work_size[0] , (size_t)maxBlockSize[1] * local_work_size[1] ,(size_t)maxBlockSize[2] * local_work_size[2] };
+				size_t global_work_size[3] = { (size_t)dispatchSize[0] * local_work_size[0] , (size_t)dispatchSize[1] * local_work_size[1] ,(size_t)dispatchSize[2] * local_work_size[2] };
 				result = clEnqueueNDRangeKernel(app->configuration.commandQueue[0], axis->kernel, 3, 0, global_work_size, local_work_size, 0, 0, 0);
 				//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 " - %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
 
@@ -36211,7 +38774,7 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 				}
 #elif(VKFFT_BACKEND==4)
 				ze_result_t result = ZE_RESULT_SUCCESS;
-				void* args[6];
+				void* args[10];
 				args[0] = axis->inputBuffer;
 				result = zeKernelSetArgumentValue(axis->VkFFTKernel, 0, sizeof(void*), args[0]);
 				if (result != ZE_RESULT_SUCCESS) {
@@ -36233,6 +38796,14 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 				}
 				if (axis->specializationConstants.LUT) {
 					args[args_id] = &axis->bufferLUT;
+					result = zeKernelSetArgumentValue(axis->VkFFTKernel, (uint32_t)args_id, sizeof(void*), args[args_id]);
+					if (result != ZE_RESULT_SUCCESS) {
+						return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
+					}
+					args_id++;
+				}
+				if (axis->specializationConstants.raderUintLUT) {
+					args[args_id] = &axis->bufferRaderUintLUT;
 					result = zeKernelSetArgumentValue(axis->VkFFTKernel, (uint32_t)args_id, sizeof(void*), args[args_id]);
 					if (result != ZE_RESULT_SUCCESS) {
 						return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
@@ -36272,7 +38843,7 @@ static inline VkFFTResult dispatchEnhanced(VkFFTApplication* app, VkFFTAxis* axi
 					args_id++;
 				}
 				size_t local_work_size[3] = { (size_t)axis->specializationConstants.localSize[0], (size_t)axis->specializationConstants.localSize[1],(size_t)axis->specializationConstants.localSize[2] };
-				ze_group_count_t launchArgs = { (uint32_t)maxBlockSize[0], (uint32_t)maxBlockSize[1],(uint32_t)maxBlockSize[2] };
+				ze_group_count_t launchArgs = { (uint32_t)dispatchSize[0], (uint32_t)dispatchSize[1],(uint32_t)dispatchSize[2] };
 				result = zeCommandListAppendLaunchKernel(app->configuration.commandList[0], axis->VkFFTKernel, &launchArgs, 0, 0, 0);
 				//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 " - %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
 
@@ -37024,6 +39595,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10227; //X.XX.XX format
+	return 10228; //X.XX.XX format
 }
 #endif
