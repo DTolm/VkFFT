@@ -184,7 +184,7 @@ typedef struct {
 	uint64_t printMemoryLayout;//will print order of buffers used in shaders (0 - off, 1 - on)
 
 	uint64_t saveApplicationToString;//will save all compiled binaries to VkFFTApplication.saveApplicationString (will be allocated by VkFFT, deallocated with deleteVkFFT call). (0 - off, 1 - on)
-	
+
 	uint64_t loadApplicationFromString;//will load all binaries from loadApplicationString instead of recompiling them (must be allocated by user, must contain what saveApplicationToString call generated previously in VkFFTApplication.saveApplicationString). (0 - off, 1 - on). Mutually exclusive with saveApplicationToString
 	void* loadApplicationString;//memory binary array through which user can load VkFFT binaries, must be provided by user if loadApplicationFromString = 1. Use rb/wb flags to load/save.
 
@@ -408,7 +408,7 @@ typedef enum VkFFTResult {
 
 typedef struct VkFFTRaderContainer VkFFTRaderContainer;
 
-typedef struct VkFFTRaderContainer {
+struct VkFFTRaderContainer {
 	uint64_t prime;
 	uint64_t generator;
 	uint64_t multiplier;
@@ -426,7 +426,7 @@ typedef struct VkFFTRaderContainer {
 	uint64_t registers_per_thread;
 	uint64_t min_registers_per_thread;
 	uint64_t loc_multipliers[33];
-	uint64_t registers_per_thread_per_radix[20];
+	uint64_t registers_per_thread_per_radix[33];
 	uint64_t stageRadix[20];
 	uint64_t numStages;
 	uint64_t numSubPrimes;
@@ -791,13 +791,13 @@ static inline VkFFTResult VkAppendLine(VkFFTSpecializationConstantsLayout* sc) {
 	if (sc->currentLen + sc->tempLen > sc->maxCodeLength) return VKFFT_ERROR_INSUFFICIENT_CODE_BUFFER;
 	sc->currentLen += sprintf(sc->output + sc->currentLen, "%s", sc->tempStr);
 	return VKFFT_SUCCESS;
-};
+}
 static inline VkFFTResult VkAppendLineFromInput(VkFFTSpecializationConstantsLayout* sc, const char* in) {
 	//appends code line stored in tempStr to generated code
 	if (sc->currentLen + (int64_t)strlen(in) > sc->maxCodeLength) return VKFFT_ERROR_INSUFFICIENT_CODE_BUFFER;
 	sc->currentLen += sprintf(sc->output + sc->currentLen, "%s", in);
 	return VKFFT_SUCCESS;
-};
+}
 static inline VkFFTResult appendLicense(VkFFTSpecializationConstantsLayout* sc) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -833,7 +833,7 @@ static inline VkFFTResult VkMovComplex(VkFFTSpecializationConstantsLayout* sc, c
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkMovReal(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -841,7 +841,7 @@ static inline VkFFTResult VkMovReal(VkFFTSpecializationConstantsLayout* sc, cons
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkSharedStore(VkFFTSpecializationConstantsLayout* sc, const char* id, const char* in) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -849,7 +849,7 @@ static inline VkFFTResult VkSharedStore(VkFFTSpecializationConstantsLayout* sc, 
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkSharedLoad(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* id) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -857,7 +857,7 @@ static inline VkFFTResult VkSharedLoad(VkFFTSpecializationConstantsLayout* sc, c
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkAddReal(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -865,7 +865,7 @@ static inline VkFFTResult VkAddReal(VkFFTSpecializationConstantsLayout* sc, cons
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkAddComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -874,7 +874,7 @@ static inline VkFFTResult VkAddComplex(VkFFTSpecializationConstantsLayout* sc, c
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkAddComplexInv(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -883,7 +883,7 @@ static inline VkFFTResult VkAddComplexInv(VkFFTSpecializationConstantsLayout* sc
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkSubComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -892,7 +892,7 @@ static inline VkFFTResult VkSubComplex(VkFFTSpecializationConstantsLayout* sc, c
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkSubReal(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -900,7 +900,7 @@ static inline VkFFTResult VkSubReal(VkFFTSpecializationConstantsLayout* sc, cons
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkFMA3Complex(VkFFTSpecializationConstantsLayout* sc, const char* out_1, const char* out_2, const char* in_1, const char* in_num, const char* in_conj) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f %%f %%f \\n \", %s, %s.x, %s.y, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, in_1, in_1, in_conj, in_conj);
@@ -934,7 +934,7 @@ static inline VkFFTResult VkFMA3Complex(VkFFTSpecializationConstantsLayout* sc, 
 	//res = VkAppendLine(sc);
 	//if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkFMAComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num, const char* in_2) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -943,7 +943,7 @@ static inline VkFFTResult VkFMAComplex(VkFFTSpecializationConstantsLayout* sc, c
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkFMAReal(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num, const char* in_2) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -951,7 +951,7 @@ static inline VkFFTResult VkFMAReal(VkFFTSpecializationConstantsLayout* sc, cons
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkMulComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	if (strcmp(out, in_1) && strcmp(out, in_2)) {
@@ -972,7 +972,7 @@ static inline VkFFTResult VkMulComplex(VkFFTSpecializationConstantsLayout* sc, c
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkMulComplexConj(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	if (strcmp(out, in_1) && strcmp(out, in_2)) {
@@ -993,7 +993,7 @@ static inline VkFFTResult VkMulComplexConj(VkFFTSpecializationConstantsLayout* s
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkMulComplexNumber(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -1002,7 +1002,7 @@ static inline VkFFTResult VkMulComplexNumber(VkFFTSpecializationConstantsLayout*
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkMulComplexNumberImag(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	if (strcmp(out, in_1)) {
@@ -1023,7 +1023,7 @@ static inline VkFFTResult VkMulComplexNumberImag(VkFFTSpecializationConstantsLay
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkDivComplexNumber(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -1032,7 +1032,7 @@ static inline VkFFTResult VkDivComplexNumber(VkFFTSpecializationConstantsLayout*
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 
 static inline VkFFTResult VkMulReal(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
 	VkFFTResult res = VKFFT_SUCCESS;
@@ -1041,7 +1041,7 @@ static inline VkFFTResult VkMulReal(VkFFTSpecializationConstantsLayout* sc, cons
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 
 static inline VkFFTResult VkShuffleComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
@@ -1063,7 +1063,7 @@ static inline VkFFTResult VkShuffleComplex(VkFFTSpecializationConstantsLayout* s
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkShuffleComplexInv(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	if (strcmp(out, in_2)) {
@@ -1084,7 +1084,7 @@ static inline VkFFTResult VkShuffleComplexInv(VkFFTSpecializationConstantsLayout
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkModReal(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -1092,7 +1092,7 @@ static inline VkFFTResult VkModReal(VkFFTSpecializationConstantsLayout* sc, cons
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkDivReal(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -1100,7 +1100,7 @@ static inline VkFFTResult VkDivReal(VkFFTSpecializationConstantsLayout* sc, cons
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
-};
+}
 static inline VkFFTResult VkPermute(VkFFTSpecializationConstantsLayout* sc, const uint64_t* permute, const uint64_t num_elem, const uint64_t type, char** regIDs, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	char temp_ID[33][20];
@@ -1186,7 +1186,7 @@ static inline VkFFTResult VkPermute(VkFFTSpecializationConstantsLayout* sc, cons
 		}*/
 	}
 	return res;
-};
+}
 static inline VkFFTResult VkSubgroupAdd(VkFFTSpecializationConstantsLayout* sc, const char* in, const char* out, const uint64_t subWarpSplit) {
 	VkFFTResult res = VKFFT_SUCCESS;
 
@@ -1206,19 +1206,19 @@ static inline VkFFTResult VkSubgroupAdd(VkFFTSpecializationConstantsLayout* sc, 
 		sc->tempLen = sprintf(sc->tempStr, "	%s.y += __shfl_xor_sync(0xffffffff, %s.y, %d);\n", out, in, i);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
-	}*/
+	}
 	//v2
-	for (int i = sc->warpSize / 2 / subWarpSplit; i > 0; i /= 2) {
+	for (int i = (int)sc->warpSize / 2 / subWarpSplit; i > 0; i /= 2) {
 		sc->tempLen = sprintf(sc->tempStr, "	%s.x += __shfl_down_sync(0xffffffff, %s.x, %d);\n", out, in, i);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		sc->tempLen = sprintf(sc->tempStr, "	%s.y += __shfl_down_sync(0xffffffff, %s.y, %d);\n", out, in, i);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
-	}
+	}*/
 #endif
 	return res;
-};
+}
 
 static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfiguration inputLaunchConfiguration);
 static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTLaunchParams* launchParams);
@@ -1397,7 +1397,6 @@ static inline VkFFTResult appendPushConstantsVkFFT(VkFFTSpecializationConstantsL
 }
 static inline VkFFTResult appendConstantsVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	double double_PI = 3.1415926535897932384626433832795;
 	char LFending[4] = "";
 	char uintType_32[30];
 	if (!strcmp(floatType, "float")) sprintf(LFending, "f");
@@ -1984,8 +1983,8 @@ layout(std430, binding = %" PRIu64 ") readonly buffer DataRaderUintLUT {\n\
 static inline VkFFTResult appendBluesteinLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc, uint64_t id, const char* floatType) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	char vecType[30];
-	uint64_t loc_id = id;
 #if(VKFFT_BACKEND==0)
+	uint64_t loc_id = id;
 	if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
 	if (sc->BluesteinConvolutionStep) {
@@ -3108,7 +3107,7 @@ temp%s.y = loc_1.y + loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID
 		//res = VkMovComplex(sc, regID[1], sc->locID[1]);
 		//if (res != VKFFT_SUCCESS) return res;
 
-		uint64_t P = 3;
+		//uint64_t P = 3;
 		uint64_t Q = 2;
 		for (uint64_t i = 0; i < Q; i++) {
 			res = VkMovComplex(sc, sc->locID[0], regID[i]);
@@ -7287,13 +7286,13 @@ temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 	if (sc->useRaderMult) {
 		int64_t rader_fft_regs = (sc->useRaderFFT) ? 2 : 0;
 		int64_t rader_mult_regs = sc->raderRegisters / 2 - rader_fft_regs;
-		if (rader_mult_regs <= sc->usedLocRegs - 1) {
+		if (rader_mult_regs <= (int64_t)sc->usedLocRegs - 1) {
 			for (int64_t i = 0; i < rader_mult_regs; i++) {
 				sprintf(sc->x0[i + rader_fft_regs], "%s", sc->locID[i + 1]);
 			}
 		}
 		else {
-			for (int64_t i = 0; i < sc->usedLocRegs - 1; i++) {
+			for (int64_t i = 0; i < (int64_t)sc->usedLocRegs - 1; i++) {
 				sprintf(sc->x0[i + rader_fft_regs], "%s", sc->locID[i + 1]);
 			}
 			for (int64_t i = sc->usedLocRegs - 1; i < rader_mult_regs; i++) {
@@ -7347,6 +7346,11 @@ temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 	sc->tempLen = sprintf(sc->tempStr, "	%s %s=0;\n", uintType, sc->inoutID);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
+	if ((sc->fftDim < sc->fft_dim_full) || (initType==1) || (initType == 2)) {
+		sc->tempLen = sprintf(sc->tempStr, "	%s disableThreads=1;\n", uintType_32);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+	}
 	//initialize subgroups ids
 	if (sc->useRader) {
 		sc->tempLen = sprintf(sc->tempStr, "	%s %s = 0;\n", uintType, sc->raderIDx);
@@ -7660,7 +7664,7 @@ static inline VkFFTResult appendZeropadEnd(VkFFTSpecializationConstantsLayout* s
 	else {
 		switch (sc->axis_id) {
 		case 0: {
-			char idY[500] = "";
+			//char idY[500] = "";
 			if (sc->performZeropaddingFull[1]) {
 				if (sc->fft_zeropad_left_full[1] < sc->fft_zeropad_right_full[1]) {
 					sc->tempLen = sprintf(sc->tempStr, "		}\n");
@@ -7782,7 +7786,7 @@ static inline VkFFTResult appendZeropadStartReadWriteStage(VkFFTSpecializationCo
 		case 0: {
 			char idY[500] = "";
 			char idZ[500] = "";
-			uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+			//uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 			if (readStage) {
 				sprintf(idY, "(%s/%" PRIu64 ") %% %" PRIu64 "", sc->inoutID, sc->inputStride[1], sc->inputStride[2] / sc->inputStride[1]);
 				sprintf(idZ, "(%s/%" PRIu64 ") %% %" PRIu64 "", sc->inoutID, sc->inputStride[2], sc->inputStride[3] / sc->inputStride[2]);
@@ -8228,7 +8232,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 				//sprintf(sc->disableThreadsStart, "		if((%s+%" PRIu64 "*%s)< numActiveThreads) {\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "		%s disableThreads = (%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", uintType_32, sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
+				sc->tempLen = sprintf(sc->tempStr, "		disableThreads = (%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 				sprintf(sc->disableThreadsStart, "		if(disableThreads>0) {\n");
@@ -8238,7 +8242,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 				sprintf(sc->disableThreadsEnd, "}");
 			}
 			else {
-				sc->tempLen = sprintf(sc->tempStr, "		%s disableThreads = (%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", uintType_32, sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
+				sc->tempLen = sprintf(sc->tempStr, "		disableThreads = (%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 				sprintf(sc->disableThreadsStart, "		if(disableThreads>0) {\n");
@@ -8582,7 +8586,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		char shiftX[500] = "";
 		if (sc->performWorkGroupShift[0])
 			sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
-		sc->tempLen = sprintf(sc->tempStr, "		%s disableThreads = (((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", uintType_32, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize, sc->size[sc->axis_id]);
+		sc->tempLen = sprintf(sc->tempStr, "		disableThreads = (((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x * sc->stageStartSize, sc->fftDim * sc->stageStartSize, sc->size[sc->axis_id]);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		sprintf(sc->disableThreadsStart, "		if(disableThreads>0) {\n");
@@ -8702,7 +8706,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 			sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
 
 		//sc->tempLen = sprintf(sc->tempStr, "		if(gl_GlobalInvolcationID.x%s >= %" PRIu64 ") return; \n", shiftX, sc->size[0] / axis->specializationConstants.fftDim);
-		sc->tempLen = sprintf(sc->tempStr, "		%s disableThreads = (((%s%s) / %" PRIu64 ") * (%" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", uintType_32, sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim, sc->fft_dim_full);
+		sc->tempLen = sprintf(sc->tempStr, "		disableThreads = (((%s%s) / %" PRIu64 ") * (%" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->stageStartSize * sc->fftDim, sc->fft_dim_full);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		sprintf(sc->disableThreadsStart, "		if(disableThreads>0) {\n");
@@ -9082,9 +9086,9 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		if (sc->fftDim < sc->fft_dim_full) {
 			//not implemented
 			if (sc->axisSwapped)
-				sc->tempLen = sprintf(sc->tempStr, "		%s disableThreads = (%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", uintType_32, sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
+				sc->tempLen = sprintf(sc->tempStr, "		disableThreads = (%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", sc->gl_LocalInvocationID_x, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full);
 			else
-				sc->tempLen = sprintf(sc->tempStr, "		%s disableThreads = (%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", uintType_32, sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
+				sc->tempLen = sprintf(sc->tempStr, "		disableThreads = (%s * %" PRIu64 " + (((%s%s) %% %" PRIu64 ") * %" PRIu64 " + ((%s%s) / %" PRIu64 ") * %" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", sc->gl_LocalInvocationID_y, sc->firstStageStartSize, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1] * sc->firstStageStartSize, sc->fft_dim_full);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			sprintf(sc->disableThreadsStart, "		if(disableThreads>0) {\n");
@@ -14352,37 +14356,35 @@ static inline VkFFTResult appendBluesteinMultiplication(VkFFTSpecializationConst
 #if(VKFFT_BACKEND==0)
 	if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "dvec2");
-	char cosDef[20] = "cos";
-	char sinDef[20] = "sin";
+	//char cosDef[20] = "cos";
+	//char sinDef[20] = "sin";
 	if (!strcmp(floatType, "double")) sprintf(LFending, "LF");
 #elif(VKFFT_BACKEND==1)
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
-	char cosDef[20] = "__cosf";
-	char sinDef[20] = "__sinf";
+	//char cosDef[20] = "__cosf";
+	//char sinDef[20] = "__sinf";
 	if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #elif(VKFFT_BACKEND==2)
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
-	char cosDef[20] = "__cosf";
-	char sinDef[20] = "__sinf";
+	//char cosDef[20] = "__cosf";
+	//char sinDef[20] = "__sinf";
 	if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
 	if (!strcmp(floatType, "float")) sprintf(vecType, "float2");
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
-	char cosDef[20] = "native_cos";
-	char sinDef[20] = "native_sin";
+	//char cosDef[20] = "native_cos";
+	//char sinDef[20] = "native_sin";
 	//if (!strcmp(floatType, "double")) sprintf(LFending, "l");
 #endif
 	char shiftX[500] = "";
 	if (sc->performWorkGroupShift[0])
 		sprintf(shiftX, " + consts.workGroupShiftX * %s ", sc->gl_WorkGroupSize_x);
-	char requestCoordinate[100] = "";
-
 	char index_x[2000] = "";
-	char index_y[2000] = "";
-	char requestBatch[100] = "";
-	char separateRegisterStore[100] = "";
+	//char index_y[2000] = "";
+	//char requestBatch[100] = "";
+	//char separateRegisterStore[100] = "";
 	char kernelName[100] = "";
 	sprintf(kernelName, "BluesteinMultiplication");
 	if (!((sc->readToRegisters && (pre_or_post_multiplication == 0)) || (sc->writeFromRegisters && (pre_or_post_multiplication == 1)))) {
@@ -14472,7 +14474,7 @@ static inline VkFFTResult appendBluesteinMultiplication(VkFFTSpecializationConst
 		sc->tempLen = sprintf(sc->tempStr, "		w = %s[%s];\n", kernelName, sc->inoutID);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
-		uint64_t k = 0;
+		//uint64_t k = 0;
 		if (!((sc->readToRegisters && (pre_or_post_multiplication == 0)) || (sc->writeFromRegisters && (pre_or_post_multiplication == 1)))) {
 			if ((strideType == 0) || (strideType == 5) || (strideType == 6) || (strideType == 110) || (strideType == 120) || (strideType == 130) || (strideType == 140) || (strideType == 142) || (strideType == 144)) {
 				sc->tempLen = sprintf(sc->tempStr, "\
@@ -14551,7 +14553,7 @@ static inline VkFFTResult appendFFTRaderStage(VkFFTSpecializationConstantsLayout
 	double double_PI = 3.1415926535897932384626433832795;
 	char vecType[30];
 	char LFending[4] = "";
-	char tempNum[50] = "";
+	char tempNum[100] = "";
 	if (!strcmp(floatType, "float")) sprintf(LFending, "f");
 #if(VKFFT_BACKEND==0)
 	if (!strcmp(floatType, "float")) sprintf(vecType, "vec2");
@@ -14726,10 +14728,10 @@ static inline VkFFTResult appendFFTRaderStage(VkFFTSpecializationConstantsLayout
 	{
 		uint64_t locStageRadix = sc->currentRaderContainer->stageRadix[0];
 		uint64_t logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		//uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 		uint64_t locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
-		uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
-		uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
+		//uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
+		//uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
 		uint64_t subLogicalGroupSize = (uint64_t)ceil(locFFTDim / (double)logicalStoragePerThread); // hopefully it is not <1, will fix 
 
 		if (!raderTranspose) {
@@ -14795,10 +14797,10 @@ static inline VkFFTResult appendFFTRaderStage(VkFFTSpecializationConstantsLayout
 	{
 		uint64_t locStageRadix = sc->currentRaderContainer->stageRadix[sc->currentRaderContainer->numStages - 1];
 		uint64_t logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		//uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 		uint64_t locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
-		uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
-		uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
+		//uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
+		//uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
 		uint64_t subLogicalGroupSize = (uint64_t)ceil(locFFTDim / (double)logicalStoragePerThread); // hopefully it is not <1, will fix 
 		if (!raderTranspose) {
 			sc->tempLen = sprintf(sc->tempStr, "\
@@ -14892,7 +14894,7 @@ static inline VkFFTResult appendFFTRaderStage(VkFFTSpecializationConstantsLayout
 		uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 		uint64_t locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
 		uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
-		uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
+		//uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
 		uint64_t subLogicalGroupSize = (uint64_t)ceil(locFFTDim / (double)logicalStoragePerThread); // hopefully it is not <1, will fix 
 		uint64_t locFFTDimStride = locFFTDim;
 		if (shift <= sc->sharedShiftRaderFFT) locFFTDimStride = locFFTDim + shift;
@@ -15033,9 +15035,9 @@ static inline VkFFTResult appendFFTRaderStage(VkFFTSpecializationConstantsLayout
 					for (uint64_t i = 0; i < locStageRadix; i++) {
 						regID[i] = (char*)malloc(sizeof(char) * 50);
 						if (!regID[i]) {
-							for (uint64_t j = 0; j < i; j++) {
-								free(regID[j]);
-								regID[j] = 0;
+							for (uint64_t p = 0; p < i; p++) {
+								free(regID[p]);
+								regID[p] = 0;
 							}
 							free(regID);
 							regID = 0;
@@ -15417,7 +15419,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 		uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 		uint64_t locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
 		uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
-		uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
+		//uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
 		uint64_t subLogicalGroupSize = (uint64_t)ceil(locFFTDim / (double)logicalStoragePerThread); // hopefully it is not <1, will fix 
 		uint64_t locFFTDimStride = locFFTDim; //different length due to all -1 cutoffs
 		if (shift <= sc->sharedShiftRaderFFT) locFFTDimStride = locFFTDim + shift;
@@ -15475,7 +15477,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 					sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", locStageAngle, LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				if (rader_stage != sc->currentRaderContainer->numStages - 1) {
+				if (rader_stage != (int64_t)sc->currentRaderContainer->numStages - 1) {
 					for (uint64_t i = 0; i < locStageRadix; i++) {
 						uint64_t id = j + i * logicalRegistersPerThread / locStageRadix;
 						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
@@ -15524,9 +15526,9 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 					for (uint64_t i = 0; i < locStageRadix; i++) {
 						regID[i] = (char*)malloc(sizeof(char) * 50);
 						if (!regID[i]) {
-							for (uint64_t j = 0; j < i; j++) {
-								free(regID[j]);
-								regID[j] = 0;
+							for (uint64_t p = 0; p < i; p++) {
+								free(regID[p]);
+								regID[p] = 0;
 							}
 							free(regID);
 							regID = 0;
@@ -15630,7 +15632,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				if (!strided) {
-					if (rader_stage != sc->currentRaderContainer->numStages - 1) {
+					if (rader_stage != (int64_t)sc->currentRaderContainer->numStages - 1) {
 						shift = (subLogicalGroupSize > (locFFTDim % (sc->numSharedBanks / 2))) ? subLogicalGroupSize - locFFTDim % (sc->numSharedBanks / 2) : 0;
 						if (shift <= sc->sharedShiftRaderFFT) locFFTDimStride = locFFTDim + shift;
 					}
@@ -15835,7 +15837,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 		else
 			return VKFFT_ERROR_MALLOC_FAILED;
 
-		if (rader_stage < sc->currentRaderContainer->numStages - 1) {
+		if (rader_stage < (int64_t)sc->currentRaderContainer->numStages - 1) {
 			switch (locStageRadix) {
 			case 2:
 				locStageSizeSum += locStageSize;
@@ -15907,10 +15909,10 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 	{
 		uint64_t locStageRadix = sc->currentRaderContainer->stageRadix[sc->currentRaderContainer->numStages - 1];
 		uint64_t logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		//uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 		uint64_t locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
-		uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
-		uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
+		//uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
+		//uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
 		uint64_t subLogicalGroupSize = (uint64_t)ceil(locFFTDim / (double)logicalStoragePerThread); // hopefully it is not <1, will fix 
 		if (!raderTranspose) {
 			sc->tempLen = sprintf(sc->tempStr, "\
@@ -17510,9 +17512,9 @@ static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstant
 					for (uint64_t i = 0; i < stageRadix; i++) {
 						regID[i] = (char*)malloc(sizeof(char) * 50);
 						if (!regID[i]) {
-							for (uint64_t j = 0; j < i; j++) {
-								free(regID[j]);
-								regID[j] = 0;
+							for (uint64_t p = 0; p < i; p++) {
+								free(regID[p]);
+								regID[p] = 0;
 							}
 							free(regID);
 							regID = 0;
@@ -17627,9 +17629,9 @@ static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstant
 					for (uint64_t i = 0; i < stageRadix; i++) {
 						regID[i] = (char*)malloc(sizeof(char) * 50);
 						if (!regID[i]) {
-							for (uint64_t j = 0; j < i; j++) {
-								free(regID[j]);
-								regID[j] = 0;
+							for (uint64_t p = 0; p < i; p++) {
+								free(regID[p]);
+								regID[p] = 0;
 							}
 							free(regID);
 							regID = 0;
@@ -17828,9 +17830,9 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 					for (uint64_t i = 0; i < stageRadix; i++) {
 						regID[i] = (char*)malloc(sizeof(char) * 50);
 						if (!regID[i]) {
-							for (uint64_t j = 0; j < i; j++) {
-								free(regID[j]);
-								regID[j] = 0;
+							for (uint64_t p = 0; p < i; p++) {
+								free(regID[p]);
+								regID[p] = 0;
 							}
 							free(regID);
 							regID = 0;
@@ -17943,9 +17945,9 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 					for (uint64_t i = 0; i < stageRadix; i++) {
 						regID[i] = (char*)malloc(sizeof(char) * 50);
 						if (!regID[i]) {
-							for (uint64_t j = 0; j < i; j++) {
-								free(regID[j]);
-								regID[j] = 0;
+							for (uint64_t p = 0; p < i; p++) {
+								free(regID[p]);
+								regID[p] = 0;
 							}
 							free(regID);
 							regID = 0;
@@ -19492,7 +19494,7 @@ static inline VkFFTResult appendPreparationBatchedKernelConvolution(VkFFTSpecial
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
-static inline VkFFTResult appendBluesteinConvolution(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint64_t dataType) {
+static inline VkFFTResult appendBluesteinConvolution(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t dataType) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	char shiftX[500] = "";
 	if (sc->performWorkGroupShift[0])
@@ -19503,8 +19505,6 @@ static inline VkFFTResult appendBluesteinConvolution(VkFFTSpecializationConstant
 			sprintf(requestCoordinate, "0");
 		}
 	}
-	char index_x[2000] = "";
-	char index_y[2000] = "";
 	char requestBatch[100] = "";
 	char separateRegisterStore[100] = "";
 	if (sc->convolutionStep) {
@@ -20501,7 +20501,6 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 		}
 		else {
 			if (sc->fftDim == sc->fft_dim_full) {
-				uint64_t used_registers_write = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
 				if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 				for (uint64_t k = 0; k < sc->registerBoost; k++) {
 					for (uint64_t i = 0; i < used_registers_write; i++) {
@@ -24415,7 +24414,7 @@ if (%s==%" PRIu64 ") \n\
 		char shiftY2[500] = "";
 		if (sc->performWorkGroupShift[1])
 			sprintf(shiftY2, " + consts.workGroupShiftY ");
-		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+		//uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		uint64_t used_registers_write = (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]);
 		if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 		if (sc->reorderFourStep) {
@@ -25365,7 +25364,7 @@ static inline void freeShaderGenVkFFT(VkFFTSpecializationConstantsLayout* sc) {
 		if (sc->oldLocale)
 		{
 			setlocale(LC_ALL, sc->oldLocale);
-			memset(sc->oldLocale, 0, 100*sizeof(char));
+			memset(sc->oldLocale, 0, 100 * sizeof(char));
 		}
 	}
 	if (sc->numRaderPrimes) {
@@ -26155,7 +26154,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 	}
 #endif
 	//if (type==0) sc->tempLen = sprintf(sc->tempStr, "return;\n");
-	res = appendInitialization(sc, floatType, uintType, locType);
+	res = appendInitialization(sc, floatType, uintType, type);
 	if (res != VKFFT_SUCCESS) {
 		freeShaderGenVkFFT(sc);
 		return res;
@@ -26326,7 +26325,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		}
 		if (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)
 		{
-			res = appendBluesteinConvolution(sc, floatType, floatTypeKernelMemory, uintType, locType);
+			res = appendBluesteinConvolution(sc, floatType, uintType, locType);
 			if (res != VKFFT_SUCCESS) {
 				freeShaderGenVkFFT(sc);
 				return res;
@@ -26658,49 +26657,49 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
 	cudaError_t res_t = cudaSuccess;
 	if ((app->configuration.useLUT) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
 		res_t = cudaFree(axis->bufferLUT);
-		axis->bufferLUT = 0;
+		if (res_t == cudaSuccess) axis->bufferLUT = 0;
 	}
 	if (axis->VkFFTModule != 0) {
 		res = cuModuleUnload(axis->VkFFTModule);
-		axis->VkFFTModule = 0;
+		if (res == CUDA_SUCCESS) axis->VkFFTModule = 0;
 	}
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
 	if ((app->configuration.useLUT) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
 		res = hipFree(axis->bufferLUT);
-		axis->bufferLUT = 0;
+		if (res == hipSuccess) axis->bufferLUT = 0;
 	}
 	if (axis->VkFFTModule != 0) {
 		res = hipModuleUnload(axis->VkFFTModule);
-		axis->VkFFTModule = 0;
+		if (res == hipSuccess) axis->VkFFTModule = 0;
 	}
 #elif(VKFFT_BACKEND==3)
 	cl_int res = 0;
 	if ((app->configuration.useLUT) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
 		res = clReleaseMemObject(axis->bufferLUT);
-		axis->bufferLUT = 0;
+		if (res == 0) axis->bufferLUT = 0;
 	}
 	if (axis->program != 0) {
 		res = clReleaseProgram(axis->program);
-		axis->program = 0;
+		if (res == 0) axis->program = 0;
 	}
 	if (axis->kernel != 0) {
 		res = clReleaseKernel(axis->kernel);
-		axis->kernel = 0;
+		if (res == 0) axis->kernel = 0;
 	}
 #elif(VKFFT_BACKEND==4)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 	if ((app->configuration.useLUT) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
 		res = zeMemFree(app->configuration.context[0], axis->bufferLUT);
-		axis->bufferLUT = 0;
+		if (res == ZE_RESULT_SUCCESS) axis->bufferLUT = 0;
 	}
 	if (axis->VkFFTModule != 0) {
 		res = zeModuleDestroy(axis->VkFFTModule);
-		axis->VkFFTModule = 0;
+		if (res == ZE_RESULT_SUCCESS)axis->VkFFTModule = 0;
 	}
 	if (axis->VkFFTKernel != 0) {
 		res = zeKernelDestroy(axis->VkFFTKernel);
-		axis->VkFFTKernel = 0;
+		if (res == ZE_RESULT_SUCCESS)axis->VkFFTKernel = 0;
 	}
 #endif
 	if (app->configuration.saveApplicationToString) {
@@ -26717,13 +26716,12 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 		app->configuration.isCompilerInitialized = 0;
 	}
 #elif(VKFFT_BACKEND==1)
-	CUresult res = CUDA_SUCCESS;
-	cudaError_t res_t = cudaSuccess;
 	if (app->configuration.num_streams > 1) {
+		cudaError_t res_t = cudaSuccess;
 		for (uint64_t i = 0; i < app->configuration.num_streams; i++) {
 			if (app->configuration.stream_event[i] != 0) {
 				res_t = cudaEventDestroy(app->configuration.stream_event[i]);
-				app->configuration.stream_event[i] = 0;
+				if (res_t == cudaSuccess) app->configuration.stream_event[i] = 0;
 			}
 		}
 		if (app->configuration.stream_event != 0) {
@@ -26732,12 +26730,12 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 		}
 	}
 #elif(VKFFT_BACKEND==2)
-	hipError_t res_t = hipSuccess;
 	if (app->configuration.num_streams > 1) {
+		hipError_t res_t = hipSuccess;
 		for (uint64_t i = 0; i < app->configuration.num_streams; i++) {
 			if (app->configuration.stream_event[i] != 0) {
 				res_t = hipEventDestroy(app->configuration.stream_event[i]);
-				app->configuration.stream_event[i] = 0;
+				if (res_t == hipSuccess) app->configuration.stream_event[i] = 0;
 			}
 		}
 		if (app->configuration.stream_event != 0) {
@@ -26765,26 +26763,28 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 				app->configuration.tempBufferDeviceMemory = 0;
 			}
 #elif(VKFFT_BACKEND==1)
+			cudaError_t res_t = cudaSuccess;
 			if (app->configuration.tempBuffer[0] != 0) {
 				res_t = cudaFree(app->configuration.tempBuffer[0]);
-				app->configuration.tempBuffer[0] = 0;
+				if (res_t == cudaSuccess) app->configuration.tempBuffer[0] = 0;
 			}
 #elif(VKFFT_BACKEND==2)
+			hipError_t res_t = hipSuccess;
 			if (app->configuration.tempBuffer[0] != 0) {
 				res_t = hipFree(app->configuration.tempBuffer[0]);
-				app->configuration.tempBuffer[0] = 0;
+				if (res_t == hipSuccess) app->configuration.tempBuffer[0] = 0;
 			}
 #elif(VKFFT_BACKEND==3)
 			cl_int res = 0;
 			if (app->configuration.tempBuffer[0] != 0) {
 				res = clReleaseMemObject(app->configuration.tempBuffer[0]);
-				app->configuration.tempBuffer[0] = 0;
+				if (res == 0) app->configuration.tempBuffer[0] = 0;
 			}
 #elif(VKFFT_BACKEND==4)
 			ze_result_t res = ZE_RESULT_SUCCESS;
 			if (app->configuration.tempBuffer[0] != 0) {
 				res = zeMemFree(app->configuration.context[0], app->configuration.tempBuffer[0]);
-				app->configuration.tempBuffer[0] = 0;
+				if (res == ZE_RESULT_SUCCESS) app->configuration.tempBuffer[0] = 0;
 			}
 #endif
 			if (app->configuration.tempBuffer != 0) {
@@ -26807,19 +26807,21 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 					vkFreeMemory(app->configuration.device[0], app->bufferRaderUintLUTDeviceMemory[i][j], 0);
 					app->bufferRaderUintLUTDeviceMemory[i][j] = 0;
 #elif(VKFFT_BACKEND==1)
+					cudaError_t res_t = cudaSuccess;
 					res_t = cudaFree(app->bufferRaderUintLUT[i][j]);
-					app->bufferRaderUintLUT[i][j] = 0;
+					if (res_t == cudaSuccess) app->bufferRaderUintLUT[i][j] = 0;
 #elif(VKFFT_BACKEND==2)
+					hipError_t res_t = hipSuccess;
 					res_t = hipFree(app->bufferRaderUintLUT[i][j]);
-					app->bufferRaderUintLUT[i][j] = 0;
+					if (res_t == hipSuccess) app->bufferRaderUintLUT[i][j] = 0;
 #elif(VKFFT_BACKEND==3)
 					cl_int res = 0;
 					res = clReleaseMemObject(app->bufferRaderUintLUT[i][j]);
-					app->bufferRaderUintLUT[i][j] = 0;
+					if (res == 0) app->bufferRaderUintLUT[i][j] = 0;
 #elif(VKFFT_BACKEND==4)
 					ze_result_t res = ZE_RESULT_SUCCESS;
 					res = zeMemFree(app->configuration.context[0], app->bufferRaderUintLUT[i][j]);
-					app->bufferRaderUintLUT[i][j] = 0;
+					if (res == ZE_RESULT_SUCCESS) app->bufferRaderUintLUT[i][j] = 0;
 #endif
 				}
 			}
@@ -26851,58 +26853,60 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 				app->bufferBluesteinIFFTDeviceMemory[i] = 0;
 			}
 #elif(VKFFT_BACKEND==1)
+			cudaError_t res_t = cudaSuccess;
 			if (app->bufferBluestein[i] != 0) {
 				res_t = cudaFree(app->bufferBluestein[i]);
-				app->bufferBluestein[i] = 0;
+				if (res_t == cudaSuccess) app->bufferBluestein[i] = 0;
 			}
 			if (app->bufferBluesteinFFT[i] != 0) {
 				res_t = cudaFree(app->bufferBluesteinFFT[i]);
-				app->bufferBluesteinFFT[i] = 0;
+				if (res_t == cudaSuccess) app->bufferBluesteinFFT[i] = 0;
 			}
 			if (app->bufferBluesteinIFFT[i] != 0) {
 				res_t = cudaFree(app->bufferBluesteinIFFT[i]);
-				app->bufferBluesteinIFFT[i] = 0;
+				if (res_t == cudaSuccess) app->bufferBluesteinIFFT[i] = 0;
 			}
 #elif(VKFFT_BACKEND==2)
+			hipError_t res_t = hipSuccess;
 			if (app->bufferBluestein[i] != 0) {
 				res_t = hipFree(app->bufferBluestein[i]);
-				app->bufferBluestein[i] = 0;
+				if (res_t == hipSuccess) app->bufferBluestein[i] = 0;
 			}
 			if (app->bufferBluesteinFFT[i] != 0) {
 				res_t = hipFree(app->bufferBluesteinFFT[i]);
-				app->bufferBluesteinFFT[i] = 0;
+				if (res_t == hipSuccess) app->bufferBluesteinFFT[i] = 0;
 			}
 			if (app->bufferBluesteinIFFT[i] != 0) {
 				res_t = hipFree(app->bufferBluesteinIFFT[i]);
-				app->bufferBluesteinIFFT[i] = 0;
+				if (res_t == hipSuccess) app->bufferBluesteinIFFT[i] = 0;
 			}
 #elif(VKFFT_BACKEND==3)
 			cl_int res = 0;
 			if (app->bufferBluestein[i] != 0) {
 				res = clReleaseMemObject(app->bufferBluestein[i]);
-				app->bufferBluestein[i] = 0;
+				if (res == 0) app->bufferBluestein[i] = 0;
 			}
 			if (app->bufferBluesteinFFT[i] != 0) {
 				res = clReleaseMemObject(app->bufferBluesteinFFT[i]);
-				app->bufferBluesteinFFT[i] = 0;
+				if (res == 0) app->bufferBluesteinFFT[i] = 0;
 			}
 			if (app->bufferBluesteinIFFT[i] != 0) {
 				res = clReleaseMemObject(app->bufferBluesteinIFFT[i]);
-				app->bufferBluesteinIFFT[i] = 0;
+				if (res == 0) app->bufferBluesteinIFFT[i] = 0;
 			}
 #elif(VKFFT_BACKEND==4)
 			ze_result_t res = ZE_RESULT_SUCCESS;
 			if (app->bufferBluestein[i] != 0) {
 				res = zeMemFree(app->configuration.context[0], app->bufferBluestein[i]);
-				app->bufferBluestein[i] = 0;
+				if (res == ZE_RESULT_SUCCESS) app->bufferBluestein[i] = 0;
 			}
 			if (app->bufferBluesteinFFT[i] != 0) {
 				res = zeMemFree(app->configuration.context[0], app->bufferBluesteinFFT[i]);
-				app->bufferBluesteinFFT[i] = 0;
+				if (res == ZE_RESULT_SUCCESS) app->bufferBluesteinFFT[i] = 0;
 			}
 			if (app->bufferBluesteinIFFT[i] != 0) {
 				res = zeMemFree(app->configuration.context[0], app->bufferBluesteinIFFT[i]);
-				app->bufferBluesteinIFFT[i] = 0;
+				if (res == ZE_RESULT_SUCCESS) app->bufferBluesteinIFFT[i] = 0;
 			}
 #endif
 		}
@@ -27875,7 +27879,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t fft_length, uint64
 							uint64_t final_loc_multipliers_pow2 = 1;
 							uint64_t num_stages_min = (uint64_t)log2(fft_length);
 							for (uint64_t i = 2; i <= max_loc_multipliers_pow2; i++) {
-								uint64_t num_stages = ceil(((uint64_t)log2(fft_length)) / (double)i);
+								uint64_t num_stages = (uint64_t)ceil(((uint64_t)log2(fft_length)) / (double)i);
 								if (num_stages < num_stages_min) {
 									final_loc_multipliers_pow2 = i;
 									num_stages_min = num_stages;
@@ -28317,7 +28321,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t fft_length, uint64
 	else isGoodSequence[0] = 1;
 	return VKFFT_SUCCESS;
 }
-static inline VkFFTResult VkFFTGetRegistersPerThreadOptimizeShared(uint64_t fft_length, uint64_t* loc_multipliers, uint64_t* registers_per_thread_per_radix, uint64_t* registers_per_thread, uint64_t* min_registers_per_thread) {
+static inline VkFFTResult VkFFTGetRegistersPerThreadOptimizeShared(uint64_t fft_length, uint64_t* registers_per_thread_per_radix, uint64_t* registers_per_thread, uint64_t* min_registers_per_thread) {
 	//try to split sequence in supported radix to optimize sm usage
 	uint64_t numStages = 20;
 	uint64_t fft_length_copy;
@@ -28506,7 +28510,7 @@ static inline VkFFTResult VkFFTConstructRaderTree(VkFFTApplication* app, VkFFTRa
 			}
 			//uint64_t isGoodSequence;
 			//if (raderContainer[i].containerFFTNum<8)
-			res = VkFFTGetRegistersPerThreadOptimizeShared(raderContainer[i].prime - 1, raderContainer[i].loc_multipliers, raderContainer[i].registers_per_thread_per_radix, &raderContainer[i].registers_per_thread, &raderContainer[i].min_registers_per_thread);
+			res = VkFFTGetRegistersPerThreadOptimizeShared(raderContainer[i].prime - 1, raderContainer[i].registers_per_thread_per_radix, &raderContainer[i].registers_per_thread, &raderContainer[i].min_registers_per_thread);
 			//else
 				//res = VkFFTGetRegistersPerThread(raderContainer[i].prime - 1, 0, 0, 1, raderContainer[i].loc_multipliers, raderContainer[i].registers_per_thread_per_radix, &raderContainer[i].registers_per_thread, &raderContainer[i].min_registers_per_thread, &isGoodSequence);
 			if (res != VKFFT_SUCCESS) return res;
@@ -28527,8 +28531,7 @@ static inline VkFFTResult VkFFTConstructRaderTree(VkFFTApplication* app, VkFFTRa
 }
 static inline VkFFTResult VkFFTOptimizeRaderFFTRegisters(VkFFTRaderContainer* raderContainer, uint64_t numRaderPrimes, uint64_t fftDim, uint64_t* min_registers_per_thread, uint64_t* registers_per_thread, uint64_t* registers_per_thread_per_radix) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	uint64_t minDelta = -1;
-	for (int64_t i = 0; i < numRaderPrimes; i++) {
+	for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
 		if (raderContainer[i].type == 0) {
 			if (raderContainer[i].min_registers_per_thread / min_registers_per_thread[0] >= 2) {
 				min_registers_per_thread[0] *= (raderContainer[i].min_registers_per_thread / min_registers_per_thread[0]);
@@ -28572,7 +28575,7 @@ static inline VkFFTResult VkFFTOptimizeRaderFFTRegisters(VkFFTRaderContainer* ra
 		}
 	}
 	//try to increase registers usage closer to registers_per_thread across all primes
-	for (int64_t i = 0; i < numRaderPrimes; i++) {
+	for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
 		if (raderContainer[i].type == 0) {
 			for (int64_t j = 2; j < 33; j++) {
 				if (raderContainer[i].registers_per_thread_per_radix[j] > 0) {
@@ -28596,7 +28599,7 @@ static inline VkFFTResult VkFFTOptimizeRaderFFTRegisters(VkFFTRaderContainer* ra
 		}
 	}
 	//subprimes optimization
-	for (int64_t i = 0; i < numRaderPrimes; i++) {
+	for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
 		if (raderContainer[i].numSubPrimes) {
 			res = VkFFTOptimizeRaderFFTRegisters(raderContainer[i].container, raderContainer[i].numSubPrimes, fftDim, min_registers_per_thread, registers_per_thread, registers_per_thread_per_radix);
 			if (res != VKFFT_SUCCESS) return res;
@@ -28753,7 +28756,7 @@ static inline VkFFTResult VkFFTOptimizeRadixKernels(uint64_t* registers_per_thre
 }
 static inline VkFFTResult VkFFTGetRaderFFTStages(VkFFTRaderContainer* raderContainer, uint64_t numRaderPrimes, uint64_t* stageid, uint64_t* stageRadix, uint64_t* stage_rader_generator) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	for (int64_t i = 0; i < numRaderPrimes; i++) {
+	for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
 		if (raderContainer[i].multiplier > 0) {
 			stageRadix[stageid[0]] = raderContainer[i].prime;
 			stage_rader_generator[stageid[0]] = raderContainer[i].generator;
@@ -28764,7 +28767,7 @@ static inline VkFFTResult VkFFTGetRaderFFTStages(VkFFTRaderContainer* raderConta
 			//find primitive root
 		}
 	}
-	for (int64_t i = 0; i < numRaderPrimes; i++) {
+	for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
 		if (raderContainer[i].type == 0) {
 			if (raderContainer[i].numSubPrimes > 0) {
 				res = VkFFTGetRaderFFTStages(raderContainer[i].container, raderContainer[i].numSubPrimes, &raderContainer[i].numStages, raderContainer[i].stageRadix, raderContainer[i].stage_rader_generator);
@@ -28812,7 +28815,7 @@ static inline VkFFTResult VkFFTGetRaderFFTStages(VkFFTRaderContainer* raderConta
 }
 static inline VkFFTResult VkFFTMinMaxRegisterCheck(uint64_t numStages, uint64_t* stageRadix, uint64_t* min_registers_per_thread, uint64_t* registers_per_thread, uint64_t* registers_per_thread_per_radix, VkFFTRaderContainer* raderContainer, uint64_t numRaderPrimes, uint64_t* stage_rader_generator) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	for (int64_t j = 0; j < numStages; j++) {
+	for (int64_t j = 0; j < (int64_t)numStages; j++) {
 		if (stage_rader_generator[j] == 0) {
 			if (registers_per_thread_per_radix[stageRadix[j]] > 0) {
 				if (registers_per_thread_per_radix[stageRadix[j]] < min_registers_per_thread[0]) {
@@ -28824,10 +28827,10 @@ static inline VkFFTResult VkFFTMinMaxRegisterCheck(uint64_t numStages, uint64_t*
 			}
 		}
 		else {
-			for (int64_t i = 0; i < numRaderPrimes; i++) {
+			for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
 				if (raderContainer[i].prime == stageRadix[j]) {
 					if (raderContainer[i].type == 0) {
-						for (int64_t j2 = 0; j2 < raderContainer[i].numStages; j2++) {
+						for (int64_t j2 = 0; j2 < (int64_t)raderContainer[i].numStages; j2++) {
 							if (raderContainer[i].stage_rader_generator[j] == 0) {
 								if (raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j2]] > 0) {
 									if (raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j2]] < min_registers_per_thread[0]) {
@@ -28853,13 +28856,13 @@ static inline VkFFTResult VkFFTMinMaxRegisterCheck(uint64_t numStages, uint64_t*
 static inline VkFFTResult VkFFTGetRaderFFTThreadsNum(VkFFTRaderContainer* raderContainer, uint64_t numRaderPrimes, uint64_t* numThreads) {
 	VkFFTResult res = VKFFT_SUCCESS;
 
-	for (int64_t i = 0; i < numRaderPrimes; i++) {
+	for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
 		if (raderContainer[i].type == 0) {
 			if (raderContainer[i].numSubPrimes > 0) {
 				res = VkFFTGetRaderFFTThreadsNum(raderContainer[i].container, raderContainer[i].numSubPrimes, numThreads);
 				if (res != VKFFT_SUCCESS) return res;
 			}
-			for (int64_t j = 0; j < raderContainer[i].numStages; j++) {
+			for (int64_t j = 0; j < (int64_t)raderContainer[i].numStages; j++) {
 				if (raderContainer[i].stage_rader_generator[j] == 0) {
 					if (raderContainer[i].containerFFTNum * (uint64_t)ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j]]) > numThreads[0]) numThreads[0] = raderContainer[i].containerFFTNum * (uint64_t)ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j]]);
 				}
@@ -28869,7 +28872,7 @@ static inline VkFFTResult VkFFTGetRaderFFTThreadsNum(VkFFTRaderContainer* raderC
 	return res;
 }
 
-static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t axis_id, uint64_t supportAxis) {
+static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t axis_id) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	VkFFTAxis* axes = FFTPlan->axes[axis_id];
 
@@ -28935,7 +28938,6 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	}
 	// verify that we haven't checked for 3 steps being not enought for Rader before
 	if (!app->useBluesteinFFT[axis_id]) {
-		uint64_t useRaderFFT = 0;
 		uint64_t useRaderMult = 0;
 		uint64_t rader_primes[20];
 		uint64_t rader_multipliers[20];
@@ -28986,7 +28988,6 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					}
 
 				}
-				useRaderFFT = i;
 				i--;
 			}
 		}
@@ -29012,7 +29013,6 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			}
 		}
 		if (tempSequence != 1) {
-			useRaderFFT = 0;
 			useRaderMult = 0;
 		}
 		if (useRaderMult) {
@@ -29580,7 +29580,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			if (res != VKFFT_SUCCESS) return res;
 		}
 
-		for (int64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+		for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
 			if (axes[k].specializationConstants.raderContainer[i].type == 0) {
 				if (axes[k].specializationConstants.useRaderFFT < axes[k].specializationConstants.raderContainer[i].prime) axes[k].specializationConstants.useRaderFFT = axes[k].specializationConstants.raderContainer[i].prime;
 			}
@@ -29649,7 +29649,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		uint64_t rader_min_registers = min_registers_per_thread;
 
 		if (axes[k].specializationConstants.useRaderMult) {
-			for (int64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+			for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
 				if (axes[k].specializationConstants.raderContainer[i].type == 1) {
 					uint64_t temp_rader = (uint64_t)ceil((locAxisSplit[k] / (double)((rader_min_registers / 2 + scale_registers_rader) * 2)) / (double)((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2));
 					uint64_t active_rader = (uint64_t)ceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)temp_rader);
@@ -29677,7 +29677,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					}
 				}
 			}
-			for (int64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+			for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
 				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
 					for (uint64_t j = 2; j < 33; j++) {
 						if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] != 0) {
@@ -29695,7 +29695,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					registers_per_thread = registers_per_thread_per_radix[i];
 				}
 			}
-			for (int64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+			for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
 				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
 					for (uint64_t j = 2; j < 33; j++) {
 						if ((axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] > 0) && (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] < new_min_registers)) new_min_registers = axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j];
@@ -29729,7 +29729,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					registers_per_thread_per_radix[i] *= scaleRegistersNum;
 				}
 			}
-			for (int64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+			for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
 				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
 					for (uint64_t j = 2; j < 33; j++) {
 						if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] != 0) {
@@ -29739,7 +29739,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				}
 			}
 			if (min_registers_per_thread > registers_per_thread) {
-				uint64_t temp = min_registers_per_thread;
+				temp = min_registers_per_thread;
 				min_registers_per_thread = registers_per_thread;
 				registers_per_thread = temp;
 			}
@@ -29751,7 +29751,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					min_registers_per_thread = registers_per_thread_per_radix[i];
 				}
 			}
-			for (int64_t i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
+			for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
 				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
 					for (uint64_t j = 2; j < 33; j++) {
 						if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] > registers_per_thread) {
@@ -29885,7 +29885,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	}
 	return VKFFT_SUCCESS;
 }
-static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t axis_id, uint64_t supportAxis) {
+static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t axis_id) {
 	//generate two arrays used for Blueestein convolution and post-convolution multiplication
 	double double_PI = 3.1415926535897932384626433832795;
 	VkFFTResult resFFT = VKFFT_SUCCESS;
@@ -31674,8 +31674,6 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 				VkDescriptorBufferInfo descriptorBufferInfo = { 0 };
 #endif
 				if (i == 0) {
-					uint64_t bufferId = 0;
-					uint64_t offset = j;
 					if (inverse) {
 						if ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted) && (!axis->specializationConstants.reverseBluesteinMultiUpload) && (
 							((axis_id == app->firstAxis) && (!inverse))
@@ -32388,8 +32386,6 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 	uint64_t axis_upload_id = 0;
 
 	{
-		uint64_t totalSize = 0;
-		uint64_t locPageSize = initPageSize;
 		if (inverse) {
 			if ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted) && (!axis->specializationConstants.reverseBluesteinMultiUpload) && (
 				((axis_id == app->firstAxis) && (!inverse))
@@ -32922,124 +32918,113 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		}
 		else
 		{
-			const glslang_resource_t default_resource = {
-				/* .MaxLights = */ 32,
-				/* .MaxClipPlanes = */ 6,
-				/* .MaxTextureUnits = */ 32,
-				/* .MaxTextureCoords = */ 32,
-				/* .MaxVertexAttribs = */ 64,
-				/* .MaxVertexUniformComponents = */ 4096,
-				/* .MaxVaryingFloats = */ 64,
-				/* .MaxVertexTextureImageUnits = */ 32,
-				/* .MaxCombinedTextureImageUnits = */ 80,
-				/* .MaxTextureImageUnits = */ 32,
-				/* .MaxFragmentUniformComponents = */ 4096,
-				/* .MaxDrawBuffers = */ 32,
-				/* .MaxVertexUniformVectors = */ 128,
-				/* .MaxVaryingVectors = */ 8,
-				/* .MaxFragmentUniformVectors = */ 16,
-				/* .MaxVertexOutputVectors = */ 16,
-				/* .MaxFragmentInputVectors = */ 15,
-				/* .MinProgramTexelOffset = */ -8,
-				/* .MaxProgramTexelOffset = */ 7,
-				/* .MaxClipDistances = */ 8,
-				/* .MaxComputeWorkGroupCountX = */ 65535,
-				/* .MaxComputeWorkGroupCountY = */ 65535,
-				/* .MaxComputeWorkGroupCountZ = */ 65535,
-				/* .MaxComputeWorkGroupSizeX = */ 1024,
-				/* .MaxComputeWorkGroupSizeY = */ 1024,
-				/* .MaxComputeWorkGroupSizeZ = */ 64,
-				/* .MaxComputeUniformComponents = */ 1024,
-				/* .MaxComputeTextureImageUnits = */ 16,
-				/* .MaxComputeImageUniforms = */ 8,
-				/* .MaxComputeAtomicCounters = */ 8,
-				/* .MaxComputeAtomicCounterBuffers = */ 1,
-				/* .MaxVaryingComponents = */ 60,
-				/* .MaxVertexOutputComponents = */ 64,
-				/* .MaxGeometryInputComponents = */ 64,
-				/* .MaxGeometryOutputComponents = */ 128,
-				/* .MaxFragmentInputComponents = */ 128,
-				/* .MaxImageUnits = */ 8,
-				/* .MaxCombinedImageUnitsAndFragmentOutputs = */ 8,
-				/* .MaxCombinedShaderOutputResources = */ 8,
-				/* .MaxImageSamples = */ 0,
-				/* .MaxVertexImageUniforms = */ 0,
-				/* .MaxTessControlImageUniforms = */ 0,
-				/* .MaxTessEvaluationImageUniforms = */ 0,
-				/* .MaxGeometryImageUniforms = */ 0,
-				/* .MaxFragmentImageUniforms = */ 8,
-				/* .MaxCombinedImageUniforms = */ 8,
-				/* .MaxGeometryTextureImageUnits = */ 16,
-				/* .MaxGeometryOutputVertices = */ 256,
-				/* .MaxGeometryTotalOutputComponents = */ 1024,
-				/* .MaxGeometryUniformComponents = */ 1024,
-				/* .MaxGeometryVaryingComponents = */ 64,
-				/* .MaxTessControlInputComponents = */ 128,
-				/* .MaxTessControlOutputComponents = */ 128,
-				/* .MaxTessControlTextureImageUnits = */ 16,
-				/* .MaxTessControlUniformComponents = */ 1024,
-				/* .MaxTessControlTotalOutputComponents = */ 4096,
-				/* .MaxTessEvaluationInputComponents = */ 128,
-				/* .MaxTessEvaluationOutputComponents = */ 128,
-				/* .MaxTessEvaluationTextureImageUnits = */ 16,
-				/* .MaxTessEvaluationUniformComponents = */ 1024,
-				/* .MaxTessPatchComponents = */ 120,
-				/* .MaxPatchVertices = */ 32,
-				/* .MaxTessGenLevel = */ 64,
-				/* .MaxViewports = */ 16,
-				/* .MaxVertexAtomicCounters = */ 0,
-				/* .MaxTessControlAtomicCounters = */ 0,
-				/* .MaxTessEvaluationAtomicCounters = */ 0,
-				/* .MaxGeometryAtomicCounters = */ 0,
-				/* .MaxFragmentAtomicCounters = */ 8,
-				/* .MaxCombinedAtomicCounters = */ 8,
-				/* .MaxAtomicCounterBindings = */ 1,
-				/* .MaxVertexAtomicCounterBuffers = */ 0,
-				/* .MaxTessControlAtomicCounterBuffers = */ 0,
-				/* .MaxTessEvaluationAtomicCounterBuffers = */ 0,
-				/* .MaxGeometryAtomicCounterBuffers = */ 0,
-				/* .MaxFragmentAtomicCounterBuffers = */ 1,
-				/* .MaxCombinedAtomicCounterBuffers = */ 1,
-				/* .MaxAtomicCounterBufferSize = */ 16384,
-				/* .MaxTransformFeedbackBuffers = */ 4,
-				/* .MaxTransformFeedbackInterleavedComponents = */ 64,
-				/* .MaxCullDistances = */ 8,
-				/* .MaxCombinedClipAndCullDistances = */ 8,
-				/* .MaxSamples = */ 4,
-				/* .maxMeshOutputVerticesNV = */ 256,
-				/* .maxMeshOutputPrimitivesNV = */ 512,
-				/* .maxMeshWorkGroupSizeX_NV = */ 32,
-				/* .maxMeshWorkGroupSizeY_NV = */ 1,
-				/* .maxMeshWorkGroupSizeZ_NV = */ 1,
-				/* .maxTaskWorkGroupSizeX_NV = */ 32,
-				/* .maxTaskWorkGroupSizeY_NV = */ 1,
-				/* .maxTaskWorkGroupSizeZ_NV = */ 1,
-				/* .maxMeshViewCountNV = */ 4,
-				/* .max_mesh_output_vertices_ext = */ 256,
-				/* .max_mesh_output_primitives_ext = */ 512,
-				/* .max_mesh_work_group_size_x_ext = */ 32,
-				/* .max_mesh_work_group_size_y_ext = */ 1,
-				/* .max_mesh_work_group_size_z_ext = */ 1,
-				/* .max_task_work_group_size_x_ext = */ 32,
-				/* .max_task_work_group_size_y_ext = */ 1,
-				/* .max_task_work_group_size_z_ext = */ 1,
-				/* .maxMeshViewCountNV = */ 4,
-				/* .maxDualSourceDrawBuffersEXT = */ 1,
+			glslang_resource_t default_resource = {};
+			default_resource.max_lights = 32;
+			default_resource.max_clip_planes = 6;
+			default_resource.max_texture_units = 32;
+			default_resource.max_texture_coords = 32;
+			default_resource.max_vertex_attribs = 64;
+			default_resource.max_vertex_uniform_components = 4096;
+			default_resource.max_varying_floats = 64;
+			default_resource.max_vertex_texture_image_units = 32;
+			default_resource.max_combined_texture_image_units = 80;
+			default_resource.max_texture_image_units = 32;
+			default_resource.max_fragment_uniform_components = 4096;
+			default_resource.max_draw_buffers = 32;
+			default_resource.max_vertex_uniform_vectors = 128;
+			default_resource.max_varying_vectors = 8;
+			default_resource.max_fragment_uniform_vectors = 16;
+			default_resource.max_vertex_output_vectors = 16;
+			default_resource.max_fragment_input_vectors = 15;
+			default_resource.min_program_texel_offset = -8;
+			default_resource.max_program_texel_offset = 7;
+			default_resource.max_clip_distances = 8;
+			default_resource.max_compute_work_group_count_x = (int)app->configuration.maxComputeWorkGroupCount[0];
+			default_resource.max_compute_work_group_count_y = (int)app->configuration.maxComputeWorkGroupCount[1];
+			default_resource.max_compute_work_group_count_z = (int)app->configuration.maxComputeWorkGroupCount[2];
+			default_resource.max_compute_work_group_size_x = (int)app->configuration.maxComputeWorkGroupSize[0];
+			default_resource.max_compute_work_group_size_y = (int)app->configuration.maxComputeWorkGroupSize[1];
+			default_resource.max_compute_work_group_size_z = (int)app->configuration.maxComputeWorkGroupSize[2];
+			default_resource.max_compute_uniform_components = 1024;
+			default_resource.max_compute_texture_image_units = 16;
+			default_resource.max_compute_image_uniforms = 8;
+			default_resource.max_compute_atomic_counters = 8;
+			default_resource.max_compute_atomic_counter_buffers = 1;
+			default_resource.max_varying_components = 60;
+			default_resource.max_vertex_output_components = 64;
+			default_resource.max_geometry_input_components = 64;
+			default_resource.max_geometry_output_components = 128;
+			default_resource.max_fragment_input_components = 128;
+			default_resource.max_image_units = 8;
+			default_resource.max_combined_image_units_and_fragment_outputs = 8;
+			default_resource.max_combined_shader_output_resources = 8;
+			default_resource.max_image_samples = 0;
+			default_resource.max_vertex_image_uniforms = 0;
+			default_resource.max_tess_control_image_uniforms = 0;
+			default_resource.max_tess_evaluation_image_uniforms = 0;
+			default_resource.max_geometry_image_uniforms = 0;
+			default_resource.max_fragment_image_uniforms = 8;
+			default_resource.max_combined_image_uniforms = 8;
+			default_resource.max_geometry_texture_image_units = 16;
+			default_resource.max_geometry_output_vertices = 256;
+			default_resource.max_geometry_total_output_components = 1024;
+			default_resource.max_geometry_uniform_components = 1024;
+			default_resource.max_geometry_varying_components = 64;
+			default_resource.max_tess_control_input_components = 128;
+			default_resource.max_tess_control_output_components = 128;
+			default_resource.max_tess_control_texture_image_units = 16;
+			default_resource.max_tess_control_uniform_components = 1024;
+			default_resource.max_tess_control_total_output_components = 4096;
+			default_resource.max_tess_evaluation_input_components = 128;
+			default_resource.max_tess_evaluation_output_components = 128;
+			default_resource.max_tess_evaluation_texture_image_units = 16;
+			default_resource.max_tess_evaluation_uniform_components = 1024;
+			default_resource.max_tess_patch_components = 120;
+			default_resource.max_patch_vertices = 32;
+			default_resource.max_tess_gen_level = 64;
+			default_resource.max_viewports = 16;
+			default_resource.max_vertex_atomic_counters = 0;
+			default_resource.max_tess_control_atomic_counters = 0;
+			default_resource.max_tess_evaluation_atomic_counters = 0;
+			default_resource.max_geometry_atomic_counters = 0;
+			default_resource.max_fragment_atomic_counters = 8;
+			default_resource.max_combined_atomic_counters = 8;
+			default_resource.max_atomic_counter_bindings = 1;
+			default_resource.max_vertex_atomic_counter_buffers = 0;
+			default_resource.max_tess_control_atomic_counter_buffers = 0;
+			default_resource.max_tess_evaluation_atomic_counter_buffers = 0;
+			default_resource.max_geometry_atomic_counter_buffers = 0;
+			default_resource.max_fragment_atomic_counter_buffers = 1;
+			default_resource.max_combined_atomic_counter_buffers = 1;
+			default_resource.max_atomic_counter_buffer_size = 16384;
+			default_resource.max_transform_feedback_buffers = 4;
+			default_resource.max_transform_feedback_interleaved_components = 64;
+			default_resource.max_cull_distances = 8;
+			default_resource.max_combined_clip_and_cull_distances = 8;
+			default_resource.max_samples = 4;
+			default_resource.max_mesh_output_vertices_nv = 256;
+			default_resource.max_mesh_output_primitives_nv = 512;
+			default_resource.max_mesh_work_group_size_x_nv = 32;
+			default_resource.max_mesh_work_group_size_y_nv = 1;
+			default_resource.max_mesh_work_group_size_z_nv = 1;
+			default_resource.max_task_work_group_size_x_nv = 32;
+			default_resource.max_task_work_group_size_y_nv = 1;
+			default_resource.max_task_work_group_size_z_nv = 1;
+			default_resource.max_mesh_view_count_nv = 4;
+			
+			default_resource.limits.non_inductive_for_loops = 1;
+			default_resource.limits.while_loops = 1;
+			default_resource.limits.do_while_loops = 1;
+			default_resource.limits.general_uniform_indexing = 1;
+			default_resource.limits.general_attribute_matrix_vector_indexing = 1;
+			default_resource.limits.general_varying_indexing = 1;
+			default_resource.limits.general_sampler_indexing = 1;
+			default_resource.limits.general_variable_indexing = 1;
+			default_resource.limits.general_constant_matrix_vector_indexing = 1;
 
-				/* .limits = */ {
-					/* .nonInductiveForLoops = */ 1,
-					/* .whileLoops = */ 1,
-					/* .doWhileLoops = */ 1,
-					/* .generalUniformIndexing = */ 1,
-					/* .generalAttributeMatrixVectorIndexing = */ 1,
-					/* .generalVaryingIndexing = */ 1,
-					/* .generalSamplerIndexing = */ 1,
-					/* .generalVariableIndexing = */ 1,
-					/* .generalConstantMatrixVectorIndexing = */ 1,
-				} };
 			glslang_target_client_version_t client_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_VULKAN_1_1 : GLSLANG_TARGET_VULKAN_1_0;
 			glslang_target_language_version_t target_language_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_SPV_1_3 : GLSLANG_TARGET_SPV_1_0;
-			const glslang_input_t input =
+			glslang_input_t input =
 			{
 				GLSLANG_SOURCE_GLSL,
 				GLSLANG_STAGE_COMPUTE,
@@ -33053,10 +33038,10 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				1,
 				0,
 				GLSLANG_MSG_DEFAULT_BIT,
-				&default_resource,
+				(const glslang_resource_t*)&default_resource,
 			};
 			//printf("%s\n", code0);
-			glslang_shader_t* shader = glslang_shader_create(&input);
+			glslang_shader_t* shader = glslang_shader_create((const glslang_input_t *)&input);
 			const char* err;
 			if (!glslang_shader_preprocess(shader, &input))
 			{
@@ -34107,7 +34092,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			if (axis->specializationConstants.raderContainer[k].type == 0) {
 				axis->specializationConstants.raderContainer[k].RaderRadixOffsetLUTiFFT = maxStageSum;
 				for (int64_t i = axis->specializationConstants.raderContainer[k].numStages - 1; i >= 0; i--) {
-					if (i < axis->specializationConstants.raderContainer[k].numStages - 1) {
+					if (i < (int64_t)axis->specializationConstants.raderContainer[k].numStages - 1) {
 						switch (axis->specializationConstants.raderContainer[k].stageRadix[i]) {
 						case 2:
 							maxStageSum += dimMult;
@@ -34844,7 +34829,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					current_offset++;
 					for (uint64_t t = 0; t < axis->specializationConstants.raderContainer[i].prime - 1; t++) {
 						g_pow = (g_pow * axis->specializationConstants.raderContainer[i].generator) % axis->specializationConstants.raderContainer[i].prime;
-						tempRaderUintLUT[current_offset] = g_pow;
+						tempRaderUintLUT[current_offset] = (uint32_t)g_pow;
 						current_offset++;
 					}
 				}
@@ -36024,124 +36009,112 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		}
 		else
 		{
-			const glslang_resource_t default_resource = {
-				/* .MaxLights = */ 32,
-				/* .MaxClipPlanes = */ 6,
-				/* .MaxTextureUnits = */ 32,
-				/* .MaxTextureCoords = */ 32,
-				/* .MaxVertexAttribs = */ 64,
-				/* .MaxVertexUniformComponents = */ 4096,
-				/* .MaxVaryingFloats = */ 64,
-				/* .MaxVertexTextureImageUnits = */ 32,
-				/* .MaxCombinedTextureImageUnits = */ 80,
-				/* .MaxTextureImageUnits = */ 32,
-				/* .MaxFragmentUniformComponents = */ 4096,
-				/* .MaxDrawBuffers = */ 32,
-				/* .MaxVertexUniformVectors = */ 128,
-				/* .MaxVaryingVectors = */ 8,
-				/* .MaxFragmentUniformVectors = */ 16,
-				/* .MaxVertexOutputVectors = */ 16,
-				/* .MaxFragmentInputVectors = */ 15,
-				/* .MinProgramTexelOffset = */ -8,
-				/* .MaxProgramTexelOffset = */ 7,
-				/* .MaxClipDistances = */ 8,
-				/* .MaxComputeWorkGroupCountX = */ 65535,
-				/* .MaxComputeWorkGroupCountY = */ 65535,
-				/* .MaxComputeWorkGroupCountZ = */ 65535,
-				/* .MaxComputeWorkGroupSizeX = */ 1024,
-				/* .MaxComputeWorkGroupSizeY = */ 1024,
-				/* .MaxComputeWorkGroupSizeZ = */ 64,
-				/* .MaxComputeUniformComponents = */ 1024,
-				/* .MaxComputeTextureImageUnits = */ 16,
-				/* .MaxComputeImageUniforms = */ 8,
-				/* .MaxComputeAtomicCounters = */ 8,
-				/* .MaxComputeAtomicCounterBuffers = */ 1,
-				/* .MaxVaryingComponents = */ 60,
-				/* .MaxVertexOutputComponents = */ 64,
-				/* .MaxGeometryInputComponents = */ 64,
-				/* .MaxGeometryOutputComponents = */ 128,
-				/* .MaxFragmentInputComponents = */ 128,
-				/* .MaxImageUnits = */ 8,
-				/* .MaxCombinedImageUnitsAndFragmentOutputs = */ 8,
-				/* .MaxCombinedShaderOutputResources = */ 8,
-				/* .MaxImageSamples = */ 0,
-				/* .MaxVertexImageUniforms = */ 0,
-				/* .MaxTessControlImageUniforms = */ 0,
-				/* .MaxTessEvaluationImageUniforms = */ 0,
-				/* .MaxGeometryImageUniforms = */ 0,
-				/* .MaxFragmentImageUniforms = */ 8,
-				/* .MaxCombinedImageUniforms = */ 8,
-				/* .MaxGeometryTextureImageUnits = */ 16,
-				/* .MaxGeometryOutputVertices = */ 256,
-				/* .MaxGeometryTotalOutputComponents = */ 1024,
-				/* .MaxGeometryUniformComponents = */ 1024,
-				/* .MaxGeometryVaryingComponents = */ 64,
-				/* .MaxTessControlInputComponents = */ 128,
-				/* .MaxTessControlOutputComponents = */ 128,
-				/* .MaxTessControlTextureImageUnits = */ 16,
-				/* .MaxTessControlUniformComponents = */ 1024,
-				/* .MaxTessControlTotalOutputComponents = */ 4096,
-				/* .MaxTessEvaluationInputComponents = */ 128,
-				/* .MaxTessEvaluationOutputComponents = */ 128,
-				/* .MaxTessEvaluationTextureImageUnits = */ 16,
-				/* .MaxTessEvaluationUniformComponents = */ 1024,
-				/* .MaxTessPatchComponents = */ 120,
-				/* .MaxPatchVertices = */ 32,
-				/* .MaxTessGenLevel = */ 64,
-				/* .MaxViewports = */ 16,
-				/* .MaxVertexAtomicCounters = */ 0,
-				/* .MaxTessControlAtomicCounters = */ 0,
-				/* .MaxTessEvaluationAtomicCounters = */ 0,
-				/* .MaxGeometryAtomicCounters = */ 0,
-				/* .MaxFragmentAtomicCounters = */ 8,
-				/* .MaxCombinedAtomicCounters = */ 8,
-				/* .MaxAtomicCounterBindings = */ 1,
-				/* .MaxVertexAtomicCounterBuffers = */ 0,
-				/* .MaxTessControlAtomicCounterBuffers = */ 0,
-				/* .MaxTessEvaluationAtomicCounterBuffers = */ 0,
-				/* .MaxGeometryAtomicCounterBuffers = */ 0,
-				/* .MaxFragmentAtomicCounterBuffers = */ 1,
-				/* .MaxCombinedAtomicCounterBuffers = */ 1,
-				/* .MaxAtomicCounterBufferSize = */ 16384,
-				/* .MaxTransformFeedbackBuffers = */ 4,
-				/* .MaxTransformFeedbackInterleavedComponents = */ 64,
-				/* .MaxCullDistances = */ 8,
-				/* .MaxCombinedClipAndCullDistances = */ 8,
-				/* .MaxSamples = */ 4,
-				/* .maxMeshOutputVerticesNV = */ 256,
-				/* .maxMeshOutputPrimitivesNV = */ 512,
-				/* .maxMeshWorkGroupSizeX_NV = */ 32,
-				/* .maxMeshWorkGroupSizeY_NV = */ 1,
-				/* .maxMeshWorkGroupSizeZ_NV = */ 1,
-				/* .maxTaskWorkGroupSizeX_NV = */ 32,
-				/* .maxTaskWorkGroupSizeY_NV = */ 1,
-				/* .maxTaskWorkGroupSizeZ_NV = */ 1,
-				/* .maxMeshViewCountNV = */ 4,
-				/* .max_mesh_output_vertices_ext = */ 256,
-				/* .max_mesh_output_primitives_ext = */ 512,
-				/* .max_mesh_work_group_size_x_ext = */ 32,
-				/* .max_mesh_work_group_size_y_ext = */ 1,
-				/* .max_mesh_work_group_size_z_ext = */ 1,
-				/* .max_task_work_group_size_x_ext = */ 32,
-				/* .max_task_work_group_size_y_ext = */ 1,
-				/* .max_task_work_group_size_z_ext = */ 1,
-				/* .maxMeshViewCountNV = */ 4,
-				/* .maxDualSourceDrawBuffersEXT = */ 1,
+			glslang_resource_t default_resource = {};
+			default_resource.max_lights = 32;
+			default_resource.max_clip_planes = 6;
+			default_resource.max_texture_units = 32;
+			default_resource.max_texture_coords = 32;
+			default_resource.max_vertex_attribs = 64;
+			default_resource.max_vertex_uniform_components = 4096;
+			default_resource.max_varying_floats = 64;
+			default_resource.max_vertex_texture_image_units = 32;
+			default_resource.max_combined_texture_image_units = 80;
+			default_resource.max_texture_image_units = 32;
+			default_resource.max_fragment_uniform_components = 4096;
+			default_resource.max_draw_buffers = 32;
+			default_resource.max_vertex_uniform_vectors = 128;
+			default_resource.max_varying_vectors = 8;
+			default_resource.max_fragment_uniform_vectors = 16;
+			default_resource.max_vertex_output_vectors = 16;
+			default_resource.max_fragment_input_vectors = 15;
+			default_resource.min_program_texel_offset = -8;
+			default_resource.max_program_texel_offset = 7;
+			default_resource.max_clip_distances = 8;
+			default_resource.max_compute_work_group_count_x = (int)app->configuration.maxComputeWorkGroupCount[0];
+			default_resource.max_compute_work_group_count_y = (int)app->configuration.maxComputeWorkGroupCount[1];
+			default_resource.max_compute_work_group_count_z = (int)app->configuration.maxComputeWorkGroupCount[2];
+			default_resource.max_compute_work_group_size_x = (int)app->configuration.maxComputeWorkGroupSize[0];
+			default_resource.max_compute_work_group_size_y = (int)app->configuration.maxComputeWorkGroupSize[1];
+			default_resource.max_compute_work_group_size_z = (int)app->configuration.maxComputeWorkGroupSize[2];
+			default_resource.max_compute_uniform_components = 1024;
+			default_resource.max_compute_texture_image_units = 16;
+			default_resource.max_compute_image_uniforms = 8;
+			default_resource.max_compute_atomic_counters = 8;
+			default_resource.max_compute_atomic_counter_buffers = 1;
+			default_resource.max_varying_components = 60;
+			default_resource.max_vertex_output_components = 64;
+			default_resource.max_geometry_input_components = 64;
+			default_resource.max_geometry_output_components = 128;
+			default_resource.max_fragment_input_components = 128;
+			default_resource.max_image_units = 8;
+			default_resource.max_combined_image_units_and_fragment_outputs = 8;
+			default_resource.max_combined_shader_output_resources = 8;
+			default_resource.max_image_samples = 0;
+			default_resource.max_vertex_image_uniforms = 0;
+			default_resource.max_tess_control_image_uniforms = 0;
+			default_resource.max_tess_evaluation_image_uniforms = 0;
+			default_resource.max_geometry_image_uniforms = 0;
+			default_resource.max_fragment_image_uniforms = 8;
+			default_resource.max_combined_image_uniforms = 8;
+			default_resource.max_geometry_texture_image_units = 16;
+			default_resource.max_geometry_output_vertices = 256;
+			default_resource.max_geometry_total_output_components = 1024;
+			default_resource.max_geometry_uniform_components = 1024;
+			default_resource.max_geometry_varying_components = 64;
+			default_resource.max_tess_control_input_components = 128;
+			default_resource.max_tess_control_output_components = 128;
+			default_resource.max_tess_control_texture_image_units = 16;
+			default_resource.max_tess_control_uniform_components = 1024;
+			default_resource.max_tess_control_total_output_components = 4096;
+			default_resource.max_tess_evaluation_input_components = 128;
+			default_resource.max_tess_evaluation_output_components = 128;
+			default_resource.max_tess_evaluation_texture_image_units = 16;
+			default_resource.max_tess_evaluation_uniform_components = 1024;
+			default_resource.max_tess_patch_components = 120;
+			default_resource.max_patch_vertices = 32;
+			default_resource.max_tess_gen_level = 64;
+			default_resource.max_viewports = 16;
+			default_resource.max_vertex_atomic_counters = 0;
+			default_resource.max_tess_control_atomic_counters = 0;
+			default_resource.max_tess_evaluation_atomic_counters = 0;
+			default_resource.max_geometry_atomic_counters = 0;
+			default_resource.max_fragment_atomic_counters = 8;
+			default_resource.max_combined_atomic_counters = 8;
+			default_resource.max_atomic_counter_bindings = 1;
+			default_resource.max_vertex_atomic_counter_buffers = 0;
+			default_resource.max_tess_control_atomic_counter_buffers = 0;
+			default_resource.max_tess_evaluation_atomic_counter_buffers = 0;
+			default_resource.max_geometry_atomic_counter_buffers = 0;
+			default_resource.max_fragment_atomic_counter_buffers = 1;
+			default_resource.max_combined_atomic_counter_buffers = 1;
+			default_resource.max_atomic_counter_buffer_size = 16384;
+			default_resource.max_transform_feedback_buffers = 4;
+			default_resource.max_transform_feedback_interleaved_components = 64;
+			default_resource.max_cull_distances = 8;
+			default_resource.max_combined_clip_and_cull_distances = 8;
+			default_resource.max_samples = 4;
+			default_resource.max_mesh_output_vertices_nv = 256;
+			default_resource.max_mesh_output_primitives_nv = 512;
+			default_resource.max_mesh_work_group_size_x_nv = 32;
+			default_resource.max_mesh_work_group_size_y_nv = 1;
+			default_resource.max_mesh_work_group_size_z_nv = 1;
+			default_resource.max_task_work_group_size_x_nv = 32;
+			default_resource.max_task_work_group_size_y_nv = 1;
+			default_resource.max_task_work_group_size_z_nv = 1;
+			default_resource.max_mesh_view_count_nv = 4;
 
-				/* .limits = */ {
-					/* .nonInductiveForLoops = */ 1,
-					/* .whileLoops = */ 1,
-					/* .doWhileLoops = */ 1,
-					/* .generalUniformIndexing = */ 1,
-					/* .generalAttributeMatrixVectorIndexing = */ 1,
-					/* .generalVaryingIndexing = */ 1,
-					/* .generalSamplerIndexing = */ 1,
-					/* .generalVariableIndexing = */ 1,
-					/* .generalConstantMatrixVectorIndexing = */ 1,
-				} };
+			default_resource.limits.non_inductive_for_loops = 1;
+			default_resource.limits.while_loops = 1;
+			default_resource.limits.do_while_loops = 1;
+			default_resource.limits.general_uniform_indexing = 1;
+			default_resource.limits.general_attribute_matrix_vector_indexing = 1;
+			default_resource.limits.general_varying_indexing = 1;
+			default_resource.limits.general_sampler_indexing = 1;
+			default_resource.limits.general_variable_indexing = 1;
+			default_resource.limits.general_constant_matrix_vector_indexing = 1;
 			glslang_target_client_version_t client_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_VULKAN_1_1 : GLSLANG_TARGET_VULKAN_1_0;
 			glslang_target_language_version_t target_language_version = (app->configuration.halfPrecision) ? GLSLANG_TARGET_SPV_1_3 : GLSLANG_TARGET_SPV_1_0;
-			const glslang_input_t input =
+			glslang_input_t input =
 			{
 				GLSLANG_SOURCE_GLSL,
 				GLSLANG_STAGE_COMPUTE,
@@ -36155,10 +36128,10 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				1,
 				0,
 				GLSLANG_MSG_DEFAULT_BIT,
-				&default_resource,
+				(const glslang_resource_t*)&default_resource,
 			};
 			//printf("%s\n", code0);
-			glslang_shader_t* shader = glslang_shader_create(&input);
+			glslang_shader_t* shader = glslang_shader_create((const glslang_input_t*)&input);
 			const char* err;
 			if (!glslang_shader_preprocess(shader, &input))
 			{
@@ -38004,7 +37977,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	if (inputLaunchConfiguration.inverseReturnToInputBuffer != 0)	app->configuration.inverseReturnToInputBuffer = inputLaunchConfiguration.inverseReturnToInputBuffer;
 
 	if (inputLaunchConfiguration.useLUT != 0)	app->configuration.useLUT = inputLaunchConfiguration.useLUT;
-	
+
 	if (inputLaunchConfiguration.fixMaxRadixBluestein != 0) app->configuration.fixMaxRadixBluestein = inputLaunchConfiguration.fixMaxRadixBluestein;
 	if (inputLaunchConfiguration.forceBluesteinSequenceSize != 0) app->configuration.forceBluesteinSequenceSize = inputLaunchConfiguration.forceBluesteinSequenceSize;
 
@@ -38174,14 +38147,14 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		if (app->localFFTPlan_inverse) {
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 				//app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
-				resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, i, 0);
+				resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, i);
 				if (resFFT == VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH) {
 					//try again with Rader disabled - sequences like 89^4 can still be done with Bluestein FFT
 					uint64_t temp_fixMaxRaderPrimeFFT = app->configuration.fixMaxRaderPrimeFFT;
 					app->configuration.fixMaxRaderPrimeFFT = app->configuration.fixMinRaderPrimeFFT;
 					uint64_t temp_fixMaxRaderPrimeMult = app->configuration.fixMaxRaderPrimeMult;
 					app->configuration.fixMaxRaderPrimeMult = app->configuration.fixMinRaderPrimeMult;
-					resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, i, 0);
+					resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, i);
 					app->configuration.fixMaxRaderPrimeFFT = temp_fixMaxRaderPrimeFFT;
 					app->configuration.fixMaxRaderPrimeMult = temp_fixMaxRaderPrimeMult;
 				}
@@ -38232,14 +38205,14 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		if (app->localFFTPlan) {
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 				//app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
-				resFFT = VkFFTScheduler(app, app->localFFTPlan, i, 0);
+				resFFT = VkFFTScheduler(app, app->localFFTPlan, i);
 				if (resFFT == VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH) {
 					//try again with Rader disabled - sequences like 89^4 can still be done with Bluestein FFT
 					uint64_t temp_fixMaxRaderPrimeFFT = app->configuration.fixMaxRaderPrimeFFT;
 					app->configuration.fixMaxRaderPrimeFFT = app->configuration.fixMinRaderPrimeFFT;
 					uint64_t temp_fixMaxRaderPrimeMult = app->configuration.fixMaxRaderPrimeMult;
 					app->configuration.fixMaxRaderPrimeMult = app->configuration.fixMinRaderPrimeMult;
-					resFFT = VkFFTScheduler(app, app->localFFTPlan, i, 0);
+					resFFT = VkFFTScheduler(app, app->localFFTPlan, i);
 					app->configuration.fixMaxRaderPrimeFFT = temp_fixMaxRaderPrimeFFT;
 					app->configuration.fixMaxRaderPrimeMult = temp_fixMaxRaderPrimeMult;
 				}
@@ -38288,9 +38261,9 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 		if (app->useBluesteinFFT[i]) {
 			if (!app->configuration.makeInversePlanOnly)
-				resFFT = VkFFTGeneratePhaseVectors(app, app->localFFTPlan, i, 0);
+				resFFT = VkFFTGeneratePhaseVectors(app, app->localFFTPlan, i);
 			else
-				resFFT = VkFFTGeneratePhaseVectors(app, app->localFFTPlan_inverse, i, 0);
+				resFFT = VkFFTGeneratePhaseVectors(app, app->localFFTPlan_inverse, i);
 			if (resFFT != VKFFT_SUCCESS) {
 				deleteVkFFT(app);
 				return resFFT;
