@@ -343,7 +343,7 @@ typedef enum VkFFTResult {
 	VKFFT_ERROR_EMPTY_kernelSize = 2011,
 	VKFFT_ERROR_EMPTY_kernel = 2012,
 	VKFFT_ERROR_EMPTY_applicationString = 2013,
-	VKFFT_ERROR_EMPRY_useCustomBluesteinPaddingPattern_arrays = 2014,
+	VKFFT_ERROR_EMPTY_useCustomBluesteinPaddingPattern_arrays = 2014,
 	VKFFT_ERROR_UNSUPPORTED_RADIX = 3001,
 	VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH = 3002,
 	VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C = 3003,
@@ -37271,9 +37271,9 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	if (inputLaunchConfiguration.useCustomBluesteinPaddingPattern != 0) {
 		app->configuration.useCustomBluesteinPaddingPattern = inputLaunchConfiguration.useCustomBluesteinPaddingPattern;
 		app->configuration.primeSizes = inputLaunchConfiguration.primeSizes;
-		if (!app->configuration.primeSizes) return VKFFT_ERROR_EMPRY_useCustomBluesteinPaddingPattern_arrays;
+		if (!app->configuration.primeSizes) return VKFFT_ERROR_EMPTY_useCustomBluesteinPaddingPattern_arrays;
 		app->configuration.paddedSizes = inputLaunchConfiguration.paddedSizes;
-		if (!app->configuration.paddedSizes) return VKFFT_ERROR_EMPRY_useCustomBluesteinPaddingPattern_arrays;
+		if (!app->configuration.paddedSizes) return VKFFT_ERROR_EMPTY_useCustomBluesteinPaddingPattern_arrays;
 	}
 	//set device parameters
 #if(VKFFT_BACKEND==0)
