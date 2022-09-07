@@ -59,7 +59,9 @@
 #elif(VKFFT_BACKEND==4)
 #include <ze_api.h>
 #endif
-
+#ifdef VkFFT_use_FP128_Bluestein_RaderFFT
+#include "fftw3.h"
+#endif
 typedef struct {
 	//WHDCN layout
 
@@ -150,6 +152,9 @@ typedef struct {
 	uint64_t specifyOffsetsAtLaunch;//specify if offsets will be selected with launch parameters VkFFTLaunchParams (0 - off, 1 - on). Default 0
 
 	//optional: (default 0 if not stated otherwise)
+#if(VKFFT_BACKEND==0)
+	VkPipelineCache* pipelineCache;//pointer to Vulkan pipeline cache
+#endif
 	uint64_t coalescedMemory;//in bytes, for Nvidia and AMD is equal to 32, Intel is equal 64, scaled for half precision. Gonna work regardles, but if specified by user correctly, the performance will be higher.
 	uint64_t aimThreads;//aim at this many threads per block. Default 128
 	uint64_t numSharedBanks;//how many banks shared memory has. Default 32
@@ -406,193 +411,193 @@ typedef enum VkFFTResult {
 	VKFFT_ERROR_FAILED_TO_SUBMIT_BARRIER = 4055
 } VkFFTResult;
 
-const char* getVkFFTErrorString(VkFFTResult result)
+static inline const char* getVkFFTErrorString(VkFFTResult result)
 {
 	switch (result)
-    {
-        case VKFFT_SUCCESS:                                            
-			return "VKFFT_SUCCESS";
-        case VKFFT_ERROR_MALLOC_FAILED:                                
-			return "VKFFT_ERROR_MALLOC_FAILED";
-        case VKFFT_ERROR_INSUFFICIENT_CODE_BUFFER:                     
-			return "VKFFT_ERROR_INSUFFICIENT_CODE_BUFFER";
-        case VKFFT_ERROR_INSUFFICIENT_TEMP_BUFFER:                     
-			return "VKFFT_ERROR_INSUFFICIENT_TEMP_BUFFER";
-        case VKFFT_ERROR_PLAN_NOT_INITIALIZED:                         
-			return "VKFFT_ERROR_PLAN_NOT_INITIALIZED";
-        case VKFFT_ERROR_NULL_TEMP_PASSED:                             
-			return "VKFFT_ERROR_NULL_TEMP_PASSED";
-        case VKFFT_ERROR_INVALID_PHYSICAL_DEVICE:                      
-			return "VKFFT_ERROR_INVALID_PHYSICAL_DEVICE";
-        case VKFFT_ERROR_INVALID_DEVICE:                               
-			return "VKFFT_ERROR_INVALID_DEVICE";
-        case VKFFT_ERROR_INVALID_QUEUE:                                
-			return "VKFFT_ERROR_INVALID_QUEUE";
-        case VKFFT_ERROR_INVALID_COMMAND_POOL:                         
-			return "VKFFT_ERROR_INVALID_COMMAND_POOL";
-        case VKFFT_ERROR_INVALID_FENCE:                                
-			return "VKFFT_ERROR_INVALID_FENCE";
-        case VKFFT_ERROR_ONLY_FORWARD_FFT_INITIALIZED:                 
-			return "VKFFT_ERROR_ONLY_FORWARD_FFT_INITIALIZED";
-        case VKFFT_ERROR_ONLY_INVERSE_FFT_INITIALIZED:                 
-			return "VKFFT_ERROR_ONLY_INVERSE_FFT_INITIALIZED";
-        case VKFFT_ERROR_INVALID_CONTEXT:                              
-			return "VKFFT_ERROR_INVALID_CONTEXT";
-        case VKFFT_ERROR_INVALID_PLATFORM:                             
-			return "VKFFT_ERROR_INVALID_PLATFORM";
-        case VKFFT_ERROR_ENABLED_saveApplicationToString:              
-			return "VKFFT_ERROR_ENABLED_saveApplicationToString";
-        case VKFFT_ERROR_EMPTY_FILE:                                   
-			return "VKFFT_ERROR_EMPTY_FILE";
-        case VKFFT_ERROR_EMPTY_FFTdim:                                 
-			return "VKFFT_ERROR_EMPTY_FFTdim";
-        case VKFFT_ERROR_EMPTY_size:                                   
-			return "VKFFT_ERROR_EMPTY_size";
-        case VKFFT_ERROR_EMPTY_bufferSize:                             
-			return "VKFFT_ERROR_EMPTY_bufferSize";
-        case VKFFT_ERROR_EMPTY_buffer:                                 
-			return "VKFFT_ERROR_EMPTY_buffer";
-        case VKFFT_ERROR_EMPTY_tempBufferSize:                         
-			return "VKFFT_ERROR_EMPTY_tempBufferSize";
-        case VKFFT_ERROR_EMPTY_tempBuffer:                             
-			return "VKFFT_ERROR_EMPTY_tempBuffer";
-        case VKFFT_ERROR_EMPTY_inputBufferSize:                        
-			return "VKFFT_ERROR_EMPTY_inputBufferSize";
-        case VKFFT_ERROR_EMPTY_inputBuffer:                            
-			return "VKFFT_ERROR_EMPTY_inputBuffer";
-        case VKFFT_ERROR_EMPTY_outputBufferSize:                       
-			return "VKFFT_ERROR_EMPTY_outputBufferSize";
-        case VKFFT_ERROR_EMPTY_outputBuffer:                           
-			return "VKFFT_ERROR_EMPTY_outputBuffer";
-        case VKFFT_ERROR_EMPTY_kernelSize:                             
-			return "VKFFT_ERROR_EMPTY_kernelSize";
-        case VKFFT_ERROR_EMPTY_kernel:                                 
-			return "VKFFT_ERROR_EMPTY_kernel";
-        case VKFFT_ERROR_EMPTY_applicationString:                      
-			return "VKFFT_ERROR_EMPTY_applicationString";
-        case VKFFT_ERROR_EMPTY_useCustomBluesteinPaddingPattern_arrays:
-			return "VKFFT_ERROR_EMPTY_useCustomBluesteinPaddingPattern_arrays";
-        case VKFFT_ERROR_UNSUPPORTED_RADIX:                            
-			return "VKFFT_ERROR_UNSUPPORTED_RADIX";
-        case VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH:                       
-			return "VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH";
-        case VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C:                   
-			return "VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C";
-        case VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT:                   
-			return "VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT";
-        case VKFFT_ERROR_UNSUPPORTED_FFT_OMIT:                         
-			return "VKFFT_ERROR_UNSUPPORTED_FFT_OMIT";
-        case VKFFT_ERROR_FAILED_TO_ALLOCATE:                           
-			return "VKFFT_ERROR_FAILED_TO_ALLOCATE";
-        case VKFFT_ERROR_FAILED_TO_MAP_MEMORY:                         
-			return "VKFFT_ERROR_FAILED_TO_MAP_MEMORY";
-        case VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS:           
-			return "VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS";
-        case VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER:               
-			return "VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER";
-        case VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER:                 
-			return "VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER";
-        case VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE:                       
-			return "VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE";
-        case VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES:                    
-			return "VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES";
-        case VKFFT_ERROR_FAILED_TO_RESET_FENCES:                       
-			return "VKFFT_ERROR_FAILED_TO_RESET_FENCES";
-        case VKFFT_ERROR_FAILED_TO_CREATE_DESCRIPTOR_POOL:             
-			return "VKFFT_ERROR_FAILED_TO_CREATE_DESCRIPTOR_POOL";
-        case VKFFT_ERROR_FAILED_TO_CREATE_DESCRIPTOR_SET_LAYOUT:       
-			return "VKFFT_ERROR_FAILED_TO_CREATE_DESCRIPTOR_SET_LAYOUT";
-        case VKFFT_ERROR_FAILED_TO_ALLOCATE_DESCRIPTOR_SETS:           
-			return "VKFFT_ERROR_FAILED_TO_ALLOCATE_DESCRIPTOR_SETS";
-        case VKFFT_ERROR_FAILED_TO_CREATE_PIPELINE_LAYOUT:             
-			return "VKFFT_ERROR_FAILED_TO_CREATE_PIPELINE_LAYOUT";
-        case VKFFT_ERROR_FAILED_SHADER_PREPROCESS:                     
-			return "VKFFT_ERROR_FAILED_SHADER_PREPROCESS";
-        case VKFFT_ERROR_FAILED_SHADER_PARSE:                          
-			return "VKFFT_ERROR_FAILED_SHADER_PARSE";
-        case VKFFT_ERROR_FAILED_SHADER_LINK:                           
-			return "VKFFT_ERROR_FAILED_SHADER_LINK";
-        case VKFFT_ERROR_FAILED_SPIRV_GENERATE:                        
-			return "VKFFT_ERROR_FAILED_SPIRV_GENERATE";
-        case VKFFT_ERROR_FAILED_TO_CREATE_SHADER_MODULE:               
-			return "VKFFT_ERROR_FAILED_TO_CREATE_SHADER_MODULE";
-        case VKFFT_ERROR_FAILED_TO_CREATE_INSTANCE:                    
-			return "VKFFT_ERROR_FAILED_TO_CREATE_INSTANCE";
-        case VKFFT_ERROR_FAILED_TO_SETUP_DEBUG_MESSENGER:              
-			return "VKFFT_ERROR_FAILED_TO_SETUP_DEBUG_MESSENGER";
-        case VKFFT_ERROR_FAILED_TO_FIND_PHYSICAL_DEVICE:               
-			return "VKFFT_ERROR_FAILED_TO_FIND_PHYSICAL_DEVICE";
-        case VKFFT_ERROR_FAILED_TO_CREATE_DEVICE:                      
-			return "VKFFT_ERROR_FAILED_TO_CREATE_DEVICE";
-        case VKFFT_ERROR_FAILED_TO_CREATE_FENCE:                       
-			return "VKFFT_ERROR_FAILED_TO_CREATE_FENCE";
-        case VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_POOL:                
-			return "VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_POOL";
-        case VKFFT_ERROR_FAILED_TO_CREATE_BUFFER:                      
-			return "VKFFT_ERROR_FAILED_TO_CREATE_BUFFER";
-        case VKFFT_ERROR_FAILED_TO_ALLOCATE_MEMORY:                    
-			return "VKFFT_ERROR_FAILED_TO_ALLOCATE_MEMORY";
-        case VKFFT_ERROR_FAILED_TO_BIND_BUFFER_MEMORY:                 
-			return "VKFFT_ERROR_FAILED_TO_BIND_BUFFER_MEMORY";
-        case VKFFT_ERROR_FAILED_TO_FIND_MEMORY:                        
-			return "VKFFT_ERROR_FAILED_TO_FIND_MEMORY";
-        case VKFFT_ERROR_FAILED_TO_SYNCHRONIZE:                        
-			return "VKFFT_ERROR_FAILED_TO_SYNCHRONIZE";
-        case VKFFT_ERROR_FAILED_TO_COPY:                               
-			return "VKFFT_ERROR_FAILED_TO_COPY";
-        case VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM:                     
-			return "VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM";
-        case VKFFT_ERROR_FAILED_TO_COMPILE_PROGRAM:                    
-			return "VKFFT_ERROR_FAILED_TO_COMPILE_PROGRAM";
-        case VKFFT_ERROR_FAILED_TO_GET_CODE_SIZE:                      
-			return "VKFFT_ERROR_FAILED_TO_GET_CODE_SIZE";
-        case VKFFT_ERROR_FAILED_TO_GET_CODE:                           
-			return "VKFFT_ERROR_FAILED_TO_GET_CODE";
-        case VKFFT_ERROR_FAILED_TO_DESTROY_PROGRAM:                    
-			return "VKFFT_ERROR_FAILED_TO_DESTROY_PROGRAM";
-        case VKFFT_ERROR_FAILED_TO_LOAD_MODULE:                        
-			return "VKFFT_ERROR_FAILED_TO_LOAD_MODULE";
-        case VKFFT_ERROR_FAILED_TO_GET_FUNCTION:                       
-			return "VKFFT_ERROR_FAILED_TO_GET_FUNCTION";
-        case VKFFT_ERROR_FAILED_TO_SET_DYNAMIC_SHARED_MEMORY:          
-			return "VKFFT_ERROR_FAILED_TO_SET_DYNAMIC_SHARED_MEMORY";
-        case VKFFT_ERROR_FAILED_TO_MODULE_GET_GLOBAL:                  
-			return "VKFFT_ERROR_FAILED_TO_MODULE_GET_GLOBAL";
-        case VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL:                      
-			return "VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL";
-        case VKFFT_ERROR_FAILED_TO_EVENT_RECORD:                       
-			return "VKFFT_ERROR_FAILED_TO_EVENT_RECORD";
-        case VKFFT_ERROR_FAILED_TO_ADD_NAME_EXPRESSION:                
-			return "VKFFT_ERROR_FAILED_TO_ADD_NAME_EXPRESSION";
-        case VKFFT_ERROR_FAILED_TO_INITIALIZE:                         
-			return "VKFFT_ERROR_FAILED_TO_INITIALIZE";
-        case VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID:                      
-			return "VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID";
-        case VKFFT_ERROR_FAILED_TO_GET_DEVICE:                         
-			return "VKFFT_ERROR_FAILED_TO_GET_DEVICE";
-        case VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT:                     
-			return "VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT";
-        case VKFFT_ERROR_FAILED_TO_CREATE_PIPELINE:                    
-			return "VKFFT_ERROR_FAILED_TO_CREATE_PIPELINE";
-        case VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG:                     
-			return "VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG";
-        case VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE:               
-			return "VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE";
-        case VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE:              
-			return "VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE";
-        case VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES:                  
-			return "VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES";
-        case VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE:                      
-			return "VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE";
-        case VKFFT_ERROR_FAILED_TO_CREATE_EVENT:                       
-			return "VKFFT_ERROR_FAILED_TO_CREATE_EVENT";
-        case VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST:                
-			return "VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST";
-        case VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST:               
-			return "VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST";
-        case VKFFT_ERROR_FAILED_TO_SUBMIT_BARRIER:                     
-			return "VKFFT_ERROR_FAILED_TO_SUBMIT_BARRIER";
-    }
+	{
+	case VKFFT_SUCCESS:
+		return "VKFFT_SUCCESS";
+	case VKFFT_ERROR_MALLOC_FAILED:
+		return "VKFFT_ERROR_MALLOC_FAILED";
+	case VKFFT_ERROR_INSUFFICIENT_CODE_BUFFER:
+		return "VKFFT_ERROR_INSUFFICIENT_CODE_BUFFER";
+	case VKFFT_ERROR_INSUFFICIENT_TEMP_BUFFER:
+		return "VKFFT_ERROR_INSUFFICIENT_TEMP_BUFFER";
+	case VKFFT_ERROR_PLAN_NOT_INITIALIZED:
+		return "VKFFT_ERROR_PLAN_NOT_INITIALIZED";
+	case VKFFT_ERROR_NULL_TEMP_PASSED:
+		return "VKFFT_ERROR_NULL_TEMP_PASSED";
+	case VKFFT_ERROR_INVALID_PHYSICAL_DEVICE:
+		return "VKFFT_ERROR_INVALID_PHYSICAL_DEVICE";
+	case VKFFT_ERROR_INVALID_DEVICE:
+		return "VKFFT_ERROR_INVALID_DEVICE";
+	case VKFFT_ERROR_INVALID_QUEUE:
+		return "VKFFT_ERROR_INVALID_QUEUE";
+	case VKFFT_ERROR_INVALID_COMMAND_POOL:
+		return "VKFFT_ERROR_INVALID_COMMAND_POOL";
+	case VKFFT_ERROR_INVALID_FENCE:
+		return "VKFFT_ERROR_INVALID_FENCE";
+	case VKFFT_ERROR_ONLY_FORWARD_FFT_INITIALIZED:
+		return "VKFFT_ERROR_ONLY_FORWARD_FFT_INITIALIZED";
+	case VKFFT_ERROR_ONLY_INVERSE_FFT_INITIALIZED:
+		return "VKFFT_ERROR_ONLY_INVERSE_FFT_INITIALIZED";
+	case VKFFT_ERROR_INVALID_CONTEXT:
+		return "VKFFT_ERROR_INVALID_CONTEXT";
+	case VKFFT_ERROR_INVALID_PLATFORM:
+		return "VKFFT_ERROR_INVALID_PLATFORM";
+	case VKFFT_ERROR_ENABLED_saveApplicationToString:
+		return "VKFFT_ERROR_ENABLED_saveApplicationToString";
+	case VKFFT_ERROR_EMPTY_FILE:
+		return "VKFFT_ERROR_EMPTY_FILE";
+	case VKFFT_ERROR_EMPTY_FFTdim:
+		return "VKFFT_ERROR_EMPTY_FFTdim";
+	case VKFFT_ERROR_EMPTY_size:
+		return "VKFFT_ERROR_EMPTY_size";
+	case VKFFT_ERROR_EMPTY_bufferSize:
+		return "VKFFT_ERROR_EMPTY_bufferSize";
+	case VKFFT_ERROR_EMPTY_buffer:
+		return "VKFFT_ERROR_EMPTY_buffer";
+	case VKFFT_ERROR_EMPTY_tempBufferSize:
+		return "VKFFT_ERROR_EMPTY_tempBufferSize";
+	case VKFFT_ERROR_EMPTY_tempBuffer:
+		return "VKFFT_ERROR_EMPTY_tempBuffer";
+	case VKFFT_ERROR_EMPTY_inputBufferSize:
+		return "VKFFT_ERROR_EMPTY_inputBufferSize";
+	case VKFFT_ERROR_EMPTY_inputBuffer:
+		return "VKFFT_ERROR_EMPTY_inputBuffer";
+	case VKFFT_ERROR_EMPTY_outputBufferSize:
+		return "VKFFT_ERROR_EMPTY_outputBufferSize";
+	case VKFFT_ERROR_EMPTY_outputBuffer:
+		return "VKFFT_ERROR_EMPTY_outputBuffer";
+	case VKFFT_ERROR_EMPTY_kernelSize:
+		return "VKFFT_ERROR_EMPTY_kernelSize";
+	case VKFFT_ERROR_EMPTY_kernel:
+		return "VKFFT_ERROR_EMPTY_kernel";
+	case VKFFT_ERROR_EMPTY_applicationString:
+		return "VKFFT_ERROR_EMPTY_applicationString";
+	case VKFFT_ERROR_EMPTY_useCustomBluesteinPaddingPattern_arrays:
+		return "VKFFT_ERROR_EMPTY_useCustomBluesteinPaddingPattern_arrays";
+	case VKFFT_ERROR_UNSUPPORTED_RADIX:
+		return "VKFFT_ERROR_UNSUPPORTED_RADIX";
+	case VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH:
+		return "VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH";
+	case VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C:
+		return "VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C";
+	case VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT:
+		return "VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT";
+	case VKFFT_ERROR_UNSUPPORTED_FFT_OMIT:
+		return "VKFFT_ERROR_UNSUPPORTED_FFT_OMIT";
+	case VKFFT_ERROR_FAILED_TO_ALLOCATE:
+		return "VKFFT_ERROR_FAILED_TO_ALLOCATE";
+	case VKFFT_ERROR_FAILED_TO_MAP_MEMORY:
+		return "VKFFT_ERROR_FAILED_TO_MAP_MEMORY";
+	case VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS:
+		return "VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS";
+	case VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER:
+		return "VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER";
+	case VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER:
+		return "VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER";
+	case VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE:
+		return "VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE";
+	case VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES:
+		return "VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES";
+	case VKFFT_ERROR_FAILED_TO_RESET_FENCES:
+		return "VKFFT_ERROR_FAILED_TO_RESET_FENCES";
+	case VKFFT_ERROR_FAILED_TO_CREATE_DESCRIPTOR_POOL:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_DESCRIPTOR_POOL";
+	case VKFFT_ERROR_FAILED_TO_CREATE_DESCRIPTOR_SET_LAYOUT:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_DESCRIPTOR_SET_LAYOUT";
+	case VKFFT_ERROR_FAILED_TO_ALLOCATE_DESCRIPTOR_SETS:
+		return "VKFFT_ERROR_FAILED_TO_ALLOCATE_DESCRIPTOR_SETS";
+	case VKFFT_ERROR_FAILED_TO_CREATE_PIPELINE_LAYOUT:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_PIPELINE_LAYOUT";
+	case VKFFT_ERROR_FAILED_SHADER_PREPROCESS:
+		return "VKFFT_ERROR_FAILED_SHADER_PREPROCESS";
+	case VKFFT_ERROR_FAILED_SHADER_PARSE:
+		return "VKFFT_ERROR_FAILED_SHADER_PARSE";
+	case VKFFT_ERROR_FAILED_SHADER_LINK:
+		return "VKFFT_ERROR_FAILED_SHADER_LINK";
+	case VKFFT_ERROR_FAILED_SPIRV_GENERATE:
+		return "VKFFT_ERROR_FAILED_SPIRV_GENERATE";
+	case VKFFT_ERROR_FAILED_TO_CREATE_SHADER_MODULE:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_SHADER_MODULE";
+	case VKFFT_ERROR_FAILED_TO_CREATE_INSTANCE:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_INSTANCE";
+	case VKFFT_ERROR_FAILED_TO_SETUP_DEBUG_MESSENGER:
+		return "VKFFT_ERROR_FAILED_TO_SETUP_DEBUG_MESSENGER";
+	case VKFFT_ERROR_FAILED_TO_FIND_PHYSICAL_DEVICE:
+		return "VKFFT_ERROR_FAILED_TO_FIND_PHYSICAL_DEVICE";
+	case VKFFT_ERROR_FAILED_TO_CREATE_DEVICE:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_DEVICE";
+	case VKFFT_ERROR_FAILED_TO_CREATE_FENCE:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_FENCE";
+	case VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_POOL:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_POOL";
+	case VKFFT_ERROR_FAILED_TO_CREATE_BUFFER:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_BUFFER";
+	case VKFFT_ERROR_FAILED_TO_ALLOCATE_MEMORY:
+		return "VKFFT_ERROR_FAILED_TO_ALLOCATE_MEMORY";
+	case VKFFT_ERROR_FAILED_TO_BIND_BUFFER_MEMORY:
+		return "VKFFT_ERROR_FAILED_TO_BIND_BUFFER_MEMORY";
+	case VKFFT_ERROR_FAILED_TO_FIND_MEMORY:
+		return "VKFFT_ERROR_FAILED_TO_FIND_MEMORY";
+	case VKFFT_ERROR_FAILED_TO_SYNCHRONIZE:
+		return "VKFFT_ERROR_FAILED_TO_SYNCHRONIZE";
+	case VKFFT_ERROR_FAILED_TO_COPY:
+		return "VKFFT_ERROR_FAILED_TO_COPY";
+	case VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM";
+	case VKFFT_ERROR_FAILED_TO_COMPILE_PROGRAM:
+		return "VKFFT_ERROR_FAILED_TO_COMPILE_PROGRAM";
+	case VKFFT_ERROR_FAILED_TO_GET_CODE_SIZE:
+		return "VKFFT_ERROR_FAILED_TO_GET_CODE_SIZE";
+	case VKFFT_ERROR_FAILED_TO_GET_CODE:
+		return "VKFFT_ERROR_FAILED_TO_GET_CODE";
+	case VKFFT_ERROR_FAILED_TO_DESTROY_PROGRAM:
+		return "VKFFT_ERROR_FAILED_TO_DESTROY_PROGRAM";
+	case VKFFT_ERROR_FAILED_TO_LOAD_MODULE:
+		return "VKFFT_ERROR_FAILED_TO_LOAD_MODULE";
+	case VKFFT_ERROR_FAILED_TO_GET_FUNCTION:
+		return "VKFFT_ERROR_FAILED_TO_GET_FUNCTION";
+	case VKFFT_ERROR_FAILED_TO_SET_DYNAMIC_SHARED_MEMORY:
+		return "VKFFT_ERROR_FAILED_TO_SET_DYNAMIC_SHARED_MEMORY";
+	case VKFFT_ERROR_FAILED_TO_MODULE_GET_GLOBAL:
+		return "VKFFT_ERROR_FAILED_TO_MODULE_GET_GLOBAL";
+	case VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL:
+		return "VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL";
+	case VKFFT_ERROR_FAILED_TO_EVENT_RECORD:
+		return "VKFFT_ERROR_FAILED_TO_EVENT_RECORD";
+	case VKFFT_ERROR_FAILED_TO_ADD_NAME_EXPRESSION:
+		return "VKFFT_ERROR_FAILED_TO_ADD_NAME_EXPRESSION";
+	case VKFFT_ERROR_FAILED_TO_INITIALIZE:
+		return "VKFFT_ERROR_FAILED_TO_INITIALIZE";
+	case VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID:
+		return "VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID";
+	case VKFFT_ERROR_FAILED_TO_GET_DEVICE:
+		return "VKFFT_ERROR_FAILED_TO_GET_DEVICE";
+	case VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT";
+	case VKFFT_ERROR_FAILED_TO_CREATE_PIPELINE:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_PIPELINE";
+	case VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG:
+		return "VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG";
+	case VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE";
+	case VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE:
+		return "VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE";
+	case VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES:
+		return "VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES";
+	case VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE:
+		return "VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE";
+	case VKFFT_ERROR_FAILED_TO_CREATE_EVENT:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_EVENT";
+	case VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST:
+		return "VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST";
+	case VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST:
+		return "VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST";
+	case VKFFT_ERROR_FAILED_TO_SUBMIT_BARRIER:
+		return "VKFFT_ERROR_FAILED_TO_SUBMIT_BARRIER";
+	}
 	return "Unknown VkFFT error";
 }
 
@@ -1075,11 +1080,43 @@ static inline VkFFTResult VkAddComplexInv(VkFFTSpecializationConstantsLayout* sc
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
+static inline VkFFTResult VkAddComplex_x(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
+	VkFFTResult res = VKFFT_SUCCESS;
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s.x = %s.x + %s.x;\n", out, in_1, in_2);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	return res;
+}
+static inline VkFFTResult VkAddComplex_y(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
+	VkFFTResult res = VKFFT_SUCCESS;
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s.y = %s.y + %s.y;\n", out, in_1, in_2);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	return res;
+}
 static inline VkFFTResult VkSubComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x - %s.x;\n\
 	%s.y = %s.y - %s.y;\n", out, in_1, in_2, out, in_1, in_2);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	return res;
+}
+static inline VkFFTResult VkSubComplex_x(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
+	VkFFTResult res = VKFFT_SUCCESS;
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s.x = %s.x - %s.x;\n", out, in_1, in_2);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	return res;
+}
+static inline VkFFTResult VkSubComplex_y(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
+	VkFFTResult res = VKFFT_SUCCESS;
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s.y = %s.y - %s.y;\n", out, in_1, in_2);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
@@ -1124,6 +1161,23 @@ static inline VkFFTResult VkFMA3Complex(VkFFTSpecializationConstantsLayout* sc, 
 	//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f %%f %%f \\n \", %s, %s.x, %s.y, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, out_1, out_1, out_2, out_2);
 	//res = VkAppendLine(sc);
 	//if (res != VKFFT_SUCCESS) return res;
+	return res;
+}
+static inline VkFFTResult VkFMA3Complex_const_w(VkFFTSpecializationConstantsLayout* sc, const char* out_1, const char* out_2, const char* in_1, const char* in_num_x, const char* in_num_y, const char* in_conj) {
+	VkFFTResult res = VKFFT_SUCCESS;
+	//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f %%f %%f \\n \", %s, %s.x, %s.y, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, in_1, in_1, in_conj, in_conj);
+	//res = VkAppendLine(sc);
+	//if (res != VKFFT_SUCCESS) return res;
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s.x = fma(%s.x, %s, %s.x);\n\
+	%s.y = fma(%s.y, %s, %s.y);\n", out_1, in_1, in_num_x, out_1, out_1, in_conj, in_num_x, out_1);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s.x = fma(%s.y, %s, %s.x);\n\
+	%s.y = fma(%s.x, %s, %s.y);\n", out_2, in_1, in_num_y, out_2, out_2, in_conj, in_num_y, out_2);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
 static inline VkFFTResult VkFMAComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num, const char* in_2) {
@@ -2498,9 +2552,9 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 	return res;
 }
 
-static inline VkFFTResult inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t radix, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, char** regID) {
+static inline VkFFTResult inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t radix, uint64_t stageSize, uint64_t stageSizeSum, long double stageAngle, char** regID) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	double double_PI = 3.1415926535897932384626433832795;
+	long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
 	char vecType[30];
 	char LFending[4] = "";
 	if (!strcmp(floatType, "float")) sprintf(LFending, "f");
@@ -4169,36 +4223,36 @@ temp%s = temp;\n\
 		for (uint64_t i = 0; i < P; i++) {
 			if (i > 0) {
 				if (stageAngle < 0) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)-sin(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)sin(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				res = VkMulComplex(sc, sc->locID[1], regID[Q * i + 1], w, temp);
 				if (res != VKFFT_SUCCESS) return res;
 				if (stageAngle < 0) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(4 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(4 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(4 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)-sin(4 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(4 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(4 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(4 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)sin(4 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
@@ -4453,18 +4507,18 @@ temp%s = temp;\n\
 		for (uint64_t i = 0; i < P; i++) {
 			if (i > 0) {
 				if (stageAngle < 0) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)-sin(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)sin(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
@@ -4491,11 +4545,213 @@ temp%s = temp;\n\
 		break;
 	}
 	case 11: {
+		char* tf_x[20];
+		char* tf_y[20];
+		for (uint64_t i = 0; i < 10; i++) {
+			tf_x[i] = (char*)malloc(sizeof(char) * 50);
+			if (!tf_x[i]) {
+				for (uint64_t j = 0; j < i; j++) {
+					free(tf_x[j]);
+					tf_x[j] = 0;
+				}
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+			tf_y[i] = (char*)malloc(sizeof(char) * 50);
+			if (!tf_y[i]) {
+				for (uint64_t j = 0; j < 10; j++) {
+					free(tf_x[j]);
+					tf_x[j] = 0;
+				}
+				for (uint64_t j = 0; j < i; j++) {
+					free(tf_y[j]);
+					tf_y[j] = 0;
+				}
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+		}
+		sprintf(tf_x[0], "8.4125353283118116886306336876800e-01%s", LFending);
+		sprintf(tf_x[1], "-9.5949297361449738990105129410324e-01%s", LFending);
+		sprintf(tf_x[2], "-1.4231483827328514046015907335008e-01%s", LFending);
+		sprintf(tf_x[3], "-6.5486073394528506407246543075118e-01%s", LFending);
+		sprintf(tf_x[4], "4.1541501300188642567903264668505e-01%s", LFending);
+		sprintf(tf_x[5], "8.4125353283118116886306336876800e-01%s", LFending);
+		sprintf(tf_x[6], "-9.5949297361449738990105129410324e-01%s", LFending);
+		sprintf(tf_x[7], "-1.4231483827328514046015907335008e-01%s", LFending);
+		sprintf(tf_x[8], "-6.5486073394528506407246543075118e-01%s", LFending);
+		sprintf(tf_x[9], "4.1541501300188642567903264668505e-01%s", LFending);
+		if (stageAngle < 0) {
+			sprintf(tf_y[0], "-5.4064081745559758210122047739077e-01%s", LFending);
+			sprintf(tf_y[1], "2.8173255684142969773359373164556e-01%s", LFending);
+			sprintf(tf_y[2], "-9.8982144188093273235937163967435e-01%s", LFending);
+			sprintf(tf_y[3], "7.5574957435425828375808593451168e-01%s", LFending);
+			sprintf(tf_y[4], "9.0963199535451837136413102968824e-01%s", LFending);
+			sprintf(tf_y[5], "5.4064081745559758210122047739077e-01%s", LFending);
+			sprintf(tf_y[6], "-2.8173255684142969773359373164556e-01%s", LFending);
+			sprintf(tf_y[7], "9.8982144188093273235937163967435e-01%s", LFending);
+			sprintf(tf_y[8], "-7.5574957435425828375808593451168e-01%s", LFending);
+			sprintf(tf_y[9], "-9.0963199535451837136413102968824e-01%s", LFending);
+		}
+		else {
+			sprintf(tf_y[0], "5.4064081745559758210122047739077e-01%s", LFending);
+			sprintf(tf_y[1], "-2.8173255684142969773359373164556e-01%s", LFending);
+			sprintf(tf_y[2], "9.8982144188093273235937163967435e-01%s", LFending);
+			sprintf(tf_y[3], "-7.5574957435425828375808593451168e-01%s", LFending);
+			sprintf(tf_y[4], "-9.0963199535451837136413102968824e-01%s", LFending);
+			sprintf(tf_y[5], "-5.4064081745559758210122047739077e-01%s", LFending);
+			sprintf(tf_y[6], "2.8173255684142969773359373164556e-01%s", LFending);
+			sprintf(tf_y[7], "-9.8982144188093273235937163967435e-01%s", LFending);
+			sprintf(tf_y[8], "7.5574957435425828375808593451168e-01%s", LFending);
+			sprintf(tf_y[9], "9.0963199535451837136413102968824e-01%s", LFending);
+		}
+		for (uint64_t i = radix - 1; i > 0; i--) {
+			if (stageSize == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				if (i == radix - 1) {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (stageAngle < 0) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+				else {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (stageAngle < 0) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+			}
+			res = VkMulComplex(sc, sc->locID[i], regID[i], w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		res = VkMovComplex(sc, sc->locID[0], regID[0]);
+		if (res != VKFFT_SUCCESS) return res;
+		uint64_t permute[11] = { 0,1,2,4,8,5,10,9,7,3,6 };
+		res = VkPermute(sc, permute, 11, 0, 0, w);
+		if (res != VKFFT_SUCCESS) return res;
+		for (uint64_t i = 0; i < 5; i++) {
+			res = VkSubComplex_x(sc, regID[i + 6], sc->locID[i + 1], sc->locID[i + 6]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex_x(sc, regID[i + 1], sc->locID[i + 1], sc->locID[i + 6]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex_y(sc, regID[i + 6], sc->locID[i + 1], sc->locID[i + 6]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex_y(sc, regID[i + 1], sc->locID[i + 1], sc->locID[i + 6]);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 0; i < 5; i++) {
+			res = VkAddComplex_x(sc, regID[0], regID[0], regID[i + 1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex_y(sc, regID[0], regID[0], regID[i + 6]);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 1; i < 6; i++) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+	%s=%s;\n", sc->locID[i], sc->locID[0]);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 6; i < 11; i++) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+	%s.x=0;\n\
+	%s.y=0;\n", sc->locID[i], sc->locID[i]);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 0; i < 5; i++) {
+			for (uint64_t j = 0; j < 5; j++) {
+				uint64_t id = ((10 - i) + j) % 10;
+				res = VkFMA3Complex_const_w(sc, sc->locID[j + 1], sc->locID[j + 6], regID[i + 1], tf_x[id], tf_y[id], regID[i + 6]);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+		for (uint64_t i = 1; i < 6; i++) {
+			res = VkSubComplex_x(sc, regID[i], sc->locID[i], sc->locID[i + 5]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex_y(sc, regID[i], sc->locID[i], sc->locID[i + 5]);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 1; i < 6; i++) {
+			res = VkAddComplex_x(sc, regID[i + 5], sc->locID[i], sc->locID[i + 5]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex_y(sc, regID[i + 5], sc->locID[i], sc->locID[i + 5]);
+			if (res != VKFFT_SUCCESS) return res;
+		}
 
-		char* tf[20];
-		//char* tf2[4];
-		//char* tf2inv[4];
-		//VkAppendLine(sc, "	{\n");
+		uint64_t permute2[11] = { 0,1,10,3,9,7,2,4,8,5,6 };
+		res = VkPermute(sc, permute2, 11, 1, regID, w);
+		if (res != VKFFT_SUCCESS) return res;
+		for (uint64_t i = 0; i < 10; i++) {
+			free(tf_x[i]);
+			tf_x[i] = 0;
+			free(tf_y[i]);
+			tf_y[i] = 0;
+		}
+		//old version
+		/*char* tf[50];
 		for (uint64_t i = 0; i < 20; i++) {
 			tf[i] = (char*)malloc(sizeof(char) * 50);
 			if (!tf[i]) {
@@ -4505,44 +4761,42 @@ temp%s = temp;\n\
 				}
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			//tf2[i] = (char*)malloc(sizeof(char) * 50);
-			//tf2inv[i] = (char*)malloc(sizeof(char) * 50);
 		}
-		sprintf(tf[0], "-1.10000000000000000e+00%s", LFending);
+		sprintf(tf[0], "-1.1000000000000000000000000000000e+00%s", LFending);
 
-		sprintf(tf[2], "2.53097611605958783e-01%s", LFending);
-		sprintf(tf[3], "-1.28820061077367898e+00%s", LFending);
-		sprintf(tf[4], "3.04632239669212490e-01%s", LFending);
-		sprintf(tf[5], "-3.91339615511917427e-01%s", LFending);
-		sprintf(tf[6], "-2.87102225339285022e+00%s", LFending);
-		sprintf(tf[7], "1.37490798661638380e+00%s", LFending);
-		sprintf(tf[8], "8.17178135341212419e-01%s", LFending);
-		sprintf(tf[9], "1.80074650644567891e+00%s", LFending);
-		sprintf(tf[10], "-8.59492973614497502e-01%s", LFending);
+		sprintf(tf[2], "2.5309761160595911633208743296564e-01%s", LFending);
+		sprintf(tf[3], "-1.2882006107736785338602203410119e+00%s", LFending);
+		sprintf(tf[4], "3.0463223966921237906291253239033e-01%s", LFending);
+		sprintf(tf[5], "-3.9133961551191742689326247273129e-01%s", LFending);
+		sprintf(tf[6], "-2.8710222533928502208766531111905e+00%s", LFending);
+		sprintf(tf[7], "1.3749079866163838037351752063842e+00%s", LFending);
+		sprintf(tf[8], "8.1717813534121219731787277851254e-01%s", LFending);
+		sprintf(tf[9], "1.8007465064456784631374830496497e+00%s", LFending);
+		sprintf(tf[10], "-8.5949297361449739085514920589048e-01%s", LFending);
 
 		if (stageAngle < 0) {
-			sprintf(tf[1], "3.31662479035539914e-01%s", LFending);
-			sprintf(tf[11], "-2.37347045474827967e+00%s", LFending);
-			sprintf(tf[12], "-2.48363930874935801e-02%s", LFending);
-			sprintf(tf[13], "4.74017017512828764e-01%s", LFending);
-			sprintf(tf[14], "7.42183927770612595e-01%s", LFending);
-			sprintf(tf[15], "1.40647330909460866e+00%s", LFending);
-			sprintf(tf[16], "-1.19136455219594772e+00%s", LFending);
-			sprintf(tf[17], "7.08088885039503180e-01%s", LFending);
-			sprintf(tf[18], "2.58908260614167995e-01%s", LFending);
-			sprintf(tf[19], "-4.99299221941104307e-02%s", LFending);
+			sprintf(tf[1], "3.3166247903553996989600705092016e-01%s", LFending);
+			sprintf(tf[11], "-2.3734704547482796677115857164608e+00%s", LFending);
+			sprintf(tf[12], "-2.4836393087493469078452790199663e-02%s", LFending);
+			sprintf(tf[13], "4.7401701751282859786940093727026e-01%s", LFending);
+			sprintf(tf[14], "7.4218392777061303888785914750770e-01%s", LFending);
+			sprintf(tf[15], "1.4064733090946088811534764317912e+00%s", LFending);
+			sprintf(tf[16], "-1.1913645521959481676788072945783e+00%s", LFending);
+			sprintf(tf[17], "7.0808888503950306869683117838576e-01%s", LFending);
+			sprintf(tf[18], "2.5890826061416793990588303131517e-01%s", LFending);
+			sprintf(tf[19], "-4.9929922194110284983104008915689e-02%s", LFending);
 		}
 		else {
-			sprintf(tf[1], "-3.31662479035539914e-01%s", LFending);
-			sprintf(tf[11], "2.37347045474827967e+00%s", LFending);
-			sprintf(tf[12], "2.48363930874935801e-02%s", LFending);
-			sprintf(tf[13], "-4.74017017512828764e-01%s", LFending);
-			sprintf(tf[14], "-7.42183927770612595e-01%s", LFending);
-			sprintf(tf[15], "-1.40647330909460866e+00%s", LFending);
-			sprintf(tf[16], "1.19136455219594772e+00%s", LFending);
-			sprintf(tf[17], "-7.08088885039503180e-01%s", LFending);
-			sprintf(tf[18], "-2.58908260614167995e-01%s", LFending);
-			sprintf(tf[19], "4.99299221941104307e-02%s", LFending);
+			sprintf(tf[1], "-3.3166247903553996989600705092016e-01%s", LFending);
+			sprintf(tf[11], "2.3734704547482796677115857164608e+00%s", LFending);
+			sprintf(tf[12], "2.4836393087493469078452790199663e-02%s", LFending);
+			sprintf(tf[13], "-4.7401701751282859786940093727026e-01%s", LFending);
+			sprintf(tf[14], "-7.4218392777061303888785914750770e-01%s", LFending);
+			sprintf(tf[15], "-1.4064733090946088811534764317912e+00%s", LFending);
+			sprintf(tf[16], "1.1913645521959481676788072945783e+00%s", LFending);
+			sprintf(tf[17], "-7.0808888503950306869683117838576e-01%s", LFending);
+			sprintf(tf[18], "-2.5890826061416793990588303131517e-01%s", LFending);
+			sprintf(tf[19], "4.9929922194110284983104008915689e-02%s", LFending);
 		}
 		for (uint64_t i = radix - 1; i > 0; i--) {
 			if (stageSize == 1) {
@@ -4774,6 +5028,7 @@ temp%s = temp;\n\
 			free(tf[i]);
 			tf[i] = 0;
 		}
+		*/
 		break;
 	}
 	case 12: {
@@ -4922,18 +5177,18 @@ temp%s = temp;\n\
 			for (uint64_t j = 0; j < Q; j++) {
 				if (i > 0) {
 					if (stageAngle < 0) {
-						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * j * double_PI / radix), LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(2 * i * j * double_PI / radix), LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(2 * i * j * double_PI / radix), LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)-sin(2 * i * j * double_PI / radix), LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
 					else {
-						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * j * double_PI / radix), LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(2 * i * j * double_PI / radix), LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
-						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(2 * i * j * double_PI / radix), LFending);
+						sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)sin(2 * i * j * double_PI / radix), LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -4995,8 +5250,225 @@ temp%s = temp;\n\
 		break;
 	}
 	case 13: {
+		char* tf_x[20];
+		char* tf_y[20];
+		for (uint64_t i = 0; i < 12; i++) {
+			tf_x[i] = (char*)malloc(sizeof(char) * 50);
+			if (!tf_x[i]) {
+				for (uint64_t j = 0; j < i; j++) {
+					free(tf_x[j]);
+					tf_x[j] = 0;
+				}
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+			tf_y[i] = (char*)malloc(sizeof(char) * 50);
+			if (!tf_y[i]) {
+				for (uint64_t j = 0; j < 12; j++) {
+					free(tf_x[j]);
+					tf_x[j] = 0;
+				}
+				for (uint64_t j = 0; j < i; j++) {
+					free(tf_y[j]);
+					tf_y[j] = 0;
+				}
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+		}
+		sprintf(tf_x[0], "8.8545602565320989587194927539215e-01%s", LFending);
+		sprintf(tf_x[1], "-9.7094181742605202719252621701429e-01%s", LFending);
+		sprintf(tf_x[2], "1.2053668025532305345994812592614e-01%s", LFending);
+		sprintf(tf_x[3], "-7.4851074817110109868448578063216e-01%s", LFending);
+		sprintf(tf_x[4], "-3.5460488704253562600274447824678e-01%s", LFending);
+		sprintf(tf_x[5], "5.6806474673115580237845248512407e-01%s", LFending);
+		sprintf(tf_x[6], "8.8545602565320989608878970988926e-01%s", LFending);
+		sprintf(tf_x[7], "-9.7094181742605202719252621701429e-01%s", LFending);
+		sprintf(tf_x[8], "1.2053668025532305324988395500707e-01%s", LFending);
+		sprintf(tf_x[9], "-7.4851074817110109863027567200788e-01%s", LFending);
+		sprintf(tf_x[10], "-3.5460488704253562600274447824678e-01%s", LFending);
+		sprintf(tf_x[11], "5.6806474673115580248687270237262e-01%s", LFending);
+		if (stageAngle < 0) {
+			sprintf(tf_y[0], "-4.6472317204376854566250792943904e-01%s", LFending);
+			sprintf(tf_y[1], "2.3931566428755776706062234626682e-01%s", LFending);
+			sprintf(tf_y[2], "9.9270887409805399278096144088934e-01%s", LFending);
+			sprintf(tf_y[3], "-6.6312265824079520232193704631918e-01%s", LFending);
+			sprintf(tf_y[4], "9.3501624268541482344965776185575e-01%s", LFending);
+			sprintf(tf_y[5], "8.2298386589365639468820687318917e-01%s", LFending);
+			sprintf(tf_y[6], "4.6472317204376854531014222338126e-01%s", LFending);
+			sprintf(tf_y[7], "-2.3931566428755776695220212901827e-01%s", LFending);
+			sprintf(tf_y[8], "-9.9270887409805399283517154951362e-01%s", LFending);
+			sprintf(tf_y[9], "6.6312265824079520243035726356773e-01%s", LFending);
+			sprintf(tf_y[10], "-9.3501624268541482344965776185575e-01%s", LFending);
+			sprintf(tf_y[11], "-8.2298386589365639457978665594062e-01%s", LFending);
+		}
+		else {
+			sprintf(tf_y[0], "4.6472317204376854566250792943904e-01%s", LFending);
+			sprintf(tf_y[1], "-2.3931566428755776706062234626682e-01%s", LFending);
+			sprintf(tf_y[2], "-9.9270887409805399278096144088934e-01%s", LFending);
+			sprintf(tf_y[3], "6.6312265824079520232193704631918e-01%s", LFending);
+			sprintf(tf_y[4], "-9.3501624268541482344965776185575e-01%s", LFending);
+			sprintf(tf_y[5], "-8.2298386589365639468820687318917e-01%s", LFending);
+			sprintf(tf_y[6], "-4.6472317204376854531014222338126e-01%s", LFending);
+			sprintf(tf_y[7], "2.3931566428755776695220212901827e-01%s", LFending);
+			sprintf(tf_y[8], "9.9270887409805399283517154951362e-01%s", LFending);
+			sprintf(tf_y[9], "-6.6312265824079520243035726356773e-01%s", LFending);
+			sprintf(tf_y[10], "9.3501624268541482344965776185575e-01%s", LFending);
+			sprintf(tf_y[11], "8.2298386589365639457978665594062e-01%s", LFending);
+		}
+		for (uint64_t i = radix - 1; i > 0; i--) {
+			if (stageSize == 1) {
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = 1;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = 0;\n", w);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+			else {
+				if (i == radix - 1) {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId];\n", w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (stageAngle < 0) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+				else {
+					if (sc->LUT) {
+						if (sc->useCoalescedLUTUploadToSM) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sdata[stageInvocationID+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						else {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = twiddleLUT[LUTId+%" PRIu64 "];\n\n", w, (radix - 1 - i) * stageSize);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+						if (stageAngle < 0) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = -%s.y;\n", w, w);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+					else {
+						if (!strcmp(floatType, "float")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s(angle*%.17e%s);\n", w, cosDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s(angle*%.17e%s);\n", w, sinDef, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
+						}
+						if (!strcmp(floatType, "double")) {
+							sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(angle*%.17e%s);\n", w, 2.0 * i / radix, LFending);
+							res = VkAppendLine(sc);
+							if (res != VKFFT_SUCCESS) return res;
+						}
+					}
+				}
+			}
+			res = VkMulComplex(sc, sc->locID[i], regID[i], w, 0);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		res = VkMovComplex(sc, sc->locID[0], regID[0]);
+		if (res != VKFFT_SUCCESS) return res;
+		uint64_t permute[13] = { 0, 1, 2, 4, 8, 3, 6, 12, 11, 9, 5, 10, 7 };
+		res = VkPermute(sc, permute, 13, 0, 0, w);
+		if (res != VKFFT_SUCCESS) return res;
+		for (uint64_t i = 0; i < 6; i++) {
+			res = VkSubComplex_x(sc, regID[i + 7], sc->locID[i + 1], sc->locID[i + 7]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex_x(sc, regID[i + 1], sc->locID[i + 1], sc->locID[i + 7]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex_y(sc, regID[i + 7], sc->locID[i + 1], sc->locID[i + 7]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex_y(sc, regID[i + 1], sc->locID[i + 1], sc->locID[i + 7]);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 0; i < 6; i++) {
+			res = VkAddComplex_x(sc, regID[0], regID[0], regID[i + 1]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex_y(sc, regID[0], regID[0], regID[i + 7]);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 1; i < 7; i++) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+	%s=%s;\n", sc->locID[i], sc->locID[0]);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 7; i < 13; i++) {
+			sc->tempLen = sprintf(sc->tempStr, "\
+	%s.x=0;\n\
+	%s.y=0;\n", sc->locID[i], sc->locID[i]);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 0; i < 6; i++) {
+			for (uint64_t j = 0; j < 6; j++) {
+				uint64_t id = ((12 - i) + j) % 12;
+				res = VkFMA3Complex_const_w(sc, sc->locID[j + 1], sc->locID[j + 7], regID[i + 1], tf_x[id], tf_y[id], regID[i + 7]);
+				if (res != VKFFT_SUCCESS) return res;
+			}
+		}
+		for (uint64_t i = 1; i < 7; i++) {
+			res = VkSubComplex_x(sc, regID[i], sc->locID[i], sc->locID[i + 6]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkAddComplex_y(sc, regID[i], sc->locID[i], sc->locID[i + 6]);
+			if (res != VKFFT_SUCCESS) return res;
+		}
+		for (uint64_t i = 1; i < 7; i++) {
+			res = VkAddComplex_x(sc, regID[i + 6], sc->locID[i], sc->locID[i + 6]);
+			if (res != VKFFT_SUCCESS) return res;
+			res = VkSubComplex_y(sc, regID[i + 6], sc->locID[i], sc->locID[i + 6]);
+			if (res != VKFFT_SUCCESS) return res;
+		}
 
-		char* tf[20];
+		uint64_t permute2[13] = { 0,1,12,9,11,4,8,2,10,5,3,6,7 };
+		res = VkPermute(sc, permute2, 13, 1, regID, w);
+		//if (res != VKFFT_SUCCESS) return res;
+		for (uint64_t i = 0; i < 12; i++) {
+			free(tf_x[i]);
+			tf_x[i] = 0;
+			free(tf_y[i]);
+			tf_y[i] = 0;
+		}
+		for (uint64_t i = 0; i < 12; i++) {
+			free(tf_x[i]);
+			tf_x[i] = 0;
+			free(tf_y[i]);
+			tf_y[i] = 0;
+		}
+		//old version
+		/*char* tf[20];
 		//char* tf2[4];
 		//char* tf2inv[4];
 		//VkAppendLine(sc, "	{\n");
@@ -5280,7 +5752,7 @@ temp%s = temp;\n\
 		for (uint64_t i = 0; i < 20; i++) {
 			free(tf[i]);
 			tf[i] = 0;
-		}
+		}*/
 		break;
 	}
 	case 14: {
@@ -5521,18 +5993,18 @@ temp%s = temp;\n\
 		for (uint64_t i = 0; i < P; i++) {
 			if (i > 0) {
 				if (stageAngle < 0) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)-sin(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)sin(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
@@ -5765,36 +6237,36 @@ temp%s = temp;\n\
 		for (uint64_t i = 0; i < P; i++) {
 			if (i > 0) {
 				if (stageAngle < 0) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)-sin(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(2 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)sin(2 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				res = VkMulComplex(sc, sc->locID[1], regID[Q * i + 1], w, temp);
 				if (res != VKFFT_SUCCESS) return res;
 				if (stageAngle < 0) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(4 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(4 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, -sin(4 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)-sin(4 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, cos(4 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %.17e%s;\n", w, (double)cos(4 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, sin(4 * i * double_PI / radix), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %.17e%s;\n\n", w, (double)sin(4 * i * double_PI / radix), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
@@ -6248,18 +6720,18 @@ temp%s = temp;\n\
 
 		for (uint64_t j = 0; j < 2; j++) {
 			if (stageAngle < 0) {
-				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, (double)cos((2 * j + 1) * double_PI / 8), LFending, w, (double)sin((2 * j + 1) * double_PI / 8), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, (double)cos((2 * j + 1) * double_PI / 8), LFending, w, (double)sin((2 * j + 1) * double_PI / 8), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
 			else {
-				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, (double)cos((2 * j + 1) * double_PI / 8), LFending, w, (double)sin((2 * j + 1) * double_PI / 8), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, (double)cos((2 * j + 1) * double_PI / 8), LFending, w, (double)sin((2 * j + 1) * double_PI / 8), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
@@ -6746,18 +7218,18 @@ temp%s = temp;\n\
 
 		for (uint64_t j = 0; j < 2; j++) {
 			if (stageAngle < 0) {
-				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, (double)cos((2 * j + 1) * double_PI / 8), LFending, w, (double)sin((2 * j + 1) * double_PI / 8), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, (double)cos((2 * j + 1) * double_PI / 8), LFending, w, (double)sin((2 * j + 1) * double_PI / 8), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
 			else {
-				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, (double)cos((2 * j + 1) * double_PI / 8), LFending, w, (double)sin((2 * j + 1) * double_PI / 8), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, (double)cos((2 * j + 1) * double_PI / 8), LFending, w, (double)sin((2 * j + 1) * double_PI / 8), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
@@ -6935,18 +7407,18 @@ temp%s = temp;\n\
 
 		for (uint64_t j = 0; j < 2; j++) {
 			if (stageAngle < 0) {
-				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, (double)cos((2 * j + 1) * double_PI / 8), LFending, w, (double)sin((2 * j + 1) * double_PI / 8), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, (double)cos((2 * j + 1) * double_PI / 8), LFending, w, (double)sin((2 * j + 1) * double_PI / 8), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
 			else {
-				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, (double)cos((2 * j + 1) * double_PI / 8), LFending, w, (double)sin((2 * j + 1) * double_PI / 8), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
-				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 8), LFending, w, sin((2 * j + 1) * double_PI / 8), LFending);
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, (double)cos((2 * j + 1) * double_PI / 8), LFending, w, (double)sin((2 * j + 1) * double_PI / 8), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 			}
@@ -6991,36 +7463,36 @@ temp%s = temp;\n\
 		for (uint64_t j = 0; j < 4; j++) {
 			if ((j == 1) || (j == 2)) {
 				if (stageAngle < 0) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, cos((7 - 2 * j) * double_PI / 16), LFending, w, sin((7 - 2 * j) * double_PI / 16), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, (double)cos((7 - 2 * j) * double_PI / 16), LFending, w, (double)sin((7 - 2 * j) * double_PI / 16), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, cos((7 - 2 * j) * double_PI / 16), LFending, w, sin((7 - 2 * j) * double_PI / 16), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, (double)cos((7 - 2 * j) * double_PI / 16), LFending, w, (double)sin((7 - 2 * j) * double_PI / 16), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, cos((7 - 2 * j) * double_PI / 16), LFending, w, sin((7 - 2 * j) * double_PI / 16), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, (double)cos((7 - 2 * j) * double_PI / 16), LFending, w, (double)sin((7 - 2 * j) * double_PI / 16), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, cos((7 - 2 * j) * double_PI / 16), LFending, w, sin((7 - 2 * j) * double_PI / 16), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, (double)cos((7 - 2 * j) * double_PI / 16), LFending, w, (double)sin((7 - 2 * j) * double_PI / 16), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
 			}
 			else {
 				if (stageAngle < 0) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 16), LFending, w, sin((2 * j + 1) * double_PI / 16), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, (double)cos((2 * j + 1) * double_PI / 16), LFending, w, (double)sin((2 * j + 1) * double_PI / 16), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 16), LFending, w, sin((2 * j + 1) * double_PI / 16), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, (double)cos((2 * j + 1) * double_PI / 16), LFending, w, (double)sin((2 * j + 1) * double_PI / 16), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, cos((2 * j + 1) * double_PI / 16), LFending, w, sin((2 * j + 1) * double_PI / 16), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, (double)cos((2 * j + 1) * double_PI / 16), LFending, w, (double)sin((2 * j + 1) * double_PI / 16), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
-					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, cos((2 * j + 1) * double_PI / 16), LFending, w, sin((2 * j + 1) * double_PI / 16), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, (double)cos((2 * j + 1) * double_PI / 16), LFending, w, (double)sin((2 * j + 1) * double_PI / 16), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 				}
@@ -7537,7 +8009,7 @@ temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 	sc->tempLen = sprintf(sc->tempStr, "	%s %s=0;\n", uintType, sc->inoutID);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
-	if ((sc->fftDim < sc->fft_dim_full) || (initType==1) || (initType == 2)) {
+	if ((sc->fftDim < sc->fft_dim_full) || (initType == 1) || (initType == 2)) {
 		sc->tempLen = sprintf(sc->tempStr, "	%s disableThreads=1;\n", uintType_32);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
@@ -8273,7 +8745,7 @@ static inline VkFFTResult setReadToRegisters(VkFFTSpecializationConstantsLayout*
 }
 static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint64_t readType) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	double double_PI = 3.1415926535897932384626433832795;
+	long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
 	char vecType[30];
 	char inputsStruct[20] = "";
 	char LFending[4] = "";
@@ -10863,15 +11335,15 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					}
 					else {
 						if (!strcmp(floatType, "float")) {
-							sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", cosDef, double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", cosDef, (double)(double_PI / 2 / sc->fftDim), LFending, sc->fftDim / 2 + 1);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
-							sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", sinDef, double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", sinDef, (double)(double_PI / 2 / sc->fftDim), LFending, sc->fftDim / 2 + 1);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
 						if (!strcmp(floatType, "double")) {
-							sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (combinedID %% %" PRIu64 ") );\n", double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+							sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (combinedID %% %" PRIu64 ") );\n", (double)(double_PI / 2 / sc->fftDim), LFending, sc->fftDim / 2 + 1);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
@@ -11173,15 +11645,15 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					}
 					else {
 						if (!strcmp(floatType, "float")) {
-							sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (combinedID) );\n", cosDef, double_PI / 2 / sc->fftDim, LFending);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (combinedID) );\n", cosDef, (double)(double_PI / 2 / sc->fftDim), LFending);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
-							sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (combinedID) );\n", sinDef, double_PI / 2 / sc->fftDim, LFending);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (combinedID) );\n", sinDef, (double)(double_PI / 2 / sc->fftDim), LFending);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
 						if (!strcmp(floatType, "double")) {
-							sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (combinedID) );\n", double_PI / 2 / sc->fftDim, LFending);
+							sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (combinedID) );\n", (double)(double_PI / 2 / sc->fftDim), LFending);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
@@ -12595,15 +13067,15 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					}
 					else {
 						if (!strcmp(floatType, "float")) {
-							sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", cosDef, double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", cosDef, (double)(double_PI / 2 / sc->fftDim), LFending, sc->fftDim / 2 + 1);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
-							sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", sinDef, double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", sinDef, (double)(double_PI / 2 / sc->fftDim), LFending, sc->fftDim / 2 + 1);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
 						if (!strcmp(floatType, "double")) {
-							sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (combinedID %% %" PRIu64 ") );\n", double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+							sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (combinedID %% %" PRIu64 ") );\n", (double)(double_PI / 2 / sc->fftDim), LFending, sc->fftDim / 2 + 1);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
@@ -13308,15 +13780,15 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					}
 					else {
 						if (!strcmp(floatType, "float")) {
-							sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (combinedID / %" PRIu64 ") );\n", cosDef, double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (combinedID / %" PRIu64 ") );\n", cosDef, (double)(double_PI / 2 / sc->fftDim), LFending, sc->localSize[0]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
-							sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (combinedID / %" PRIu64 ") );\n", sinDef, double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
+							sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (combinedID / %" PRIu64 ") );\n", sinDef, (double)(double_PI / 2 / sc->fftDim), LFending, sc->localSize[0]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
 						if (!strcmp(floatType, "double")) {
-							sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (combinedID / %" PRIu64 ") );\n", double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
+							sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (combinedID / %" PRIu64 ") );\n", (double)(double_PI / 2 / sc->fftDim), LFending, sc->localSize[0]);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
@@ -14739,9 +15211,9 @@ static inline VkFFTResult appendBluesteinMultiplication(VkFFTSpecializationConst
 	return res;
 }
 
-static inline VkFFTResult appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageID, uint64_t strided) {
+static inline VkFFTResult appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, long double stageAngle, uint64_t stageRadix, uint64_t stageID, uint64_t strided) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	double double_PI = 3.1415926535897932384626433832795;
+	long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
 	char vecType[30];
 	char LFending[4] = "";
 	char tempNum[100] = "";
@@ -14826,7 +15298,7 @@ static inline VkFFTResult appendFFTRaderStage(VkFFTSpecializationConstantsLayout
 			if (sc->LUT)
 				sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID*%" PRIu64 " + %" PRIu64 ";\n", stageRadix, stageSizeSum);
 			else
-				sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
+				sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", (double)stageAngle, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			if (sc->LUT) {
@@ -15077,7 +15549,7 @@ static inline VkFFTResult appendFFTRaderStage(VkFFTSpecializationConstantsLayout
 	}
 	uint64_t locStageSize = 1;
 	uint64_t locStageSizeSum = 0;
-	double locStageAngle = -double_PI;
+	long double locStageAngle = -double_PI;
 	uint64_t shift = 0;
 	for (uint64_t rader_stage = 0; rader_stage < sc->currentRaderContainer->numStages; rader_stage++) {
 		uint64_t locStageRadix = sc->currentRaderContainer->stageRadix[rader_stage];
@@ -15141,7 +15613,7 @@ static inline VkFFTResult appendFFTRaderStage(VkFFTSpecializationConstantsLayout
 				if (sc->LUT)
 					sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID + %" PRIu64 ";\n", locStageSizeSum + sc->currentRaderContainer->RaderRadixOffsetLUT);
 				else
-					sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", locStageAngle, LFending);
+					sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", (double)(locStageAngle), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 				for (uint64_t i = 0; i < locStageRadix; i++) {
@@ -15665,7 +16137,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 				if (sc->LUT)
 					sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID + %" PRIu64 ";\n", locStageSizeSum + sc->currentRaderContainer->RaderRadixOffsetLUTiFFT);
 				else
-					sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", locStageAngle, LFending);
+					sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", (double)(locStageAngle), LFending);
 				res = VkAppendLine(sc);
 				if (res != VKFFT_SUCCESS) return res;
 				if (rader_stage != (int64_t)sc->currentRaderContainer->numStages - 1) {
@@ -16204,9 +16676,9 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 	}
 	return res;
 }
-static inline VkFFTResult appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageID, uint64_t strided) {
+static inline VkFFTResult appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, long double stageAngle, uint64_t stageRadix, uint64_t stageID, uint64_t strided) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	double double_PI = 3.1415926535897932384626433832795;
+	long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
 	char vecType[30];
 	char LFending[4] = "";
 	char tempNum[50] = "";
@@ -16319,7 +16791,7 @@ static inline VkFFTResult appendMultRaderStage(VkFFTSpecializationConstantsLayou
 					if (sc->LUT)
 						sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID*%" PRIu64 " + %" PRIu64 ";\n", stageRadix, stageSizeSum);
 					else
-						sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", (double)stageAngle, LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 					if (sc->LUT) {
@@ -16394,7 +16866,7 @@ static inline VkFFTResult appendMultRaderStage(VkFFTSpecializationConstantsLayou
 					if (sc->LUT)
 						sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID*%" PRIu64 " + %" PRIu64 ";\n", stageRadix, stageSizeSum);
 					else
-						sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", (double)stageAngle, LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 					if (sc->LUT) {
@@ -16750,23 +17222,23 @@ static inline VkFFTResult appendMultRaderStage(VkFFTSpecializationConstantsLayou
 							if (res != VKFFT_SUCCESS) return res;
 						}
 						if (!strcmp(floatType, "float")) {
-							sc->tempLen = sprintf(sc->tempStr, "		%s.x = %s(%.17e%s*%s);\n", sc->w, cosDef, 2.0 * double_PI / stageRadix, LFending, sc->sdataID);
+							sc->tempLen = sprintf(sc->tempStr, "		%s.x = %s(%.17e%s*%s);\n", sc->w, cosDef, (double)(2.0 * double_PI / stageRadix), LFending, sc->sdataID);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 							if (sc->inverse) {
-								sc->tempLen = sprintf(sc->tempStr, "		%s.y = %s(%.17e%s*%s);\n", sc->w, sinDef, 2.0 * double_PI / stageRadix, LFending, sc->sdataID);
+								sc->tempLen = sprintf(sc->tempStr, "		%s.y = %s(%.17e%s*%s);\n", sc->w, sinDef, (double)(2.0 * double_PI / stageRadix), LFending, sc->sdataID);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
 							else {
-								sc->tempLen = sprintf(sc->tempStr, "		%s.y = -%s(%.17e%s*%s);\n", sc->w, sinDef, 2.0 * double_PI / stageRadix, LFending, sc->sdataID);
+								sc->tempLen = sprintf(sc->tempStr, "		%s.y = -%s(%.17e%s*%s);\n", sc->w, sinDef, (double)(2.0 * double_PI / stageRadix), LFending, sc->sdataID);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
 							//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(angle*%.17e), sin(angle*%.17e));\n\n", vecType, 2.0 * i / radix, 2.0 * i / radix);
 						}
 						if (!strcmp(floatType, "double")) {
-							sc->tempLen = sprintf(sc->tempStr, "		%s = sincos_20(%.17e%s*%s);\n", sc->w, 2.0 * double_PI / stageRadix, LFending, sc->sdataID);
+							sc->tempLen = sprintf(sc->tempStr, "		%s = sincos_20(%.17e%s*%s);\n", sc->w, (double)(2.0 * double_PI / stageRadix), LFending, sc->sdataID);
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 							if (!sc->inverse) {
@@ -17567,7 +18039,7 @@ static inline VkFFTResult appendMultRaderStage(VkFFTSpecializationConstantsLayou
 	return res;
 }
 
-static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix) {
+static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, long double stageAngle, uint64_t stageRadix) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	char vecType[30];
 	char LFending[4] = "";
@@ -17664,7 +18136,7 @@ static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstant
 			if (sc->LUT)
 				sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID + %" PRIu64 ";\n", stageSizeSum);
 			else
-				sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
+				sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", (double)stageAngle, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			if ((!((sc->readToRegisters == 1) && (stageSize == 1) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle > 0) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)))))) && ((sc->registerBoost == 1) && ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->localSize[1] > 1) && (!(sc->performR2C && (sc->actualInverse)))) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)) || (sc->performDCT)))) {
@@ -17845,7 +18317,7 @@ static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstant
 						if (sc->LUT)
 							sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID + %" PRIu64 ";\n", stageSizeSum);
 						else
-							sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
+							sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", (double)stageAngle, LFending);
 						res = VkAppendLine(sc);
 						if (res != VKFFT_SUCCESS) return res;
 					}
@@ -17904,7 +18376,7 @@ static inline VkFFTResult appendRadixStageNonStrided(VkFFTSpecializationConstant
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
-static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix) {
+static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, long double stageAngle, uint64_t stageRadix) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	char vecType[30];
 	char LFending[4] = "";
@@ -18002,7 +18474,7 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 			if (sc->LUT)
 				sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID + %" PRIu64 ";\n", stageSizeSum);
 			else
-				sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
+				sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", (double)stageAngle, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 			if ((!((sc->readToRegisters == 1) && (stageSize == 1) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle > 0) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)))))) && ((sc->registerBoost == 1) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0) && (!(sc->performR2C && (sc->actualInverse)))) || (sc->localSize[1] * logicalStoragePerThread > sc->fftDim) || (stageSize > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle > 0)) || (sc->performDCT)))) {
@@ -18160,7 +18632,7 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 					if (sc->LUT)
 						sc->tempLen = sprintf(sc->tempStr, "		LUTId = stageInvocationID + %" PRIu64 ";\n", stageSizeSum);
 					else
-						sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", stageAngle, LFending);
+						sc->tempLen = sprintf(sc->tempStr, "		angle = stageInvocationID * %.17e%s;\n", (double)stageAngle, LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 					res = inlineRadixKernelVkFFT(sc, floatType, uintType, stageRadix, stageSize, stageSizeSum, stageAngle, regID);
@@ -18204,7 +18676,7 @@ static inline VkFFTResult appendRadixStageStrided(VkFFTSpecializationConstantsLa
 	}
 	return res;
 }
-static inline VkFFTResult appendRadixStage(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageID, uint64_t shuffleType) {
+static inline VkFFTResult appendRadixStage(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, long double stageAngle, uint64_t stageRadix, uint64_t stageID, uint64_t shuffleType) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	if (sc->rader_generator[stageID]) {
 		for (uint64_t i = 0; i < sc->numRaderPrimes; i++) {
@@ -18264,7 +18736,7 @@ static inline VkFFTResult appendRadixStage(VkFFTSpecializationConstantsLayout* s
 	return res;
 }
 
-static inline VkFFTResult appendRegisterBoostShuffle(VkFFTSpecializationConstantsLayout* sc, const char* floatType, uint64_t stageSize, uint64_t stageRadixPrev, uint64_t stageRadix, double stageAngle) {
+static inline VkFFTResult appendRegisterBoostShuffle(VkFFTSpecializationConstantsLayout* sc, const char* floatType, uint64_t stageSize, uint64_t stageRadixPrev, uint64_t stageRadix, long double stageAngle) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	/*if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle > 0))) {
 		uint64_t bluesteinInverseNormalize = 1;
@@ -18289,7 +18761,7 @@ static inline VkFFTResult appendRegisterBoostShuffle(VkFFTSpecializationConstant
 	return res;
 }
 
-static inline VkFFTResult appendRadixShuffleNonStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageRadixNext) {
+static inline VkFFTResult appendRadixShuffleNonStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, long double stageAngle, uint64_t stageRadix, uint64_t stageRadixNext) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	char vecType[30];
 	char LFending[4] = "";
@@ -18676,7 +19148,7 @@ static inline VkFFTResult appendRadixShuffleNonStrided(VkFFTSpecializationConsta
 	}
 	return res;
 }
-static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageRadixNext) {
+static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, long double stageAngle, uint64_t stageRadix, uint64_t stageRadixNext) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	char vecType[30];
 	char LFending[4] = "";
@@ -18994,7 +19466,7 @@ static inline VkFFTResult appendRadixShuffleStrided(VkFFTSpecializationConstants
 	}
 	return res;
 }
-static inline VkFFTResult appendRadixShuffle(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, double stageAngle, uint64_t stageRadix, uint64_t stageRadixNext, uint64_t stageID, uint64_t shuffleType) {
+static inline VkFFTResult appendRadixShuffle(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* uintType, uint64_t stageSize, uint64_t stageSizeSum, long double stageAngle, uint64_t stageRadix, uint64_t stageRadixNext, uint64_t stageID, uint64_t shuffleType) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	if (sc->rader_generator[stageID] == 0) {
 		switch (shuffleType) {
@@ -20272,7 +20744,7 @@ static inline VkFFTResult setWriteFromRegisters(VkFFTSpecializationConstantsLayo
 }
 static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeMemory, const char* uintType, uint64_t writeType) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	double double_PI = 3.1415926535897932384626433832795;
+	long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
 	char vecType[30];
 	char outputsStruct[20] = "";
 	char LFending[4] = "";
@@ -22158,15 +22630,15 @@ if (%s==%" PRIu64 ") \n\
 						}
 						else {
 							if (!strcmp(floatType, "float")) {
-								sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*%s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", cosDef, -double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+								sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*%s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", cosDef, (double)(-double_PI / 2 / sc->fftDim), LFending, sc->fftDim / 2 + 1);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "		mult.y = 2*%s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", sinDef, -double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+								sc->tempLen = sprintf(sc->tempStr, "		mult.y = 2*%s(%.17e%s * (combinedID %% %" PRIu64 ") );\n", sinDef, (double)(-double_PI / 2 / sc->fftDim), LFending, sc->fftDim / 2 + 1);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
 							if (!strcmp(floatType, "double")) {
-								sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (combinedID %% %" PRIu64 ") );\n", -double_PI / 2 / sc->fftDim, LFending, sc->fftDim / 2 + 1);
+								sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (combinedID %% %" PRIu64 ") );\n", (double)(-double_PI / 2 / sc->fftDim), LFending, sc->fftDim / 2 + 1);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 								sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*mult.x;\n");
@@ -22551,15 +23023,15 @@ if (%s==%" PRIu64 ") \n\
 						}
 						else {
 							if (!strcmp(floatType, "float")) {
-								sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*%s(%.17e%s * (combinedID / %" PRIu64 ") );\n", cosDef, -double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
+								sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*%s(%.17e%s * (combinedID / %" PRIu64 ") );\n", cosDef, (double)(-double_PI / 2 / sc->fftDim), LFending, sc->localSize[0]);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "		mult.y = 2*%s(%.17e%s * (combinedID / %" PRIu64 ") );\n", sinDef, -double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
+								sc->tempLen = sprintf(sc->tempStr, "		mult.y = 2*%s(%.17e%s * (combinedID / %" PRIu64 ") );\n", sinDef, (double)(-double_PI / 2 / sc->fftDim), LFending, sc->localSize[0]);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
 							if (!strcmp(floatType, "double")) {
-								sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (combinedID / %" PRIu64 ") );\n", -double_PI / 2 / sc->fftDim, LFending, sc->localSize[0]);
+								sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (combinedID / %" PRIu64 ") );\n", (double)(-double_PI / 2 / sc->fftDim), LFending, sc->localSize[0]);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 								sc->tempLen = sprintf(sc->tempStr, "		mult.x = 2*mult.x;\n");
@@ -23748,15 +24220,15 @@ if (%s==%" PRIu64 ") \n\
 						}
 						else {
 							if (!strcmp(floatType, "float")) {
-								sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (2*(combinedID %% %" PRIu64 ")+1) );\n", cosDef, -double_PI / 8 / sc->fftDim, LFending, sc->fftDim);
+								sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (2*(combinedID %% %" PRIu64 ")+1) );\n", cosDef, (double)(-double_PI / 8 / sc->fftDim), LFending, sc->fftDim);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (2*(combinedID %% %" PRIu64 ")+1) );\n", sinDef, -double_PI / 8 / sc->fftDim, LFending, sc->fftDim);
+								sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (2*(combinedID %% %" PRIu64 ")+1) );\n", sinDef, (double)(-double_PI / 8 / sc->fftDim), LFending, sc->fftDim);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
 							if (!strcmp(floatType, "double")) {
-								sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (2*(combinedID %% %" PRIu64 ")+1) );\n", -double_PI / 8 / sc->fftDim, LFending, sc->fftDim);
+								sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (2*(combinedID %% %" PRIu64 ")+1) );\n", (double)(-double_PI / 8 / sc->fftDim), LFending, sc->fftDim);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
@@ -23960,15 +24432,15 @@ if (%s==%" PRIu64 ") \n\
 						}
 						else {
 							if (!strcmp(floatType, "float")) {
-								sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (2*(combinedID / %" PRIu64 ")+1) );\n", cosDef, -double_PI / 8 / sc->fftDim, LFending, sc->localSize[0]);
+								sc->tempLen = sprintf(sc->tempStr, "		mult.x = %s(%.17e%s * (2*(combinedID / %" PRIu64 ")+1) );\n", cosDef, (double)(-double_PI / 8 / sc->fftDim), LFending, sc->localSize[0]);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
-								sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (2*(combinedID / %" PRIu64 ")+1) );\n", sinDef, -double_PI / 8 / sc->fftDim, LFending, sc->localSize[0]);
+								sc->tempLen = sprintf(sc->tempStr, "		mult.y = %s(%.17e%s * (2*(combinedID / %" PRIu64 ")+1) );\n", sinDef, (double)(-double_PI / 8 / sc->fftDim), LFending, sc->localSize[0]);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
 							if (!strcmp(floatType, "double")) {
-								sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (2*(combinedID / %" PRIu64 ")+1) );\n", -double_PI / 8 / sc->fftDim, LFending, sc->localSize[0]);
+								sc->tempLen = sprintf(sc->tempStr, "		mult = sincos_20(%.17e%s * (2*(combinedID / %" PRIu64 ")+1) );\n", (double)(-double_PI / 8 / sc->fftDim), LFending, sc->localSize[0]);
 								res = VkAppendLine(sc);
 								if (res != VKFFT_SUCCESS) return res;
 							}
@@ -25552,8 +26024,7 @@ static inline void freeShaderGenVkFFT(VkFFTSpecializationConstantsLayout* sc) {
 		sc->regIDs = 0;
 	}
 	if (!sc->disableSetLocale) {
-		if (sc->oldLocale)
-		{
+		if (!strcmp(sc->oldLocale, "")) {
 			setlocale(LC_ALL, sc->oldLocale);
 			memset(sc->oldLocale, 0, 100 * sizeof(char));
 		}
@@ -26397,8 +26868,8 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 
 	uint64_t stageSize = 1;
 	uint64_t stageSizeSum = 0;
-	double PI_const = 3.1415926535897932384626433832795;
-	double stageAngle = (sc->inverse) ? PI_const : -PI_const;
+	long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
+	long double stageAngle = (sc->inverse) ? double_PI : -double_PI;
 	for (uint64_t i = 0; i < sc->numStages; i++) {
 		if ((i == sc->numStages - 1) && (sc->registerBoost > 1)) {
 			res = appendRadixStage(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], i, locType);
@@ -26550,7 +27021,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 
 		stageSize = 1;
 		stageSizeSum = 0;
-		stageAngle = PI_const;
+		stageAngle = double_PI;
 		sc->inverse = 1;
 		for (uint64_t i = 0; i < sc->numStages; i++) {
 			res = appendRadixStage(sc, floatType, uintType, stageSize, stageSizeSum, stageAngle, sc->stageRadix[i], i, locType);
@@ -26724,9 +27195,13 @@ static inline VkFFTResult allocateFFTBuffer(VkFFTApplication* app, VkBuffer* buf
 	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_BIND_BUFFER_MEMORY;
 	return resFFT;
 }
-static inline VkFFTResult transferDataFromCPU(VkFFTApplication* app, void* arr, VkBuffer* buffer, VkDeviceSize bufferSize) {
-	VkResult res = VK_SUCCESS;
+#endif
+static inline VkFFTResult VkFFT_transferDataFromCPU(VkFFTApplication* app, void* arr, void* input_buffer, uint64_t transferSize) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkBuffer* buffer = (VkBuffer*)input_buffer;
+	VkDeviceSize bufferSize = transferSize;
+	VkResult res = VK_SUCCESS;
 	VkDeviceSize stagingBufferSize = bufferSize;
 	VkBuffer stagingBuffer = { 0 };
 	VkDeviceMemory stagingBufferMemory = { 0 };
@@ -26768,10 +27243,65 @@ static inline VkFFTResult transferDataFromCPU(VkFFTApplication* app, void* arr, 
 	vkDestroyBuffer(app->configuration.device[0], stagingBuffer, 0);
 	vkFreeMemory(app->configuration.device[0], stagingBufferMemory, 0);
 	return resFFT;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+	void* buffer = ((void**)input_buffer)[0];
+	res = cudaMemcpy(buffer, arr, transferSize, cudaMemcpyHostToDevice);
+	if (res != cudaSuccess) {
+		return VKFFT_ERROR_FAILED_TO_COPY;
+	}
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+	void* buffer = ((void**)input_buffer)[0];
+	res = hipMemcpy(buffer, arr, transferSize, hipMemcpyHostToDevice);
+	if (res != hipSuccess) {
+		return VKFFT_ERROR_FAILED_TO_COPY;
+	}
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
+	cl_mem* buffer = (cl_mem*)input_buffer;
+	cl_command_queue commandQueue = clCreateCommandQueue(app->configuration.context[0], app->configuration.device[0], 0, &res);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
+	res = clEnqueueWriteBuffer(commandQueue, buffer[0], CL_TRUE, 0, transferSize, arr, 0, NULL, NULL);
+	if (res != CL_SUCCESS) {
+		return VKFFT_ERROR_FAILED_TO_COPY;
+	}
+	res = clReleaseCommandQueue(commandQueue);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
+	void* buffer = ((void**)input_buffer)[0];
+	ze_command_queue_desc_t commandQueueCopyDesc = {
+			ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
+			0,
+			app->configuration.commandQueueID,
+			0, // index
+			0, // flags
+			ZE_COMMAND_QUEUE_MODE_DEFAULT,
+			ZE_COMMAND_QUEUE_PRIORITY_NORMAL
+	};
+	ze_command_list_handle_t copyCommandList;
+	res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
+	if (res != ZE_RESULT_SUCCESS) {
+		return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+	}
+	res = zeCommandListAppendMemoryCopy(copyCommandList, buffer, arr, transferSize, 0, 0, 0);
+	if (res != ZE_RESULT_SUCCESS) {
+		return VKFFT_ERROR_FAILED_TO_COPY;
+	}
+	res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
+	if (res != ZE_RESULT_SUCCESS) {
+		return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+	}
+#endif
+	return resFFT;
 }
-static inline VkFFTResult transferDataToCPU(VkFFTApplication* app, void* arr, VkBuffer* buffer, VkDeviceSize bufferSize) {
-	VkResult res = VK_SUCCESS;
+static inline VkFFTResult VkFFT_transferDataToCPU(VkFFTApplication* app, void* arr, void* output_buffer, uint64_t transferSize) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkBuffer* buffer = (VkBuffer*)output_buffer;
+	VkDeviceSize bufferSize = transferSize;
+	VkResult res = VK_SUCCESS;
 	uint64_t stagingBufferSize = bufferSize;
 	VkBuffer stagingBuffer = { 0 };
 	VkDeviceMemory stagingBufferMemory = { 0 };
@@ -26812,9 +27342,59 @@ static inline VkFFTResult transferDataToCPU(VkFFTApplication* app, void* arr, Vk
 	vkUnmapMemory(app->configuration.device[0], stagingBufferMemory);
 	vkDestroyBuffer(app->configuration.device[0], stagingBuffer, 0);
 	vkFreeMemory(app->configuration.device[0], stagingBufferMemory, 0);
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+	void* buffer = ((void**)output_buffer)[0];
+	res = cudaMemcpy(arr, buffer, transferSize, cudaMemcpyDeviceToHost);
+	if (res != cudaSuccess) {
+		return VKFFT_ERROR_FAILED_TO_COPY;
+	}
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+	void* buffer = ((void**)output_buffer)[0];
+	res = hipMemcpy(arr, buffer, transferSize, hipMemcpyDeviceToHost);
+	if (res != hipSuccess) {
+		return VKFFT_ERROR_FAILED_TO_COPY;
+	}
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
+	cl_mem* buffer = (cl_mem*)output_buffer;
+	cl_command_queue commandQueue = clCreateCommandQueue(app->configuration.context[0], app->configuration.device[0], 0, &res);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
+	res = clEnqueueReadBuffer(commandQueue, buffer[0], CL_TRUE, 0, transferSize, arr, 0, NULL, NULL);
+	if (res != CL_SUCCESS) {
+		return VKFFT_ERROR_FAILED_TO_COPY;
+	}
+	res = clReleaseCommandQueue(commandQueue);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
+	void* buffer = ((void**)output_buffer)[0];
+	ze_command_queue_desc_t commandQueueCopyDesc = {
+			ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
+			0,
+			app->configuration.commandQueueID,
+			0, // index
+			0, // flags
+			ZE_COMMAND_QUEUE_MODE_DEFAULT,
+			ZE_COMMAND_QUEUE_PRIORITY_NORMAL
+	};
+	ze_command_list_handle_t copyCommandList;
+	res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
+	if (res != ZE_RESULT_SUCCESS) {
+		return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+	}
+	res = zeCommandListAppendMemoryCopy(copyCommandList, arr, buffer, transferSize, 0, 0, 0);
+	if (res != ZE_RESULT_SUCCESS) {
+		return VKFFT_ERROR_FAILED_TO_COPY;
+	}
+	res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
+	if (res != ZE_RESULT_SUCCESS) {
+		return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+	}
+#endif
 	return resFFT;
 }
-#endif
 static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
 #if(VKFFT_BACKEND==0)
 	if ((app->configuration.useLUT) && (!axis->referenceLUT)) {
@@ -28756,8 +29336,10 @@ static inline VkFFTResult VkFFTOptimizeRaderFFTRegisters(VkFFTRaderContainer* ra
 
 			for (int64_t j = 2; j < 33; j++) {
 				if (raderContainer[i].registers_per_thread_per_radix[j] != 0) {
-					while (((uint64_t)ceil(fftDim / (double)min_registers_per_thread[0])) < (raderContainer[i].containerFFTNum * (uint64_t)ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[j]))) {
+					double scaling = (raderContainer[i].containerFFTDim > raderContainer[i].registers_per_thread_per_radix[j]) ? ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[j]) : 1.0 / floor(raderContainer[i].registers_per_thread_per_radix[j] / (double)raderContainer[i].containerFFTDim);
+					while (((uint64_t)ceil(fftDim / (double)min_registers_per_thread[0])) < (raderContainer[i].containerFFTNum * scaling)) {
 						raderContainer[i].registers_per_thread_per_radix[j] += j;
+						scaling = (raderContainer[i].containerFFTDim > raderContainer[i].registers_per_thread_per_radix[j]) ? ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[j]) : 1.0 / floor(raderContainer[i].registers_per_thread_per_radix[j] / (double)raderContainer[i].containerFFTDim);
 					}
 					if (raderContainer[i].registers_per_thread_per_radix[j] > raderContainer[i].registers_per_thread) raderContainer[i].registers_per_thread = raderContainer[i].registers_per_thread_per_radix[j];
 				}
@@ -29127,7 +29709,8 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			i--;
 		}
 	}
-	// verify that we haven't checked for 3 steps being not enought for Rader before
+	// verify that we haven't checked for 3 steps being not enougth for Rader before
+	uint64_t forceRaderTwoUpload = 0; // for sequences like 17*1023 it is better to switch to two uploads for better occupancy. We will switch if one of the Rader primes requests more than 512 threads.
 	if (!app->useBluesteinFFT[axis_id]) {
 		uint64_t useRaderMult = 0;
 		uint64_t rader_primes[20];
@@ -29166,6 +29749,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					continue;
 				}
 				tempSequence /= i;
+				if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / i > 512) forceRaderTwoUpload = 1;
 				for (uint64_t j = 0; j < 20; j++) {
 					if (rader_primes[j] == i)
 					{
@@ -29457,6 +30041,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		else maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
 	}
 	if (((uint64_t)log2(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]) >= app->configuration.swapTo3Stage4Step) && (app->configuration.swapTo3Stage4Step >= 17)) numPasses = 3;//Force set to 3 stage 4 step algorithm
+	if (forceRaderTwoUpload && (numPasses == 1)) numPasses = 2;//Force set Rader cases that use more than 512 threads per one of Rader primes
 	uint64_t* locAxisSplit = FFTPlan->axisSplit[axis_id];
 	if (numPasses == 1) {
 		locAxisSplit[0] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
@@ -29868,6 +30453,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					}
 				}
 			}
+
 			for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
 				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
 					for (uint64_t j = 2; j < 33; j++) {
@@ -29920,14 +30506,31 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					registers_per_thread_per_radix[i] *= scaleRegistersNum;
 				}
 			}
+			uint64_t new_min_registers = -1;
+			for (uint64_t i = 2; i < 33; i++) {
+				if ((registers_per_thread_per_radix[i] > 0) && (registers_per_thread_per_radix[i] < new_min_registers)) new_min_registers = registers_per_thread_per_radix[i];
+			}
 			for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
 				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
 					for (uint64_t j = 2; j < 33; j++) {
-						if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] != 0) {
-							axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] *= scaleRegistersNum;
+						if ((axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] > 0) && (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] < new_min_registers)) new_min_registers = axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j];
+					}
+				}
+			}
+			if ((maxBatchCoalesced * locAxisSplit[k] / (new_min_registers * registerBoost)) > app->configuration.maxThreadsNum) {
+				// if we get here, there can be trouble with small primes, as we can have one thread do at max one fftDim. This is only an issue for small primes in sequences close to shared memory limit sizes for extremely big shared memory sizes (>136KB)
+				for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
+					if (axes[k].specializationConstants.raderContainer[i].type == 0) {
+						for (uint64_t j = 2; j < 33; j++) {
+							if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] != 0) {
+								axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] *= scaleRegistersNum;
+							}
 						}
 					}
 				}
+			}
+			else {
+				min_registers_per_thread = new_min_registers;
 			}
 			if (min_registers_per_thread > registers_per_thread) {
 				temp = min_registers_per_thread;
@@ -30078,65 +30681,10 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 }
 static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t axis_id) {
 	//generate two arrays used for Blueestein convolution and post-convolution multiplication
-	double double_PI = 3.1415926535897932384626433832795;
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-	VkFFTApplication kernelPreparationApplication = {};
-	VkFFTConfiguration kernelPreparationConfiguration = {};
-
-	kernelPreparationConfiguration.FFTdim = 1;
-	kernelPreparationConfiguration.size[0] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
-	kernelPreparationConfiguration.size[1] = 1;
-	kernelPreparationConfiguration.size[2] = 1;
-	kernelPreparationConfiguration.doublePrecision = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory);
-	kernelPreparationConfiguration.useLUT = 1;
-	kernelPreparationConfiguration.registerBoost = 1;
-	kernelPreparationConfiguration.disableReorderFourStep = 1;
-	kernelPreparationConfiguration.fixMinRaderPrimeFFT = 17;
-	kernelPreparationConfiguration.fixMinRaderPrimeMult = 17;
-	kernelPreparationConfiguration.fixMaxRaderPrimeFFT = 17;
-	kernelPreparationConfiguration.fixMaxRaderPrimeMult = 17;
-
-	kernelPreparationConfiguration.saveApplicationToString = app->configuration.saveApplicationToString;
-	kernelPreparationConfiguration.loadApplicationFromString = app->configuration.loadApplicationFromString;
-	if (kernelPreparationConfiguration.loadApplicationFromString) {
-		kernelPreparationConfiguration.loadApplicationString = (void*)((char*)app->configuration.loadApplicationString + app->currentApplicationStringPos);
-	}
-	kernelPreparationConfiguration.performBandwidthBoost = (app->configuration.performBandwidthBoost > 0) ? app->configuration.performBandwidthBoost : 1;
-	if (axis_id == 0) kernelPreparationConfiguration.performBandwidthBoost = 0;
-	if (axis_id > 0) kernelPreparationConfiguration.considerAllAxesStrided = 1;
-	if (app->configuration.tempBuffer) {
-		kernelPreparationConfiguration.userTempBuffer = 1;
-		kernelPreparationConfiguration.tempBuffer = app->configuration.tempBuffer;
-		kernelPreparationConfiguration.tempBufferSize = app->configuration.tempBufferSize;
-		kernelPreparationConfiguration.tempBufferNum = app->configuration.tempBufferNum;
-	}
-	kernelPreparationConfiguration.device = app->configuration.device;
-#if(VKFFT_BACKEND==0)
-	kernelPreparationConfiguration.queue = app->configuration.queue; //to allocate memory for LUT, we have to pass a queue, vkGPU->fence, commandPool and physicalDevice pointers 
-	kernelPreparationConfiguration.fence = app->configuration.fence;
-	kernelPreparationConfiguration.commandPool = app->configuration.commandPool;
-	kernelPreparationConfiguration.physicalDevice = app->configuration.physicalDevice;
-	kernelPreparationConfiguration.isCompilerInitialized = 1;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-	kernelPreparationConfiguration.tempBufferDeviceMemory = app->configuration.tempBufferDeviceMemory;
-#elif(VKFFT_BACKEND==3)
-	kernelPreparationConfiguration.context = app->configuration.context;
-#elif(VKFFT_BACKEND==4)
-	kernelPreparationConfiguration.context = app->configuration.context;
-	kernelPreparationConfiguration.commandQueue = app->configuration.commandQueue;
-	kernelPreparationConfiguration.commandQueueID = app->configuration.commandQueueID;
-#endif			
-
-	uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * kernelPreparationConfiguration.size[0] * kernelPreparationConfiguration.size[1] * kernelPreparationConfiguration.size[2];
-	if (kernelPreparationConfiguration.doublePrecision) bufferSize *= sizeof(double) / sizeof(float);
+	uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
+	if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) bufferSize *= sizeof(double) / sizeof(float);
 	app->bufferBluesteinSize[axis_id] = bufferSize;
-	kernelPreparationConfiguration.inputBufferSize = &app->bufferBluesteinSize[axis_id];
-	kernelPreparationConfiguration.bufferSize = &app->bufferBluesteinSize[axis_id];
-	kernelPreparationConfiguration.isInputFormatted = 1;
-	resFFT = initializeVkFFT(&kernelPreparationApplication, kernelPreparationConfiguration);
-	if (resFFT != VKFFT_SUCCESS) return resFFT;
-	if (kernelPreparationConfiguration.loadApplicationFromString) {
-		app->currentApplicationStringPos += kernelPreparationApplication.currentApplicationStringPos;
-	}
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
 	resFFT = allocateFFTBuffer(app, &app->bufferBluestein[axis_id], &app->bufferBluesteinDeviceMemory[axis_id], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
@@ -30204,101 +30752,488 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	}
 #endif
-	void* phaseVectors = malloc(bufferSize);
-	if (!phaseVectors) {
-		deleteVkFFT(&kernelPreparationApplication);
-		deleteVkFFT(app);
-		return VKFFT_ERROR_MALLOC_FAILED;
-	}
-	uint64_t phaseVectorsNonZeroSize = (((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) || ((FFTPlan->multiUploadR2C) && (axis_id == 0))) ? app->configuration.size[axis_id] / 2 : app->configuration.size[axis_id];
-	if (app->configuration.performDCT == 1) phaseVectorsNonZeroSize = 2 * app->configuration.size[axis_id] - 2;
-	if ((FFTPlan->numAxisUploads[axis_id] > 1) && (!app->configuration.makeForwardPlanOnly)) {
-		if (kernelPreparationConfiguration.doublePrecision) {
-			double* phaseVectors_cast = (double*)phaseVectors;
+#ifdef VkFFT_use_FP128_Bluestein_RaderFFT
+	if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+		double* phaseVectors_fp64 = (double*)malloc(bufferSize);
+		if (!phaseVectors_fp64) {
+			return VKFFT_ERROR_MALLOC_FAILED;
+		}
+		long double* phaseVectors_fp128 = (long double*)malloc(2 * bufferSize);
+		if (!phaseVectors_fp128) {
+			free(phaseVectors_fp64);
+			return VKFFT_ERROR_MALLOC_FAILED;
+		}
+		long double* phaseVectors_fp128_out = (long double*)malloc(2 * bufferSize);
+		if (!phaseVectors_fp128) {
+			free(phaseVectors_fp64);
+			free(phaseVectors_fp128);
+			return VKFFT_ERROR_MALLOC_FAILED;
+		}
+		uint64_t phaseVectorsNonZeroSize = (((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) || ((FFTPlan->multiUploadR2C) && (axis_id == 0))) ? app->configuration.size[axis_id] / 2 : app->configuration.size[axis_id];
+		if (app->configuration.performDCT == 1) phaseVectorsNonZeroSize = 2 * app->configuration.size[axis_id] - 2;
+		long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
+		for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
+			uint64_t rm = (i * i) % (2 * phaseVectorsNonZeroSize);
+			long double angle = double_PI * rm / phaseVectorsNonZeroSize;
+			phaseVectors_fp128[2 * i] = (i < phaseVectorsNonZeroSize) ? cos(angle) : 0;
+			phaseVectors_fp128[2 * i + 1] = (i < phaseVectorsNonZeroSize) ? -sin(angle) : 0;
+		}
+		for (uint64_t i = 1; i < phaseVectorsNonZeroSize; i++) {
+			phaseVectors_fp128[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i)] = phaseVectors_fp128[2 * i];
+			phaseVectors_fp128[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i) + 1] = phaseVectors_fp128[2 * i + 1];
+		}
+		if ((FFTPlan->numAxisUploads[axis_id] > 1) && (!app->configuration.makeForwardPlanOnly)) {
+			fftwl_plan p;
+			p = fftwl_plan_dft_1d((int)(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]), (fftwl_complex*)phaseVectors_fp128, (fftwl_complex*)phaseVectors_fp128_out, -1, FFTW_ESTIMATE);
+			fftwl_execute(p);
+			fftwl_destroy_plan(p);
 			for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
-				uint64_t rm = (i * i) % (2 * phaseVectorsNonZeroSize);
-				double angle = double_PI * rm / phaseVectorsNonZeroSize;
-				phaseVectors_cast[2 * i] = (i < phaseVectorsNonZeroSize) ? (double)cos(angle) : 0;
-				phaseVectors_cast[2 * i + 1] = (i < phaseVectorsNonZeroSize) ? (double)-sin(angle) : 0;
+				uint64_t out = 0;
+				if (FFTPlan->numAxisUploads[axis_id] == 1) {
+					out = i;
+				}
+				else if (FFTPlan->numAxisUploads[axis_id] == 2) {
+					out = i / FFTPlan->axisSplit[axis_id][1] + (i % FFTPlan->axisSplit[axis_id][1]) * FFTPlan->axisSplit[axis_id][0];
+				}
+				else {
+					out = (i / FFTPlan->axisSplit[axis_id][2]) / FFTPlan->axisSplit[axis_id][1] + ((i / FFTPlan->axisSplit[axis_id][2]) % FFTPlan->axisSplit[axis_id][1]) * FFTPlan->axisSplit[axis_id][0] + (i % FFTPlan->axisSplit[axis_id][2]) * FFTPlan->axisSplit[axis_id][1] * FFTPlan->axisSplit[axis_id][0];
+				}
+				phaseVectors_fp64[2 * out] = (double)phaseVectors_fp128_out[2 * i];
+				phaseVectors_fp64[2 * out + 1] = (double)phaseVectors_fp128_out[2 * i + 1];
 			}
-			for (uint64_t i = 1; i < phaseVectorsNonZeroSize; i++) {
-				phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i)] = phaseVectors_cast[2 * i];
-				phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i) + 1] = phaseVectors_cast[2 * i + 1];
+			resFFT = VkFFT_transferDataFromCPU(app, phaseVectors_fp64, &app->bufferBluesteinIFFT[axis_id], bufferSize);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors_fp64);
+				free(phaseVectors_fp128);
+				free(phaseVectors_fp128_out);
+				return resFFT;
+			}
+		}
+		for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
+			phaseVectors_fp128[2 * i + 1] = -phaseVectors_fp128[2 * i + 1];
+		}
+		for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
+			phaseVectors_fp64[2 * i] = (double)phaseVectors_fp128[2 * i];
+			phaseVectors_fp64[2 * i + 1] = (double)phaseVectors_fp128[2 * i + 1];
+		}
+		resFFT = VkFFT_transferDataFromCPU(app, phaseVectors_fp64, &app->bufferBluestein[axis_id], bufferSize);
+		if (resFFT != VKFFT_SUCCESS) {
+			free(phaseVectors_fp64);
+			free(phaseVectors_fp128);
+			free(phaseVectors_fp128_out);
+			return resFFT;
+		}
+		if (!app->configuration.makeInversePlanOnly) {
+			fftwl_plan p;
+			p = fftwl_plan_dft_1d((int)(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]), (fftwl_complex*)phaseVectors_fp128, (fftwl_complex*)phaseVectors_fp128_out, -1, FFTW_ESTIMATE);
+			fftwl_execute(p);
+			fftwl_destroy_plan(p);
+			for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
+				uint64_t out = 0;
+				if (FFTPlan->numAxisUploads[axis_id] == 1) {
+					out = i;
+				}
+				else if (FFTPlan->numAxisUploads[axis_id] == 2) {
+					out = i / FFTPlan->axisSplit[axis_id][1] + (i % FFTPlan->axisSplit[axis_id][1]) * FFTPlan->axisSplit[axis_id][0];
+				}
+				else {
+					out = (i / FFTPlan->axisSplit[axis_id][2]) / FFTPlan->axisSplit[axis_id][1] + ((i / FFTPlan->axisSplit[axis_id][2]) % FFTPlan->axisSplit[axis_id][1]) * FFTPlan->axisSplit[axis_id][0] + (i % FFTPlan->axisSplit[axis_id][2]) * FFTPlan->axisSplit[axis_id][1] * FFTPlan->axisSplit[axis_id][0];
+				}
+				phaseVectors_fp64[2 * out] = (double)phaseVectors_fp128_out[2 * i];
+				phaseVectors_fp64[2 * out + 1] = (double)phaseVectors_fp128_out[2 * i + 1];
+			}
+			resFFT = VkFFT_transferDataFromCPU(app, phaseVectors_fp64, &app->bufferBluesteinFFT[axis_id], bufferSize);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors_fp64);
+				free(phaseVectors_fp128);
+				free(phaseVectors_fp128_out);
+				return resFFT;
+			}
+		}
+		if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
+			fftwl_plan p;
+			p = fftwl_plan_dft_1d((int)(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]), (fftwl_complex*)phaseVectors_fp128, (fftwl_complex*)phaseVectors_fp128_out, 1, FFTW_ESTIMATE);
+			fftwl_execute(p);
+			fftwl_destroy_plan(p);
+
+			for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
+				phaseVectors_fp64[2 * i] = (double)phaseVectors_fp128_out[2 * i];
+				phaseVectors_fp64[2 * i + 1] = (double)phaseVectors_fp128_out[2 * i + 1];
+			}
+			resFFT = VkFFT_transferDataFromCPU(app, phaseVectors_fp64, &app->bufferBluesteinIFFT[axis_id], bufferSize);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors_fp64);
+				free(phaseVectors_fp128);
+				free(phaseVectors_fp128_out);
+				return resFFT;
+			}
+		}
+		free(phaseVectors_fp64);
+		free(phaseVectors_fp128);
+		free(phaseVectors_fp128_out);
+	}
+	else {
+#endif
+		VkFFTApplication kernelPreparationApplication = {};
+		VkFFTConfiguration kernelPreparationConfiguration = {};
+		kernelPreparationConfiguration.FFTdim = 1;
+		kernelPreparationConfiguration.size[0] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
+		kernelPreparationConfiguration.size[1] = 1;
+		kernelPreparationConfiguration.size[2] = 1;
+		kernelPreparationConfiguration.doublePrecision = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory);
+		kernelPreparationConfiguration.useLUT = 1;
+		kernelPreparationConfiguration.registerBoost = 1;
+		kernelPreparationConfiguration.disableReorderFourStep = 1;
+		kernelPreparationConfiguration.fixMinRaderPrimeFFT = 17;
+		kernelPreparationConfiguration.fixMinRaderPrimeMult = 17;
+		kernelPreparationConfiguration.fixMaxRaderPrimeFFT = 17;
+		kernelPreparationConfiguration.fixMaxRaderPrimeMult = 17;
+		kernelPreparationConfiguration.saveApplicationToString = app->configuration.saveApplicationToString;
+		kernelPreparationConfiguration.loadApplicationFromString = app->configuration.loadApplicationFromString;
+		if (kernelPreparationConfiguration.loadApplicationFromString) {
+			kernelPreparationConfiguration.loadApplicationString = (void*)((char*)app->configuration.loadApplicationString + app->currentApplicationStringPos);
+		}
+		kernelPreparationConfiguration.performBandwidthBoost = (app->configuration.performBandwidthBoost > 0) ? app->configuration.performBandwidthBoost : 1;
+		if (axis_id == 0) kernelPreparationConfiguration.performBandwidthBoost = 0;
+		if (axis_id > 0) kernelPreparationConfiguration.considerAllAxesStrided = 1;
+		if (app->configuration.tempBuffer) {
+			kernelPreparationConfiguration.userTempBuffer = 1;
+			kernelPreparationConfiguration.tempBuffer = app->configuration.tempBuffer;
+			kernelPreparationConfiguration.tempBufferSize = app->configuration.tempBufferSize;
+			kernelPreparationConfiguration.tempBufferNum = app->configuration.tempBufferNum;
+		}
+		kernelPreparationConfiguration.device = app->configuration.device;
+#if(VKFFT_BACKEND==0)
+		kernelPreparationConfiguration.queue = app->configuration.queue; //to allocate memory for LUT, we have to pass a queue, vkGPU->fence, commandPool and physicalDevice pointers 
+		kernelPreparationConfiguration.fence = app->configuration.fence;
+		kernelPreparationConfiguration.commandPool = app->configuration.commandPool;
+		kernelPreparationConfiguration.physicalDevice = app->configuration.physicalDevice;
+		kernelPreparationConfiguration.isCompilerInitialized = 1;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+		kernelPreparationConfiguration.tempBufferDeviceMemory = app->configuration.tempBufferDeviceMemory;
+#elif(VKFFT_BACKEND==3)
+		kernelPreparationConfiguration.context = app->configuration.context;
+#elif(VKFFT_BACKEND==4)
+		kernelPreparationConfiguration.context = app->configuration.context;
+		kernelPreparationConfiguration.commandQueue = app->configuration.commandQueue;
+		kernelPreparationConfiguration.commandQueueID = app->configuration.commandQueueID;
+#endif			
+
+		kernelPreparationConfiguration.inputBufferSize = &app->bufferBluesteinSize[axis_id];
+		kernelPreparationConfiguration.bufferSize = &app->bufferBluesteinSize[axis_id];
+		kernelPreparationConfiguration.isInputFormatted = 1;
+		resFFT = initializeVkFFT(&kernelPreparationApplication, kernelPreparationConfiguration);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
+		if (kernelPreparationConfiguration.loadApplicationFromString) {
+			app->currentApplicationStringPos += kernelPreparationApplication.currentApplicationStringPos;
+		}
+		void* phaseVectors = malloc(bufferSize);
+		if (!phaseVectors) {
+			deleteVkFFT(&kernelPreparationApplication);
+			return VKFFT_ERROR_MALLOC_FAILED;
+		}
+		uint64_t phaseVectorsNonZeroSize = (((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) || ((FFTPlan->multiUploadR2C) && (axis_id == 0))) ? app->configuration.size[axis_id] / 2 : app->configuration.size[axis_id];
+		if (app->configuration.performDCT == 1) phaseVectorsNonZeroSize = 2 * app->configuration.size[axis_id] - 2;
+
+		if ((FFTPlan->numAxisUploads[axis_id] > 1) && (!app->configuration.makeForwardPlanOnly)) {
+			if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+				long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
+				double* phaseVectors_cast = (double*)phaseVectors;
+				for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
+					uint64_t rm = (i * i) % (2 * phaseVectorsNonZeroSize);
+					long double angle = double_PI * rm / phaseVectorsNonZeroSize;
+					phaseVectors_cast[2 * i] = (i < phaseVectorsNonZeroSize) ? (double)cos(angle) : 0;
+					phaseVectors_cast[2 * i + 1] = (i < phaseVectorsNonZeroSize) ? (double)-sin(angle) : 0;
+				}
+				for (uint64_t i = 1; i < phaseVectorsNonZeroSize; i++) {
+					phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i)] = phaseVectors_cast[2 * i];
+					phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i) + 1] = phaseVectors_cast[2 * i + 1];
+				}
+			}
+			else {
+				double double_PI = 3.14159265358979323846264338327950288419716939937510;
+				float* phaseVectors_cast = (float*)phaseVectors;
+				for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
+					uint64_t rm = (i * i) % (2 * phaseVectorsNonZeroSize);
+					double angle = double_PI * rm / phaseVectorsNonZeroSize;
+					phaseVectors_cast[2 * i] = (i < phaseVectorsNonZeroSize) ? (float)cos(angle) : 0;
+					phaseVectors_cast[2 * i + 1] = (i < phaseVectorsNonZeroSize) ? (float)-sin(angle) : 0;
+				}
+				for (uint64_t i = 1; i < phaseVectorsNonZeroSize; i++) {
+					phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i)] = phaseVectors_cast[2 * i];
+					phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i) + 1] = phaseVectors_cast[2 * i + 1];
+				}
+			}
+			resFFT = VkFFT_transferDataFromCPU(app, phaseVectors, &app->bufferBluestein[axis_id], bufferSize);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+#if(VKFFT_BACKEND==0)
+			{
+				VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+				commandBufferAllocateInfo.commandPool = kernelPreparationApplication.configuration.commandPool[0];
+				commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+				commandBufferAllocateInfo.commandBufferCount = 1;
+				VkCommandBuffer commandBuffer = {};
+				res = vkAllocateCommandBuffers(kernelPreparationApplication.configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
+				if (res != 0) {
+					free(phaseVectors);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
+				}
+				VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+				commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+				res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
+				if (res != 0) {
+					free(phaseVectors);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
+				}
+				VkFFTLaunchParams launchParams = {};
+				launchParams.commandBuffer = &commandBuffer;
+				launchParams.inputBuffer = &app->bufferBluestein[axis_id];
+				launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
+				//Record commands
+				resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+				if (resFFT != VKFFT_SUCCESS) {
+					free(phaseVectors);
+					deleteVkFFT(&kernelPreparationApplication);
+					return resFFT;
+				}
+				res = vkEndCommandBuffer(commandBuffer);
+				if (res != 0) {
+					free(phaseVectors);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+				}
+				VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+				submitInfo.commandBufferCount = 1;
+				submitInfo.pCommandBuffers = &commandBuffer;
+				res = vkQueueSubmit(kernelPreparationApplication.configuration.queue[0], 1, &submitInfo, kernelPreparationApplication.configuration.fence[0]);
+				if (res != 0) {
+					free(phaseVectors);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+				}
+				res = vkWaitForFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence, VK_TRUE, 100000000000);
+				if (res != 0) {
+					free(phaseVectors);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+				}
+				res = vkResetFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence);
+				if (res != 0) {
+					free(phaseVectors);
+					deleteVkFFT(&kernelPreparationApplication);
+					return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
+				}
+				vkFreeCommandBuffers(kernelPreparationApplication.configuration.device[0], kernelPreparationApplication.configuration.commandPool[0], 1, &commandBuffer);
+			}
+#elif(VKFFT_BACKEND==1)
+			VkFFTLaunchParams launchParams = {};
+			launchParams.inputBuffer = &app->bufferBluestein[axis_id];
+			launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
+			resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+			res = cudaDeviceSynchronize();
+			if (res != cudaSuccess) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+			}
+#elif(VKFFT_BACKEND==2)
+			VkFFTLaunchParams launchParams = {};
+			launchParams.inputBuffer = &app->bufferBluestein[axis_id];
+			launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
+			resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+			res = hipDeviceSynchronize();
+			if (res != hipSuccess) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+			}
+#elif(VKFFT_BACKEND==3)
+			VkFFTLaunchParams launchParams = {};
+			launchParams.commandQueue = &commandQueue;
+			launchParams.inputBuffer = &app->bufferBluestein[axis_id];
+			launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
+			resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+			res = clFinish(commandQueue);
+			if (res != CL_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+			}
+#elif(VKFFT_BACKEND==4)
+			ze_command_list_desc_t commandListDescription = {};
+			commandListDescription.stype = ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC;
+			ze_command_list_handle_t commandList = {};
+			res = zeCommandListCreate(app->configuration.context[0], app->configuration.device[0], &commandListDescription, &commandList);
+			if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+			VkFFTLaunchParams launchParams = {};
+			launchParams.commandList = &commandList;
+			launchParams.inputBuffer = &app->bufferBluestein[axis_id];
+			launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
+			resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+			res = zeCommandListClose(commandList);
+			if (res != ZE_RESULT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+			}
+			res = zeCommandQueueExecuteCommandLists(app->configuration.commandQueue[0], 1, &commandList, 0);
+			if (res != ZE_RESULT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+			}
+			res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
+			if (res != ZE_RESULT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+			}
+			res = zeCommandListDestroy(commandList);
+			if (res != ZE_RESULT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
+			}
+#endif
+		}
+		if ((FFTPlan->numAxisUploads[axis_id] > 1) && (!app->configuration.makeForwardPlanOnly)) {
+			if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+				double* phaseVectors_cast = (double*)phaseVectors;
+				for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
+					phaseVectors_cast[2 * i + 1] = -phaseVectors_cast[2 * i + 1];
+				}
+
+			}
+			else {
+				float* phaseVectors_cast = (float*)phaseVectors;
+				for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
+					phaseVectors_cast[2 * i + 1] = -phaseVectors_cast[2 * i + 1];
+				}
 			}
 		}
 		else {
-			float* phaseVectors_cast = (float*)phaseVectors;
-			for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
-				uint64_t rm = (i * i) % (2 * phaseVectorsNonZeroSize);
-				double angle = double_PI * rm / phaseVectorsNonZeroSize;
-				phaseVectors_cast[2 * i] = (i < phaseVectorsNonZeroSize) ? (float)cos(angle) : 0;
-				phaseVectors_cast[2 * i + 1] = (i < phaseVectorsNonZeroSize) ? (float)-sin(angle) : 0;
+			if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+				long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
+				double* phaseVectors_cast = (double*)phaseVectors;
+				for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
+					uint64_t rm = (i * i) % (2 * phaseVectorsNonZeroSize);
+					long double angle = double_PI * rm / phaseVectorsNonZeroSize;
+					phaseVectors_cast[2 * i] = (i < phaseVectorsNonZeroSize) ? (double)cos(angle) : 0;
+					phaseVectors_cast[2 * i + 1] = (i < phaseVectorsNonZeroSize) ? (double)sin(angle) : 0;
+				}
+				for (uint64_t i = 1; i < phaseVectorsNonZeroSize; i++) {
+					phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i)] = phaseVectors_cast[2 * i];
+					phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i) + 1] = phaseVectors_cast[2 * i + 1];
+				}
 			}
-			for (uint64_t i = 1; i < phaseVectorsNonZeroSize; i++) {
-				phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i)] = phaseVectors_cast[2 * i];
-				phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i) + 1] = phaseVectors_cast[2 * i + 1];
+			else {
+				double double_PI = 3.14159265358979323846264338327950288419716939937510;
+				float* phaseVectors_cast = (float*)phaseVectors;
+				for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
+					uint64_t rm = (i * i) % (2 * phaseVectorsNonZeroSize);
+					double angle = double_PI * rm / phaseVectorsNonZeroSize;
+					phaseVectors_cast[2 * i] = (i < phaseVectorsNonZeroSize) ? (float)cos(angle) : 0;
+					phaseVectors_cast[2 * i + 1] = (i < phaseVectorsNonZeroSize) ? (float)sin(angle) : 0;
+				}
+				for (uint64_t i = 1; i < phaseVectorsNonZeroSize; i++) {
+					phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i)] = phaseVectors_cast[2 * i];
+					phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i) + 1] = phaseVectors_cast[2 * i + 1];
+				}
 			}
 		}
-#if(VKFFT_BACKEND==0)
-		resFFT = transferDataFromCPU(&kernelPreparationApplication, phaseVectors, &app->bufferBluestein[axis_id], bufferSize);
+		resFFT = VkFFT_transferDataFromCPU(app, phaseVectors, &app->bufferBluestein[axis_id], bufferSize);
 		if (resFFT != VKFFT_SUCCESS) {
 			free(phaseVectors);
 			deleteVkFFT(&kernelPreparationApplication);
 			return resFFT;
 		}
-#elif(VKFFT_BACKEND==1)
-		res = cudaMemcpy(app->bufferBluestein[axis_id], phaseVectors, bufferSize, cudaMemcpyHostToDevice);
-		if (res != cudaSuccess) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_COPY;
-		}
-#elif(VKFFT_BACKEND==2)
-		res = hipMemcpy(app->bufferBluestein[axis_id], phaseVectors, bufferSize, hipMemcpyHostToDevice);
-		if (res != hipSuccess) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_COPY;
-		}
-#elif(VKFFT_BACKEND==3)
-		res = clEnqueueWriteBuffer(commandQueue, app->bufferBluestein[axis_id], CL_TRUE, 0, bufferSize, phaseVectors, 0, NULL, NULL);
-		if (res != CL_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_COPY;
-		}
-#elif(VKFFT_BACKEND==4)
-		ze_command_queue_desc_t commandQueueCopyDesc = {
-				ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
-				0,
-				app->configuration.commandQueueID,
-				0, // index
-				0, // flags
-				ZE_COMMAND_QUEUE_MODE_DEFAULT,
-				ZE_COMMAND_QUEUE_PRIORITY_NORMAL
-		};
-		ze_command_list_handle_t copyCommandList;
-		res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
-		if (res != ZE_RESULT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-		}
-		res = zeCommandListAppendMemoryCopy(copyCommandList, app->bufferBluestein[axis_id], phaseVectors, bufferSize, 0, 0, 0);
-		if (res != ZE_RESULT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_COPY;
-		}
-		res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
-		if (res != ZE_RESULT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
-		}
-#endif
 #if(VKFFT_BACKEND==0)
-		{
+		if (!app->configuration.makeInversePlanOnly) {
+			VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+			commandBufferAllocateInfo.commandPool = kernelPreparationApplication.configuration.commandPool[0];
+			commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+			commandBufferAllocateInfo.commandBufferCount = 1;
+			VkCommandBuffer commandBuffer = {};
+			res = vkAllocateCommandBuffers(kernelPreparationApplication.configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
+			if (res != 0) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
+			}
+			VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+			commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+			res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
+			if (res != 0) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
+			}
+			VkFFTLaunchParams launchParams = {};
+			launchParams.commandBuffer = &commandBuffer;
+			launchParams.inputBuffer = &app->bufferBluestein[axis_id];
+			launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
+			//Record commands
+			resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+			res = vkEndCommandBuffer(commandBuffer);
+			if (res != 0) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+			}
+			VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+			submitInfo.commandBufferCount = 1;
+			submitInfo.pCommandBuffers = &commandBuffer;
+			res = vkQueueSubmit(kernelPreparationApplication.configuration.queue[0], 1, &submitInfo, kernelPreparationApplication.configuration.fence[0]);
+			if (res != 0) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+			}
+			res = vkWaitForFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence, VK_TRUE, 100000000000);
+			if (res != 0) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
+			}
+			res = vkResetFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence);
+			if (res != 0) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
+			}
+			vkFreeCommandBuffers(kernelPreparationApplication.configuration.device[0], kernelPreparationApplication.configuration.commandPool[0], 1, &commandBuffer);
+		}
+		if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
 			VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 			commandBufferAllocateInfo.commandPool = kernelPreparationApplication.configuration.commandPool[0];
 			commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -30323,7 +31258,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			launchParams.inputBuffer = &app->bufferBluestein[axis_id];
 			launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
 			//Record commands
-			resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+			resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
 			if (resFFT != VKFFT_SUCCESS) {
 				free(phaseVectors);
 				deleteVkFFT(&kernelPreparationApplication);
@@ -30361,51 +31296,102 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 #elif(VKFFT_BACKEND==1)
 		VkFFTLaunchParams launchParams = {};
 		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
-		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
-		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
+		if (!app->configuration.makeInversePlanOnly) {
+			launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
+			resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+			res = cudaDeviceSynchronize();
+			if (res != cudaSuccess) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+			}
 		}
-		res = cudaDeviceSynchronize();
-		if (res != cudaSuccess) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
+			launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
+			resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+			res = cudaDeviceSynchronize();
+			if (res != cudaSuccess) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+			}
 		}
 #elif(VKFFT_BACKEND==2)
 		VkFFTLaunchParams launchParams = {};
 		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
-		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
-		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
+		if (!app->configuration.makeInversePlanOnly) {
+			launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
+			resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+			res = hipDeviceSynchronize();
+			if (res != hipSuccess) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+			}
 		}
-		res = hipDeviceSynchronize();
-		if (res != hipSuccess) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
+			launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
+			resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+			res = hipDeviceSynchronize();
+			if (res != hipSuccess) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+			}
 		}
 #elif(VKFFT_BACKEND==3)
 		VkFFTLaunchParams launchParams = {};
 		launchParams.commandQueue = &commandQueue;
 		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
-		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
-		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
+		if (!app->configuration.makeInversePlanOnly) {
+			launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
+			resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+			res = clFinish(commandQueue);
+			if (res != CL_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+			}
 		}
-		res = clFinish(commandQueue);
-		if (res != CL_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
+			launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
+			resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+			res = clFinish(commandQueue);
+			if (res != CL_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+			}
 		}
 #elif(VKFFT_BACKEND==4)
 		ze_command_list_desc_t commandListDescription = {};
@@ -30416,30 +31402,67 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		VkFFTLaunchParams launchParams = {};
 		launchParams.commandList = &commandList;
 		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
-		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
-		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
+
+		if (!app->configuration.makeInversePlanOnly) {
+			launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
+			resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+
+			res = zeCommandListClose(commandList);
+			if (res != ZE_RESULT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+			}
+			res = zeCommandQueueExecuteCommandLists(app->configuration.commandQueue[0], 1, &commandList, 0);
+			if (res != ZE_RESULT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+			}
+			res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
+			if (res != ZE_RESULT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+			}
+			res = zeCommandListReset(commandList);
+			if (res != ZE_RESULT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
+			}
 		}
-		res = zeCommandListClose(commandList);
-		if (res != ZE_RESULT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
-		}
-		res = zeCommandQueueExecuteCommandLists(app->configuration.commandQueue[0], 1, &commandList, 0);
-		if (res != ZE_RESULT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
-		}
-		res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
-		if (res != ZE_RESULT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+		if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
+			launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
+			resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
+			if (resFFT != VKFFT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return resFFT;
+			}
+			res = zeCommandListClose(commandList);
+			if (res != ZE_RESULT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
+			}
+			res = zeCommandQueueExecuteCommandLists(app->configuration.commandQueue[0], 1, &commandList, 0);
+			if (res != ZE_RESULT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
+			}
+			res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
+			if (res != ZE_RESULT_SUCCESS) {
+				free(phaseVectors);
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+			}
 		}
 		res = zeCommandListDestroy(commandList);
 		if (res != ZE_RESULT_SUCCESS) {
@@ -30448,413 +31471,31 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
 		}
 #endif
-	}
-	if (kernelPreparationConfiguration.doublePrecision) {
-		double* phaseVectors_cast = (double*)phaseVectors;
-		for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
-			uint64_t rm = (i * i) % (2 * phaseVectorsNonZeroSize);
-			double angle = double_PI * rm / phaseVectorsNonZeroSize;
-			phaseVectors_cast[2 * i] = (i < phaseVectorsNonZeroSize) ? (double)cos(angle) : 0;
-			phaseVectors_cast[2 * i + 1] = (i < phaseVectorsNonZeroSize) ? (double)sin(angle) : 0;
-		}
-		for (uint64_t i = 1; i < phaseVectorsNonZeroSize; i++) {
-			phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i)] = phaseVectors_cast[2 * i];
-			phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i) + 1] = phaseVectors_cast[2 * i + 1];
-		}
-	}
-	else {
-		float* phaseVectors_cast = (float*)phaseVectors;
-		for (uint64_t i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
-			uint64_t rm = (i * i) % (2 * phaseVectorsNonZeroSize);
-			double angle = double_PI * rm / phaseVectorsNonZeroSize;
-			phaseVectors_cast[2 * i] = (i < phaseVectorsNonZeroSize) ? (float)cos(angle) : 0;
-			phaseVectors_cast[2 * i + 1] = (i < phaseVectorsNonZeroSize) ? (float)sin(angle) : 0;
-		}
-		for (uint64_t i = 1; i < phaseVectorsNonZeroSize; i++) {
-			phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i)] = phaseVectors_cast[2 * i];
-			phaseVectors_cast[2 * (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - i) + 1] = phaseVectors_cast[2 * i + 1];
-		}
-	}
 #if(VKFFT_BACKEND==0)
-	resFFT = transferDataFromCPU(&kernelPreparationApplication, phaseVectors, &app->bufferBluestein[axis_id], bufferSize);
-	if (resFFT != VKFFT_SUCCESS) {
-		free(phaseVectors);
-		deleteVkFFT(&kernelPreparationApplication);
-		return resFFT;
-	}
-#elif(VKFFT_BACKEND==1)
-	res = cudaMemcpy(app->bufferBluestein[axis_id], phaseVectors, bufferSize, cudaMemcpyHostToDevice);
-	if (res != cudaSuccess) {
-		free(phaseVectors);
-		deleteVkFFT(&kernelPreparationApplication);
-		return VKFFT_ERROR_FAILED_TO_COPY;
-	}
-#elif(VKFFT_BACKEND==2)
-	res = hipMemcpy(app->bufferBluestein[axis_id], phaseVectors, bufferSize, hipMemcpyHostToDevice);
-	if (res != hipSuccess) {
-		free(phaseVectors);
-		deleteVkFFT(&kernelPreparationApplication);
-		return VKFFT_ERROR_FAILED_TO_COPY;
-	}
+		kernelPreparationApplication.configuration.isCompilerInitialized = 0;
 #elif(VKFFT_BACKEND==3)
-	res = clEnqueueWriteBuffer(commandQueue, app->bufferBluestein[axis_id], CL_TRUE, 0, bufferSize, phaseVectors, 0, NULL, NULL);
-	if (res != CL_SUCCESS) {
-		free(phaseVectors);
+		res = clReleaseCommandQueue(commandQueue);
+		if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
+#endif
+		if (kernelPreparationConfiguration.saveApplicationToString) {
+			app->applicationBluesteinStringSize[axis_id] = kernelPreparationApplication.applicationStringSize;
+			app->applicationBluesteinString[axis_id] = calloc(app->applicationBluesteinStringSize[axis_id], 1);
+			if (!app->applicationBluesteinString[axis_id]) {
+				deleteVkFFT(&kernelPreparationApplication);
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+			memcpy(app->applicationBluesteinString[axis_id], kernelPreparationApplication.saveApplicationString, app->applicationBluesteinStringSize[axis_id]);
+		}
 		deleteVkFFT(&kernelPreparationApplication);
-		return VKFFT_ERROR_FAILED_TO_COPY;
-	}
-#elif(VKFFT_BACKEND==4)
-	ze_command_queue_desc_t commandQueueCopyDesc = {
-				ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
-				0,
-				app->configuration.commandQueueID,
-				0, // index
-				0, // flags
-				ZE_COMMAND_QUEUE_MODE_DEFAULT,
-				ZE_COMMAND_QUEUE_PRIORITY_NORMAL
-	};
-	ze_command_list_handle_t copyCommandList;
-	res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
-	if (res != ZE_RESULT_SUCCESS) {
 		free(phaseVectors);
-		deleteVkFFT(&kernelPreparationApplication);
-		return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-	}
-	res = zeCommandListAppendMemoryCopy(copyCommandList, app->bufferBluestein[axis_id], phaseVectors, bufferSize, 0, 0, 0);
-	if (res != ZE_RESULT_SUCCESS) {
-		free(phaseVectors);
-		deleteVkFFT(&kernelPreparationApplication);
-		return VKFFT_ERROR_FAILED_TO_COPY;
-	}
-	res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
-	if (res != ZE_RESULT_SUCCESS) {
-		free(phaseVectors);
-		deleteVkFFT(&kernelPreparationApplication);
-		return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+#ifdef VkFFT_use_FP128_Bluestein_RaderFFT
 	}
 #endif
-#if(VKFFT_BACKEND==0)
-	if (!app->configuration.makeInversePlanOnly) {
-		VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-		commandBufferAllocateInfo.commandPool = kernelPreparationApplication.configuration.commandPool[0];
-		commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		commandBufferAllocateInfo.commandBufferCount = 1;
-		VkCommandBuffer commandBuffer = {};
-		res = vkAllocateCommandBuffers(kernelPreparationApplication.configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
-		if (res != 0) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
-		}
-		VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-		commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-		res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-		if (res != 0) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
-		}
-		VkFFTLaunchParams launchParams = {};
-		launchParams.commandBuffer = &commandBuffer;
-		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
-		launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
-		//Record commands
-		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
-		}
-		res = vkEndCommandBuffer(commandBuffer);
-		if (res != 0) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
-		}
-		VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &commandBuffer;
-		res = vkQueueSubmit(kernelPreparationApplication.configuration.queue[0], 1, &submitInfo, kernelPreparationApplication.configuration.fence[0]);
-		if (res != 0) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
-		}
-		res = vkWaitForFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence, VK_TRUE, 100000000000);
-		if (res != 0) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
-		}
-		res = vkResetFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence);
-		if (res != 0) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
-		}
-		vkFreeCommandBuffers(kernelPreparationApplication.configuration.device[0], kernelPreparationApplication.configuration.commandPool[0], 1, &commandBuffer);
-	}
-	if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
-		VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-		commandBufferAllocateInfo.commandPool = kernelPreparationApplication.configuration.commandPool[0];
-		commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		commandBufferAllocateInfo.commandBufferCount = 1;
-		VkCommandBuffer commandBuffer = {};
-		res = vkAllocateCommandBuffers(kernelPreparationApplication.configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
-		if (res != 0) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_ALLOCATE_COMMAND_BUFFERS;
-		}
-		VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-		commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-		res = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-		if (res != 0) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_BEGIN_COMMAND_BUFFER;
-		}
-		VkFFTLaunchParams launchParams = {};
-		launchParams.commandBuffer = &commandBuffer;
-		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
-		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
-		//Record commands
-		resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
-		}
-		res = vkEndCommandBuffer(commandBuffer);
-		if (res != 0) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
-		}
-		VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &commandBuffer;
-		res = vkQueueSubmit(kernelPreparationApplication.configuration.queue[0], 1, &submitInfo, kernelPreparationApplication.configuration.fence[0]);
-		if (res != 0) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
-		}
-		res = vkWaitForFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence, VK_TRUE, 100000000000);
-		if (res != 0) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_WAIT_FOR_FENCES;
-		}
-		res = vkResetFences(kernelPreparationApplication.configuration.device[0], 1, kernelPreparationApplication.configuration.fence);
-		if (res != 0) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
-		}
-		vkFreeCommandBuffers(kernelPreparationApplication.configuration.device[0], kernelPreparationApplication.configuration.commandPool[0], 1, &commandBuffer);
-	}
-#elif(VKFFT_BACKEND==1)
-	VkFFTLaunchParams launchParams = {};
-	launchParams.inputBuffer = &app->bufferBluestein[axis_id];
-	if (!app->configuration.makeInversePlanOnly) {
-		launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
-		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
-		}
-		res = cudaDeviceSynchronize();
-		if (res != cudaSuccess) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
-		}
-	}
-	if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
-		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
-		resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
-		}
-		res = cudaDeviceSynchronize();
-		if (res != cudaSuccess) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
-		}
-	}
-#elif(VKFFT_BACKEND==2)
-	VkFFTLaunchParams launchParams = {};
-	launchParams.inputBuffer = &app->bufferBluestein[axis_id];
-	if (!app->configuration.makeInversePlanOnly) {
-		launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
-		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
-		}
-		res = hipDeviceSynchronize();
-		if (res != hipSuccess) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
-		}
-	}
-	if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
-		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
-		resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
-		}
-		res = hipDeviceSynchronize();
-		if (res != hipSuccess) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
-		}
-	}
-#elif(VKFFT_BACKEND==3)
-	VkFFTLaunchParams launchParams = {};
-	launchParams.commandQueue = &commandQueue;
-	launchParams.inputBuffer = &app->bufferBluestein[axis_id];
-	if (!app->configuration.makeInversePlanOnly) {
-		launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
-		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
-		}
-		res = clFinish(commandQueue);
-		if (res != CL_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
-		}
-	}
-	if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
-		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
-		resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
-		}
-		res = clFinish(commandQueue);
-		if (res != CL_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
-		}
-	}
-#elif(VKFFT_BACKEND==4)
-	ze_command_list_desc_t commandListDescription = {};
-	commandListDescription.stype = ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC;
-	ze_command_list_handle_t commandList = {};
-	res = zeCommandListCreate(app->configuration.context[0], app->configuration.device[0], &commandListDescription, &commandList);
-	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-	VkFFTLaunchParams launchParams = {};
-	launchParams.commandList = &commandList;
-	launchParams.inputBuffer = &app->bufferBluestein[axis_id];
-
-	if (!app->configuration.makeInversePlanOnly) {
-		launchParams.buffer = &app->bufferBluesteinFFT[axis_id];
-		resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
-		}
-
-		res = zeCommandListClose(commandList);
-		if (res != ZE_RESULT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
-		}
-		res = zeCommandQueueExecuteCommandLists(app->configuration.commandQueue[0], 1, &commandList, 0);
-		if (res != ZE_RESULT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
-		}
-		res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
-		if (res != ZE_RESULT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
-		}
-		res = zeCommandListReset(commandList);
-		if (res != ZE_RESULT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
-		}
-	}
-	if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
-		launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
-		resFFT = VkFFTAppend(&kernelPreparationApplication, 1, &launchParams);
-		if (resFFT != VKFFT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return resFFT;
-		}
-		res = zeCommandListClose(commandList);
-		if (res != ZE_RESULT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
-		}
-		res = zeCommandQueueExecuteCommandLists(app->configuration.commandQueue[0], 1, &commandList, 0);
-		if (res != ZE_RESULT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SUBMIT_QUEUE;
-		}
-		res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
-		if (res != ZE_RESULT_SUCCESS) {
-			free(phaseVectors);
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
-		}
-	}
-	res = zeCommandListDestroy(commandList);
-	if (res != ZE_RESULT_SUCCESS) {
-		free(phaseVectors);
-		deleteVkFFT(&kernelPreparationApplication);
-		return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
-	}
-#endif
-	free(phaseVectors);
-#if(VKFFT_BACKEND==0)
-	kernelPreparationApplication.configuration.isCompilerInitialized = 0;
-#elif(VKFFT_BACKEND==3)
-	res = clReleaseCommandQueue(commandQueue);
-	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
-#endif
-	if (kernelPreparationConfiguration.saveApplicationToString) {
-		app->applicationBluesteinStringSize[axis_id] = kernelPreparationApplication.applicationStringSize;
-		app->applicationBluesteinString[axis_id] = calloc(app->applicationBluesteinStringSize[axis_id], 1);
-		if (!app->applicationBluesteinString[axis_id]) {
-			deleteVkFFT(&kernelPreparationApplication);
-			return VKFFT_ERROR_MALLOC_FAILED;
-		}
-		memcpy(app->applicationBluesteinString[axis_id], kernelPreparationApplication.saveApplicationString, app->applicationBluesteinStringSize[axis_id]);
-	}
-	deleteVkFFT(&kernelPreparationApplication);
 	return resFFT;
 }
 static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkFFTAxis* axis) {
 	//generate Rader FFTKernel
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-	double double_PI = 3.1415926535897932384626433832795;
 	if (axis->specializationConstants.useRader) {
 		for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
 			if (axis->specializationConstants.raderContainer[i].type == 0) {
@@ -30870,6 +31511,71 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 				app->numRaderFFTPrimes++;
 
 				if (app->configuration.loadApplicationFromString) continue;
+
+#ifdef VkFFT_use_FP128_Bluestein_RaderFFT
+				if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+					long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
+					double* raderFFTkernel = (double*)malloc((axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(double) * 2);
+					if (!raderFFTkernel) return VKFFT_ERROR_MALLOC_FAILED;
+					axis->specializationConstants.raderContainer[i].raderFFTkernel = (void*)raderFFTkernel;
+					app->raderFFTkernel[write_id] = (void*)raderFFTkernel;
+					app->rader_buffer_size[write_id] = (axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(double) * 2;
+
+					long double* raderFFTkernel_temp = (long double*)malloc((axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(long double) * 2);
+					if (!raderFFTkernel_temp) return VKFFT_ERROR_MALLOC_FAILED;
+					for (uint64_t j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
+						uint64_t g_pow = 1;
+						for (uint64_t t = 0; t < axis->specializationConstants.raderContainer[i].prime - 1 - j; t++) {
+							g_pow = (g_pow * axis->specializationConstants.raderContainer[i].generator) % axis->specializationConstants.raderContainer[i].prime;
+						}
+						raderFFTkernel_temp[2 * j] = cos(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
+						raderFFTkernel_temp[2 * j + 1] = -sin(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
+					}
+					fftwl_plan p;
+					p = fftwl_plan_dft_1d((int)(axis->specializationConstants.raderContainer[i].prime - 1), (fftwl_complex*)raderFFTkernel_temp, (fftwl_complex*)raderFFTkernel_temp, -1, FFTW_ESTIMATE);
+					fftwl_execute(p);
+					fftwl_destroy_plan(p);
+					for (uint64_t j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
+						raderFFTkernel[2 * j] = (double)raderFFTkernel_temp[2 * j];
+						raderFFTkernel[2 * j + 1] = (double)raderFFTkernel_temp[2 * j + 1];
+					}
+					free(raderFFTkernel_temp);
+					continue;
+				}
+#endif
+				if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+					long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
+					double* raderFFTkernel = (double*)malloc((axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(double) * 2);
+					if (!raderFFTkernel) return VKFFT_ERROR_MALLOC_FAILED;
+					axis->specializationConstants.raderContainer[i].raderFFTkernel = (void*)raderFFTkernel;
+					app->raderFFTkernel[write_id] = (void*)raderFFTkernel;
+					app->rader_buffer_size[write_id] = (axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(double) * 2;
+					for (uint64_t j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
+						uint64_t g_pow = 1;
+						for (uint64_t t = 0; t < axis->specializationConstants.raderContainer[i].prime - 1 - j; t++) {
+							g_pow = (g_pow * axis->specializationConstants.raderContainer[i].generator) % axis->specializationConstants.raderContainer[i].prime;
+						}
+						raderFFTkernel[2 * j] = (double)cos(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
+						raderFFTkernel[2 * j + 1] = (double)-sin(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
+					}
+				}
+				else {
+					double double_PI = 3.14159265358979323846264338327950288419716939937510;
+					float* raderFFTkernel = (float*)malloc((axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(float) * 2);
+					if (!raderFFTkernel) return VKFFT_ERROR_MALLOC_FAILED;
+					axis->specializationConstants.raderContainer[i].raderFFTkernel = (void*)raderFFTkernel;
+					app->raderFFTkernel[write_id] = (void*)raderFFTkernel;
+					app->rader_buffer_size[write_id] = (axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(float) * 2;
+					for (uint64_t j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
+						uint64_t g_pow = 1;
+						for (uint64_t t = 0; t < axis->specializationConstants.raderContainer[i].prime - 1 - j; t++) {
+							g_pow = (g_pow * axis->specializationConstants.raderContainer[i].generator) % axis->specializationConstants.raderContainer[i].prime;
+						}
+						raderFFTkernel[2 * j] = (float)cos(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
+						raderFFTkernel[2 * j + 1] = (float)(-sin(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime));
+					}
+				}
+
 				VkFFTApplication kernelPreparationApplication = {};
 				VkFFTConfiguration kernelPreparationConfiguration = {};
 
@@ -30907,36 +31613,6 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 				resFFT = initializeVkFFT(&kernelPreparationApplication, kernelPreparationConfiguration);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
 
-				if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
-					double* raderFFTkernel = (double*)malloc((axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(double) * 2);
-					if (!raderFFTkernel) return VKFFT_ERROR_MALLOC_FAILED;
-					axis->specializationConstants.raderContainer[i].raderFFTkernel = (void*)raderFFTkernel;
-					app->raderFFTkernel[write_id] = (void*)raderFFTkernel;
-					app->rader_buffer_size[write_id] = (axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(double) * 2;
-					for (uint64_t j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
-						uint64_t g_pow = 1;
-						for (uint64_t t = 0; t < axis->specializationConstants.raderContainer[i].prime - 1 - j; t++) {
-							g_pow = (g_pow * axis->specializationConstants.raderContainer[i].generator) % axis->specializationConstants.raderContainer[i].prime;
-						}
-						raderFFTkernel[2 * j] = cos(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
-						raderFFTkernel[2 * j + 1] = -sin(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
-					}
-				}
-				else {
-					float* raderFFTkernel = (float*)malloc((axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(float) * 2);
-					if (!raderFFTkernel) return VKFFT_ERROR_MALLOC_FAILED;
-					axis->specializationConstants.raderContainer[i].raderFFTkernel = (void*)raderFFTkernel;
-					app->raderFFTkernel[write_id] = (void*)raderFFTkernel;
-					app->rader_buffer_size[write_id] = (axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(float) * 2;
-					for (uint64_t j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
-						uint64_t g_pow = 1;
-						for (uint64_t t = 0; t < axis->specializationConstants.raderContainer[i].prime - 1 - j; t++) {
-							g_pow = (g_pow * axis->specializationConstants.raderContainer[i].generator) % axis->specializationConstants.raderContainer[i].prime;
-						}
-						raderFFTkernel[2 * j] = (float)cos(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
-						raderFFTkernel[2 * j + 1] = (float)(-sin(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime));
-					}
-				}
 #if(VKFFT_BACKEND==0)
 				VkDeviceMemory bufferRaderFFTDeviceMemory;
 				VkBuffer bufferRaderFFT;
@@ -30975,64 +31651,12 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 #endif
 
-#if(VKFFT_BACKEND==0)
-				resFFT = transferDataFromCPU(&kernelPreparationApplication, axis->specializationConstants.raderContainer[i].raderFFTkernel, &bufferRaderFFT, bufferSize);
+				resFFT = VkFFT_transferDataFromCPU(app, axis->specializationConstants.raderContainer[i].raderFFTkernel, &bufferRaderFFT, bufferSize);
 				if (resFFT != VKFFT_SUCCESS) {
 					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
 					deleteVkFFT(&kernelPreparationApplication);
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND==1)
-				res = cudaMemcpy(bufferRaderFFT, axis->specializationConstants.raderContainer[i].raderFFTkernel, bufferSize, cudaMemcpyHostToDevice);
-				if (res != cudaSuccess) {
-					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
-					deleteVkFFT(&kernelPreparationApplication);
-					return VKFFT_ERROR_FAILED_TO_COPY;
-				}
-#elif(VKFFT_BACKEND==2)
-				res = hipMemcpy(bufferRaderFFT, axis->specializationConstants.raderContainer[i].raderFFTkernel, bufferSize, hipMemcpyHostToDevice);
-				if (res != hipSuccess) {
-					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
-					deleteVkFFT(&kernelPreparationApplication);
-					return VKFFT_ERROR_FAILED_TO_COPY;
-				}
-#elif(VKFFT_BACKEND==3)
-				res = clEnqueueWriteBuffer(commandQueue, bufferRaderFFT, CL_TRUE, 0, bufferSize, axis->specializationConstants.raderContainer[i].raderFFTkernel, 0, NULL, NULL);
-				if (res != CL_SUCCESS) {
-					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
-					deleteVkFFT(&kernelPreparationApplication);
-					return VKFFT_ERROR_FAILED_TO_COPY;
-				}
-#elif(VKFFT_BACKEND==4)
-				ze_command_queue_desc_t commandQueueCopyDesc = {
-						ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
-						0,
-						app->configuration.commandQueueID,
-						0, // index
-						0, // flags
-						ZE_COMMAND_QUEUE_MODE_DEFAULT,
-						ZE_COMMAND_QUEUE_PRIORITY_NORMAL
-				};
-				ze_command_list_handle_t copyCommandList;
-				res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
-				if (res != ZE_RESULT_SUCCESS) {
-					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
-					deleteVkFFT(&kernelPreparationApplication);
-					return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-				}
-				res = zeCommandListAppendMemoryCopy(copyCommandList, bufferRaderFFT, axis->specializationConstants.raderContainer[i].raderFFTkernel, bufferSize, 0, 0, 0);
-				if (res != ZE_RESULT_SUCCESS) {
-					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
-					deleteVkFFT(&kernelPreparationApplication);
-					return VKFFT_ERROR_FAILED_TO_COPY;
-				}
-				res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
-				if (res != ZE_RESULT_SUCCESS) {
-					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
-					deleteVkFFT(&kernelPreparationApplication);
-					return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
-				}
-#endif
 #if(VKFFT_BACKEND==0)
 				{
 					VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
@@ -31179,64 +31803,12 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 					return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
 				}
 #endif
-#if(VKFFT_BACKEND==0)
-				resFFT = transferDataToCPU(&kernelPreparationApplication, axis->specializationConstants.raderContainer[i].raderFFTkernel, &bufferRaderFFT, bufferSize);
+				resFFT = VkFFT_transferDataToCPU(&kernelPreparationApplication, axis->specializationConstants.raderContainer[i].raderFFTkernel, &bufferRaderFFT, bufferSize);
 				if (resFFT != VKFFT_SUCCESS) {
 					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
 					deleteVkFFT(&kernelPreparationApplication);
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND==1)
-				res = cudaMemcpy(axis->specializationConstants.raderContainer[i].raderFFTkernel, bufferRaderFFT, bufferSize, cudaMemcpyDeviceToHost);
-				if (res != cudaSuccess) {
-					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
-					deleteVkFFT(&kernelPreparationApplication);
-					return VKFFT_ERROR_FAILED_TO_COPY;
-				}
-#elif(VKFFT_BACKEND==2)
-				res = hipMemcpy(axis->specializationConstants.raderContainer[i].raderFFTkernel, bufferRaderFFT, bufferSize, hipMemcpyDeviceToHost);
-				if (res != hipSuccess) {
-					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
-					deleteVkFFT(&kernelPreparationApplication);
-					return VKFFT_ERROR_FAILED_TO_COPY;
-				}
-#elif(VKFFT_BACKEND==3)
-				res = clEnqueueReadBuffer(commandQueue, bufferRaderFFT, CL_TRUE, 0, bufferSize, axis->specializationConstants.raderContainer[i].raderFFTkernel, 0, NULL, NULL);
-				if (res != CL_SUCCESS) {
-					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
-					deleteVkFFT(&kernelPreparationApplication);
-					return VKFFT_ERROR_FAILED_TO_COPY;
-				}
-#elif(VKFFT_BACKEND==4)
-				ze_command_queue_desc_t commandQueueCopyDesc = {
-						ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
-						0,
-						app->configuration.commandQueueID,
-						0, // index
-						0, // flags
-						ZE_COMMAND_QUEUE_MODE_DEFAULT,
-						ZE_COMMAND_QUEUE_PRIORITY_NORMAL
-				};
-				ze_command_list_handle_t copyCommandList;
-				res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
-				if (res != ZE_RESULT_SUCCESS) {
-					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
-					deleteVkFFT(&kernelPreparationApplication);
-					return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-				}
-				res = zeCommandListAppendMemoryCopy(copyCommandList, axis->specializationConstants.raderContainer[i].raderFFTkernel, bufferRaderFFT, bufferSize, 0, 0, 0);
-				if (res != ZE_RESULT_SUCCESS) {
-					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
-					deleteVkFFT(&kernelPreparationApplication);
-					return VKFFT_ERROR_FAILED_TO_COPY;
-				}
-				res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
-				if (res != ZE_RESULT_SUCCESS) {
-					free(axis->specializationConstants.raderContainer[i].raderFFTkernel);
-					deleteVkFFT(&kernelPreparationApplication);
-					return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
-				}
-#endif
 
 #if(VKFFT_BACKEND==0)
 				kernelPreparationApplication.configuration.isCompilerInitialized = 0;
@@ -32272,8 +32844,8 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 	axis->specializationConstants.dispatchZactualFFTSize = 1;
 	//allocate LUT
 	if (app->configuration.useLUT) {
-		double double_PI = 3.1415926535897932384626433832795;
 		if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+			long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
 			axis->bufferLUTSize = (app->configuration.size[0] / 2) * 2 * sizeof(double);
 			double* tempLUT = (double*)malloc(axis->bufferLUTSize);
 			if (!tempLUT) {
@@ -32281,7 +32853,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
 			for (uint64_t i = 0; i < app->configuration.size[0] / 2; i++) {
-				double angle = double_PI * i / (app->configuration.size[0] / 2);
+				long double angle = double_PI * i / (app->configuration.size[0] / 2);
 				tempLUT[2 * i] = (double)cos(angle);
 				tempLUT[2 * i + 1] = (double)sin(angle);
 			}
@@ -32303,7 +32875,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					tempLUT = 0;
 					return resFFT;
 				}
-				resFFT = transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+				resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
 				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
 					free(tempLUT);
@@ -32318,12 +32890,12 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					tempLUT = 0;
 					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 				}
-				res = cudaMemcpy(axis->bufferLUT, tempLUT, axis->bufferLUTSize, cudaMemcpyHostToDevice);
-				if (res != cudaSuccess) {
+				resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
 					free(tempLUT);
 					tempLUT = 0;
-					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+					return resFFT;
 				}
 #elif(VKFFT_BACKEND==2)
 				res = hipMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
@@ -32358,36 +32930,12 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					tempLUT = 0;
 					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 				}
-				ze_command_queue_desc_t commandQueueCopyDesc = {
-				ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
-				0,
-				app->configuration.commandQueueID,
-				0, // index
-				0, // flags
-				ZE_COMMAND_QUEUE_MODE_DEFAULT,
-				ZE_COMMAND_QUEUE_PRIORITY_NORMAL
-				};
-				ze_command_list_handle_t copyCommandList;
-				res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
-				if (res != ZE_RESULT_SUCCESS) {
+				resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
 					free(tempLUT);
 					tempLUT = 0;
-					return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-				}
-				res = zeCommandListAppendMemoryCopy(copyCommandList, axis->bufferLUT, tempLUT, axis->bufferLUTSize, 0, 0, 0);
-				if (res != ZE_RESULT_SUCCESS) {
-					deleteVkFFT(app);
-					free(tempLUT);
-					tempLUT = 0;
-					return VKFFT_ERROR_FAILED_TO_COPY;
-				}
-				res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
-				if (res != ZE_RESULT_SUCCESS) {
-					deleteVkFFT(app);
-					free(tempLUT);
-					tempLUT = 0;
-					return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+					return resFFT;
 				}
 #endif
 				free(tempLUT);
@@ -32395,6 +32943,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			}
 		}
 		else {
+			double double_PI = 3.14159265358979323846264338327950288419716939937510;
 			axis->bufferLUTSize = (app->configuration.size[0] / 2) * 2 * sizeof(float);
 			float* tempLUT = (float*)malloc(axis->bufferLUTSize);
 			if (!tempLUT) {
@@ -32424,7 +32973,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					tempLUT = 0;
 					return resFFT;
 				}
-				resFFT = transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+				resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
 				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
 					free(tempLUT);
@@ -32439,12 +32988,12 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					tempLUT = 0;
 					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 				}
-				res = cudaMemcpy(axis->bufferLUT, tempLUT, axis->bufferLUTSize, cudaMemcpyHostToDevice);
-				if (res != cudaSuccess) {
+				resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
 					free(tempLUT);
 					tempLUT = 0;
-					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+					return resFFT;
 				}
 #elif(VKFFT_BACKEND==2)
 				res = hipMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
@@ -32454,12 +33003,12 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					tempLUT = 0;
 					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 				}
-				res = hipMemcpy(axis->bufferLUT, tempLUT, axis->bufferLUTSize, hipMemcpyHostToDevice);
-				if (res != hipSuccess) {
+				resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
 					free(tempLUT);
 					tempLUT = 0;
-					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+					return resFFT;
 				}
 #elif(VKFFT_BACKEND==3)
 				axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
@@ -32479,36 +33028,12 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 					tempLUT = 0;
 					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 				}
-				ze_command_queue_desc_t commandQueueCopyDesc = {
-				ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
-				0,
-				app->configuration.commandQueueID,
-				0, // index
-				0, // flags
-				ZE_COMMAND_QUEUE_MODE_DEFAULT,
-				ZE_COMMAND_QUEUE_PRIORITY_NORMAL
-				};
-				ze_command_list_handle_t copyCommandList;
-				res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
-				if (res != ZE_RESULT_SUCCESS) {
+				resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
 					free(tempLUT);
 					tempLUT = 0;
-					return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-				}
-				res = zeCommandListAppendMemoryCopy(copyCommandList, axis->bufferLUT, tempLUT, axis->bufferLUTSize, 0, 0, 0);
-				if (res != ZE_RESULT_SUCCESS) {
-					deleteVkFFT(app);
-					free(tempLUT);
-					tempLUT = 0;
-					return VKFFT_ERROR_FAILED_TO_COPY;
-				}
-				res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
-				if (res != ZE_RESULT_SUCCESS) {
-					deleteVkFFT(app);
-					free(tempLUT);
-					tempLUT = 0;
-					return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+					return resFFT;
 				}
 #endif
 				free(tempLUT);
@@ -33202,7 +33727,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			default_resource.max_task_work_group_size_y_nv = 1;
 			default_resource.max_task_work_group_size_z_nv = 1;
 			default_resource.max_mesh_view_count_nv = 4;
-			
+
 			default_resource.limits.non_inductive_for_loops = 1;
 			default_resource.limits.while_loops = 1;
 			default_resource.limits.do_while_loops = 1;
@@ -33232,7 +33757,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				(const glslang_resource_t*)&default_resource,
 			};
 			//printf("%s\n", code0);
-			glslang_shader_t* shader = glslang_shader_create((const glslang_input_t *)&input);
+			glslang_shader_t* shader = glslang_shader_create((const glslang_input_t*)&input);
 			const char* err;
 			if (!glslang_shader_preprocess(shader, &input))
 			{
@@ -33337,7 +33862,10 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		pipelineShaderStageCreateInfo.pSpecializationInfo = 0;// &specializationInfo;
 		computePipelineCreateInfo.stage = pipelineShaderStageCreateInfo;
 		computePipelineCreateInfo.layout = axis->pipelineLayout;
-		res = vkCreateComputePipelines(app->configuration.device[0], VK_NULL_HANDLE, 1, &computePipelineCreateInfo, 0, &axis->pipeline);
+		if (app->configuration.pipelineCache)
+			res = vkCreateComputePipelines(app->configuration.device[0], app->configuration.pipelineCache[0], 1, &computePipelineCreateInfo, 0, &axis->pipeline);
+		else
+			res = vkCreateComputePipelines(app->configuration.device[0], 0, 1, &computePipelineCreateInfo, 0, &axis->pipeline);
 		if (res != VK_SUCCESS) {
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_CREATE_PIPELINE;
@@ -33682,9 +34210,9 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		if (app->configuration.loadApplicationFromString) {
 			char* code;
 			uint64_t codeSize;
-
 			char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
 			memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
+			size_t codeSize_size_t = (size_t)codeSize;
 			code = (char*)malloc(codeSize);
 			if (!code) {
 				free(code0);
@@ -33695,7 +34223,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
 			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
 
-			axis->program = clCreateProgramWithBinary(app->configuration.context[0], 1, app->configuration.device, &codeSize, (const unsigned char**)(&code), 0, &res);
+			axis->program = clCreateProgramWithBinary(app->configuration.context[0], 1, app->configuration.device, &codeSize_size_t, (const unsigned char**)(&code), 0, &res);
 			if (res != CL_SUCCESS) {
 				free(code);
 				code = 0;
@@ -33749,7 +34277,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				deleteVkFFT(app);
 				return VKFFT_ERROR_FAILED_TO_COMPILE_PROGRAM;
 			}
-			axis->binarySize = codeSize;
+			axis->binarySize = (uint64_t)codeSize;
 			axis->binary = (char*)malloc(axis->binarySize);
 			if (!axis->binary) {
 				free(code0);
@@ -33757,7 +34285,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			res = clGetProgramInfo(axis->program, CL_PROGRAM_BINARIES, axis->binarySize, &axis->binary, NULL);
+			res = clGetProgramInfo(axis->program, CL_PROGRAM_BINARIES, codeSize, &axis->binary, NULL);
 			if (res != CL_SUCCESS) {
 				if (app->configuration.saveApplicationToString) {
 					free(axis->binary);
@@ -34148,7 +34676,6 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	}
 	//allocate LUT
 	if (app->configuration.useLUT) {
-		double double_PI = 3.1415926535897932384626433832795;
 		uint64_t dimMult = 1;
 		uint64_t maxStageSum = 0;
 		for (uint64_t i = 0; i < axis->specializationConstants.numStages; i++) {
@@ -34346,6 +34873,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		}
 
 		if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+			long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
 			if (axis_upload_id > 0) {
 				if ((app->configuration.performDCT == 2) || (app->configuration.performDCT == 3)) {
 					axis->specializationConstants.startDCT3LUT = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim);
@@ -34397,8 +34925,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				if ((axis->specializationConstants.stageRadix[i] & (axis->specializationConstants.stageRadix[i] - 1)) == 0) {
 					for (uint64_t k = 0; k < log2(axis->specializationConstants.stageRadix[i]); k++) {
 						for (uint64_t j = 0; j < localStageSize; j++) {
-							tempLUT[2 * (j + localStageSum)] = cos(j * double_PI / localStageSize / pow(2, k));
-							tempLUT[2 * (j + localStageSum) + 1] = sin(j * double_PI / localStageSize / pow(2, k));
+							tempLUT[2 * (j + localStageSum)] = (double)cos(j * double_PI / localStageSize / pow(2, k));
+							tempLUT[2 * (j + localStageSum) + 1] = (double)sin(j * double_PI / localStageSize / pow(2, k));
 						}
 						localStageSum += localStageSize;
 					}
@@ -34406,8 +34934,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				else if (axis->specializationConstants.rader_generator[i] > 0) {
 					for (uint64_t j = 0; j < localStageSize; j++) {
 						for (int64_t k = (axis->specializationConstants.stageRadix[i] - 1); k >= 0; k--) {
-							tempLUT[2 * (k + localStageSum)] = cos(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
-							tempLUT[2 * (k + localStageSum) + 1] = sin(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+							tempLUT[2 * (k + localStageSum)] = (double)cos(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+							tempLUT[2 * (k + localStageSum) + 1] = (double)sin(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
 						}
 						localStageSum += (axis->specializationConstants.stageRadix[i]);
 					}
@@ -34415,8 +34943,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				else {
 					for (uint64_t k = (axis->specializationConstants.stageRadix[i] - 1); k > 0; k--) {
 						for (uint64_t j = 0; j < localStageSize; j++) {
-							tempLUT[2 * (j + localStageSum)] = cos(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
-							tempLUT[2 * (j + localStageSum) + 1] = sin(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+							tempLUT[2 * (j + localStageSum)] = (double)cos(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
+							tempLUT[2 * (j + localStageSum) + 1] = (double)sin(j * 2.0 * k / axis->specializationConstants.stageRadix[i] * double_PI / localStageSize);
 						}
 						localStageSum += localStageSize;
 					}
@@ -34434,8 +34962,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 								for (uint64_t t = 0; t < axis->specializationConstants.raderContainer[i].prime - 1 - j; t++) {
 									g_pow = (g_pow * axis->specializationConstants.raderContainer[i].generator) % axis->specializationConstants.raderContainer[i].prime;
 								}
-								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT)] = cos(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
-								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT) + 1] = (-sin(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime));
+								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT)] = (double)cos(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime);
+								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT) + 1] = (double)(-sin(2.0 * g_pow * double_PI / axis->specializationConstants.raderContainer[i].prime));
 							}
 						}
 					}
@@ -34446,8 +34974,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 							if ((axis->specializationConstants.raderContainer[i].stageRadix[l] & (axis->specializationConstants.raderContainer[i].stageRadix[l] - 1)) == 0) {
 								for (uint64_t k = 0; k < log2(axis->specializationConstants.raderContainer[i].stageRadix[l]); k++) {
 									for (uint64_t j = 0; j < localStageSize; j++) {
-										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT)] = cos(j * double_PI / localStageSize / pow(2, k));
-										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT) + 1] = sin(j * double_PI / localStageSize / pow(2, k));
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT)] = (double)cos(j * double_PI / localStageSize / pow(2, k));
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT) + 1] = (double)sin(j * double_PI / localStageSize / pow(2, k));
 									}
 									localStageSum += localStageSize;
 								}
@@ -34455,8 +34983,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 							else {
 								for (uint64_t k = (axis->specializationConstants.raderContainer[i].stageRadix[l] - 1); k > 0; k--) {
 									for (uint64_t j = 0; j < localStageSize; j++) {
-										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT)] = cos(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
-										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT) + 1] = sin(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT)] = (double)cos(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUT) + 1] = (double)sin(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
 									}
 									localStageSum += localStageSize;
 								}
@@ -34470,8 +34998,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 							if ((axis->specializationConstants.raderContainer[i].stageRadix[l] & (axis->specializationConstants.raderContainer[i].stageRadix[l] - 1)) == 0) {
 								for (uint64_t k = 0; k < log2(axis->specializationConstants.raderContainer[i].stageRadix[l]); k++) {
 									for (uint64_t j = 0; j < localStageSize; j++) {
-										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT)] = cos(j * double_PI / localStageSize / pow(2, k));
-										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT) + 1] = sin(j * double_PI / localStageSize / pow(2, k));
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT)] = (double)cos(j * double_PI / localStageSize / pow(2, k));
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT) + 1] = (double)sin(j * double_PI / localStageSize / pow(2, k));
 									}
 									localStageSum += localStageSize;
 								}
@@ -34479,8 +35007,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 							else {
 								for (uint64_t k = (axis->specializationConstants.raderContainer[i].stageRadix[l] - 1); k > 0; k--) {
 									for (uint64_t j = 0; j < localStageSize; j++) {
-										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT)] = cos(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
-										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT) + 1] = sin(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT)] = (double)cos(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
+										tempLUT[2 * (j + localStageSum + axis->specializationConstants.raderContainer[i].RaderRadixOffsetLUTiFFT) + 1] = (double)sin(j * 2.0 * k / axis->specializationConstants.raderContainer[i].stageRadix[l] * double_PI / localStageSize);
 									}
 									localStageSum += localStageSize;
 								}
@@ -34491,8 +35019,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 						if (!axis->specializationConstants.inline_rader_kernel) {
 							double* raderFFTkernel = (double*)axis->specializationConstants.raderContainer[i].raderFFTkernel;
 							for (uint64_t j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
-								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT)] = raderFFTkernel[2 * j] / (axis->specializationConstants.raderContainer[i].prime - 1);
-								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT) + 1] = raderFFTkernel[2 * j + 1] / (axis->specializationConstants.raderContainer[i].prime - 1);
+								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT)] = (double)(raderFFTkernel[2 * j] / (long double)(axis->specializationConstants.raderContainer[i].prime - 1));
+								tempLUT[2 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT) + 1] = (double)(raderFFTkernel[2 * j + 1] / (long double)(axis->specializationConstants.raderContainer[i].prime - 1));
 							}
 						}
 					}
@@ -34501,29 +35029,29 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			if (axis_upload_id > 0) {
 				for (uint64_t i = 0; i < axis->specializationConstants.stageStartSize; i++) {
 					for (uint64_t j = 0; j < axis->specializationConstants.fftDim; j++) {
-						double angle = 2 * double_PI * ((i * j) / (double)(axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim));
-						tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = cos(angle);
-						tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = sin(angle);
+						long double angle = 2 * double_PI * ((i * j) / (long double)(axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim));
+						tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize)] = (double)cos(angle);
+						tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize) + 1] = (double)sin(angle);
 					}
 				}
 			}
 			if ((app->configuration.performDCT == 2) || (app->configuration.performDCT == 3)) {
 				for (uint64_t j = 0; j < app->configuration.size[axis_id] / 2 + 2; j++) {
-					double angle = (double_PI / 2.0 / (double)(app->configuration.size[axis_id])) * j;
-					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j] = cos(angle);
-					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j + 1] = sin(angle);
+					long double angle = (double_PI / 2.0 / (long double)(app->configuration.size[axis_id])) * j;
+					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j] = (double)cos(angle);
+					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j + 1] = (double)sin(angle);
 				}
 			}
 			if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) {
 				for (uint64_t j = 0; j < app->configuration.size[axis_id] / 4 + 2; j++) {
-					double angle = (double_PI / 2.0 / (double)(app->configuration.size[axis_id] / 2)) * j;
-					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j] = cos(angle);
-					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j + 1] = sin(angle);
+					long double angle = (double_PI / 2.0 / (long double)(app->configuration.size[axis_id] / 2)) * j;
+					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j] = (double)cos(angle);
+					tempLUT[2 * axis->specializationConstants.startDCT3LUT + 2 * j + 1] = (double)sin(angle);
 				}
 				for (uint64_t j = 0; j < app->configuration.size[axis_id] / 2; j++) {
-					double angle = (-double_PI / 8.0 / (double)(app->configuration.size[axis_id] / 2)) * (2 * j + 1);
-					tempLUT[2 * axis->specializationConstants.startDCT4LUT + 2 * j] = cos(angle);
-					tempLUT[2 * axis->specializationConstants.startDCT4LUT + 2 * j + 1] = sin(angle);
+					long double angle = (-double_PI / 8.0 / (long double)(app->configuration.size[axis_id] / 2)) * (2 * j + 1);
+					tempLUT[2 * axis->specializationConstants.startDCT4LUT + 2 * j] = (double)cos(angle);
+					tempLUT[2 * axis->specializationConstants.startDCT4LUT + 2 * j + 1] = (double)sin(angle);
 				}
 			}
 			axis->referenceLUT = 0;
@@ -34578,7 +35106,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 								tempLUT = 0;
 								return resFFT;
 							}
-							resFFT = transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+							resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
 							if (resFFT != VKFFT_SUCCESS) {
 								deleteVkFFT(app);
 								free(tempLUT);
@@ -34593,12 +35121,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 								tempLUT = 0;
 								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 							}
-							res = cudaMemcpy(axis->bufferLUT, tempLUT, axis->bufferLUTSize, cudaMemcpyHostToDevice);
-							if (res != cudaSuccess) {
+							resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+							if (resFFT != VKFFT_SUCCESS) {
 								deleteVkFFT(app);
 								free(tempLUT);
 								tempLUT = 0;
-								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+								return resFFT;
 							}
 #elif(VKFFT_BACKEND==2)
 							res = hipMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
@@ -34608,12 +35136,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 								tempLUT = 0;
 								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 							}
-							res = hipMemcpy(axis->bufferLUT, tempLUT, axis->bufferLUTSize, hipMemcpyHostToDevice);
-							if (res != hipSuccess) {
+							resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+							if (resFFT != VKFFT_SUCCESS) {
 								deleteVkFFT(app);
 								free(tempLUT);
 								tempLUT = 0;
-								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+								return resFFT;
 							}
 #elif(VKFFT_BACKEND==3)
 							axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
@@ -34633,36 +35161,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 								tempLUT = 0;
 								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 							}
-							ze_command_queue_desc_t commandQueueCopyDesc = {
-							ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
-							0,
-							app->configuration.commandQueueID,
-							0, // index
-							0, // flags
-							ZE_COMMAND_QUEUE_MODE_DEFAULT,
-							ZE_COMMAND_QUEUE_PRIORITY_NORMAL
-							};
-							ze_command_list_handle_t copyCommandList;
-							res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
-							if (res != ZE_RESULT_SUCCESS) {
+							resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+							if (resFFT != VKFFT_SUCCESS) {
 								deleteVkFFT(app);
 								free(tempLUT);
 								tempLUT = 0;
-								return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-							}
-							res = zeCommandListAppendMemoryCopy(copyCommandList, axis->bufferLUT, tempLUT, axis->bufferLUTSize, 0, 0, 0);
-							if (res != ZE_RESULT_SUCCESS) {
-								deleteVkFFT(app);
-								free(tempLUT);
-								tempLUT = 0;
-								return VKFFT_ERROR_FAILED_TO_COPY;
-							}
-							res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
-							if (res != ZE_RESULT_SUCCESS) {
-								deleteVkFFT(app);
-								free(tempLUT);
-								tempLUT = 0;
-								return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+								return resFFT;
 							}
 #endif
 						}
@@ -34673,6 +35177,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			tempLUT = 0;
 		}
 		else {
+			double double_PI = 3.14159265358979323846264338327950288419716939937510;
 			if (axis_upload_id > 0) {
 				if ((app->configuration.performDCT == 2) || (app->configuration.performDCT == 3)) {
 					axis->specializationConstants.startDCT3LUT = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim);
@@ -34902,7 +35407,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 								tempLUT = 0;
 								return resFFT;
 							}
-							resFFT = transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+							resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
 							if (resFFT != VKFFT_SUCCESS) {
 								deleteVkFFT(app);
 								free(tempLUT);
@@ -34917,12 +35422,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 								tempLUT = 0;
 								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 							}
-							res = cudaMemcpy(axis->bufferLUT, tempLUT, axis->bufferLUTSize, cudaMemcpyHostToDevice);
-							if (res != cudaSuccess) {
+							resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+							if (resFFT != VKFFT_SUCCESS) {
 								deleteVkFFT(app);
 								free(tempLUT);
 								tempLUT = 0;
-								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+								return resFFT;
 							}
 #elif(VKFFT_BACKEND==2)
 							res = hipMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
@@ -34932,12 +35437,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 								tempLUT = 0;
 								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 							}
-							res = hipMemcpy(axis->bufferLUT, tempLUT, axis->bufferLUTSize, hipMemcpyHostToDevice);
-							if (res != hipSuccess) {
+							resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+							if (resFFT != VKFFT_SUCCESS) {
 								deleteVkFFT(app);
 								free(tempLUT);
 								tempLUT = 0;
-								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+								return resFFT;
 							}
 #elif(VKFFT_BACKEND==3)
 							axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
@@ -34957,36 +35462,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 								tempLUT = 0;
 								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 							}
-							ze_command_queue_desc_t commandQueueCopyDesc = {
-							ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
-							0,
-							app->configuration.commandQueueID,
-							0, // index
-							0, // flags
-							ZE_COMMAND_QUEUE_MODE_DEFAULT,
-							ZE_COMMAND_QUEUE_PRIORITY_NORMAL
-							};
-							ze_command_list_handle_t copyCommandList;
-							res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
-							if (res != ZE_RESULT_SUCCESS) {
+							resFFT = VkFFT_transferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+							if (resFFT != VKFFT_SUCCESS) {
 								deleteVkFFT(app);
 								free(tempLUT);
 								tempLUT = 0;
-								return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-							}
-							res = zeCommandListAppendMemoryCopy(copyCommandList, axis->bufferLUT, tempLUT, axis->bufferLUTSize, 0, 0, 0);
-							if (res != ZE_RESULT_SUCCESS) {
-								deleteVkFFT(app);
-								free(tempLUT);
-								tempLUT = 0;
-								return VKFFT_ERROR_FAILED_TO_COPY;
-							}
-							res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
-							if (res != ZE_RESULT_SUCCESS) {
-								deleteVkFFT(app);
-								free(tempLUT);
-								tempLUT = 0;
-								return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+								return resFFT;
 							}
 #endif
 						}
@@ -35034,7 +35515,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				tempRaderUintLUT = 0;
 				return resFFT;
 			}
-			resFFT = transferDataFromCPU(app, tempRaderUintLUT, &app->bufferRaderUintLUT[axis_id][axis_upload_id], app->bufferRaderUintLUTSize[axis_id][axis_upload_id]);
+			resFFT = VkFFT_transferDataFromCPU(app, tempRaderUintLUT, &app->bufferRaderUintLUT[axis_id][axis_upload_id], app->bufferRaderUintLUTSize[axis_id][axis_upload_id]);
 			if (resFFT != VKFFT_SUCCESS) {
 				deleteVkFFT(app);
 				free(tempRaderUintLUT);
@@ -35049,12 +35530,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				tempRaderUintLUT = 0;
 				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			}
-			res = cudaMemcpy(app->bufferRaderUintLUT[axis_id][axis_upload_id], tempRaderUintLUT, app->bufferRaderUintLUTSize[axis_id][axis_upload_id], cudaMemcpyHostToDevice);
-			if (res != cudaSuccess) {
+			resFFT = VkFFT_transferDataFromCPU(app, tempRaderUintLUT, &app->bufferRaderUintLUT[axis_id][axis_upload_id], app->bufferRaderUintLUTSize[axis_id][axis_upload_id]);
+			if (resFFT != VKFFT_SUCCESS) {
 				deleteVkFFT(app);
 				free(tempRaderUintLUT);
 				tempRaderUintLUT = 0;
-				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+				return resFFT;
 			}
 #elif(VKFFT_BACKEND==2)
 			res = hipMalloc((void**)&app->bufferRaderUintLUT[axis_id][axis_upload_id], app->bufferRaderUintLUTSize[axis_id][axis_upload_id]);
@@ -35064,12 +35545,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				tempRaderUintLUT = 0;
 				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			}
-			res = hipMemcpy(app->bufferRaderUintLUT[axis_id][axis_upload_id], tempRaderUintLUT, app->bufferRaderUintLUTSize[axis_id][axis_upload_id], hipMemcpyHostToDevice);
-			if (res != hipSuccess) {
+			resFFT = VkFFT_transferDataFromCPU(app, tempRaderUintLUT, &app->bufferRaderUintLUT[axis_id][axis_upload_id], app->bufferRaderUintLUTSize[axis_id][axis_upload_id]);
+			if (resFFT != VKFFT_SUCCESS) {
 				deleteVkFFT(app);
 				free(tempRaderUintLUT);
 				tempRaderUintLUT = 0;
-				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+				return resFFT;
 			}
 #elif(VKFFT_BACKEND==3)
 			app->bufferRaderUintLUT[axis_id][axis_upload_id] = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, app->bufferRaderUintLUTSize[axis_id][axis_upload_id], tempRaderUintLUT, &res);
@@ -35089,36 +35570,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				tempRaderUintLUT = 0;
 				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			}
-			ze_command_queue_desc_t commandQueueCopyDesc = {
-			ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
-			0,
-			app->configuration.commandQueueID,
-			0, // index
-			0, // flags
-			ZE_COMMAND_QUEUE_MODE_DEFAULT,
-			ZE_COMMAND_QUEUE_PRIORITY_NORMAL
-			};
-			ze_command_list_handle_t copyCommandList;
-			res = zeCommandListCreateImmediate(app->configuration.context[0], app->configuration.device[0], &commandQueueCopyDesc, &copyCommandList);
-			if (res != ZE_RESULT_SUCCESS) {
+			resFFT = VkFFT_transferDataFromCPU(app, tempRaderUintLUT, &app->bufferRaderUintLUT[axis_id][axis_upload_id], app->bufferRaderUintLUTSize[axis_id][axis_upload_id]);
+			if (resFFT != VKFFT_SUCCESS) {
 				deleteVkFFT(app);
 				free(tempRaderUintLUT);
 				tempRaderUintLUT = 0;
-				return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-			}
-			res = zeCommandListAppendMemoryCopy(copyCommandList, app->bufferRaderUintLUT[axis_id][axis_upload_id], tempRaderUintLUT, app->bufferRaderUintLUTSize[axis_id][axis_upload_id], 0, 0, 0);
-			if (res != ZE_RESULT_SUCCESS) {
-				deleteVkFFT(app);
-				free(tempRaderUintLUT);
-				tempRaderUintLUT = 0;
-				return VKFFT_ERROR_FAILED_TO_COPY;
-			}
-			res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
-			if (res != ZE_RESULT_SUCCESS) {
-				deleteVkFFT(app);
-				free(tempRaderUintLUT);
-				tempRaderUintLUT = 0;
-				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+				return resFFT;
 			}
 #endif
 			free(tempRaderUintLUT);
@@ -36430,7 +36887,10 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		pipelineShaderStageCreateInfo.pSpecializationInfo = 0;// &specializationInfo;
 		computePipelineCreateInfo.stage = pipelineShaderStageCreateInfo;
 		computePipelineCreateInfo.layout = axis->pipelineLayout;
-		res = vkCreateComputePipelines(app->configuration.device[0], VK_NULL_HANDLE, 1, &computePipelineCreateInfo, 0, &axis->pipeline);
+		if (app->configuration.pipelineCache)
+			res = vkCreateComputePipelines(app->configuration.device[0], app->configuration.pipelineCache[0], 1, &computePipelineCreateInfo, 0, &axis->pipeline);
+		else
+			res = vkCreateComputePipelines(app->configuration.device[0], 0, 1, &computePipelineCreateInfo, 0, &axis->pipeline);
 		if (res != VK_SUCCESS) {
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_CREATE_PIPELINE;
@@ -36801,6 +37261,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			uint64_t codeSize;
 			char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
 			memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
+			size_t codeSize_size_t = (size_t)codeSize;
 			code = (char*)malloc(codeSize);
 			if (!code) {
 				free(code0);
@@ -36811,7 +37272,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
 			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
 
-			axis->program = clCreateProgramWithBinary(app->configuration.context[0], 1, app->configuration.device, &codeSize, (const unsigned char**)(&code), 0, &res);
+			axis->program = clCreateProgramWithBinary(app->configuration.context[0], 1, app->configuration.device, &codeSize_size_t, (const unsigned char**)(&code), 0, &res);
 			if (res != CL_SUCCESS) {
 				free(code0);
 				code0 = 0;
@@ -36863,7 +37324,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				deleteVkFFT(app);
 				return VKFFT_ERROR_FAILED_TO_COMPILE_PROGRAM;
 			}
-			axis->binarySize = codeSize;
+			axis->binarySize = (uint64_t)codeSize;
 			axis->binary = (char*)malloc(axis->binarySize);
 			if (!axis->binary) {
 				free(code0);
@@ -36871,7 +37332,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			res = clGetProgramInfo(axis->program, CL_PROGRAM_BINARIES, axis->binarySize, &axis->binary, NULL);
+			res = clGetProgramInfo(axis->program, CL_PROGRAM_BINARIES, codeSize, &axis->binary, NULL);
 			if (res != CL_SUCCESS) {
 				free(axis->binary);
 				axis->binary = 0;
@@ -37515,6 +37976,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	app->configuration.sharedMemorySize = physicalDeviceProperties.limits.maxComputeSharedMemorySize;
 	app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(physicalDeviceProperties.limits.maxComputeSharedMemorySize));
 	app->configuration.vendorID = physicalDeviceProperties.vendorID;
+	if (inputLaunchConfiguration.pipelineCache != 0)	app->configuration.pipelineCache = inputLaunchConfiguration.pipelineCache;
 	app->configuration.useRaderUintLUT = 1;
 	switch (physicalDeviceProperties.vendorID) {
 	case 0x10DE://NVIDIA
@@ -37542,7 +38004,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		app->configuration.registerBoostNonPow2 = 0;
 		app->configuration.registerBoost = (physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 20 : 21;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 18 : 19;
 		break;
 	default:
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
@@ -37652,7 +38114,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		}
 		for (uint64_t i = 0; i < app->configuration.num_streams; i++) {
 			res_t = cudaEventCreate(&app->configuration.stream_event[i]);
-			if (res != CUDA_SUCCESS) {
+			if (res_t != cudaSuccess) {
 				deleteVkFFT(app);
 				return VKFFT_ERROR_FAILED_TO_CREATE_EVENT;
 			}
@@ -39759,6 +40221,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10228; //X.XX.XX format
+	return 10229; //X.XX.XX format
 }
 #endif

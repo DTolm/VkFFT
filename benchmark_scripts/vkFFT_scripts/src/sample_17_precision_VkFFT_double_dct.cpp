@@ -244,6 +244,23 @@ VkFFTResult sample_17_precision_VkFFT_double_dct(VkGPU* vkGPU, uint64_t file_out
 #elif(VKFFT_BACKEND==3)
 					res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize[i], inputC, 0, NULL, NULL);
 					if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+#elif(VKFFT_BACKEND==4)
+					ze_command_queue_desc_t commandQueueCopyDesc = {
+						ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
+						0,
+						vkGPU->commandQueueID,
+						0, // index
+						0, // flags
+						ZE_COMMAND_QUEUE_MODE_DEFAULT,
+						ZE_COMMAND_QUEUE_PRIORITY_NORMAL
+					};
+					ze_command_list_handle_t copyCommandList;
+					res = zeCommandListCreateImmediate(vkGPU->context, vkGPU->device, &commandQueueCopyDesc, &copyCommandList);
+					if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
+					res = zeCommandListAppendMemoryCopy(copyCommandList, buffer, inputC, bufferSize[i], 0, 0, 0);
+					if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
+					res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
+					if (res != 0) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 #endif
 					shift += bufferSize[i];
 				}
