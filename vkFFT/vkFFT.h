@@ -31499,7 +31499,7 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 	if (axis->specializationConstants.useRader) {
 		for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
 			if (axis->specializationConstants.raderContainer[i].type == 0) {
-				for (uint64_t j = 0; j < 30; j++) {
+				for (uint64_t j = 0; j < app->numRaderFFTPrimes; j++) {
 					if (app->rader_primes[j] == axis->specializationConstants.raderContainer[i].prime) {
 						axis->specializationConstants.raderContainer[i].raderFFTkernel = app->raderFFTkernel[j];
 					}
@@ -31822,20 +31822,23 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 		if (app->configuration.loadApplicationFromString) {
 			uint64_t offset = 0;
 			for (uint64_t i = 0; i < app->numRaderFFTPrimes; i++) {
+				uint64_t current_size = 0;
+				if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+					current_size = (app->rader_primes[i] - 1) * sizeof(double) * 2;
+				}
+				else {
+					current_size = (app->rader_primes[i] - 1) * sizeof(float) * 2;
+				}
 				if (!app->raderFFTkernel[i]) {
-					uint64_t current_size = 0;
-					if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
-						current_size = (axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(double) * 2;
-					}
-					else {
-						current_size = (axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(float) * 2;
-					}
 					app->raderFFTkernel[i] = (void*)malloc(current_size);
 					if (!app->raderFFTkernel[i]) return VKFFT_ERROR_MALLOC_FAILED;
-					axis->specializationConstants.raderContainer[i].raderFFTkernel = app->raderFFTkernel[i];
 					memcpy(app->raderFFTkernel[i], (char*)app->configuration.loadApplicationString + app->applicationStringOffsetRader + offset, current_size);
-					offset += current_size;
 				}
+				for (uint64_t j = 0; j < axis->specializationConstants.numRaderPrimes; j++) {
+					if ((app->rader_primes[i] == axis->specializationConstants.raderContainer[j].prime)&&(axis->specializationConstants.raderContainer[j].type==0))
+						axis->specializationConstants.raderContainer[j].raderFFTkernel = app->raderFFTkernel[i];
+				}
+				offset += current_size;
 			}
 		}
 	}
