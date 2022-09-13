@@ -1697,28 +1697,61 @@ static inline VkFFTResult appendConstantsVkFFT(VkFFTSpecializationConstantsLayou
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 #endif
-					for (uint64_t j = 0; j < (sc->raderContainer[i].prime - 1); j++) {//fix later
-						if (!strcmp(floatType, "double")) {
-							double* raderFFTKernel = (double*)sc->raderContainer[i].raderFFTkernel;
-							sc->tempLen = sprintf(sc->tempStr, "%.17e%s ", raderFFTKernel[2 * j] / (sc->raderContainer[i].prime - 1), LFending);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
+					if (sc->raderContainer[i].type == 0) {
+						for (uint64_t j = 0; j < (sc->raderContainer[i].prime - 1); j++) {//fix later
+							if (!strcmp(floatType, "double")) {
+								double* raderFFTKernel = (double*)sc->raderContainer[i].raderFFTkernel;
+								sc->tempLen = sprintf(sc->tempStr, "%.17e%s ", raderFFTKernel[2 * j] / (sc->raderContainer[i].prime - 1), LFending);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							if (!strcmp(floatType, "float")) {
+								float* raderFFTKernel = (float*)sc->raderContainer[i].raderFFTkernel;
+								sc->tempLen = sprintf(sc->tempStr, "%.8e%s ", raderFFTKernel[2 * j] / (sc->raderContainer[i].prime - 1), LFending);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							if (j < (sc->raderContainer[i].prime - 2)) {
+								sc->tempLen = sprintf(sc->tempStr, ", ");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							else {
+								sc->tempLen = sprintf(sc->tempStr, "};\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
 						}
-						if (!strcmp(floatType, "float")) {
-							float* raderFFTKernel = (float*)sc->raderContainer[i].raderFFTkernel;
-							sc->tempLen = sprintf(sc->tempStr, "%.8e%s ", raderFFTKernel[2 * j] / (sc->raderContainer[i].prime - 1), LFending);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-						if (j < (sc->raderContainer[i].prime - 2)) {
-							sc->tempLen = sprintf(sc->tempStr, ", ");
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-						else {
-							sc->tempLen = sprintf(sc->tempStr, "};\n");
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
+						for (uint64_t j = 0; j < (sc->raderContainer[i].prime - 1); j++) {//fix later
+							uint64_t g_pow = 1;
+							for (uint64_t t = 0; t < sc->raderContainer[i].prime - 1 - j; t++) {
+								g_pow = (g_pow * sc->raderContainer[i].generator) % sc->raderContainer[i].prime;
+							}
+							if (!strcmp(floatType, "double")) {
+								double* raderFFTKernel = (double*)sc->raderContainer[i].raderFFTkernel;
+								sc->tempLen = sprintf(sc->tempStr, "%.17e%s ", (double)cos(2.0 * g_pow * double_PI / sc->raderContainer[i].prime), LFending);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							if (!strcmp(floatType, "float")) {
+								float* raderFFTKernel = (float*)sc->raderContainer[i].raderFFTkernel;
+								sc->tempLen = sprintf(sc->tempStr, "%.8e%s ", (float)cos(2.0 * g_pow * double_PI / sc->raderContainer[i].prime), LFending);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							if (j < (sc->raderContainer[i].prime - 2)) {
+								sc->tempLen = sprintf(sc->tempStr, ", ");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							else {
+								sc->tempLen = sprintf(sc->tempStr, "};\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
 						}
 					}
 #if((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
@@ -1730,29 +1763,62 @@ static inline VkFFTResult appendConstantsVkFFT(VkFFTSpecializationConstantsLayou
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 #endif
-					for (uint64_t j = 0; j < (sc->raderContainer[i].prime - 1); j++) {//fix later
-						if (!strcmp(floatType, "double")) {
-							double* raderFFTKernel = (double*)sc->raderContainer[i].raderFFTkernel;
-							sc->tempLen = sprintf(sc->tempStr, "%.17e%s ", raderFFTKernel[2 * j + 1] / (sc->raderContainer[i].prime - 1), LFending);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
-						if (!strcmp(floatType, "float")) {
-							float* raderFFTKernel = (float*)sc->raderContainer[i].raderFFTkernel;
-							sc->tempLen = sprintf(sc->tempStr, "%.8e%s ", raderFFTKernel[2 * j + 1] / (sc->raderContainer[i].prime - 1), LFending);
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
-						}
+					if (sc->raderContainer[i].type == 0) {
+						for (uint64_t j = 0; j < (sc->raderContainer[i].prime - 1); j++) {//fix later
+							if (!strcmp(floatType, "double")) {
+								double* raderFFTKernel = (double*)sc->raderContainer[i].raderFFTkernel;
+								sc->tempLen = sprintf(sc->tempStr, "%.17e%s ", raderFFTKernel[2 * j + 1] / (sc->raderContainer[i].prime - 1), LFending);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							if (!strcmp(floatType, "float")) {
+								float* raderFFTKernel = (float*)sc->raderContainer[i].raderFFTkernel;
+								sc->tempLen = sprintf(sc->tempStr, "%.8e%s ", raderFFTKernel[2 * j + 1] / (sc->raderContainer[i].prime - 1), LFending);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
 
-						if (j < (sc->raderContainer[i].prime - 2)) {
-							sc->tempLen = sprintf(sc->tempStr, ", ");
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
+							if (j < (sc->raderContainer[i].prime - 2)) {
+								sc->tempLen = sprintf(sc->tempStr, ", ");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							else {
+								sc->tempLen = sprintf(sc->tempStr, "};\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
 						}
-						else {
-							sc->tempLen = sprintf(sc->tempStr, "};\n");
-							res = VkAppendLine(sc);
-							if (res != VKFFT_SUCCESS) return res;
+					}
+					else {
+						long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
+						for (uint64_t j = 0; j < (sc->raderContainer[i].prime - 1); j++) {//fix later
+							uint64_t g_pow = 1;
+							for (uint64_t t = 0; t < sc->raderContainer[i].prime - 1 - j; t++) {
+								g_pow = (g_pow * sc->raderContainer[i].generator) % sc->raderContainer[i].prime;
+							}
+							if (!strcmp(floatType, "double")) {
+								double* raderFFTKernel = (double*)sc->raderContainer[i].raderFFTkernel;
+								sc->tempLen = sprintf(sc->tempStr, "%.17e%s ", (double)(-sin(2.0 * g_pow * double_PI / sc->raderContainer[i].prime)), LFending);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							if (!strcmp(floatType, "float")) {
+								float* raderFFTKernel = (float*)sc->raderContainer[i].raderFFTkernel;
+								sc->tempLen = sprintf(sc->tempStr, "%.8e%s ", (float)(-sin(2.0 * g_pow * double_PI / sc->raderContainer[i].prime)), LFending);
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							if (j < (sc->raderContainer[i].prime - 2)) {
+								sc->tempLen = sprintf(sc->tempStr, ", ");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
+							else {
+								sc->tempLen = sprintf(sc->tempStr, "};\n");
+								res = VkAppendLine(sc);
+								if (res != VKFFT_SUCCESS) return res;
+							}
 						}
 					}
 				}
@@ -36234,7 +36300,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					axis->axisBlock[1] = final_rader_thread_count;
 					if (axis->groupedBatch * axis->axisBlock[1] > maxThreadNum) axis->groupedBatch = maxBatchCoalesced;
 				}
-
+				if (axis->specializationConstants.useRaderFFT) {
+					if (axis->axisBlock[1] < axis->specializationConstants.minRaderFFTThreadNum) axis->axisBlock[1] = axis->specializationConstants.minRaderFFTThreadNum;
+				}
 				uint64_t scale = app->configuration.aimThreads / axis->axisBlock[1] / axis->groupedBatch;
 				if (scale > 1) axis->groupedBatch *= scale;
 				axis->axisBlock[0] = (axis->specializationConstants.stageStartSize > axis->groupedBatch) ? axis->groupedBatch : axis->specializationConstants.stageStartSize;
@@ -36276,6 +36344,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				axis->axisBlock[1] = final_rader_thread_count;
 				if (axis->groupedBatch * axis->axisBlock[1] > maxThreadNum) axis->groupedBatch = maxBatchCoalesced;
 			}
+			if (axis->specializationConstants.useRaderFFT) {
+				if (axis->axisBlock[1] < axis->specializationConstants.minRaderFFTThreadNum) axis->axisBlock[1] = axis->specializationConstants.minRaderFFTThreadNum;
+			}
 			axis->axisBlock[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axis->groupedBatch) ? axis->groupedBatch : FFTPlan->actualFFTSizePerAxis[axis_id][0];
 			if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 			if (axis->axisBlock[0] * axis->axisBlock[1] > maxThreadNum) {
@@ -36312,6 +36383,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				}
 				axis->axisBlock[1] = final_rader_thread_count;
 				if (axis->groupedBatch * axis->axisBlock[1] > maxThreadNum) axis->groupedBatch = maxBatchCoalesced;
+			}
+			if (axis->specializationConstants.useRaderFFT) {
+				if (axis->axisBlock[1] < axis->specializationConstants.minRaderFFTThreadNum) axis->axisBlock[1] = axis->specializationConstants.minRaderFFTThreadNum;
 			}
 			axis->axisBlock[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axis->groupedBatch) ? axis->groupedBatch : FFTPlan->actualFFTSizePerAxis[axis_id][0];
 
