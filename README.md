@@ -82,8 +82,8 @@ The test configuration below takes multiple 1D FFTs of all lengths from the rang
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/fp64_cuda_a100.png?raw=true)
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/fp64_hip_mi250.png?raw=true)
 ## Precision comparison of cuFFT/VkFFT/FFTW
-![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/FP64_precision.png?raw=true)
-![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/FP32_precision.png?raw=true)
+![alt text](https://github.com/DTolm/VkFFT/blob/master/precision_results/FP64_precision.png?raw=true)
+![alt text](https://github.com/DTolm/VkFFT/blob/master/precision_results/FP32_precision.png?raw=true)
 
 Above, VkFFT precision is verified by comparing its results with FP128 version of FFTW. We test all FFT lengths from the [2, 100000] range. We perform tests in single and double precision on random input data from [-1;1] range.
 
