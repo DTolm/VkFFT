@@ -35,6 +35,19 @@
 #endif 
 #elif(VKFFT_BACKEND==4)
 #include <ze_api.h>
+#elif(VKFFT_BACKEND==5)
+#ifndef NS_PRIVATE_IMPLEMENTATION
+#define NS_PRIVATE_IMPLEMENTATION
+#endif
+#ifndef CA_PRIVATE_IMPLEMENTATION
+#define CA_PRIVATE_IMPLEMENTATION
+#endif
+#ifndef MTL_PRIVATE_IMPLEMENTATION
+#define MTL_PRIVATE_IMPLEMENTATION
+#endif
+#include "Foundation/Foundation.hpp"
+#include "QuartzCore/QuartzCore.hpp"
+#include "Metal/Metal.hpp"
 #endif
 #include "vkFFT.h"
 #include "utils_VkFFT.h"
@@ -270,192 +283,198 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 		free(deviceList);
 	}
 	free(drivers);
+#elif(VKFFT_BACKEND==5)
+    NS::Array* devices = MTL::CopyAllDevices();
+    MTL::Device* device = (MTL::Device*)devices->object(vkGPU->device_id);
+    vkGPU->device = device;
+    MTL::CommandQueue* queue = device->newCommandQueue();
+    vkGPU->queue = queue;
 #endif
 
 	uint64_t isCompilerInitialized = 1;
 
-	switch (sample_id) {
-	case 0:
-	{
-		resFFT = sample_0_benchmark_VkFFT_single(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 1:
-	{
-		resFFT = sample_1_benchmark_VkFFT_double(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
+    switch (sample_id) {
+    case 0:
+    {
+        resFFT = sample_0_benchmark_VkFFT_single(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 1:
+    {
+        resFFT = sample_1_benchmark_VkFFT_double(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
 #if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
-	case 2:
-	{
-		resFFT = sample_2_benchmark_VkFFT_half(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
+    case 2:
+    {
+        resFFT = sample_2_benchmark_VkFFT_half(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
 #endif
-	case 3:
-	{
-		resFFT = sample_3_benchmark_VkFFT_single_3d(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 4:
-	{
-		resFFT = sample_4_benchmark_VkFFT_single_3d_zeropadding(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 5:
-	{
-		resFFT = sample_5_benchmark_VkFFT_single_disableReorderFourStep(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 6:
-	{
-		resFFT = sample_6_benchmark_VkFFT_single_r2c(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 7:
-	{
-		resFFT = sample_7_benchmark_VkFFT_single_Bluestein(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 8:
-	{
-		resFFT = sample_8_benchmark_VkFFT_double_Bluestein(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
+    case 3:
+    {
+        resFFT = sample_3_benchmark_VkFFT_single_3d(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 4:
+    {
+        resFFT = sample_4_benchmark_VkFFT_single_3d_zeropadding(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 5:
+    {
+        resFFT = sample_5_benchmark_VkFFT_single_disableReorderFourStep(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 6:
+    {
+        resFFT = sample_6_benchmark_VkFFT_single_r2c(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 7:
+    {
+        resFFT = sample_7_benchmark_VkFFT_single_Bluestein(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 8:
+    {
+        resFFT = sample_8_benchmark_VkFFT_double_Bluestein(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
 #if(VKFFT_BACKEND==0)
-	case 10:
-	{
-		resFFT = sample_10_benchmark_VkFFT_single_multipleBuffers(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
+    case 10:
+    {
+        resFFT = sample_10_benchmark_VkFFT_single_multipleBuffers(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
 #endif
 #ifdef USE_FFTW
-	case 11:
-	{
-		resFFT = sample_11_precision_VkFFT_single(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 12:
-	{
-		resFFT = sample_12_precision_VkFFT_double(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
+    case 11:
+    {
+        resFFT = sample_11_precision_VkFFT_single(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 12:
+    {
+        resFFT = sample_12_precision_VkFFT_double(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
 #if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
-	case 13:
-	{
-		resFFT = sample_13_precision_VkFFT_half(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
+    case 13:
+    {
+        resFFT = sample_13_precision_VkFFT_half(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
 #endif
-	case 14:
-	{
-		resFFT = sample_14_precision_VkFFT_single_nonPow2(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 15:
-	{
-		resFFT = sample_15_precision_VkFFT_single_r2c(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 16:
-	{
-		resFFT = sample_16_precision_VkFFT_single_dct(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 17:
-	{
-		resFFT = sample_17_precision_VkFFT_double_dct(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 18:
-	{
-		resFFT = sample_18_precision_VkFFT_double_nonPow2(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
+    case 14:
+    {
+        resFFT = sample_14_precision_VkFFT_single_nonPow2(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 15:
+    {
+        resFFT = sample_15_precision_VkFFT_single_r2c(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 16:
+    {
+        resFFT = sample_16_precision_VkFFT_single_dct(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 17:
+    {
+        resFFT = sample_17_precision_VkFFT_double_dct(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 18:
+    {
+        resFFT = sample_18_precision_VkFFT_double_nonPow2(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
 #endif
-	case 50:
-	{
-		resFFT = sample_50_convolution_VkFFT_single_1d_matrix(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 51:
-	{
-		resFFT = sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 52:
-	{
-		resFFT = sample_52_convolution_VkFFT_single_2d_batched_r2c(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 110:
-	{
-		resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 1);
-		break;
-	}
-	case 120:
-	{
-		resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 2);
-		break;
-	}
-	case 130:
-	{
-		resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 3);
-		break;
-	}
-	case 140:
-	{
-		resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 4);
-		break;
-	}
-	case 111:
-	{
-		resFFT = sample_101_benchmark_VkFFT_double_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 1);
-		break;
-	}
-	case 121:
-	{
-		resFFT = sample_101_benchmark_VkFFT_double_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 2);
-		break;
-	}
-	case 131:
-	{
-		resFFT = sample_101_benchmark_VkFFT_double_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 3);
-		break;
-	}
-	case 141:
-	{
-		resFFT = sample_101_benchmark_VkFFT_double_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 4);
-		break;
-	}
-	case 200: case 201:
-	{
-		resFFT = user_benchmark_VkFFT(vkGPU, file_output, output, isCompilerInitialized, userParams);
-		break;
-	}
+    case 50:
+    {
+        resFFT = sample_50_convolution_VkFFT_single_1d_matrix(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 51:
+    {
+        resFFT = sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 52:
+    {
+        resFFT = sample_52_convolution_VkFFT_single_2d_batched_r2c(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 110:
+    {
+        resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 1);
+        break;
+    }
+    case 120:
+    {
+        resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 2);
+        break;
+    }
+    case 130:
+    {
+        resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 3);
+        break;
+    }
+    case 140:
+    {
+        resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 4);
+        break;
+    }
+    case 111:
+    {
+        resFFT = sample_101_benchmark_VkFFT_double_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 1);
+        break;
+    }
+    case 121:
+    {
+        resFFT = sample_101_benchmark_VkFFT_double_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 2);
+        break;
+    }
+    case 131:
+    {
+        resFFT = sample_101_benchmark_VkFFT_double_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 3);
+        break;
+    }
+    case 141:
+    {
+        resFFT = sample_101_benchmark_VkFFT_double_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 4);
+        break;
+    }
+    case 200: case 201:
+    {
+        resFFT = user_benchmark_VkFFT(vkGPU, file_output, output, isCompilerInitialized, userParams);
+        break;
+    }
 #if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
-	case 202:
-	{
-		resFFT = user_benchmark_VkFFT(vkGPU, file_output, output, isCompilerInitialized, userParams);
-		break;
-	}
+    case 202:
+    {
+        resFFT = user_benchmark_VkFFT(vkGPU, file_output, output, isCompilerInitialized, userParams);
+        break;
+    }
 #endif
-	case 1000:
-	{
-		resFFT = sample_1000_VkFFT_single_2_4096(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 1001:
-	{
-		resFFT = sample_1001_benchmark_VkFFT_double_2_4096(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	case 1003:
-	{
-		resFFT = sample_1003_benchmark_VkFFT_single_3d_2_512(vkGPU, file_output, output, isCompilerInitialized);
-		break;
-	}
-	}
+    case 1000:
+    {
+        resFFT = sample_1000_VkFFT_single_2_4096(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 1001:
+    {
+        resFFT = sample_1001_benchmark_VkFFT_double_2_4096(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    case 1003:
+    {
+        resFFT = sample_1003_benchmark_VkFFT_single_3d_2_512(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
+    }
 #if(VKFFT_BACKEND==0)
 	vkDestroyFence(vkGPU->device, vkGPU->fence, NULL);
 	vkDestroyCommandPool(vkGPU->device, vkGPU->commandPool, NULL);
@@ -475,6 +494,10 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	res = zeCommandQueueDestroy(vkGPU->commandQueue);
 	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
 	res = zeContextDestroy(vkGPU->context);
+#elif(VKFFT_BACKEND==5)
+    vkGPU->queue->release();
+    vkGPU->device->release();
+    devices->release();
 #endif
 
 	return resFFT;
@@ -510,7 +533,7 @@ int main(int argc, char* argv[])
 		version_decomposed[0] = version / 10000;
 		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
 		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
-		printf("VkFFT v%d.%d.%d (08-09-2022). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
+		printf("VkFFT v%d.%d.%d (06-10-2022). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
@@ -521,6 +544,8 @@ int main(int argc, char* argv[])
 		printf("OpenCL backend\n");
 #elif (VKFFT_BACKEND==4)
 		printf("Level Zero backend\n");
+#elif (VKFFT_BACKEND==5)
+        printf("Metal backend\n");
 #endif
 		printf("	-h: print help\n");
 		printf("	-devices: print the list of available device ids, used as -d argument\n");

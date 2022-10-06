@@ -1,6 +1,8 @@
 [![Build Status](https://travis-ci.com/DTolm/VkFFT.svg?token=nMgUQeqx7PXMeCFaXqsb&branch=master)](https://travis-ci.com/github/DTolm/VkFFT)
-# VkFFT - Vulkan/CUDA/HIP/OpenCL/Level Zero Fast Fourier Transform library
-VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan/CUDA/HIP/OpenCL/Level Zero projects. VkFFT aims to provide the community with an open-source alternative to Nvidia's cuFFT library while achieving better performance. VkFFT is written in C language and supports Vulkan, CUDA, HIP, OpenCL and Level Zero as backends.
+# VkFFT - Vulkan/CUDA/HIP/OpenCL/Level Zero/Metal Fast Fourier Transform library
+VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan/CUDA/HIP/OpenCL/Level Zero/Metal projects. VkFFT aims to provide the community with an open-source alternative to Nvidia's cuFFT library while achieving better performance. VkFFT is written in C language and supports Vulkan, CUDA, HIP, OpenCL, Level Zero and Metal as backends.
+
+## Check out my poster at SC22: https://sc22.supercomputing.org/presentation/?id=rpost143&sess=sess273
 
 ## Check out my panel at Nvidia's GTC 2021 in Higher Education and Research category: https://gtc21.event.nvidia.com/
 
@@ -26,9 +28,9 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - WHDCN layout - data is stored in the following order (sorted by increase in strides): the width, the height, the depth, the coordinate (the number of feature maps), the batch number
   - Multiple feature/batch convolutions - one input, multiple kernels
   - Multiple input/output/temporary buffer split. Allows using data split between different memory allocations and mitigates 4GB single allocation limit.
-  - Works on Nvidia, AMD and Intel GPUs. And Raspberry Pi 4 GPU.
+  - Works on Nvidia, AMD, Intel and Apple GPUs. And Raspberry Pi 4 GPU.
   - Works on Windows, Linux and macOS
-  - VkFFT supports Vulkan, CUDA, HIP, OpenCL and Level Zero as backend to cover wide range of APIs
+  - VkFFT supports Vulkan, CUDA, HIP, OpenCL, Level Zero and Metal as backend to cover wide range of APIs
   - Header-only library with Vulkan interface, which allows appending VkFFT directly to user's command buffer. Kernels are compiled at run-time
 ## Future release plan
  - ##### Planned
@@ -53,6 +55,11 @@ To build OpenCL version of the benchmark, replace VKFFT_BACKEND in CMakeLists (l
 Level Zero:
 Include the vkFFT.h file. Provide the library with correctly chosen VKFFT_BACKEND definition. Clang and llvm-spirv must be valid system calls. Only single/double precision for now.\
 To build Level Zero version of the benchmark, replace VKFFT_BACKEND in CMakeLists (line 5) with the value 4 and optionally enable FFTW.
+
+Metal:
+Include the vkFFT.h file. Provide the library with correctly chosen VKFFT_BACKEND definition. VkFFT uses metal-cpp as a C++ bindings to Apple's libraries - Foundation.hpp, QuartzCore.hpp and Metal.hpp. Only single precision.\
+To build Metal version of the benchmark, replace VKFFT_BACKEND in CMakeLists (line 5) with the value 5 and optionally enable FFTW.
+
 ## Command-line interface
 VkFFT has a command-line interface with the following set of commands:\
 -h: print help\
@@ -75,17 +82,15 @@ The test configuration below takes multiple 1D FFTs of all lengths from the rang
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/fp64_cuda_a100.png?raw=true)
 ![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/fp64_hip_mi250.png?raw=true)
 ## Precision comparison of cuFFT/VkFFT/FFTW
-To measure how VkFFT (single/double/half precision) results compare to cuFFT/rocFFT (single/double/half precision) and FFTW (double precision), a set of ~60 systems covering full FFT range was filled with random complex data on the scale of [-1,1] and one C2C transform was performed on each system. Samples 11(single), 12(double), 13(half) calculate for each value of the transformed system:
+![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/FP64_precision.png?raw=true)
+![alt text](https://github.com/DTolm/VkFFT/blob/master/benchmark_plot/FP32_precision.png?raw=true)
 
-- Max difference between cuFFT/rocFFT/VkFFT result and FFTW result
-- Average difference between cuFFT/rocFFT/VkFFT result and FFTW result
-- Max ratio of the difference between cuFFT/rocFFT/VkFFT result and FFTW result to the FFTW result
-- Average ratio of the difference between cuFFT/rocFFT/VkFFT result and FFTW result to the FFTW result
+Above, VkFFT precision is verified by comparing its results with FP128 version of FFTW. We test all FFT lengths from the [2, 100000] range. We perform tests in single and double precision on random input data from [-1;1] range.
 
-FFTW is required to launch these samples (specify in CMakeLists include and library directories). If cuFFT is disabled, only FFTW/VkFFT results are calculated.\
-The precision_cuFFT_VkFFT_FFTW.txt file contains the single precision results for Nvidia's 1660Ti GPU and AMD Ryzen 2700 CPU. On average, the results fluctuate both for cuFFT and VkFFT with no clear winner in single precision. Max ratio stays in the range of 2% for both cuFFT and VkFFT, while the average ratio stays below 1e-6.\
-The precision_cuFFT_VkFFT_FFTW_double.txt file contains the double precision results for Nvidia's 1660Ti GPU and AMD Ryzen 2700 CPU. On average, VkFFT is more precise than cuFFT in double precision (see: max_difference and max_eps columns), however, it is also ~20% slower (vkfft_benchmark_double.png). Note that double precision is still in testing and these results may change in the future. Max ratio stays in the range of 5e-10% for both cuFFT and VkFFT, while the average ratio stays below 1e-15. Overall, double precision is ~7 times slower than single on Nvidia's 1660Ti GPU.\
-The precision_cuFFT_VkFFT_FFTW_half.txt file contains the half precision results for Nvidia's 1660Ti GPU and AMD Ryzen 2700 CPU. On average, VkFFT is at least two times more precise than cuFFT in half precision (see: max_difference and max_eps columns), while being faster on average (vkfft_benchmark_half.png). Note that half precision is still in testing and is only used to store data in VkFFT. cuFFT script can probably also be improved. The average ratio stays in the range of 0.2% for both cuFFT and VkFFT. Overall, half precision of VkFFT is ~50%-100% times faster than single on Nvidia's 1660Ti GPU.
+For both precisions, all tested libraries exhibit logarithmic error scaling. The main source of error is imprecise twiddle factor computation – sines and cosines used by FFT algorithms. For FP64 they are calculated on the CPU either in FP128 or in FP64 and stored in the lookup tables. With FP128 precomputation (left) VkFFT is more precise than cuFFT and rocFFT. 
+
+For FP32, twiddle factors can be calculated on-the-fly in FP32 or precomputed in FP64/FP32. With FP32 twiddle factors (right) VkFFT is slightly less precise in Bluestein’s and Rader’s algorithms. If needed, this can be solved with FP64 precomputation. 
+
 ## Contact information
 The initial version of VkFFT is developed by Tolmachev Dmitrii\
 E-mail 1: <dtolm96@gmail.com>

@@ -22,7 +22,7 @@ void user_benchmark_rocFFT(bool file_output, FILE* output, rocFFTUserSystemParam
 	hipSetDevice(device_id);
 	const int num_runs = 7;
 	double benchmark_result[2] = { 0,0 };//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
-	uint64_t storageComplexSize;
+	uint64_t storageComplexSize=8;
 	switch (userParams->P) {
 	case 0:
 		storageComplexSize = (2 * sizeof(float));
@@ -33,7 +33,22 @@ void user_benchmark_rocFFT(bool file_output, FILE* output, rocFFTUserSystemParam
 	case 2:
 		storageComplexSize = (2 * 2);
 		break;
+	default:
+		storageComplexSize = (2 * sizeof(float));
+		break;
 	}
+    uint64_t bufferSize = 0;
+    if (userParams->R2C) {
+        bufferSize = (uint64_t)(storageComplexSize / 2) * (userParams->X + 2) * userParams->Y * userParams->Z * userParams->B;
+    }
+    else {
+		bufferSize = (uint64_t)storageComplexSize * userParams->X * userParams->Y * userParams->Z * userParams->B;
+    }
+    
+    float* buffer_input = (float*)malloc(bufferSize);
+    for (uint64_t i = 0; i < bufferSize/sizeof(float); i++) {
+        buffer_input[i] = (float)(2 * ((float)rand()) / RAND_MAX - 1.0);
+    }
 	for (int n = 0; n < 2; n++) {
 		double run_time[num_runs][2];
 		for (int r = 0; r < num_runs; r++) {
@@ -62,19 +77,15 @@ void user_benchmark_rocFFT(bool file_output, FILE* output, rocFFTUserSystemParam
 				dims[2] = userParams->X;
 				break;
 			}
-			uint64_t bufferSize;
-			if (userParams->R2C)
-				bufferSize = (uint64_t)(storageComplexSize / 2) * (userParams->X + 2) * userParams->Y * userParams->Z * userParams->B;
-			else
-				bufferSize = (uint64_t)storageComplexSize * userParams->X * userParams->Y * userParams->Z * userParams->B;
-
+		
 			hipMalloc((void**)&dataC, bufferSize);
 			
 			if (hipGetLastError() != hipSuccess) {
 				fprintf(stderr, "ROCM error: Failed to allocate\n");
 				return;
 			}
-
+			hipMemcpy(dataC, buffer_input, bufferSize, hipMemcpyHostToDevice);
+			
 			//forward + inverse
 			int iembed[2][3];
 			int istride[2] = { 1, 1 };
@@ -196,4 +207,5 @@ void user_benchmark_rocFFT(bool file_output, FILE* output, rocFFTUserSystemParam
 			//hipDeviceSynchronize();
 		}
 	}
+	free(buffer_input);
 }

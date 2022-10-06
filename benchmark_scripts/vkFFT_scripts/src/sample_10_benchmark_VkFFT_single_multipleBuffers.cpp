@@ -39,6 +39,10 @@
 #endif 
 #elif(VKFFT_BACKEND==4)
 #include <ze_api.h>
+#elif(VKFFT_BACKEND==5)
+#include "Foundation/Foundation.hpp"
+#include "QuartzCore/QuartzCore.hpp"
+#include "Metal/Metal.hpp"
 #endif
 #include "vkFFT.h"
 #include "utils_VkFFT.h"
@@ -56,6 +60,7 @@ VkFFTResult sample_10_benchmark_VkFFT_single_multipleBuffers(VkGPU* vkGPU, uint6
 	cl_int res = CL_SUCCESS;
 #elif(VKFFT_BACKEND==4)
 	ze_result_t res = ZE_RESULT_SUCCESS;
+#elif(VKFFT_BACKEND==5)
 #endif
 #if(VKFFT_BACKEND==0)
 	if (file_output)
@@ -85,10 +90,16 @@ VkFFTResult sample_10_benchmark_VkFFT_single_multipleBuffers(VkGPU* vkGPU, uint6
 			//configuration.numberBatches = (configuration.numberBatches > 32768) ? 32768 : configuration.numberBatches;
 			uint64_t numBuf = 4;
 
+#if(VKFFT_BACKEND!=5)
 			if (r==0) configuration.saveApplicationToString = 1;
 			if (r!=0) configuration.loadApplicationFromString = 1;
+#endif
 			//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
-			configuration.device = &vkGPU->device;
+#if(VKFFT_BACKEND==5)
+            configuration.device = vkGPU->device;
+#else
+            configuration.device = &vkGPU->device;
+#endif
 			configuration.queue = &vkGPU->queue; //to allocate memory for LUT, we have to pass a queue, vkGPU->fence, commandPool and physicalDevice pointers 
 			configuration.fence = &vkGPU->fence;
 			configuration.commandPool = &vkGPU->commandPool;
@@ -143,7 +154,7 @@ VkFFTResult sample_10_benchmark_VkFFT_single_multipleBuffers(VkGPU* vkGPU, uint6
 					}
 				}
 			*/
-			//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
+			//Sample buffer transfer tool. Uses staging buffer (if needed) of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 			uint64_t shift = 0;
 			for (uint64_t i = 0; i < numBuf; i++) {
 				resFFT = transferDataFromCPU(vkGPU, (buffer_input + shift / sizeof(float)), &buffer[i], bufferSize[i]);

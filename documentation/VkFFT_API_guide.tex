@@ -37,14 +37,14 @@
 \begin{titlepage} 	
 \centering 	
 \vspace{1cm} 	
-{\scshape\LARGE VkFFT - Vulkan/CUDA/HIP/OpenCL/Level Zero Fast Fourier Transform library \par} 		
+{\scshape\LARGE VkFFT - Vulkan/CUDA/HIP/OpenCL/Level Zero/Metal Fast Fourier Transform library \par} 		
 \vspace{1.5cm} 	
 {\huge\bfseries API guide with examples\par} 	
 \vspace{2cm} 	
 {\Large Dmitrii Tolmachev\par} 	
 	
 \vspace{1cm} 	
-{\large September 2022, version 1.2.28\par} 
+{\large October 2022, version 1.2.30\par} 
 \end{titlepage}
 
 \newpage{}
@@ -55,7 +55,7 @@
 
 \section{Introduction}
 
-This document describes VkFFT - Vulkan/CUDA/HIP/OpenCL/Level Zero
+This document describes VkFFT - Vulkan/CUDA/HIP/OpenCL/Level Zero/Metal
 Fast Fourier Transform library. It describes the features and current
 limitations of VkFFT, explains the API and compares it to other FFT
 libraries (like FFTW and cuFFT) on the set of examples. It is by no
@@ -98,13 +98,13 @@ project.
 \par\end{flushleft}
 \item Define VKFFT\_BACKEND as a number corresponding to the API used in
 the user's project: 0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL, 4 -
-Level Zero. Definition is done like:\begin{mdframed}[backgroundcolor=bg]
+Level Zero, 5 - Metal. Definition is done like:\begin{mdframed}[backgroundcolor=bg]
 \begin{minted}[tabsize=4,obeytabs,breaklines]{make}
 -DVKFFT_BACKEND=X
 \end{minted}
 \end{mdframed} in GCC or as \begin{mdframed}[backgroundcolor=bg]
 \begin{minted}[tabsize=4,obeytabs,breaklines]{cmake}
-set(VKFFT_BACKEND 1 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL, 4 - Level Zero")
+set(VKFFT_BACKEND 1 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL, 4 - Level Zero, 5 - Metal")
 \end{minted}
 \end{mdframed}in CMake.
 \item Depending on the API backend, the project must use additional libraries
@@ -198,6 +198,21 @@ add_library(VkFFT INTERFACE)
 target_compile_definitions(VkFFT INTERFACE -DVKFFT_BACKEND=4)
 
 target_link_libraries(${PROJECT_NAME} PUBLIC LevelZero VkFFT)
+\end{minted}
+\end{mdframed}
+\item Metal API: Metal. Sample CMakeLists can look like this:\begin{mdframed}[backgroundcolor=bg]
+\begin{minted}[tabsize=4,obeytabs,breaklines]{cmake}
+add_compile_options(-WMTL_IGNORE_WARNINGS)
+find_library(FOUNDATION_LIB Foundation REQUIRED)
+find_library(QUARTZ_CORE_LIB QuartzCore REQUIRED)	
+find_library(METAL_LIB Metal REQUIRED)
+target_include_directories(${PROJECT_NAME} PUBLIC "metal-cpp/")
+
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/)
+add_library(VkFFT INTERFACE)
+target_compile_definitions(VkFFT INTERFACE -DVKFFT_BACKEND=5)
+
+target_link_libraries(${PROJECT_NAME} PUBLIC ${FOUNDATION_LIB} ${QUARTZ_CORE_LIB} ${METAL_LIB} VkFFT)
 \end{minted}
 \end{mdframed}
 \end{enumerate}
@@ -332,9 +347,9 @@ real numbers, so they don't require stride management, unlike R2C/C2R.
 VkFFT allows for explicit control over the data flow, which makes
 both in-place and out-of-place transforms possible. Buffers are passed
 to VkFFT as VkBuffer pointer in Vulkan, as double void pointers in
-CUDA/HIP/Level Zero and as cl\_mem pointer in OpenCL. This is done
-to maintain a uniform data pattern because some of the buffers can
-be allocated automatically. 
+CUDA/HIP/Level Zero, as cl\_mem pointer in OpenCL and as MTL::Buffer
+pointer in Metal. This is done to maintain a uniform data pattern
+because some of the buffers can be allocated automatically. 
 
 The main buffer is called buffer and it always has to be provided,
 either during the plan creation or when the plan is executed. All
@@ -889,6 +904,10 @@ pointer in VkFFTLaunchParams.
 calls to user-defined command list ze\_command\_list\_handle\_t. They
 have execution barriers between. ze\_command\_list\_handle\_t must
 be provided as a pointer in VkFFTLaunchParams. 
+\item Metal API: similar to Vulkan, VkFFT appends a sequence of dispatchThreads
+calls to user-defined command encoder MTL::ComputeCommandEncoder.
+MTL::ComputeCommandEncoder and its MTL::CommandBuffer must be provided
+as a pointer in VkFFTLaunchParams. 
 \end{itemize}
 If VkFFT fails during the VkFFTAppend call, it will not free the application
 and allocated there resources - use a separate call for that.
@@ -952,6 +971,9 @@ ze_device_handle_t* device;	// Pointer to Level Zero device, obtained from zeDev
 ze_context_handle_t* context;	// Pointer to Level Zero context, obtained from zeContextCreate
 ze_command_queue_handle_t* commandQueue;	// Pointer to Level Zero command queue with compute and copy capabilities, obtained from zeCommandQueueCreate
 uint32_t commandQueueID;	// ID of the commandQueue with compute and copy capabilities
+#elif(VKFFT_BACKEND==5)
+MTL::Device* device;	// Pointer to Metal device, obtained from MTL::CopyAllDevices
+MTL::CommandQueue* queue;	// Pointer to Metal queue, obtained from device->newCommandQueue()
 #endif
 
 // Data parameters (buffers can be specified at launch):
@@ -990,6 +1012,18 @@ cl_mem* tempBuffer;	// Needed if reorderFourStep is enabled to transpose the arr
 cl_mem* inputBuffer;	// Pointer to device buffer used to read data from if isInputFormatted is enabled
 cl_mem* outputBuffer;	// Pointer to device buffer used to write data to if isOutputFormatted is enabled
 cl_mem* kernel;	// Pointer to device buffer used to read kernel data from if performConvolution is enabled
+#elif(VKFFT_BACKEND==4)
+void** buffer;	// Pointer to device buffer used for computations
+void** tempBuffer;	// Needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
+void** inputBuffer;	// Pointer to device buffer used to read data from if isInputFormatted is enabled
+void** outputBuffer;	// Pointer to device buffer used to read data from if isOutputFormatted is enabled
+void** kernel;	// Pointer to device buffer used to read kernel data from if performConvolution is enabled
+#elif(VKFFT_BACKEND==5)
+MTL::Buffer** buffer;	// Pointer to device buffer used for computations
+MTL::Buffer** tempBuffer;	// Needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
+MTL::Buffer** inputBuffer;	// Pointer to device buffer used to read data from if isInputFormatted is enabled
+MTL::Buffer** outputBuffer;	// Pointer to device buffer used to read data from if isOutputFormatted is enabled
+MTL::Buffer** kernel;	// Pointer to device buffer used to read kernel data from if performConvolution is enabled
 #endif
 uint64_t bufferOffset;	// Specify if VkFFT has to offset the first element position inside the buffer. In bytes. Default 0
 uint64_t tempBufferOffset;	// Specify if VkFFT has to offset the first element position inside the temp buffer. In bytes. Default 0
@@ -1029,8 +1063,8 @@ uint64_t considerAllAxesStrided;	// Will create plan for non-strided axis simila
 uint64_t keepShaderCode;	// Will keep shader code and print all executed shaders during the plan execution in order (0 - off, 1 - on)
 uint64_t printMemoryLayout;	// Will print order of buffers used in shaders (0 - off, 1 - on) 
 
-uint64_t saveApplicationToString;	// Will save all compiled binaries to VkFFTApplication.saveApplicationString (will be allocated by VkFFT, deallocated with deleteVkFFT call). VkFFTApplication.applicationStringSize will contain size of binary in bytes. (0 - off, 1 - on)
-uint64_t loadApplicationFromString;	// Will load all binaries from loadApplicationString instead of recompiling them (must be allocated by user, must contain what saveApplicationToString call generated previously in VkFFTApplication.saveApplicationString). (0 - off, 1 - on). Mutually exclusive with saveApplicationToString
+uint64_t saveApplicationToString;	// Will save all compiled binaries to VkFFTApplication.saveApplicationString (will be allocated by VkFFT, deallocated with deleteVkFFT call). VkFFTApplication.applicationStringSize will contain size of binary in bytes. Currently disabled in Metal backend. (0 - off, 1 - on)
+uint64_t loadApplicationFromString;	// Will load all binaries from loadApplicationString instead of recompiling them (must be allocated by user, must contain what saveApplicationToString call generated previously in VkFFTApplication.saveApplicationString). Currently disabled in Metal backend. (0 - off, 1 - on). Mutually exclusive with saveApplicationToString
 void* loadApplicationString;	// Memory binary array through which user can load VkFFT binaries, must be provided by user if loadApplicationFromString = 1. Use rb/wb flags to load/save.
 
 uint64_t disableSetLocale;	// disables all VkFFT attempts to set locale to C - user must ensure that VkFFT has C locale during the plan initialization. This option is needed for multithreading. Default 0. 
@@ -1063,7 +1097,7 @@ uint64_t numberKernels;	// N - only used in convolution step - specify how many 
 uint64_t kernelConvolution;	// Specify if this application is used to create kernel for convolution, so it has the same properties. performConvolution has to be set to 0 for kernel creation
 
 // Register overutilization (experimental): (default 0 if not stated otherwise)
-uint64_t registerBoost;	// Specify if register file size is bigger than shared memory and can be used to extend it X times (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4 to emulate 128KB of shared memory). Defaults: Nvidia - 4 in Vulkan/OpenCL, 1 in CUDA backend; AMD - 2 if shared memory >= 64KB, else 4 in Vulkan/OpenCL backend, 1 in HIP backend; Intel - 1 if shared memory >= 64KB, else 2 in Vulkan/OpenCL/Level Zero backends; Default 1
+uint64_t registerBoost;	// Specify if register file size is bigger than shared memory and can be used to extend it X times (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4 to emulate 128KB of shared memory). Defaults: Nvidia - 4 in Vulkan/OpenCL, 1 in CUDA backend; AMD - 2 if shared memory >= 64KB, else 4 in Vulkan/OpenCL backend, 1 in HIP backend; Intel - 1 if shared memory >= 64KB, else 2 in Vulkan/OpenCL/Level Zero backends, 1 in Metal; Default 1
 uint64_t registerBoostNonPow2;	// Specify if register overutilization should be used on non power of 2 sequences (0 - off, 1 - on)
 uint64_t registerBoost4Step;	// Specify if register file overutilization should be used in big sequences (>2^14), same definition as registerBoost. Default 1
 //not used techniques:
@@ -1105,6 +1139,9 @@ uint64_t streamID;	// Filled at app creation
 cl_command_queue* commandQueue;	// Filled at app creation
 #elif(VKFFT_BACKEND==4)
 ze_command_list_handle_t* commandList;	// Filled at app creation
+#elif(VKFFT_BACKEND==5)
+MTL::CommandBuffer* commandBuffer;	// Filled at app execution
+MTL::ComputeCommandEncoder* commandEncoder;	// Filled at app execution
 #endif
 } VkFFTConfiguration;
 \end{minted}
@@ -1170,6 +1207,12 @@ command queuewith compute and copy capabilities, obtained from zeCommandQueueCre
 \item uint32\_t commandQueueID - ID of the commandQueue with compute and
 copy capabilities
 \end{itemize}
+Metal API will need the following information:
+\begin{itemize}
+\item MTL::Device{*} device - Pointer to Metal device, obtained from MTL::CopyAllDevices
+\item MTL::CommandQueue{*} queue - Pointer to Metal queue, obtained from
+device->newCommandQueue()
+\end{itemize}
 
 \subsubsection{Memory management parameters}
 
@@ -1185,18 +1228,19 @@ There are five buffer types user can provide to VkFFT:
 \end{itemize}
 These buffers must be passed by a pointer: in Vulkan API they are
 provided as VkBuffer{*}, in CUDA, HIP and Level Zero they are provided
-as void{*}{*}, in OpenCL, they are provided as cl\_mem{*}. Even though
-the underlying structure (VkBuffer, void{*}, cl\_mem) is not a memory
-but just a number that the driver can use to access corresponding
-allocated memory on the GPU, passing them by a pointer allows for
-the user to query multiple GPU allocated buffers for VkFFT to use.
-Currently, it is only supported in Vulkan API - each of five buffer
-types can be made out of multiple separate memory allocations. For
-example, it is possible to combine multiple small unused at the point
-of FFT calculation buffers to form a tempBuffer. This option also
-allows Vulkan API to overcome the limit of 4GB for a single memory
-allocation - due to the fact that Vulkan can only use 32-bit numbers
-for addressing (other APIs support 64-bit addressing). 
+as void{*}{*}, in OpenCL they are provided as cl\_mem{*}, in Metal
+they are provided as MTL::Buffer{*}. Even though the underlying structure
+(VkBuffer, void{*}, cl\_mem, MTL::Buffer{*}) is not a memory but just
+a number that the driver can use to access corresponding allocated
+memory on the GPU, passing them by a pointer allows for the user to
+query multiple GPU allocated buffers for VkFFT to use. Currently,
+it is only supported in Vulkan API - each of five buffer types can
+be made out of multiple separate memory allocations. For example,
+it is possible to combine multiple small unused at the point of FFT
+calculation buffers to form a tempBuffer. This option also allows
+Vulkan API to overcome the limit of 4GB for a single memory allocation
+- due to the fact that Vulkan can only use 32-bit numbers for addressing
+(other APIs support 64-bit addressing). 
 
 To use the buffers other than the main buffer, the user has to specify
 this in configuration at the application creation stage (set to zero
@@ -1276,15 +1320,17 @@ to enable. Optional parameter.
 
 uint64\_t doublePrecision - perform calculations in double precision.
 Default 0, set to 1 to enable. In Vulkan/OpenCL/Level Zero your device
-must support double-precision functionality. Optional parameter.
+must support double precision functionality. Metal API does not support
+double precision. Optional parameter.
 
 uint64\_t doublePrecisionFloatMemory - perform calculations in double
 precision, but all intermediate and final storage in float. Input/Output/main
 buffers must have single-precision layout. doublePrecision must be
 set to 0. This option increases precision, but not that much to be
 recommended for actual use. Default 0, set to 1 to enable. In Vulkan/OpenCL/Level
-Zero your device must support double-precision functionality. Experimental
-feature. Optional parameter.
+Zero your device must support double precision functionality. Metal
+API does not support double precision. Experimental feature. Optional
+parameter.
 
 uint64\_t halfPrecision - half-precision in VkFFT is implemented only
 as memory optimization. All calculations are done in single precision
@@ -1389,15 +1435,15 @@ buffers used in kernels. Default 0, set to 1 to enable. Optional parameter.
 uint64\_t saveApplicationToString - will save all compiled binaries
 to VkFFTApplication.saveApplicationString (will be allocated by VkFFT,
 deallocated with deleteVkFFT call). VkFFTApplication.applicationStringSize
-will contain size of binary in bytes. Default 0, set to 1 to enable.
-Optional parameter.
+will contain size of binary in bytes. Currently disabled in Metal
+backend. Default 0, set to 1 to enable. Optional parameter.
 
 uint64\_t loadApplicationFromString - will load all binaries from
 loadApplicationString instead of recompiling them (loadApplicationString
 must be allocated by user, must contain what saveApplicationToString
 call generated previously in VkFFTApplication.saveApplicationString).
-Default 0, set to 1 to enable. Optional parameter. Mutually exclusive
-with saveApplicationToString 
+Currently disabled in Metal backend. Default 0, set to 1 to enable.
+Optional parameter. Mutually exclusive with saveApplicationToString 
 
 void{*} loadApplicationString - memory binary array through which
 user can load VkFFT binaries, must be provided by user if loadApplicationFromString
@@ -1535,8 +1581,8 @@ parameter for kernel generation.
 \subsubsection{Register overutilization}
 
 Only works in C2C mode, without convolution support. Enabled in Vulkan,
-OpenCL and Level Zero APIs only (it works in other APIs, but worse).
-Experimental feature.
+OpenCL and Level Zero APIs only (it works in other APIs, but worse,
+does not work in Metal). Experimental feature.
 
 uint64\_t registerBoost - specify if the register file size is bigger
 than shared memory and can be used to extend it X times (on Nvidia
@@ -1728,6 +1774,9 @@ ze_device_handle_t device;
 ze_context_handle_t context;
 ze_command_queue_handle_t commandQueue;
 uint32_t commandQueueID;
+#elif(VKFFT_BACKEND==5) //Metal API
+MTL::Device* device;
+MTL::CommandQueue* queue;
 #endif
 uint64_t device_id; //an id of a device, reported by devices_list call
 } VkGPU;
@@ -1974,6 +2023,9 @@ launchParams.commandBuffer = &commandBuffer;
 launchParams.commandQueue = &commandQueue;
 #elif(VKFFT_BACKEND==4) //Level Zero API
 launchParams->commandList = &commandList;
+#elif(VKFFT_BACKEND==5) //Metal API
+launchParams->commandBuffer = commandBuffer;
+launchParams->commandEncoder = commandEncoder;
 #endif
 resFFT = VkFFTAppend(app, -1, &launchParams);
 
@@ -2207,7 +2259,8 @@ convolution_configuration.conjugateConvolution = 1;
 This example shows how to save/load binaries generated by VkFFT. This
 can reduce time taken by initializeVkFFT call by removing RTC components
 from it. Be sure that rest of the configuration stays the same to
-reuse the binary. Use rb/wb flags to load/save.
+reuse the binary. Use rb/wb flags to load/save. This does not currently
+work in Metal backend.
 
 \begin{mdframed}[backgroundcolor=bg]
 \begin{minted}[tabsize=4,obeytabs,breaklines]{C}

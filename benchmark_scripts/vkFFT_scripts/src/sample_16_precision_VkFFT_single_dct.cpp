@@ -39,6 +39,10 @@
 #endif 
 #elif(VKFFT_BACKEND==4)
 #include <ze_api.h>
+#elif(VKFFT_BACKEND==5)
+#include "Foundation/Foundation.hpp"
+#include "QuartzCore/QuartzCore.hpp"
+#include "Metal/Metal.hpp"
 #endif
 #include "vkFFT.h"
 #include "utils_VkFFT.h"
@@ -62,6 +66,7 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 	cl_int res = CL_SUCCESS;
 #elif(VKFFT_BACKEND==4)
 	ze_result_t res = ZE_RESULT_SUCCESS;
+#elif(VKFFT_BACKEND==5)
 #endif
 	if (file_output)
 		fprintf(output, "16 - VkFFT/FFTW R2R DCT-I, II, III and IV precision test in single precision\n");
@@ -158,7 +163,11 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 				//configuration.useLUT = 1;
 				//configuration.disableMergeSequencesR2C = 1;
 				//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
+#if(VKFFT_BACKEND==5)
+				configuration.device = vkGPU->device;
+#else
 				configuration.device = &vkGPU->device;
+#endif
 #if(VKFFT_BACKEND==0)
 				configuration.queue = &vkGPU->queue; //to allocate memory for LUT, we have to pass a queue, vkGPU->fence, commandPool and physicalDevice pointers 
 				configuration.fence = &vkGPU->fence;
@@ -171,6 +180,8 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 				configuration.context = &vkGPU->context;
 				configuration.commandQueue = &vkGPU->commandQueue;
 				configuration.commandQueueID = vkGPU->commandQueueID;
+#elif(VKFFT_BACKEND==5)
+				configuration.queue = vkGPU->queue;
 #endif			
 
 				uint64_t numBuf = 1;
@@ -195,6 +206,8 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 				cl_mem buffer = 0;
 #elif(VKFFT_BACKEND==4)
 				void* buffer = 0;
+#elif(VKFFT_BACKEND==5)
+				MTL::Buffer* buffer = 0;
 #endif			
 				for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
@@ -216,6 +229,8 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 					device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
 					res = zeMemAllocDevice(vkGPU->context, &device_desc, bufferSize[i], sizeof(float), vkGPU->device, &buffer);
 					if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+#elif(VKFFT_BACKEND==5)
+                    buffer = vkGPU->device->newBuffer(bufferSize[i], MTL::ResourceStorageModePrivate);
 #endif
 				}
 
@@ -231,38 +246,15 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 				*/ // Can specify buffers at launch
 				configuration.bufferSize = bufferSize;
 
-				//Sample buffer transfer tool. Uses staging buffer of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
+				//Sample buffer transfer tool. Uses staging buffer (if needed) of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
 				uint64_t shift = 0;
 				for (uint64_t i = 0; i < numBuf; i++) {
 #if(VKFFT_BACKEND==0)
 					resFFT = transferDataFromCPU(vkGPU, (inputC + shift / sizeof(float)), &buffer[i], bufferSize[i]);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
-#elif(VKFFT_BACKEND==1)
-					res = cudaMemcpy(buffer, inputC, bufferSize[i], cudaMemcpyHostToDevice);
-					if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
-#elif(VKFFT_BACKEND==2)
-					res = hipMemcpy(buffer, inputC, bufferSize[i], hipMemcpyHostToDevice);
-					if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
-#elif(VKFFT_BACKEND==3)
-					res = clEnqueueWriteBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize[i], inputC, 0, NULL, NULL);
-					if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
-#elif(VKFFT_BACKEND==4)
-					ze_command_queue_desc_t commandQueueCopyDesc = {
-						ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
-						0,
-						vkGPU->commandQueueID,
-						0, // index
-						0, // flags
-						ZE_COMMAND_QUEUE_MODE_DEFAULT,
-						ZE_COMMAND_QUEUE_PRIORITY_NORMAL
-					};
-					ze_command_list_handle_t copyCommandList;
-					res = zeCommandListCreateImmediate(vkGPU->context, vkGPU->device, &commandQueueCopyDesc, &copyCommandList);
-					if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-					res = zeCommandListAppendMemoryCopy(copyCommandList, buffer, inputC, bufferSize[i], 0, 0, 0);
-					if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
-					res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
-					if (res != 0) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+#else
+                    resFFT = transferDataFromCPU(vkGPU, (inputC + shift / sizeof(float)), &buffer, bufferSize[i]);
+                    if (resFFT != VKFFT_SUCCESS) return resFFT;
 #endif
 					shift += bufferSize[i];
 				}
@@ -285,6 +277,8 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 						clReleaseMemObject(buffer);
 #elif(VKFFT_BACKEND==4)
 						zeMemFree(vkGPU->context, buffer);
+#elif(VKFFT_BACKEND==5)
+                        buffer->release();
 #endif
 
 					}
@@ -315,6 +309,8 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 				launchParams.buffer = &buffer;
 #elif(VKFFT_BACKEND==4)
 				launchParams.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==5)
+                launchParams.buffer = &buffer;
 #endif
 				resFFT = performVulkanFFT(vkGPU, &app, &launchParams, -1, num_iter);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -326,32 +322,9 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 #if(VKFFT_BACKEND==0)
 					resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(float)), &buffer[i], bufferSize[i]);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
-#elif(VKFFT_BACKEND==1)
-					res = cudaMemcpy(output_VkFFT, buffer, bufferSize[i], cudaMemcpyDeviceToHost);
-					if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
-#elif(VKFFT_BACKEND==2)
-					res = hipMemcpy(output_VkFFT, buffer, bufferSize[i], hipMemcpyDeviceToHost);
-					if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_COPY;
-#elif(VKFFT_BACKEND==3)
-					res = clEnqueueReadBuffer(vkGPU->commandQueue, buffer, CL_TRUE, 0, bufferSize[i], output_VkFFT, 0, NULL, NULL);
-					if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
-#elif(VKFFT_BACKEND==4)
-					ze_command_queue_desc_t commandQueueCopyDesc = {
-						ZE_STRUCTURE_TYPE_COMMAND_QUEUE_DESC,
-						0,
-						vkGPU->commandQueueID,
-						0, // index
-						0, // flags
-						ZE_COMMAND_QUEUE_MODE_DEFAULT,
-						ZE_COMMAND_QUEUE_PRIORITY_NORMAL
-					};
-					ze_command_list_handle_t copyCommandList;
-					res = zeCommandListCreateImmediate(vkGPU->context, vkGPU->device, &commandQueueCopyDesc, &copyCommandList);
-					if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
-					res = zeCommandListAppendMemoryCopy(copyCommandList, output_VkFFT, buffer, bufferSize[i], 0, 0, 0);
-					if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_COPY;
-					res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
-					if (res != 0) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+#else
+                    resFFT = transferDataToCPU(vkGPU, (output_VkFFT + shift / sizeof(float)), &buffer, bufferSize[i]);
+                    if (resFFT != VKFFT_SUCCESS) return resFFT;
 #endif
 					shift += bufferSize[i];
 				}
@@ -402,6 +375,8 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 					clReleaseMemObject(buffer);
 #elif(VKFFT_BACKEND==4)
 					zeMemFree(vkGPU->context, buffer);
+#elif(VKFFT_BACKEND==5)
+                    buffer->release();
 #endif
 
 				}
