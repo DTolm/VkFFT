@@ -281,6 +281,7 @@ typedef struct {
 	hipEvent_t* stream_event;//Filled at app creation
 	uint64_t streamCounter;//Filled at app creation
 	uint64_t streamID;//Filled at app creation
+	int64_t  useStrict32BitAddress; // guarantee 32 bit addresses in bytes instead of number of elements. This results in fewer instructions generated. -1: Disable, 0: Infer based on size, 1: enable. Has no effect with useUint64.
 #elif(VKFFT_BACKEND==3)
 	cl_command_queue* commandQueue;
 #elif(VKFFT_BACKEND==4)
@@ -808,6 +809,9 @@ typedef struct {
 	uint64_t performOffsetUpdate;
 	uint64_t performBufferSetUpdate;
 	uint64_t useUint64;
+#if(VKFFT_BACKEND==2)
+	int64_t  useStrict32BitAddress;
+#endif
 	uint64_t disableSetLocale;
 
 	char** regIDs;
@@ -26017,10 +26021,40 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 	if (res != VKFFT_SUCCESS) return res;
 	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
 #elif(VKFFT_BACKEND==2)
+	if(!sc->useUint64 && sc->useStrict32BitAddress > 0) {
+		// These wrappers help hipcc to generate faster code for load and store operations where
+		// 64-bit scalar + 32-bit vector registers are used instead of 64-bit vector saving a few
+		// instructions for computing 64-bit vector addresses.
+		sc->tempLen = sprintf(sc->tempStr,
+		"template<typename T>\n"
+		"struct Inputs\n"
+		"{\n"
+		"	const T* buffer;\n"
+		"	inline __device__ Inputs(const T* buffer) : buffer(buffer) {}\n"
+		"	inline __device__ const T& operator[](unsigned int idx) const { return *reinterpret_cast<const T*>(reinterpret_cast<const char*>(buffer) + idx * static_cast<unsigned int>(sizeof(T))); }\n"
+		"};\n"
+		"template<typename T>\n"
+		"struct Outputs\n"
+		"{\n"
+		"	T* buffer;\n"
+		"	inline __device__ Outputs(T* buffer) : buffer(buffer) {}\n"
+		"	inline __device__ T& operator[](unsigned int idx) const { return *reinterpret_cast<T*>(reinterpret_cast<char*>(buffer) + idx * static_cast<unsigned int>(sizeof(T))); }\n"
+		"};\n"
+		);
+	} else {
+		sc->tempLen = sprintf(sc->tempStr,
+		"template<typename T>\n"
+		"using Inputs = const T*;\n"
+		"template<typename T>\n"
+		"using Outputs = T*;\n"
+		);
+	}
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
 	sc->tempLen = sprintf(sc->tempStr, "extern \"C\" __launch_bounds__(%" PRIu64 ") __global__ void VkFFT_main_R2C ", sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
-	sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", vecTypeInput, vecTypeOutput);
+	sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", vecTypeInput, vecTypeOutput);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	if (sc->convolutionStep) {
@@ -26995,6 +27029,39 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		freeShaderGenVkFFT(sc);
 		return res;
 	}
+	if(!sc->useUint64 && sc->useStrict32BitAddress > 0) {
+		// These wrappers help hipcc to generate faster code for load and store operations where
+		// 64-bit scalar + 32-bit vector registers are used instead of 64-bit vector saving a few
+		// instructions for computing 64-bit vector addresses.
+		sc->tempLen = sprintf(sc->tempStr,
+		"template<typename T>\n"
+		"struct Inputs\n"
+		"{\n"
+		"	const T* buffer;\n"
+		"	inline __device__ Inputs(const T* buffer) : buffer(buffer) {}\n"
+		"	inline __device__ const T& operator[](unsigned int idx) const { return *reinterpret_cast<const T*>(reinterpret_cast<const char*>(buffer) + idx * static_cast<unsigned int>(sizeof(T))); }\n"
+		"};\n"
+		"template<typename T>\n"
+		"struct Outputs\n"
+		"{\n"
+		"	T* buffer;\n"
+		"	inline __device__ Outputs(T* buffer) : buffer(buffer) {}\n"
+		"	inline __device__ T& operator[](unsigned int idx) const { return *reinterpret_cast<T*>(reinterpret_cast<char*>(buffer) + idx * static_cast<unsigned int>(sizeof(T))); }\n"
+		"};\n"
+		);
+	} else {
+		sc->tempLen = sprintf(sc->tempStr,
+		"template<typename T>\n"
+		"using Inputs = const T*;\n"
+		"template<typename T>\n"
+		"using Outputs = T*;\n"
+		);
+	}
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) {
+		freeShaderGenVkFFT(sc);
+		return res;
+	}
 	sc->tempLen = sprintf(sc->tempStr, "extern \"C\" __launch_bounds__(%" PRIu64 ") __global__ void VkFFT_main ", sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) {
@@ -27004,77 +27071,77 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 	switch (type) {
 	case 5:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, vecTypeOutput);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory, vecTypeOutput);
 		break;
 	}
 	case 6:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", vecTypeInput, floatTypeOutputMemory);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", vecTypeInput, floatTypeOutputMemory);
 		break;
 	}
 	case 110:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
 	}
 	case 111:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
 	}
 	case 120:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
 	}
 	case 121:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
 	}
 	case 130:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
 	}
 	case 131:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
 	}
 	case 140:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
 	}
 	case 141:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
 	}
 	case 142:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
 	}
 	case 143:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
 	}
 	case 144:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
 	}
 	case 145:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory, floatTypeOutputMemory);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory, floatTypeOutputMemory);
 		break;
 	}
 	default:
 	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", vecTypeInput, vecTypeOutput);
+		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", vecTypeInput, vecTypeOutput);
 		break;
 	}
 	}
@@ -27084,7 +27151,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		return res;
 	}
 	if (sc->convolutionStep) {
-		sc->tempLen = sprintf(sc->tempStr, ", %s* kernel_obj", vecType);
+		sc->tempLen = sprintf(sc->tempStr, ", const Inputs<%s> kernel_obj", vecType);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) {
 			freeShaderGenVkFFT(sc);
@@ -27092,7 +27159,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		}
 	}
 	if (sc->LUT) {
-		sc->tempLen = sprintf(sc->tempStr, ", %s* twiddleLUT", vecType);
+		sc->tempLen = sprintf(sc->tempStr, ", const Inputs<%s> twiddleLUT", vecType);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) {
 			freeShaderGenVkFFT(sc);
@@ -27108,7 +27175,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		}
 	}
 	if (sc->BluesteinConvolutionStep) {
-		sc->tempLen = sprintf(sc->tempStr, ", %s* BluesteinConvolutionKernel", vecType);
+		sc->tempLen = sprintf(sc->tempStr, ", const Inputs<%s> BluesteinConvolutionKernel", vecType);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) {
 			freeShaderGenVkFFT(sc);
@@ -27116,7 +27183,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		}
 	}
 	if (sc->BluesteinPreMultiplication || sc->BluesteinPostMultiplication) {
-		sc->tempLen = sprintf(sc->tempStr, ", %s* BluesteinMultiplication", vecType);
+		sc->tempLen = sprintf(sc->tempStr, ", const Inputs<%s> BluesteinMultiplication", vecType);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) {
 			freeShaderGenVkFFT(sc);
@@ -33664,6 +33731,9 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 	axis->specializationConstants.warpSize = app->configuration.warpSize;
 	axis->specializationConstants.numSharedBanks = app->configuration.numSharedBanks;
 	axis->specializationConstants.useUint64 = app->configuration.useUint64;
+#if(VKFFT_BACKEND==2)
+	axis->specializationConstants.useStrict32BitAddress = app->configuration.useStrict32BitAddress;
+#endif
 	axis->specializationConstants.disableSetLocale = app->configuration.disableSetLocale;
 
 	axis->specializationConstants.numAxisUploads = FFTPlan->numAxisUploads[0];
@@ -35409,6 +35479,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axis->specializationConstants.warpSize = app->configuration.warpSize;
 	axis->specializationConstants.numSharedBanks = app->configuration.numSharedBanks;
 	axis->specializationConstants.useUint64 = app->configuration.useUint64;
+#if(VKFFT_BACKEND==2)
+	axis->specializationConstants.useStrict32BitAddress = app->configuration.useStrict32BitAddress;
+#endif
 	axis->specializationConstants.disableSetLocale = app->configuration.disableSetLocale;
 
 	axis->specializationConstants.numAxisUploads = FFTPlan->numAxisUploads[axis_id];
@@ -39696,12 +39769,19 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			if (app->configuration.doublePrecision) checkBufferSizeFor64BitAddressing *= 2;
 		}
 	}
+#if(VKFFT_BACKEND==2)
+	app->configuration.useStrict32BitAddress = 0;
+	if (checkBufferSizeFor64BitAddressing >= (uint64_t)pow((uint64_t)2, (uint64_t)32)) app->configuration.useStrict32BitAddress = -1;
+#endif
 	if (checkBufferSizeFor64BitAddressing >= (uint64_t)pow((uint64_t)2, (uint64_t)34)) app->configuration.useUint64 = 1;
 	checkBufferSizeFor64BitAddressing = 0;
 	for (uint64_t i = 0; i < app->configuration.inputBufferNum; i++) {
 		if (app->configuration.inputBufferSize)
 			checkBufferSizeFor64BitAddressing += app->configuration.inputBufferSize[i];
 	}
+#if(VKFFT_BACKEND==2)
+	if (checkBufferSizeFor64BitAddressing >= (uint64_t)pow((uint64_t)2, (uint64_t)32)) app->configuration.useStrict32BitAddress = -1;
+#endif
 	if (checkBufferSizeFor64BitAddressing >= (uint64_t)pow((uint64_t)2, (uint64_t)34)) app->configuration.useUint64 = 1;
 
 	checkBufferSizeFor64BitAddressing = 0;
@@ -39716,9 +39796,16 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		if (app->configuration.kernelSize)
 			checkBufferSizeFor64BitAddressing += app->configuration.kernelSize[i];
 	}
+#if(VKFFT_BACKEND==2)
+	if (checkBufferSizeFor64BitAddressing >= (uint64_t)pow((uint64_t)2, (uint64_t)32)) app->configuration.useStrict32BitAddress = -1;
+	// No reason was found to disable strict 32 bit addressing, so enable it
+	if (app->configuration.useStrict32BitAddress == 0) app->configuration.useStrict32BitAddress = 1;
+#endif
 	if (checkBufferSizeFor64BitAddressing >= (uint64_t)pow((uint64_t)2, (uint64_t)34)) app->configuration.useUint64 = 1;
 	if (inputLaunchConfiguration.useUint64 != 0)	app->configuration.useUint64 = inputLaunchConfiguration.useUint64;
-
+#if(VKFFT_BACKEND==2)
+	if (inputLaunchConfiguration.useStrict32BitAddress != 0) app->configuration.useStrict32BitAddress = inputLaunchConfiguration.useStrict32BitAddress;
+#endif
 	if (inputLaunchConfiguration.coalescedMemory != 0)	app->configuration.coalescedMemory = inputLaunchConfiguration.coalescedMemory;
 	app->configuration.aimThreads = 128;
 	if (inputLaunchConfiguration.aimThreads != 0)	app->configuration.aimThreads = inputLaunchConfiguration.aimThreads;
