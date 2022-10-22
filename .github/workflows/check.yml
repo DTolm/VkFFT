@@ -13,11 +13,6 @@ jobs:
         sudo apt -y update
         sudo apt -y install build-essential cmake libfftw3-dev libpocl-dev opencl-headers \
           pocl-opencl-icd ocl-icd-opencl-dev
-        ls /usr/lib
-        dpkg -L libfftw3-dev
-        dpkg -L libpocl-dev
-        dpkg -L pocl-opencl-icd
-        dpkg -L ocl-icd-opencl-dev
     - name: Build and test OpenCl
       run: |
         mkdir build
@@ -26,6 +21,8 @@ jobs:
           -DFFTW_LIB=/usr/lib/x86_64-linux-gnu/libfftw3.so \
           -DOpenCL_LIBRARY=/usr/lib/x86_64-linux-gnu/libOpenCL.so
         make
-        ./Vulkan_FFT -vkfft 11
-        ./Vulkan_FFT -vkfft 14
-        ./Vulkan_FFT -vkfft 15
+        ./Vulkan_FFT -h
+        ./Vulkan_FFT -benchmark_vkfft -X 256
+        #./Vulkan_FFT -vkfft 11
+        #./Vulkan_FFT -vkfft 14
+        #./Vulkan_FFT -vkfft 15
