@@ -11,7 +11,7 @@ jobs:
     - name: Get dependencies
       run: |
         sudo apt -y update
-        sudo apt -y install libpocl-dev libfftw3-dev cmake build-essential
+        sudo apt -y install build-essential cmake libfftw3-dev libpocl-dev opencl-headers
     - name: Build and test OpenCl
       run: |
         mkdir build
@@ -23,4 +23,3 @@ jobs:
         ./Vulkan_FFT -vkfft 11
         ./Vulkan_FFT -vkfft 14
         ./Vulkan_FFT -vkfft 15
-        
