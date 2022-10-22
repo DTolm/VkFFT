@@ -24,7 +24,7 @@ jobs:
         cd build
         cmake .. -DVKFFT_BACKEND=3 -Dbuild_VkFFT_FFTW_precision=ON \
           -DFFTW_LIB=/usr/lib/x86_64-linux-gnu/libfftw3.so \
-          -DOpenCL_LIBRARY=/usr/lib/x86_64-linux-gnu/libopencl.so
+          -DOpenCL_LIBRARY=/usr/lib/x86_64-linux-gnu/libOpenCL.so
         make
         ./Vulkan_FFT -vkfft 11
         ./Vulkan_FFT -vkfft 14
