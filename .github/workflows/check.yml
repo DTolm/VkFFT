@@ -12,7 +12,7 @@ jobs:
       run: |
         sudo apt -y update
         sudo apt -y install build-essential cmake libfftw3-dev libpocl-dev opencl-headers \
-          libopencl-clang-dev
+          libopencl-clang-dev ocl-icd-dev ocl-icd-libopencl1
         ls /usr/lib
         dpkg -L libfftw3-dev
         dpkg -L libpocl-dev
