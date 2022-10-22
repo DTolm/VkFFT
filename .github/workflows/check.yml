@@ -11,14 +11,14 @@ jobs:
     - name: Get dependencies
       run: |
         sudo apt -y update
-        sudo apt -y install build-essential cmake libfftw3-dev libpocl-dev opencl-headers
+        sudo apt -y install build-essential cmake libfftw3-dev libpocl-dev opencl-headers \
+          libopencl-clang-dev
     - name: Build and test OpenCl
       run: |
         mkdir build
         cd build
         cmake .. -DVKFFT_BACKEND=3 -Dbuild_VkFFT_FFTW_precision=ON \
-          -DFFTW_LIB=/usr/lib64/libfftw3.so -DOpenCL_LIBRARY=/usr/lib64/libpocl.so \
-          -DOpenCL_INCLUDE_DIR=/usr/include
+          -DFFTW_LIB=/usr/lib64/libfftw3.so
         make
         ./Vulkan_FFT -vkfft 11
         ./Vulkan_FFT -vkfft 14
