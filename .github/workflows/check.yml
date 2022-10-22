@@ -17,7 +17,7 @@ jobs:
         mkdir build
         cd build
         cmake .. -DVKFFT_BACKEND=3 -Dbuild_VkFFT_FFTW_precision=ON \
-          -DFFTW_LIB=/usr/lib64/libfftw3.so -DOpenCL_LIBRARY=/usr/lib64/libOpenCL.so \
+          -DFFTW_LIB=/usr/lib64/libfftw3.so -DOpenCL_LIBRARY=/usr/lib64/libpocl.so \
           -DOpenCL_INCLUDE_DIR=/usr/include
         make
         ./Vulkan_FFT -vkfft 11
