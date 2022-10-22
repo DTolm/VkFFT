@@ -13,8 +13,7 @@ jobs:
         sudo apt -y update
         sudo apt -y install build-essential cmake libfftw3-dev libpocl-dev opencl-headers \
           libopencl-clang-dev
-        ls /usr/lib64 | grep pocl
-        ls /usr/lib64 | grep opencl
+        ls /usr/lib64
     - name: Build and test OpenCl
       run: |
         mkdir build
