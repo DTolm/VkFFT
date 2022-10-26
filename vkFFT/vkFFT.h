@@ -190,7 +190,8 @@ typedef struct {
 	uint64_t disableMergeSequencesR2C; //disable merging of two real sequences to reduce calculations (0 - off, 1 - on)
 	uint64_t normalize; //normalize inverse transform (0 - off, 1 - on)
 	uint64_t disableReorderFourStep; // disables unshuffling of Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on)
-	uint64_t useLUT; //switches from calculating sincos to using precomputed LUT tables (0 - off, 1 - on). Configured by initialization routine
+	int64_t useLUT; //switches from calculating sincos to using precomputed LUT tables (-1 - off, 0 - auto, 1 - on). Configured by initialization routine
+	int64_t useLUT_4step; //switches from calculating sincos to using precomputed LUT tables for intermediate roots of 1 in the Four-step FFT algorithm. (-1 - off, 0 - auto, 1 - on). Configured by initialization routine
 	uint64_t makeForwardPlanOnly; //generate code only for forward FFT (0 - off, 1 - on)
 	uint64_t makeInversePlanOnly; //generate code only for inverse FFT (0 - off, 1 - on)
 
@@ -247,7 +248,7 @@ typedef struct {
 	uint64_t registerBoost4Step; //specify if register file overutilization should be used in big sequences (>2^14), same definition as registerBoost. Default 1
 
 	//not used techniques:
-	uint64_t swapTo3Stage4Step; //specify at which power of 2 to switch from 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled. Must be at least 17
+	uint64_t swapTo3Stage4Step; //specify at which number to switch from 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled. Must be at least 131072
 	uint64_t devicePageSize;//in KB, the size of a page on the GPU. Setting to 0 disables local buffer split in pages
 	uint64_t localPageSize;//in KB, the size to split page into if sequence spans multiple devicePageSize pages
 
@@ -689,6 +690,7 @@ typedef struct {
 	uint64_t readToRegisters;
 	uint64_t writeFromRegisters;
 	uint64_t LUT;
+	uint64_t LUT_4step;
 	uint64_t raderUintLUT;
 	uint64_t useCoalescedLUTUploadToSM;
 	uint64_t useBluesteinFFT;
@@ -1948,6 +1950,7 @@ static inline VkFFTResult appendSinCos20(VkFFTSpecializationConstantsLayout* sc,
 	if (!strcmp(floatType, "double")) sprintf(vecType, "double2");
 	if (!strcmp(floatType, "double")) sprintf(LFending, "LF");
 #endif
+#if(VKFFT_BACKEND==0)
 	res = appendConstant(sc, floatType, "loc_2_PI", "0.63661977236758134307553505349006", LFending);
 	if (res != VKFFT_SUCCESS) return res;
 	res = appendConstant(sc, floatType, "loc_PI_2", "1.5707963267948966192313216916398", LFending);
@@ -1991,6 +1994,39 @@ static inline VkFFTResult appendSinCos20(VkFFTSpecializationConstantsLayout* sc,
 }\n\n", functionDefinitions, vecType, vecType);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
+#elif ((VKFFT_BACKEND == 1) || (VKFFT_BACKEND == 2))
+	sc->tempLen = sprintf(sc->tempStr, "\
+%s%s sincos_20(%s x)\n\
+{\n\
+	%s cos_sin;\n\
+	sincos(x, &cos_sin.y, &cos_sin.x);\n\
+	return cos_sin;\n\
+}\n\n", functionDefinitions, vecType, floatType, vecType);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	/*sc->tempLen = sprintf(sc->tempStr, "\
+%s%s normalize(%s v)\n\
+{\n\
+	%s inv_norm = rsqrt(v.x*v.x + v.y*v.y);\n\
+	v.x = v.x * inv_norm;\n\
+	v.y = v.y * inv_norm;\n\
+	return v;\n\
+}\n", functionDefinitions, vecType, vecType, floatType);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;*/
+#elif((VKFFT_BACKEND == 3) || (VKFFT_BACKEND == 4))
+	sc->tempLen = sprintf(sc->tempStr, "\
+%s%s sincos_20(%s x)\n\
+{\n\
+	%s cos_sin;\n\
+	%s cos_val;\n\
+	cos_sin.y = sincos(x, &cos_val);\n\
+	cos_sin.x = cos_val;\n\
+	return cos_sin;\n\
+}\n\n", functionDefinitions, vecType, floatType, vecType, floatType);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+#endif
 	return res;
 }
 static inline VkFFTResult appendConversion(VkFFTSpecializationConstantsLayout* sc, const char* floatType, const char* floatTypeDifferent) {
@@ -3158,9 +3194,15 @@ temp%s = temp%s + temp;\n\n\
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				if (!strcmp(floatType, "double")) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(0.5%s*angle);\n", w, LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+					/*sc->tempLen = sprintf(sc->tempStr, "	%s.x=%s.x+1.0%s;\n", w, w, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s);\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;*/
 				}
 			}
 		}
@@ -4068,9 +4110,15 @@ temp%s = temp%s + temp;\n\n", regID[i + 4], regID[i + 4], regID[i + 4], regID[i 
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				if (!strcmp(floatType, "double")) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(0.5%s*angle);\n", w, LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+					/*sc->tempLen = sprintf(sc->tempStr, "	%s.x=%s.x+1.0%s;\n", w, w, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s);\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;*/
 				}
 			}
 		}
@@ -4156,9 +4204,15 @@ temp%s = temp%s + temp;\n\n", regID[i + 2], regID[i + 2], regID[i + 2], regID[i 
 					//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
 				}
 				if (!strcmp(floatType, "double")) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(0.25%s*angle);\n", w, LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+					/*sc->tempLen = sprintf(sc->tempStr, "	%s.x=%s.x+1.0%s;\n", w, w, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s);\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;*/
 				}
 			}
 		}
@@ -4203,18 +4257,18 @@ temp.y = temp%s.y * iw.x + temp%s.x * iw.y;\n\
 temp%s = temp%s - temp;\n\
 temp%s = temp%s + temp;\n\n", regID[3], regID[3], regID[3], regID[3], regID[3], regID[2], regID[2], regID[2]);*/
 		if (stageAngle < 0) {
-			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e + %s.y * %.17e;\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e - %s.x * %.17e;\n\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		else {
-			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e - %s.y * %.17e;\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e + %s.x * %.17e;\n\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
@@ -6625,9 +6679,15 @@ temp%s = temp;\n\
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				if (!strcmp(floatType, "double")) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(0.5%s*angle);\n", w, LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+					/*sc->tempLen = sprintf(sc->tempStr, "	%s.x=%s.x+1.0%s;\n", w, w, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s);\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;*/
 				}
 			}
 		}
@@ -6703,9 +6763,15 @@ temp%s = temp;\n\
 					//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
 				}
 				if (!strcmp(floatType, "double")) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(0.25%s*angle);\n", w, LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+					/*sc->tempLen = sprintf(sc->tempStr, "	%s.x=%s.x+1.0%s;\n", w, w, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s);\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;*/
 				}
 			}
 		}
@@ -6744,18 +6810,18 @@ temp%s = temp;\n\
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		if (stageAngle < 0) {
-			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e + %s.y * %.17e;\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e - %s.x * %.17e;\n\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		else {
-			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e - %s.y * %.17e;\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e + %s.x * %.17e;\n\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
@@ -6831,9 +6897,15 @@ temp%s = temp;\n\
 					//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
 				}
 				if (!strcmp(floatType, "double")) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(0.125%s*angle);\n", w, LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+					/*sc->tempLen = sprintf(sc->tempStr, "	%s.x=%s.x+1.0%s;\n", w, w, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s);\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;*/
 				}
 			}
 		}
@@ -6875,18 +6947,18 @@ temp%s = temp;\n\
 
 
 		if (stageAngle < 0) {
-			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e + %s.y * %.17e;\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e - %s.x * %.17e;\n\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		else {
-			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e - %s.y * %.17e;\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e + %s.x * %.17e;\n\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
@@ -7123,9 +7195,15 @@ temp%s = temp;\n\
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				if (!strcmp(floatType, "double")) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(0.5%s*angle);\n", w, LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+					/*sc->tempLen = sprintf(sc->tempStr, "	%s.x=%s.x+1.0%s;\n", w, w, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s);\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;*/
 				}
 			}
 		}
@@ -7201,9 +7279,15 @@ temp%s = temp;\n\
 					//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
 				}
 				if (!strcmp(floatType, "double")) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(0.25%s*angle);\n", w, LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+					/*sc->tempLen = sprintf(sc->tempStr, "	%s.x=%s.x+1.0%s;\n", w, w, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s);\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;*/
 				}
 			}
 		}
@@ -7242,18 +7326,18 @@ temp%s = temp;\n\
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		if (stageAngle < 0) {
-			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e + %s.y * %.17e;\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e - %s.x * %.17e;\n\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		else {
-			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e - %s.y * %.17e;\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e + %s.x * %.17e;\n\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
@@ -7329,9 +7413,15 @@ temp%s = temp;\n\
 					//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
 				}
 				if (!strcmp(floatType, "double")) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(0.125%s*angle);\n", w, LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+					/*sc->tempLen = sprintf(sc->tempStr, "	%s.x=%s.x+1.0%s;\n", w, w, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s);\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;*/
 				}
 			}
 		}
@@ -7373,18 +7463,18 @@ temp%s = temp;\n\
 
 
 		if (stageAngle < 0) {
-			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e + %s.y * %.17e;\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e - %s.x * %.17e;\n\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		else {
-			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e - %s.y * %.17e;\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e + %s.x * %.17e;\n\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
@@ -7518,9 +7608,15 @@ temp%s = temp;\n\
 					//sc->tempLen = sprintf(sc->tempStr, "	w = %s(cos(0.25*angle), sin(0.25*angle));\n\n", vecType);
 				}
 				if (!strcmp(floatType, "double")) {
-					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s + %s(1.0, 0.0));\n", w, w, vecType);
+					sc->tempLen = sprintf(sc->tempStr, "	%s = sincos_20(0.0625%s*angle);\n", w, LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
+					/*sc->tempLen = sprintf(sc->tempStr, "	%s.x=%s.x+1.0%s;\n", w, w, LFending);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;
+					sc->tempLen = sprintf(sc->tempStr, "	%s=normalize(%s);\n", w, w);
+					res = VkAppendLine(sc);
+					if (res != VKFFT_SUCCESS) return res;*/
 				}
 			}
 		}
@@ -7562,18 +7658,18 @@ temp%s = temp;\n\
 
 
 		if (stageAngle < 0) {
-			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e + %s.y * %.17e;\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s + %s.y * %.17e%s;\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e - %s.x * %.17e;\n\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s - %s.x * %.17e%s;\n\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		else {
-			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e - %s.y * %.17e;\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.x = %s.x * %.17e%s - %s.y * %.17e%s;\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
-			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e + %s.x * %.17e;\n\n", iw, w, 0.70710678118654752440084436210485, w, 0.70710678118654752440084436210485);
+			sc->tempLen = sprintf(sc->tempStr, "	%s.y = %s.y * %.17e%s + %s.x * %.17e%s;\n\n", iw, w, 0.70710678118654752440084436210485, LFending, w, 0.70710678118654752440084436210485, LFending);
 			res = VkAppendLine(sc);
 			if (res != VKFFT_SUCCESS) return res;
 		}
@@ -8267,6 +8363,11 @@ temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 		sc->tempLen = sprintf(sc->tempStr, "	%s LUTId=0;\n", uintType);
 		res = VkAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
+		if (!sc->LUT_4step) {
+			sc->tempLen = sprintf(sc->tempStr, "	%s angle=0;\n", floatType);
+			res = VkAppendLine(sc);
+			if (res != VKFFT_SUCCESS) return res;
+		}
 	}
 	else {
 		sc->tempLen = sprintf(sc->tempStr, "	%s angle=0;\n", floatType);
@@ -14793,7 +14894,7 @@ static inline VkFFTResult appendReorder4StepRead(VkFFTSpecializationConstantsLay
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				uint64_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
-				if (sc->LUT) {
+				if ((sc->LUT) && (sc->LUT_4step)) {
 					sc->tempLen = sprintf(sc->tempStr, "		mult = twiddleLUT[%" PRIu64 "+(((%s%s)/%" PRIu64 ") %% (%" PRIu64 "))+%" PRIu64 "*(%s+%" PRIu64 ")];\n", sc->maxStageSumLUT, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -14804,7 +14905,7 @@ static inline VkFFTResult appendReorder4StepRead(VkFFTSpecializationConstantsLay
 					}
 				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "		angle = 2 * %.17e * ((((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")) * (%s + %" PRIu64 ")) / %f%s;\n", 3.1415926535897932384626433832795, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "		angle = 2 * %.17e%s * ((((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")) * (%s + %" PRIu64 ")) / %.17e%s;\n", 3.1415926535897932384626433832795, LFending, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 					if (!strcmp(floatType, "float")) {
@@ -14896,7 +14997,7 @@ static inline VkFFTResult appendReorder4StepRead(VkFFTSpecializationConstantsLay
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				uint64_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
-				if (sc->LUT) {
+				if ((sc->LUT) && (sc->LUT_4step)) {
 					sc->tempLen = sprintf(sc->tempStr, "		mult = twiddleLUT[%" PRIu64 " + ((%s%s) %% (%" PRIu64 ")) + (%s + %" PRIu64 ") * %" PRIu64 "];\n", sc->maxStageSumLUT, sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->stageStartSize);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -14907,7 +15008,7 @@ static inline VkFFTResult appendReorder4StepRead(VkFFTSpecializationConstantsLay
 					}
 				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "		angle = 2 * %.17e * ((((%s%s) %% (%" PRIu64 ")) * (%s + %" PRIu64 ")) / %f%s);\n", 3.1415926535897932384626433832795, sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "		angle = 2 * %.17e%s * ((((%s%s) %% (%" PRIu64 ")) * (%s + %" PRIu64 ")) / %.17e%s);\n", 3.1415926535897932384626433832795, LFending, sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 
@@ -15044,7 +15145,7 @@ static inline VkFFTResult appendReorder4StepWrite(VkFFTSpecializationConstantsLa
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				uint64_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
-				if (sc->LUT) {
+				if ((sc->LUT) && (sc->LUT_4step)) {
 					sc->tempLen = sprintf(sc->tempStr, "		mult = twiddleLUT[%" PRIu64 "+(((%s%s)/%" PRIu64 ") %% (%" PRIu64 "))+%" PRIu64 "*(%s+%" PRIu64 ")];\n", sc->maxStageSumLUT, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1]);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -15055,7 +15156,7 @@ static inline VkFFTResult appendReorder4StepWrite(VkFFTSpecializationConstantsLa
 					}
 				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "		angle = 2 * %.17e * ((((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")) * (%s + %" PRIu64 ")) / %f%s;\n", 3.1415926535897932384626433832795, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "		angle = 2 * %.17e%s * ((((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")) * (%s + %" PRIu64 ")) / %.17e%s;\n", 3.1415926535897932384626433832795, LFending, sc->gl_GlobalInvocationID_x, shiftX, sc->fft_dim_x, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 					if (sc->inverse) {
@@ -15165,7 +15266,7 @@ static inline VkFFTResult appendReorder4StepWrite(VkFFTSpecializationConstantsLa
 					if (res != VKFFT_SUCCESS) return res;
 				}
 				uint64_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
-				if (sc->LUT) {
+				if ((sc->LUT) && (sc->LUT_4step)) {
 					sc->tempLen = sprintf(sc->tempStr, "		mult = twiddleLUT[%" PRIu64 " + ((%s%s) %% (%" PRIu64 ")) + (%s + %" PRIu64 ") * %" PRIu64 "];\n", sc->maxStageSumLUT, sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], sc->stageStartSize);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
@@ -15176,7 +15277,7 @@ static inline VkFFTResult appendReorder4StepWrite(VkFFTSpecializationConstantsLa
 					}
 				}
 				else {
-					sc->tempLen = sprintf(sc->tempStr, "		angle = 2 * %.17e * ((((%s%s) %% (%" PRIu64 ")) * (%s + %" PRIu64 ")) / %f%s);\n", 3.1415926535897932384626433832795, sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
+					sc->tempLen = sprintf(sc->tempStr, "		angle = 2 * %.17e%s * ((((%s%s) %% (%" PRIu64 ")) * (%s + %" PRIu64 ")) / %.17e%s);\n", 3.1415926535897932384626433832795, LFending, sc->gl_GlobalInvocationID_x, shiftX, sc->stageStartSize, sc->gl_LocalInvocationID_y, i * sc->localSize[1], (double)(sc->stageStartSize * sc->fftDim), LFending);
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 					if (sc->inverse) {
@@ -21483,7 +21584,6 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 		}
 		else {
 			if (sc->fftDim == sc->fft_dim_full) {
-				if (sc->registerBoost > 1) used_registers_write /= sc->registerBoost;
 				for (uint64_t k = 0; k < sc->registerBoost; k++) {
 					for (uint64_t i = 0; i < used_registers_write; i++) {
 						if (sc->localSize[1] == 1)
@@ -25955,7 +26055,7 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 	if (res != VKFFT_SUCCESS) return res;
 	res = appendConstantsVkFFT(sc, floatType, uintType);
 	if (res != VKFFT_SUCCESS) return res;
-	if ((!sc->LUT) && (!strcmp(floatType, "double"))) {
+	if (((!sc->LUT) || (!sc->LUT_4step)) && (!strcmp(floatType, "double"))) {
 		res = appendSinCos20(sc, floatType, uintType);
 		if (res != VKFFT_SUCCESS) return res;
 	}
@@ -26021,32 +26121,33 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 	if (res != VKFFT_SUCCESS) return res;
 	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
 #elif(VKFFT_BACKEND==2)
-	if(!sc->useUint64 && sc->useStrict32BitAddress > 0) {
+	if (!sc->useUint64 && sc->useStrict32BitAddress > 0) {
 		// These wrappers help hipcc to generate faster code for load and store operations where
 		// 64-bit scalar + 32-bit vector registers are used instead of 64-bit vector saving a few
 		// instructions for computing 64-bit vector addresses.
 		sc->tempLen = sprintf(sc->tempStr,
-		"template<typename T>\n"
-		"struct Inputs\n"
-		"{\n"
-		"	const T* buffer;\n"
-		"	inline __device__ Inputs(const T* buffer) : buffer(buffer) {}\n"
-		"	inline __device__ const T& operator[](unsigned int idx) const { return *reinterpret_cast<const T*>(reinterpret_cast<const char*>(buffer) + idx * static_cast<unsigned int>(sizeof(T))); }\n"
-		"};\n"
-		"template<typename T>\n"
-		"struct Outputs\n"
-		"{\n"
-		"	T* buffer;\n"
-		"	inline __device__ Outputs(T* buffer) : buffer(buffer) {}\n"
-		"	inline __device__ T& operator[](unsigned int idx) const { return *reinterpret_cast<T*>(reinterpret_cast<char*>(buffer) + idx * static_cast<unsigned int>(sizeof(T))); }\n"
-		"};\n"
+			"template<typename T>\n"
+			"struct Inputs\n"
+			"{\n"
+			"	const T* buffer;\n"
+			"	inline __device__ Inputs(const T* buffer) : buffer(buffer) {}\n"
+			"	inline __device__ const T& operator[](unsigned int idx) const { return *reinterpret_cast<const T*>(reinterpret_cast<const char*>(buffer) + idx * static_cast<unsigned int>(sizeof(T))); }\n"
+			"};\n"
+			"template<typename T>\n"
+			"struct Outputs\n"
+			"{\n"
+			"	T* buffer;\n"
+			"	inline __device__ Outputs(T* buffer) : buffer(buffer) {}\n"
+			"	inline __device__ T& operator[](unsigned int idx) const { return *reinterpret_cast<T*>(reinterpret_cast<char*>(buffer) + idx * static_cast<unsigned int>(sizeof(T))); }\n"
+			"};\n"
 		);
-	} else {
+	}
+	else {
 		sc->tempLen = sprintf(sc->tempStr,
-		"template<typename T>\n"
-		"using Inputs = const T*;\n"
-		"template<typename T>\n"
-		"using Outputs = T*;\n"
+			"template<typename T>\n"
+			"using Inputs = const T*;\n"
+			"template<typename T>\n"
+			"using Outputs = T*;\n"
 		);
 	}
 	res = VkAppendLine(sc);
@@ -26777,7 +26878,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		freeShaderGenVkFFT(sc);
 		return res;
 	}
-	if ((!sc->LUT) && (!strcmp(floatType, "double"))) {
+	if (((!sc->LUT) || (!sc->LUT_4step)) && (!strcmp(floatType, "double"))) {
 		res = appendSinCos20(sc, floatType, uintType);
 		if (res != VKFFT_SUCCESS) {
 			freeShaderGenVkFFT(sc);
@@ -27029,32 +27130,33 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 		freeShaderGenVkFFT(sc);
 		return res;
 	}
-	if(!sc->useUint64 && sc->useStrict32BitAddress > 0) {
+	if (!sc->useUint64 && sc->useStrict32BitAddress > 0) {
 		// These wrappers help hipcc to generate faster code for load and store operations where
 		// 64-bit scalar + 32-bit vector registers are used instead of 64-bit vector saving a few
 		// instructions for computing 64-bit vector addresses.
 		sc->tempLen = sprintf(sc->tempStr,
-		"template<typename T>\n"
-		"struct Inputs\n"
-		"{\n"
-		"	const T* buffer;\n"
-		"	inline __device__ Inputs(const T* buffer) : buffer(buffer) {}\n"
-		"	inline __device__ const T& operator[](unsigned int idx) const { return *reinterpret_cast<const T*>(reinterpret_cast<const char*>(buffer) + idx * static_cast<unsigned int>(sizeof(T))); }\n"
-		"};\n"
-		"template<typename T>\n"
-		"struct Outputs\n"
-		"{\n"
-		"	T* buffer;\n"
-		"	inline __device__ Outputs(T* buffer) : buffer(buffer) {}\n"
-		"	inline __device__ T& operator[](unsigned int idx) const { return *reinterpret_cast<T*>(reinterpret_cast<char*>(buffer) + idx * static_cast<unsigned int>(sizeof(T))); }\n"
-		"};\n"
+			"template<typename T>\n"
+			"struct Inputs\n"
+			"{\n"
+			"	const T* buffer;\n"
+			"	inline __device__ Inputs(const T* buffer) : buffer(buffer) {}\n"
+			"	inline __device__ const T& operator[](unsigned int idx) const { return *reinterpret_cast<const T*>(reinterpret_cast<const char*>(buffer) + idx * static_cast<unsigned int>(sizeof(T))); }\n"
+			"};\n"
+			"template<typename T>\n"
+			"struct Outputs\n"
+			"{\n"
+			"	T* buffer;\n"
+			"	inline __device__ Outputs(T* buffer) : buffer(buffer) {}\n"
+			"	inline __device__ T& operator[](unsigned int idx) const { return *reinterpret_cast<T*>(reinterpret_cast<char*>(buffer) + idx * static_cast<unsigned int>(sizeof(T))); }\n"
+			"};\n"
 		);
-	} else {
+	}
+	else {
 		sc->tempLen = sprintf(sc->tempStr,
-		"template<typename T>\n"
-		"using Inputs = const T*;\n"
-		"template<typename T>\n"
-		"using Outputs = T*;\n"
+			"template<typename T>\n"
+			"using Inputs = const T*;\n"
+			"template<typename T>\n"
+			"using Outputs = T*;\n"
 		);
 	}
 	res = VkAppendLine(sc);
@@ -28131,7 +28233,7 @@ static inline VkFFTResult VkFFT_transferDataToCPU(VkFFTApplication* app, void* c
 }
 static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
 #if(VKFFT_BACKEND==0)
-	if ((app->configuration.useLUT) && (!axis->referenceLUT)) {
+	if ((app->configuration.useLUT == 1) && (!axis->referenceLUT)) {
 		if (axis->bufferLUT != 0) {
 			vkDestroyBuffer(app->configuration.device[0], axis->bufferLUT, 0);
 			axis->bufferLUT = 0;
@@ -28160,7 +28262,7 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
 #elif(VKFFT_BACKEND==1)
 	CUresult res = CUDA_SUCCESS;
 	cudaError_t res_t = cudaSuccess;
-	if ((app->configuration.useLUT) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
+	if ((app->configuration.useLUT == 1) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
 		res_t = cudaFree(axis->bufferLUT);
 		if (res_t == cudaSuccess) axis->bufferLUT = 0;
 	}
@@ -28170,7 +28272,7 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
 	}
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
-	if ((app->configuration.useLUT) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
+	if ((app->configuration.useLUT == 1) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
 		res = hipFree(axis->bufferLUT);
 		if (res == hipSuccess) axis->bufferLUT = 0;
 	}
@@ -28180,7 +28282,7 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
 	}
 #elif(VKFFT_BACKEND==3)
 	cl_int res = 0;
-	if ((app->configuration.useLUT) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
+	if ((app->configuration.useLUT == 1) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
 		res = clReleaseMemObject(axis->bufferLUT);
 		if (res == 0) axis->bufferLUT = 0;
 	}
@@ -28194,7 +28296,7 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
 	}
 #elif(VKFFT_BACKEND==4)
 	ze_result_t res = ZE_RESULT_SUCCESS;
-	if ((app->configuration.useLUT) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
+	if ((app->configuration.useLUT == 1) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
 		res = zeMemFree(app->configuration.context[0], axis->bufferLUT);
 		if (res == ZE_RESULT_SUCCESS) axis->bufferLUT = 0;
 	}
@@ -28211,7 +28313,7 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
 		axis->pushConstants.dataUintBuffer->release();
 		axis->pushConstants.dataUintBuffer = 0;
 	}
-	if ((app->configuration.useLUT) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
+	if ((app->configuration.useLUT == 1) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
 		((MTL::Buffer*)axis->bufferLUT)->release();
 		//free(axis->bufferLUT);
 		axis->bufferLUT = 0;
@@ -28519,7 +28621,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 		}
 	}
 }
-static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t fft_length, uint64_t extraSharedMemoryForPow2, uint64_t max_rhs, uint64_t useRader, uint64_t* loc_multipliers, uint64_t* registers_per_thread_per_radix, uint64_t* registers_per_thread, uint64_t* min_registers_per_thread, uint64_t* isGoodSequence) {
+static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, uint64_t fft_length, uint64_t extraSharedMemoryForPow2, uint64_t max_rhs, uint64_t useRader, uint64_t* loc_multipliers, uint64_t* registers_per_thread_per_radix, uint64_t* registers_per_thread, uint64_t* min_registers_per_thread, uint64_t* isGoodSequence) {
 	for (uint64_t i = 0; i < 33; i++) {
 		registers_per_thread_per_radix[i] = 0;
 	}
@@ -29408,7 +29510,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(uint64_t fft_length, uint64
 							uint64_t maxRadixMinStages = 1;
 							uint64_t fixMaxCheckRadix2 = 3;
 #if(VKFFT_BACKEND==1)
-							fixMaxCheckRadix2 = ((fft_length >= 2048) && (extraSharedMemoryForPow2) && (!useRader)) ? 5 : 3;
+								fixMaxCheckRadix2 = (((fft_length >= 1024) || (fft_length == 256)) && (extraSharedMemoryForPow2) && (!useRader)) ? 5 : 3;
 #endif
 							for (uint64_t i = 1; i <= fixMaxCheckRadix2; i++) {
 								uint64_t numStages = (uint64_t)ceil(log2(fft_length) / ((double)i));
@@ -30659,7 +30761,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					uint64_t registers_per_thread = 0;
 					uint64_t min_registers_per_thread = -1;
 					uint64_t isGoodSequence = 0;
-					res = VkFFTGetRegistersPerThread(tempSequence, 0, max_rhs / tempSequence, axes->specializationConstants.useRader, multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
+					res = VkFFTGetRegistersPerThread(app, tempSequence, 0, max_rhs / tempSequence, axes->specializationConstants.useRader, multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
 					if (res != VKFFT_SUCCESS) return res;
 					if (isGoodSequence) FFTSizeSelected = 1;
 					else tempSequence++;
@@ -30736,7 +30838,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 						uint64_t registers_per_thread = 0;
 						uint64_t min_registers_per_thread = -1;
 						uint64_t isGoodSequence = 0;
-						res = VkFFTGetRegistersPerThread(tempSequence, 0, max_rhs / tempSequence, axes->specializationConstants.useRader, multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
+						res = VkFFTGetRegistersPerThread(app, tempSequence, 0, max_rhs / tempSequence, axes->specializationConstants.useRader, multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
 						if (res != VKFFT_SUCCESS) return res;
 						if (isGoodSequence) FFTSizeSelected = 1;
 						else tempSequence++;
@@ -30823,14 +30925,14 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		if (numPassesHalfBandwidth < numPasses) numPasses = numPassesHalfBandwidth;
 		else maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
 	}
-	if (((uint64_t)log2(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]) >= app->configuration.swapTo3Stage4Step) && (app->configuration.swapTo3Stage4Step >= 17)) numPasses = 3;//Force set to 3 stage 4 step algorithm
+	if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] >= app->configuration.swapTo3Stage4Step) && (app->configuration.swapTo3Stage4Step >= 131072)) numPasses = 3;//Force set to 3 stage 4 step algorithm
 	if (forceRaderTwoUpload && (numPasses == 1)) numPasses = 2;//Force set Rader cases that use more than 512 threads per one of Rader primes
 	uint64_t* locAxisSplit = FFTPlan->axisSplit[axis_id];
 	if (numPasses == 1) {
 		locAxisSplit[0] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 	}
 	if (numPasses == 2) {
-		if (isPowOf2) {
+		if (isPowOf2 && (!((app->configuration.vendorID == 0x10DE) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] > 262144)))) {
 			if ((axis_id == nonStridedAxisId) && ((!app->configuration.reorderFourStep) || (app->useBluesteinFFT[axis_id]))) {
 				uint64_t maxPow8SharedMemory = (uint64_t)pow(8, ((uint64_t)log2(maxSequenceLengthSharedMemory)) / 3);
 				//unit stride
@@ -30858,6 +30960,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			}
 			else {
 				uint64_t maxPow8Strided = (uint64_t)pow(8, ((uint64_t)log2(maxSingleSizeStrided)) / 3);
+				if (maxPow8Strided > 512) maxPow8Strided = 512;
 				//all FFTs are considered as non-unit stride
 				if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / maxPow8Strided <= maxSingleSizeStrided) {
 					locAxisSplit[0] = maxPow8Strided;
@@ -30925,7 +31028,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		}
 	}
 	if (numPasses == 3) {
-		if (isPowOf2) {
+		if (isPowOf2 && (!((app->configuration.vendorID == 0x10DE) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] > 262144)))) {
 			uint64_t maxPow8Strided = (uint64_t)pow(8, ((uint64_t)log2(maxSingleSizeStrided)) / 3);
 			if ((axis_id == nonStridedAxisId) && ((!app->configuration.reorderFourStep) || (app->useBluesteinFFT[axis_id]))) {
 				//unit stride
@@ -30988,23 +31091,29 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					}
 				}
 			}
-			if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / locAxisSplit[0] / maxPow8Strided <= maxSingleSizeStrided) {
-				locAxisSplit[1] = maxPow8Strided;
-				locAxisSplit[2] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / locAxisSplit[1] / locAxisSplit[0];
+			if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / locAxisSplit[0] < maxPow8Strided) {
+				locAxisSplit[1] = (uint64_t)pow(2, (uint64_t)(log2(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / locAxisSplit[0]) / 2));
+				locAxisSplit[2] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / locAxisSplit[0] / locAxisSplit[1];
 			}
 			else {
-				if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / locAxisSplit[0] / maxSingleSizeStrided <= maxSingleSizeStrided) {
-					locAxisSplit[1] = maxSingleSizeStrided;
+				if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / locAxisSplit[0] / maxPow8Strided <= maxSingleSizeStrided) {
+					locAxisSplit[1] = maxPow8Strided;
 					locAxisSplit[2] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / locAxisSplit[1] / locAxisSplit[0];
 				}
 				else {
-					locAxisSplit[1] = maxSingleSizeStridedHalfBandwidth;
-					locAxisSplit[2] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / locAxisSplit[1] / locAxisSplit[0];
+					if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / locAxisSplit[0] / maxSingleSizeStrided <= maxSingleSizeStrided) {
+						locAxisSplit[1] = maxSingleSizeStrided;
+						locAxisSplit[2] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / locAxisSplit[1] / locAxisSplit[0];
+					}
+					else {
+						locAxisSplit[1] = maxSingleSizeStridedHalfBandwidth;
+						locAxisSplit[2] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / locAxisSplit[1] / locAxisSplit[0];
+					}
 				}
-			}
-			if (locAxisSplit[2] < 64) {
-				locAxisSplit[1] = (locAxisSplit[2] == 0) ? locAxisSplit[1] / (64) : locAxisSplit[1] / (64 / locAxisSplit[2]);
-				locAxisSplit[2] = 64;
+				if (locAxisSplit[2] < 64) {
+					locAxisSplit[1] = (locAxisSplit[2] == 0) ? locAxisSplit[1] / (64) : locAxisSplit[1] / (64 / locAxisSplit[2]);
+					locAxisSplit[2] = 64;
+				}
 			}
 			if (locAxisSplit[2] > locAxisSplit[1]) {
 				uint64_t swap = locAxisSplit[1];
@@ -31163,7 +31272,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		uint64_t isGoodSequence = 0;
 		uint64_t extraSharedMemoryForPow2 = ((app->configuration.sharedMemorySizePow2 < app->configuration.sharedMemorySize) || ((locAxisSplit[k] < maxSingleSizeNonStrided) && ((axis_id == nonStridedAxisId))) || ((locAxisSplit[k] < maxSingleSizeStrided) && ((axis_id != nonStridedAxisId)))) ? 1 : 0;
 
-		res = VkFFTGetRegistersPerThread(locAxisSplit[k], extraSharedMemoryForPow2, max_rhs / locAxisSplit[k], axes[k].specializationConstants.numRaderPrimes, loc_multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
+		res = VkFFTGetRegistersPerThread(app, locAxisSplit[k], extraSharedMemoryForPow2, max_rhs / locAxisSplit[k], axes[k].specializationConstants.numRaderPrimes, loc_multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
 		if (res != VKFFT_SUCCESS) return res;
 		//first optimizer pass
 		if (axes[k].specializationConstants.numRaderPrimes) {
@@ -33263,7 +33372,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 						axis->specializationConstants.kernelOffset = app->configuration.kernelOffset;
 					}
 				}
-				if ((i == axis->specializationConstants.LUTBindingID) && (app->configuration.useLUT)) {
+				if ((i == axis->specializationConstants.LUTBindingID) && (app->configuration.useLUT == 1)) {
 #if(VKFFT_BACKEND==0)
 					if (axis->specializationConstants.performBufferSetUpdate) {
 						descriptorBufferInfo.buffer = axis->bufferLUT;
@@ -33680,7 +33789,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 						axis->specializationConstants.kernelOffset = app->configuration.kernelOffset;
 					}
 				}
-				if ((i == axis->numBindings - 1) && (app->configuration.useLUT)) {
+				if ((i == axis->numBindings - 1) && (app->configuration.useLUT == 1)) {
 #if(VKFFT_BACKEND==0)
 					if (axis->specializationConstants.performBufferSetUpdate) {
 						descriptorBufferInfo.buffer = axis->bufferLUT;
@@ -33754,7 +33863,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 	axis->specializationConstants.fft_dim_full = app->configuration.size[0];
 	axis->specializationConstants.dispatchZactualFFTSize = 1;
 	//allocate LUT
-	if (app->configuration.useLUT) {
+	if (app->configuration.useLUT == 1) {
 		if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
 			long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
 			axis->bufferLUTSize = (app->configuration.size[0] / 2) * 2 * sizeof(double);
@@ -34264,7 +34373,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		axis->numBindings++;
 	}
 
-	if (app->configuration.useLUT) {
+	if (app->configuration.useLUT == 1) {
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = 1;
 #if(VKFFT_BACKEND==0)
 		descriptorPoolSize.descriptorCount++;
@@ -34431,7 +34540,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		char floatTypeKernelMemory[10];
 		char floatType[10];
 		axis->specializationConstants.unroll = 1;
-		axis->specializationConstants.LUT = app->configuration.useLUT;
+		axis->specializationConstants.LUT = (app->configuration.useLUT == 1) ? 1 : 0;
 		if (app->configuration.doublePrecision) {
 			sprintf(floatType, "double");
 			sprintf(floatTypeInputMemory, "double");
@@ -35157,8 +35266,8 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			}
 			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
 			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
-
-			axis->program = clCreateProgramWithBinary(app->configuration.context[0], 1, app->configuration.device, &codeSize_size_t, (const unsigned char**)(&code), 0, &res);
+			const unsigned char* temp_code = (const unsigned char*)code;
+			axis->program = clCreateProgramWithBinary(app->configuration.context[0], 1, app->configuration.device, &codeSize_size_t, (const unsigned char**)(&temp_code), 0, &res);
 			if (res != CL_SUCCESS) {
 				free(code);
 				code = 0;
@@ -35172,7 +35281,8 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		}
 		else {
 			size_t codelen = strlen(code0);
-			axis->program = clCreateProgramWithSource(app->configuration.context[0], 1, (const char**)&code0, &codelen, &res);
+			const char* temp_code = (const char*)code0;
+			axis->program = clCreateProgramWithSource(app->configuration.context[0], 1, (const char**)&temp_code, &codelen, &res);
 			if (res != CL_SUCCESS) {
 				free(code0);
 				code0 = 0;
@@ -35492,7 +35602,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 	axis->specializationConstants.raderUintLUT = (axis->specializationConstants.useRader) ? app->configuration.useRaderUintLUT : 0;
 	axis->specializationConstants.inline_rader_g_pow = (axis->specializationConstants.raderUintLUT) ? 2 : 1;
-	axis->specializationConstants.inline_rader_kernel = (app->configuration.useLUT) ? 0 : 1;
+	axis->specializationConstants.inline_rader_kernel = (app->configuration.useLUT == 1) ? 0 : 1;
 	uint64_t complexSize;
 	if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory)
 		complexSize = (2 * sizeof(double));
@@ -35668,7 +35778,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		return resFFT;
 	}
 	//allocate LUT
-	if (app->configuration.useLUT) {
+	if (app->configuration.useLUT == 1) {
 		uint64_t dimMult = 1;
 		uint64_t maxStageSum = 0;
 		for (uint64_t i = 0; i < axis->specializationConstants.numStages; i++) {
@@ -35869,18 +35979,21 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
 			if (axis_upload_id > 0) {
 				if ((app->configuration.performDCT == 2) || (app->configuration.performDCT == 3)) {
-					axis->specializationConstants.startDCT3LUT = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim);
-					axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim + (app->configuration.size[axis_id] / 2 + 2)) * 2 * sizeof(double);
+					axis->specializationConstants.startDCT3LUT = (maxStageSum);
+					if (app->configuration.useLUT_4step == 1) axis->specializationConstants.startDCT3LUT += axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim;
+					axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis_id] / 2 + 2)) * 2 * sizeof(double);
 				}
 				else {
 					if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) {
-						axis->specializationConstants.startDCT3LUT = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim);
+						axis->specializationConstants.startDCT3LUT = (maxStageSum);
+						if (app->configuration.useLUT_4step == 1) axis->specializationConstants.startDCT3LUT += axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim;
 						axis->specializationConstants.startDCT4LUT = (axis->specializationConstants.startDCT3LUT + (app->configuration.size[axis_id] / 4 + 2));
-						axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id] / 2) * 2 * sizeof(double);
+						axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id] / 2) * 2 * sizeof(double);
 					}
 					else
-						axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim) * 2 * sizeof(double);
+						axis->bufferLUTSize = (maxStageSum) * 2 * sizeof(double);
 				}
+				if (app->configuration.useLUT_4step == 1) axis->bufferLUTSize += axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim * 2 * sizeof(double);
 			}
 			else {
 				if ((app->configuration.performDCT == 2) || (app->configuration.performDCT == 3)) {
@@ -36019,7 +36132,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					}
 				}
 			}
-			if (axis_upload_id > 0) {
+			if ((axis_upload_id > 0) && (app->configuration.useLUT_4step == 1)) {
 				for (uint64_t i = 0; i < axis->specializationConstants.stageStartSize; i++) {
 					for (uint64_t j = 0; j < axis->specializationConstants.fftDim; j++) {
 						long double angle = 2 * double_PI * ((i * j) / (long double)(axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim));
@@ -36182,18 +36295,21 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			double double_PI = 3.14159265358979323846264338327950288419716939937510;
 			if (axis_upload_id > 0) {
 				if ((app->configuration.performDCT == 2) || (app->configuration.performDCT == 3)) {
-					axis->specializationConstants.startDCT3LUT = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim);
-					axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim + (app->configuration.size[axis_id] / 2 + 2)) * 2 * sizeof(float);
+					axis->specializationConstants.startDCT3LUT = (maxStageSum);
+					if (app->configuration.useLUT_4step == 1) axis->specializationConstants.startDCT3LUT += axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim;
+					axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis_id] / 2 + 2)) * 2 * sizeof(float);
 				}
 				else {
 					if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) {
-						axis->specializationConstants.startDCT3LUT = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim);
+						axis->specializationConstants.startDCT3LUT = (maxStageSum);
+						if (app->configuration.useLUT_4step == 1) axis->specializationConstants.startDCT3LUT += axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim;
 						axis->specializationConstants.startDCT4LUT = (axis->specializationConstants.startDCT3LUT + (axis->specializationConstants.fftDim / 4 + 2));
-						axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id] / 2) * 2 * sizeof(float);
+						axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis_id] / 4 + 2) + app->configuration.size[axis_id] / 2) * 2 * sizeof(float);
 					}
 					else
-						axis->bufferLUTSize = (maxStageSum + axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim) * 2 * sizeof(float);
+						axis->bufferLUTSize = (maxStageSum) * 2 * sizeof(float);
 				}
+				if (app->configuration.useLUT_4step == 1) axis->bufferLUTSize += axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim * 2 * sizeof(float);
 			}
 			else {
 				if ((app->configuration.performDCT == 2) || (app->configuration.performDCT == 3)) {
@@ -36329,7 +36445,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				}
 			}
 
-			if (axis_upload_id > 0) {
+			if ((axis_upload_id > 0) && (app->configuration.useLUT_4step == 1)) {
 				for (uint64_t i = 0; i < axis->specializationConstants.stageStartSize; i++) {
 					for (uint64_t j = 0; j < axis->specializationConstants.fftDim; j++) {
 						double angle = 2 * double_PI * ((i * j) / (double)(axis->specializationConstants.stageStartSize * axis->specializationConstants.fftDim));
@@ -36992,7 +37108,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 #endif
 		axis->numBindings++;
 	}
-	if (app->configuration.useLUT) {
+	if (app->configuration.useLUT == 1) {
 		axis->specializationConstants.LUTBindingID = axis->numBindings;
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = 1;
 #if(VKFFT_BACKEND==0)
@@ -37109,20 +37225,47 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		//if (axis->groupedBatch * (uint64_t)ceil(axis->specializationConstants.fftDim / 8.0) < app->configuration.warpSize) axis->groupedBatch = app->configuration.warpSize / (uint64_t)ceil(axis->specializationConstants.fftDim / 8.0);
 		//axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
 		if (((FFTPlan->numAxisUploads[axis_id] == 1) && (axis_id == 0)) || ((axis_id == 0) && (!axis->specializationConstants.reorderFourStep) && (axis_upload_id == 0))) {
-			axis->groupedBatch = (maxSequenceLengthSharedMemoryPow2 / axis->specializationConstants.fftDim > axis->groupedBatch) ? maxSequenceLengthSharedMemoryPow2 / axis->specializationConstants.fftDim : axis->groupedBatch;
+			axis->groupedBatch = (maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim > axis->groupedBatch) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
 		}
 		else {
-			axis->groupedBatch = (maxSingleSizeStridedPow2 / axis->specializationConstants.fftDim > 1) ? maxSingleSizeStridedPow2 / axis->specializationConstants.fftDim * axis->groupedBatch : axis->groupedBatch;
+			axis->groupedBatch = (maxSingleSizeStrided / axis->specializationConstants.fftDim > 1) ? maxSingleSizeStrided / axis->specializationConstants.fftDim * axis->groupedBatch : axis->groupedBatch;
 		}
 		//axis->groupedBatch = 8;
 		//shared memory bank conflict resolve
 //#if(VKFFT_BACKEND!=2)//for some reason, hip doesn't get performance increase from having variable shared memory strides.
-		if ((FFTPlan->numAxisUploads[axis_id] == 2) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim * maxBatchCoalesced <= maxSequenceLengthSharedMemory)) {
-			axis->groupedBatch = (uint64_t)ceil(axis->groupedBatch / 2.0);
+		if (app->configuration.vendorID == 0x10DE) {
+			if (FFTPlan->numAxisUploads[axis_id] == 2) {
+				if ((axis_upload_id > 0) || (axis->specializationConstants.fftDim <= 512)) {
+					if (axis->specializationConstants.fftDim * (64 / complexSize) <= maxSequenceLengthSharedMemory) {
+						axis->groupedBatch = 64 / complexSize;
+						maxBatchCoalesced = 64 / complexSize;
+					}
+					if (axis->specializationConstants.fftDim * (128 / complexSize) <= maxSequenceLengthSharedMemory) {
+						axis->groupedBatch = 128 / complexSize;
+						maxBatchCoalesced = 128 / complexSize;
+					}
+				}
+			}
+			//#endif
+			if (FFTPlan->numAxisUploads[axis_id] == 3) {
+				if (axis->specializationConstants.fftDim * (64 / complexSize) <= maxSequenceLengthSharedMemory) {
+					axis->groupedBatch = 64 / complexSize;
+					maxBatchCoalesced = 64 / complexSize;
+				}
+				if (axis->specializationConstants.fftDim * (128 / complexSize) <= maxSequenceLengthSharedMemory) {
+					axis->groupedBatch = 128 / complexSize;
+					maxBatchCoalesced = 128 / complexSize;
+				}
+			}
 		}
-		//#endif
-		if ((FFTPlan->numAxisUploads[axis_id] == 3) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory / (2 * complexSize))) {
-			axis->groupedBatch = (uint64_t)ceil(axis->groupedBatch / 2.0);
+		else {
+			if ((FFTPlan->numAxisUploads[axis_id] == 2) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim * maxBatchCoalesced <= maxSequenceLengthSharedMemory)) {
+				axis->groupedBatch = (uint64_t)ceil(axis->groupedBatch / 2.0);
+			}
+			//#endif
+			if ((FFTPlan->numAxisUploads[axis_id] == 3) && (axis_upload_id == 0) && (axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory / (2 * complexSize))) {
+				axis->groupedBatch = (uint64_t)ceil(axis->groupedBatch / 2.0);
+			}
 		}
 		if (axis->groupedBatch < maxBatchCoalesced) axis->groupedBatch = maxBatchCoalesced;
 		axis->groupedBatch = (axis->groupedBatch / maxBatchCoalesced) * maxBatchCoalesced;
@@ -37208,7 +37351,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					r2cmult = 1;
 				}
 				if ((FFTPlan->numAxisUploads[0] == 1) && ((uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][1] / (double)r2cmult) < axis->axisBlock[1])) axis->axisBlock[1] = (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][1] / (double)r2cmult);
-
+				if (app->configuration.vendorID == 0x10DE) {
+					while ((axis->axisBlock[1] * axis->axisBlock[0] >= 2 * app->configuration.aimThreads) && (axis->axisBlock[1] > maxBatchCoalesced)) {
+						axis->axisBlock[1] /= 2;
+						if (axis->axisBlock[1] < maxBatchCoalesced) axis->axisBlock[1] = maxBatchCoalesced;
+					}
+				}
 				if (axis->axisBlock[1] > app->configuration.maxComputeWorkGroupSize[1]) axis->axisBlock[1] = app->configuration.maxComputeWorkGroupSize[1];
 				//if (axis->axisBlock[0] * axis->axisBlock[1] > app->configuration.maxThreadsNum) axis->axisBlock[1] /= 2;
 				if (axis->axisBlock[0] * axis->axisBlock[1] > maxThreadNum) {
@@ -37222,7 +37370,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					}
 				}
 				while ((axis->axisBlock[1] * (axis->specializationConstants.fftDim / axis->specializationConstants.registerBoost)) > maxSequenceLengthSharedMemory) axis->axisBlock[1] /= 2;
-				if (((axis->specializationConstants.fftDim % 2 == 0) || (axis->axisBlock[0] < app->configuration.numSharedBanks / 4)) && (!(((!axis->specializationConstants.reorderFourStep) || (axis->specializationConstants.useBluesteinFFT)) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim < maxSequenceLengthSharedMemoryPow2) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2])))) {
+				if (((axis->specializationConstants.fftDim % 2 == 0) || (axis->axisBlock[0] < app->configuration.numSharedBanks / 4)) && (!(((!axis->specializationConstants.reorderFourStep) || (axis->specializationConstants.useBluesteinFFT)) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim < maxSequenceLengthSharedMemory) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2])))) {
 					/*#if (VKFFT_BACKEND==0)
 										if (((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) != 0)) {
 											uint64_t temp = axis->axisBlock[1];
@@ -37264,9 +37412,17 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				if (axis->specializationConstants.useRaderFFT) {
 					if (axis->axisBlock[1] < axis->specializationConstants.minRaderFFTThreadNum) axis->axisBlock[1] = axis->specializationConstants.minRaderFFTThreadNum;
 				}
+
 				uint64_t scale = app->configuration.aimThreads / axis->axisBlock[1] / axis->groupedBatch;
-				if (scale > 1) axis->groupedBatch *= scale;
+				if ((scale > 1) && ((axis->specializationConstants.fftDim * axis->groupedBatch * scale <= maxSequenceLengthSharedMemory))) axis->groupedBatch *= scale;
+
 				axis->axisBlock[0] = (axis->specializationConstants.stageStartSize > axis->groupedBatch) ? axis->groupedBatch : axis->specializationConstants.stageStartSize;
+				if (app->configuration.vendorID == 0x10DE) {
+					while ((axis->axisBlock[1] * axis->axisBlock[0] >= 2 * app->configuration.aimThreads) && (axis->axisBlock[0] > maxBatchCoalesced)) {
+						axis->axisBlock[0] /= 2;
+						if (axis->axisBlock[0] < maxBatchCoalesced) axis->axisBlock[0] = maxBatchCoalesced;
+					}
+				}
 				if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 				if (axis->axisBlock[0] * axis->axisBlock[1] > maxThreadNum) {
 					for (uint64_t i = 1; i <= axis->axisBlock[0]; i++) {
@@ -37308,13 +37464,14 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			if (axis->specializationConstants.useRaderFFT) {
 				if (axis->axisBlock[1] < axis->specializationConstants.minRaderFFTThreadNum) axis->axisBlock[1] = axis->specializationConstants.minRaderFFTThreadNum;
 			}
+
+			axis->axisBlock[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axis->groupedBatch) ? axis->groupedBatch : FFTPlan->actualFFTSizePerAxis[axis_id][0];
 			if (app->configuration.vendorID == 0x10DE) {
-				while ((((FFTPlan->actualFFTSizePerAxis[axis_id][0] / (double)axis->groupedBatch) > 1) && ((FFTPlan->actualFFTSizePerAxis[axis_id][0] / (double)axis->groupedBatch) < 4)) && (axis->groupedBatch > maxBatchCoalesced)) {
-					axis->groupedBatch /= 2;
-					if (axis->groupedBatch < maxBatchCoalesced) axis->groupedBatch = maxBatchCoalesced;
+				while ((axis->axisBlock[1] * axis->axisBlock[0] >= 2 * app->configuration.aimThreads) && (axis->axisBlock[0] > maxBatchCoalesced)) {
+					axis->axisBlock[0] /= 2;
+					if (axis->axisBlock[0] < maxBatchCoalesced) axis->axisBlock[0] = maxBatchCoalesced;
 				}
 			}
-			axis->axisBlock[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axis->groupedBatch) ? axis->groupedBatch : FFTPlan->actualFFTSizePerAxis[axis_id][0];
 			if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 			if (axis->axisBlock[0] * axis->axisBlock[1] > maxThreadNum) {
 				for (uint64_t i = 1; i <= axis->axisBlock[0]; i++) {
@@ -37354,14 +37511,14 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			if (axis->specializationConstants.useRaderFFT) {
 				if (axis->axisBlock[1] < axis->specializationConstants.minRaderFFTThreadNum) axis->axisBlock[1] = axis->specializationConstants.minRaderFFTThreadNum;
 			}
+
+			axis->axisBlock[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axis->groupedBatch) ? axis->groupedBatch : FFTPlan->actualFFTSizePerAxis[axis_id][0];
 			if (app->configuration.vendorID == 0x10DE) {
-				while ((((FFTPlan->actualFFTSizePerAxis[axis_id][0] / (double)axis->groupedBatch) > 1) && ((FFTPlan->actualFFTSizePerAxis[axis_id][0] / (double)axis->groupedBatch) < 4)) && (axis->groupedBatch > maxBatchCoalesced)) {
-					axis->groupedBatch /= 2;
-					if (axis->groupedBatch < maxBatchCoalesced) axis->groupedBatch = maxBatchCoalesced;
+				while ((axis->axisBlock[1] * axis->axisBlock[0] >= 2 * app->configuration.aimThreads) && (axis->axisBlock[0] > maxBatchCoalesced)) {
+					axis->axisBlock[0] /= 2;
+					if (axis->axisBlock[0] < maxBatchCoalesced) axis->axisBlock[0] = maxBatchCoalesced;
 				}
 			}
-			axis->axisBlock[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axis->groupedBatch) ? axis->groupedBatch : FFTPlan->actualFFTSizePerAxis[axis_id][0];
-
 			if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
 			if (axis->axisBlock[0] * axis->axisBlock[1] > maxThreadNum) {
 				for (uint64_t i = 1; i <= axis->axisBlock[0]; i++) {
@@ -37541,7 +37698,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		char floatTypeKernelMemory[10];
 		char floatType[10];
 		axis->specializationConstants.unroll = 1;
-		axis->specializationConstants.LUT = app->configuration.useLUT;
+		axis->specializationConstants.LUT = (app->configuration.useLUT == 1) ? 1 : 0;
+		axis->specializationConstants.LUT_4step = (app->configuration.useLUT_4step == 1) ? 1 : 0;
 		if (app->configuration.doublePrecision) {
 			sprintf(floatType, "double");
 			sprintf(floatTypeInputMemory, "double");
@@ -38327,8 +38485,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			}
 			memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
 			app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
-
-			axis->program = clCreateProgramWithBinary(app->configuration.context[0], 1, app->configuration.device, &codeSize_size_t, (const unsigned char**)(&code), 0, &res);
+			const unsigned char* temp_code = (const unsigned char*)code;
+			axis->program = clCreateProgramWithBinary(app->configuration.context[0], 1, app->configuration.device, &codeSize_size_t, (const unsigned char**)(&temp_code), 0, &res);
 			if (res != CL_SUCCESS) {
 				free(code0);
 				code0 = 0;
@@ -38340,7 +38498,8 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		}
 		else {
 			size_t codelen = strlen(code0);
-			axis->program = clCreateProgramWithSource(app->configuration.context[0], 1, (const char**)&code0, &codelen, &res);
+			const char* temp_code = (const char*)code0;
+			axis->program = clCreateProgramWithSource(app->configuration.context[0], 1, (const char**)&temp_code, &codelen, &res);
 			if (res != CL_SUCCESS) {
 				free(code0);
 				code0 = 0;
@@ -39085,12 +39244,12 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	switch (physicalDeviceProperties.vendorID) {
 	case 0x10DE://NVIDIA
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
-		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : 0;
+		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : -1;
 		app->configuration.warpSize = 32;
 		app->configuration.registerBoostNonPow2 = 0;
 		app->configuration.registerBoost = 4;
 		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = 0;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 4194305 : 4194305;
 		break;
 	case 0x8086://INTEL
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
@@ -39099,25 +39258,25 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		app->configuration.registerBoostNonPow2 = 0;
 		app->configuration.registerBoost = (physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 1 : 2;
 		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = 0;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 262144 : 524288;
 		break;
 	case 0x1002://AMD
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;
-		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : 0;
+		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : -1;
 		app->configuration.warpSize = 64;
 		app->configuration.registerBoostNonPow2 = 0;
 		app->configuration.registerBoost = (physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
 		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 18 : 19;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 262144 : 524288;
 		break;
 	default:
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
-		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : 0;
+		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : -1;
 		app->configuration.warpSize = 32;
 		app->configuration.registerBoostNonPow2 = 0;
 		app->configuration.registerBoost = 1;
 		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = 0;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 262144 : 524288;
 		break;
 	}
 #elif(VKFFT_BACKEND==1)
@@ -39207,6 +39366,12 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
 	}
 	app->configuration.warpSize = value;
+	res = cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_SINGLE_TO_DOUBLE_PRECISION_PERF_RATIO, app->configuration.device[0]);
+	if (res != CUDA_SUCCESS) {
+		deleteVkFFT(app);
+		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
+	}
+	app->configuration.useLUT_4step = (value <= 4) ? -1 : 1;
 	//we don't need this in CUDA
 	app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(app->configuration.sharedMemorySize));
 	app->configuration.useRaderUintLUT = 0;
@@ -39226,11 +39391,11 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	}
 
 	app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
-	app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : 0;
+	app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : -1;
 	app->configuration.registerBoostNonPow2 = 0;
 	app->configuration.registerBoost = 1;
 	app->configuration.registerBoost4Step = 1;
-	app->configuration.swapTo3Stage4Step = 0;
+	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 4194305 : 4194305;
 	app->configuration.vendorID = 0x10DE;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
@@ -39331,11 +39496,12 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		}
 	}
 	app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;
-	app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : 0;
+	app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : -1;
+	app->configuration.useLUT_4step = -1;
 	app->configuration.registerBoostNonPow2 = 0;
 	app->configuration.registerBoost = 1;
 	app->configuration.registerBoost4Step = 1;
-	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 20 : 21;
+	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 1048576 : 2097152;
 	app->configuration.vendorID = 0x1002;
 #elif(VKFFT_BACKEND==3)
 	cl_int res = 0;
@@ -39403,12 +39569,12 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	switch (vendorID) {
 	case 0x10DE://NVIDIA
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
-		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : 0;
+		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : -1;
 		app->configuration.warpSize = 32;
 		app->configuration.registerBoostNonPow2 = 0;
 		app->configuration.registerBoost = 4;
 		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = 0;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 4194305 : 4194305;
 		app->configuration.sharedMemorySize -= 0x10;//reserved by system
 		app->configuration.sharedMemorySizePow2 = (uint64_t)pow(2, (uint64_t)log2(app->configuration.sharedMemorySize));
 		break;
@@ -39419,25 +39585,25 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		app->configuration.registerBoostNonPow2 = 0;
 		app->configuration.registerBoost = (sharedMemorySize >= 65536) ? 1 : 2;
 		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = 0;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 262144 : 524288;
 		break;
 	case 0x1002://AMD
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;
-		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : 0;
+		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : -1;
 		app->configuration.warpSize = 64;
 		app->configuration.registerBoostNonPow2 = 0;
 		app->configuration.registerBoost = (sharedMemorySize >= 65536) ? 2 : 4;
 		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = 0;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 262144 : 524288;
 		break;
 	default:
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
-		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : 0;
+		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : -1;
 		app->configuration.warpSize = 32;
 		app->configuration.registerBoostNonPow2 = 0;
 		app->configuration.registerBoost = 1;
 		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = 0;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 262144 : 524288;
 		break;
 	}
 #elif(VKFFT_BACKEND==4)
@@ -39483,7 +39649,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	app->configuration.registerBoostNonPow2 = 0;
 	app->configuration.registerBoost = (app->configuration.sharedMemorySize >= 65536) ? 1 : 2;
 	app->configuration.registerBoost4Step = 1;
-	app->configuration.swapTo3Stage4Step = 0;
+	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 262144 : 524288;
 	app->configuration.vendorID = 0x8086;
 	app->configuration.useRaderUintLUT = 1;
 #elif(VKFFT_BACKEND==5)
@@ -39539,11 +39705,11 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	app->configuration.useRaderUintLUT = 1;
 
 	app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;//the coalesced memory is equal to 64 bytes between L2 and VRAM.
-	app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : 0;
+	app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) ? 1 : -1;
 	app->configuration.registerBoostNonPow2 = 0;
 	app->configuration.registerBoost = 1;
 	app->configuration.registerBoost4Step = 1;
-	app->configuration.swapTo3Stage4Step = 0;
+	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 262144 : 524288;
 	app->configuration.vendorID = 0x1027f00;
 
 	dummy_state->release();
@@ -39814,6 +39980,17 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	if (inputLaunchConfiguration.inverseReturnToInputBuffer != 0)	app->configuration.inverseReturnToInputBuffer = inputLaunchConfiguration.inverseReturnToInputBuffer;
 
 	if (inputLaunchConfiguration.useLUT != 0)	app->configuration.useLUT = inputLaunchConfiguration.useLUT;
+	if (inputLaunchConfiguration.useLUT_4step != 0) {
+		if (inputLaunchConfiguration.useLUT_4step > 0)
+			app->configuration.useLUT = 1;
+		app->configuration.useLUT_4step = inputLaunchConfiguration.useLUT_4step;
+	}
+	else {
+		if (app->configuration.useLUT_4step == 0)
+			app->configuration.useLUT_4step = app->configuration.useLUT;
+	}
+
+	if (app->configuration.useLUT == -1)	app->configuration.useLUT_4step = -1;
 
 	if (inputLaunchConfiguration.fixMaxRadixBluestein != 0) app->configuration.fixMaxRadixBluestein = inputLaunchConfiguration.fixMaxRadixBluestein;
 	if (inputLaunchConfiguration.forceBluesteinSequenceSize != 0) app->configuration.forceBluesteinSequenceSize = inputLaunchConfiguration.forceBluesteinSequenceSize;
@@ -39861,7 +40038,10 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	if (inputLaunchConfiguration.makeInversePlanOnly != 0)	app->configuration.makeInversePlanOnly = inputLaunchConfiguration.makeInversePlanOnly;
 
 	app->configuration.reorderFourStep = 1;
-	if (inputLaunchConfiguration.disableReorderFourStep != 0) app->configuration.reorderFourStep = 0;
+	if (inputLaunchConfiguration.disableReorderFourStep != 0) {
+		app->configuration.reorderFourStep = 0;
+		if (app->configuration.swapTo3Stage4Step < 1048576) app->configuration.swapTo3Stage4Step = 1048576;
+	}
 	if (inputLaunchConfiguration.frequencyZeroPadding != 0) app->configuration.frequencyZeroPadding = inputLaunchConfiguration.frequencyZeroPadding;
 	for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 		if (inputLaunchConfiguration.performZeropadding[i] != 0) {
@@ -41481,6 +41661,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10230; //X.XX.XX format
+	return 10231; //X.XX.XX format
 }
 #endif
