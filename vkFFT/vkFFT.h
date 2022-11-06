@@ -841,6 +841,7 @@ typedef struct {
 	char gl_WorkGroupID_y[50];
 	char gl_WorkGroupID_z[50];
 	char tempReg[50];
+	char vecType[30];
 	char stageInvocationID[50];
 	char blockInvocationID[50];
 	char temp[50];
@@ -1115,18 +1116,28 @@ static inline VkFFTResult VkAddReal(VkFFTSpecializationConstantsLayout* sc, cons
 }
 static inline VkFFTResult VkAddComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
 	VkFFTResult res = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==2)
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s + %s;\n", out, in_1, in_2);
+#else
 	sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x + %s.x;\n\
 	%s.y = %s.y + %s.y;\n", out, in_1, in_2, out, in_1, in_2);
+#endif
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
 static inline VkFFTResult VkAddComplexInv(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
 	VkFFTResult res = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==2)
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s = - %s - %s;\n", out, in_1, in_2);
+#else
 	sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = - %s.x - %s.x;\n\
 	%s.y = - %s.y - %s.y;\n", out, in_1, in_2, out, in_1, in_2);
+#endif
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
@@ -1149,9 +1160,14 @@ static inline VkFFTResult VkAddComplex_y(VkFFTSpecializationConstantsLayout* sc,
 }
 static inline VkFFTResult VkSubComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2) {
 	VkFFTResult res = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==2)
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s - %s;\n", out, in_1, in_2);
+#else
 	sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x - %s.x;\n\
 	%s.y = %s.y - %s.y;\n", out, in_1, in_2, out, in_1, in_2);
+#endif
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
@@ -1250,6 +1266,10 @@ static inline VkFFTResult VkFMAReal(VkFFTSpecializationConstantsLayout* sc, cons
 }
 static inline VkFFTResult VkMulComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==2)
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s * %s.x + %s(-%s.y, %s.x) * %s.y;\n", out, in_1, in_2, sc->vecType, in_1, in_1, in_2);
+#else
 	if (strcmp(out, in_1) && strcmp(out, in_2)) {
 		sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x * %s.x - %s.y * %s.y;\n\
@@ -1265,12 +1285,17 @@ static inline VkFFTResult VkMulComplex(VkFFTSpecializationConstantsLayout* sc, c
 		else
 			return VKFFT_ERROR_NULL_TEMP_PASSED;
 	}
+#endif
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
 static inline VkFFTResult VkMulComplexConj(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==2)
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s * %s.x + %s(%s.y, -%s.x) * %s.y;\n", out, in_1, in_2, sc->vecType, in_1, in_1, in_2);
+#else
 	if (strcmp(out, in_1) && strcmp(out, in_2)) {
 		sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x * %s.x + %s.y * %s.y;\n\
@@ -1286,21 +1311,31 @@ static inline VkFFTResult VkMulComplexConj(VkFFTSpecializationConstantsLayout* s
 		else
 			return VKFFT_ERROR_NULL_TEMP_PASSED;
 	}
+#endif
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
 static inline VkFFTResult VkMulComplexNumber(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num) {
 	VkFFTResult res = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==2)
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s * %s;\n", out, in_1, in_num);
+#else
 	sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x * %s;\n\
 	%s.y = %s.y * %s;\n", out, in_1, in_num, out, in_1, in_num);
+#endif
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
 static inline VkFFTResult VkMulComplexNumberImag(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==2)
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s(-%s.y, %s.x) * %s;\n", out, sc->vecType, in_1, in_1, in_num);
+#else
 	if (strcmp(out, in_1)) {
 		sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = - %s.y * %s;\n\
@@ -1316,6 +1351,7 @@ static inline VkFFTResult VkMulComplexNumberImag(VkFFTSpecializationConstantsLay
 		else
 			return VKFFT_ERROR_NULL_TEMP_PASSED;
 	}
+#endif
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
@@ -1341,6 +1377,10 @@ static inline VkFFTResult VkMulReal(VkFFTSpecializationConstantsLayout* sc, cons
 
 static inline VkFFTResult VkShuffleComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==2)
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s + %s(-%s.y, %s.x);\n", out, in_1, sc->vecType, in_2, in_2);
+#else
 	if (strcmp(out, in_2)) {
 		sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x - %s.y;\n\
@@ -1356,12 +1396,17 @@ static inline VkFFTResult VkShuffleComplex(VkFFTSpecializationConstantsLayout* s
 		else
 			return VKFFT_ERROR_NULL_TEMP_PASSED;
 	}
+#endif
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
 static inline VkFFTResult VkShuffleComplexInv(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==2)
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s + %s(%s.y, -%s.x);\n", out, in_1, sc->vecType, in_2, in_2);
+#else
 	if (strcmp(out, in_2)) {
 		sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x + %s.y;\n\
@@ -1377,6 +1422,7 @@ static inline VkFFTResult VkShuffleComplexInv(VkFFTSpecializationConstantsLayout
 		else
 			return VKFFT_ERROR_NULL_TEMP_PASSED;
 	}
+#endif
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
@@ -22184,25 +22230,14 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 						else {
 							if (sc->mergeSequencesR2C) {
 								if (sc->axisSwapped) {
-									sc->tempLen = sprintf(sc->tempStr, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim / 2 + 1);
+									sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")];\n\
+									%s = sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")];\n", sc->w, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->temp, sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*((combinedID / %" PRIu64 ") %% 2 == 0 ? %s.x+%s.x : %s.y+%s.y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->w, sc->temp, sc->w, sc->temp);
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y-sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "}else{\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ")* sharedStride + (combinedID / %" PRIu64 ")].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "}\n");
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*((combinedID / %" PRIu64 ") %% 2 == 0 ? %s.y-%s.y : -%s.x+%s.x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->w, sc->temp, sc->w, sc->temp);
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
 									if (sc->outputBufferBlockNum == 1)
@@ -22213,25 +22248,14 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 									if (res != VKFFT_SUCCESS) return res;
 								}
 								else {
-									sc->tempLen = sprintf(sc->tempStr, "if ( (combinedID / %" PRIu64 ") %% 2 == 0){\n", sc->fftDim / 2 + 1);
+									sc->tempLen = sprintf(sc->tempStr, "		%s = sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride];\n\
+									%s = sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride];\n", sc->w, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->temp, sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
+									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*((combinedID / %" PRIu64 ") %% 2 == 0 ? %s.x+%s.x : %s.y+%s.y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->w, sc->temp, sc->w, sc->temp);
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y-sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "}else{\n");
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.x = 0.5%s*(sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].y);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*(-sdata[(combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x+sdata[(%" PRIu64 "-combinedID %% %" PRIu64 ") + (combinedID / %" PRIu64 ") * sharedStride].x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1), sc->fftDim, sc->fftDim / 2 + 1, 2 * (sc->fftDim / 2 + 1));
-									res = VkAppendLine(sc);
-									if (res != VKFFT_SUCCESS) return res;
-									sc->tempLen = sprintf(sc->tempStr, "}\n");
+									sc->tempLen = sprintf(sc->tempStr, "		%s.y = 0.5%s*((combinedID / %" PRIu64 ") %% 2 == 0 ? %s.y-%s.y : -%s.x+%s.x);\n", sc->regIDs[0], LFending, sc->fftDim / 2 + 1, sc->w, sc->temp, sc->w, sc->temp);
 									res = VkAppendLine(sc);
 									if (res != VKFFT_SUCCESS) return res;
 									if (sc->outputBufferBlockNum == 1)
@@ -25957,6 +25981,7 @@ static inline VkFFTResult shaderGenVkFFT_R2C_decomposition(char* output, VkFFTSp
 	char cosDef[20] = "cos";
 	char sinDef[20] = "sin";
 #endif
+	sprintf(sc->vecType, "%s", vecType);
 	sprintf(sc->stageInvocationID, "stageInvocationID");
 	sprintf(sc->blockInvocationID, "blockInvocationID");
 	sprintf(sc->tshuffle, "tshuffle");
@@ -26836,6 +26861,7 @@ static inline VkFFTResult shaderGenVkFFT(char* output, VkFFTSpecializationConsta
 	//sprintf(sc->gl_SubgroupInvocationID, "gl_SubgroupInvocationID");
 	//sprintf(sc->gl_SubgroupID, "gl_SubgroupID");
 #endif
+	sprintf(sc->vecType, "%s", vecType);
 	sprintf(sc->stageInvocationID, "stageInvocationID");
 	sprintf(sc->blockInvocationID, "blockInvocationID");
 	sprintf(sc->tshuffle, "tshuffle");
