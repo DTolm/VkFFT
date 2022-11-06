@@ -674,6 +674,7 @@ typedef struct {
 	uint64_t numSubgroups;
 	uint64_t sourceFFTSize;
 	uint64_t fftDim;
+	uint64_t precision;
 	uint64_t inverse;
 	uint64_t actualInverse;
 	uint64_t inverseBluestein;
@@ -1202,7 +1203,7 @@ static inline VkFFTResult VkFMA3Complex(VkFFTSpecializationConstantsLayout* sc, 
 	//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f %%f %%f \\n \", %s, %s.x, %s.y, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, in_1, in_1, in_conj, in_conj);
 	//res = VkAppendLine(sc);
 	//if (res != VKFFT_SUCCESS) return res;
-#if(VKFFT_BACKEND==2)
+/*#if(VKFFT_BACKEND==2)
 	sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x;\n\
 	%s.y = %s.y;\n", temp, in_1, temp, in_conj);
@@ -1221,7 +1222,7 @@ static inline VkFFTResult VkFMA3Complex(VkFFTSpecializationConstantsLayout* sc, 
 	%s = %s * %s.y + %s;\n", out_2, temp, in_num, out_2);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
-#else
+#else*/
 	sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = fma(%s.x, %s.x, %s.x);\n\
 	%s.y = fma(%s.y, %s.x, %s.y);\n", out_1, in_1, in_num, out_1, out_1, in_conj, in_num, out_1);
@@ -1232,24 +1233,24 @@ static inline VkFFTResult VkFMA3Complex(VkFFTSpecializationConstantsLayout* sc, 
 	%s.y = fma(%s.x, %s.y, %s.y);\n", out_2, in_1, in_num, out_2, out_2, in_conj, in_num, out_2);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
-#endif
-	/*sc->tempLen = sprintf(sc->tempStr, "\
-	temp2.x = fma(%s.x, %s.x, %s.x);\n\
-	%s.x = temp2.x;\n\
-	temp2.y = fma(%s.y, %s.x, %s.y);\n\
-	%s.y = temp2.y;\n", in_1, in_num, out_1, out_1, in_conj, in_num, out_1, out_1);
-	res = VkAppendLine(sc);
-	if (res != VKFFT_SUCCESS) return res;
-	sc->tempLen = sprintf(sc->tempStr, "\
-	temp2.x = fma(%s.y, %s.y, %s.x);\n\
-	%s.x = temp2.x;\n\
-	temp2.y = fma(%s.x, %s.y, %s.y);\n\
-	%s.y = temp2.y;\n", in_1, in_num, out_2, out_2, in_conj, in_num, out_2, out_2);
-	res = VkAppendLine(sc);
-	if (res != VKFFT_SUCCESS) return res;*/
-	//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f %%f %%f \\n \", %s, %s.x, %s.y, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, out_1, out_1, out_2, out_2);
-	//res = VkAppendLine(sc);
-	//if (res != VKFFT_SUCCESS) return res;
+	//#endif
+		/*sc->tempLen = sprintf(sc->tempStr, "\
+		temp2.x = fma(%s.x, %s.x, %s.x);\n\
+		%s.x = temp2.x;\n\
+		temp2.y = fma(%s.y, %s.x, %s.y);\n\
+		%s.y = temp2.y;\n", in_1, in_num, out_1, out_1, in_conj, in_num, out_1, out_1);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, "\
+		temp2.x = fma(%s.y, %s.y, %s.x);\n\
+		%s.x = temp2.x;\n\
+		temp2.y = fma(%s.x, %s.y, %s.y);\n\
+		%s.y = temp2.y;\n", in_1, in_num, out_2, out_2, in_conj, in_num, out_2, out_2);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;*/
+		//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f %%f %%f \\n \", %s, %s.x, %s.y, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, out_1, out_1, out_2, out_2);
+		//res = VkAppendLine(sc);
+		//if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
 static inline VkFFTResult VkFMA3Complex_const_w(VkFFTSpecializationConstantsLayout* sc, const char* out_1, const char* out_2, const char* in_1, const char* in_num_x, const char* in_num_y, const char* in_conj, const char* temp) {
@@ -1258,25 +1259,28 @@ static inline VkFFTResult VkFMA3Complex_const_w(VkFFTSpecializationConstantsLayo
 	//res = VkAppendLine(sc);
 	//if (res != VKFFT_SUCCESS) return res;
 #if(VKFFT_BACKEND==2)
-	sc->tempLen = sprintf(sc->tempStr, "\
+	if (sc->precision == 0) {
+		sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x;\n\
 	%s.y = %s.y;\n", temp, in_1, temp, in_conj);
-	res = VkAppendLine(sc);
-	if (res != VKFFT_SUCCESS) return res;
-	sc->tempLen = sprintf(sc->tempStr, "\
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, "\
 	%s = %s * %s + %s;\n", out_1, temp, in_num_x, out_1);
-	res = VkAppendLine(sc);
-	if (res != VKFFT_SUCCESS) return res;
-	sc->tempLen = sprintf(sc->tempStr, "\
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.y;\n\
 	%s.y = %s.x;\n", temp, in_1, temp, in_conj);
-	res = VkAppendLine(sc);
-	if (res != VKFFT_SUCCESS) return res;
-	sc->tempLen = sprintf(sc->tempStr, "\
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, "\
 	%s = %s * %s + %s;\n", out_2, temp, in_num_y, out_2);
-	res = VkAppendLine(sc);
-	if (res != VKFFT_SUCCESS) return res;
-#else
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+	}
+	else {
+#endif
 	sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = fma(%s.x, %s, %s.x);\n\
 	%s.y = fma(%s.y, %s, %s.y);\n", out_1, in_1, in_num_x, out_1, out_1, in_conj, in_num_x, out_1);
@@ -1287,6 +1291,8 @@ static inline VkFFTResult VkFMA3Complex_const_w(VkFFTSpecializationConstantsLayo
 	%s.y = fma(%s.x, %s, %s.y);\n", out_2, in_1, in_num_y, out_2, out_2, in_conj, in_num_y, out_2);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
+#if(VKFFT_BACKEND==2)
+	}
 #endif
 	return res;
 }
@@ -1317,9 +1323,12 @@ static inline VkFFTResult VkFMAReal(VkFFTSpecializationConstantsLayout* sc, cons
 static inline VkFFTResult VkMulComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==2)
-	sc->tempLen = sprintf(sc->tempStr, "\
+	if (sc->precision==0) {
+		sc->tempLen = sprintf(sc->tempStr, "\
 	%s = %s * %s.x + %s(-%s.y, %s.x) * %s.y;\n", out, in_1, in_2, sc->vecType, in_1, in_1, in_2);
-#else
+	}
+	else{
+#endif
 	if (strcmp(out, in_1) && strcmp(out, in_2)) {
 		sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x * %s.x - %s.y * %s.y;\n\
@@ -1335,6 +1344,8 @@ static inline VkFFTResult VkMulComplex(VkFFTSpecializationConstantsLayout* sc, c
 		else
 			return VKFFT_ERROR_NULL_TEMP_PASSED;
 	}
+#if(VKFFT_BACKEND==2)
+	}
 #endif
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
@@ -1343,23 +1354,28 @@ static inline VkFFTResult VkMulComplex(VkFFTSpecializationConstantsLayout* sc, c
 static inline VkFFTResult VkMulComplexConj(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==2)
-	sc->tempLen = sprintf(sc->tempStr, "\
-	%s = %s * %s.x + %s(%s.y, -%s.x) * %s.y;\n", out, in_1, in_2, sc->vecType, in_1, in_1, in_2);
-#else
-	if (strcmp(out, in_1) && strcmp(out, in_2)) {
+	if (sc->precision == 0) {
 		sc->tempLen = sprintf(sc->tempStr, "\
-	%s.x = %s.x * %s.x + %s.y * %s.y;\n\
-	%s.y = %s.y * %s.x - %s.x * %s.y;\n", out, in_1, in_2, in_1, in_2, out, in_1, in_2, in_1, in_2);
+	%s = %s * %s.x + %s(%s.y, -%s.x) * %s.y;\n", out, in_1, in_2, sc->vecType, in_1, in_1, in_2);
 	}
 	else {
-		if (temp) {
+#endif
+		if (strcmp(out, in_1) && strcmp(out, in_2)) {
 			sc->tempLen = sprintf(sc->tempStr, "\
+	%s.x = %s.x * %s.x + %s.y * %s.y;\n\
+	%s.y = %s.y * %s.x - %s.x * %s.y;\n", out, in_1, in_2, in_1, in_2, out, in_1, in_2, in_1, in_2);
+		}
+		else {
+			if (temp) {
+				sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x * %s.x + %s.y * %s.y;\n\
 	%s.y = %s.y * %s.x - %s.x * %s.y;\n\
 	%s = %s;\n", temp, in_1, in_2, in_1, in_2, temp, in_1, in_2, in_1, in_2, out, temp);
+			}
+			else
+				return VKFFT_ERROR_NULL_TEMP_PASSED;
 		}
-		else
-			return VKFFT_ERROR_NULL_TEMP_PASSED;
+#if(VKFFT_BACKEND==2)
 	}
 #endif
 	res = VkAppendLine(sc);
@@ -1383,23 +1399,28 @@ static inline VkFFTResult VkMulComplexNumber(VkFFTSpecializationConstantsLayout*
 static inline VkFFTResult VkMulComplexNumberImag(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==2)
-	sc->tempLen = sprintf(sc->tempStr, "\
-	%s = %s(-%s.y, %s.x) * %s;\n", out, sc->vecType, in_1, in_1, in_num);
-#else
-	if (strcmp(out, in_1)) {
+	if (sc->precision == 0) {
 		sc->tempLen = sprintf(sc->tempStr, "\
-	%s.x = - %s.y * %s;\n\
-	%s.y = %s.x * %s;\n", out, in_1, in_num, out, in_1, in_num);
+	%s = %s(-%s.y, %s.x) * %s;\n", out, sc->vecType, in_1, in_1, in_num);
 	}
 	else {
-		if (temp) {
+#endif
+		if (strcmp(out, in_1)) {
 			sc->tempLen = sprintf(sc->tempStr, "\
+	%s.x = - %s.y * %s;\n\
+	%s.y = %s.x * %s;\n", out, in_1, in_num, out, in_1, in_num);
+		}
+		else {
+			if (temp) {
+				sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = - %s.y * %s;\n\
 	%s.y = %s.x * %s;\n\
 	%s = %s;\n", temp, in_1, in_num, temp, in_1, in_num, out, temp);
+			}
+			else
+				return VKFFT_ERROR_NULL_TEMP_PASSED;
 		}
-		else
-			return VKFFT_ERROR_NULL_TEMP_PASSED;
+#if(VKFFT_BACKEND==2)
 	}
 #endif
 	res = VkAppendLine(sc);
@@ -1428,23 +1449,28 @@ static inline VkFFTResult VkMulReal(VkFFTSpecializationConstantsLayout* sc, cons
 static inline VkFFTResult VkShuffleComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==2)
-	sc->tempLen = sprintf(sc->tempStr, "\
-	%s = %s + %s(-%s.y, %s.x);\n", out, in_1, sc->vecType, in_2, in_2);
-#else
-	if (strcmp(out, in_2)) {
+	if (sc->precision == 0) {
 		sc->tempLen = sprintf(sc->tempStr, "\
-	%s.x = %s.x - %s.y;\n\
-	%s.y = %s.y + %s.x;\n", out, in_1, in_2, out, in_1, in_2);
+	%s = %s + %s(-%s.y, %s.x);\n", out, in_1, sc->vecType, in_2, in_2);
 	}
 	else {
-		if (temp) {
+#endif
+		if (strcmp(out, in_2)) {
 			sc->tempLen = sprintf(sc->tempStr, "\
+	%s.x = %s.x - %s.y;\n\
+	%s.y = %s.y + %s.x;\n", out, in_1, in_2, out, in_1, in_2);
+		}
+		else {
+			if (temp) {
+				sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x - %s.y;\n\
 	%s.y = %s.x + %s.y;\n\
 	%s = %s;\n", temp, in_1, in_2, temp, in_1, in_2, out, temp);
+			}
+			else
+				return VKFFT_ERROR_NULL_TEMP_PASSED;
 		}
-		else
-			return VKFFT_ERROR_NULL_TEMP_PASSED;
+#if(VKFFT_BACKEND==2)
 	}
 #endif
 	res = VkAppendLine(sc);
@@ -1454,9 +1480,12 @@ static inline VkFFTResult VkShuffleComplex(VkFFTSpecializationConstantsLayout* s
 static inline VkFFTResult VkShuffleComplexInv(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_2, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==2)
-	sc->tempLen = sprintf(sc->tempStr, "\
+	if (sc->precision == 0) {
+		sc->tempLen = sprintf(sc->tempStr, "\
 	%s = %s + %s(%s.y, -%s.x);\n", out, in_1, sc->vecType, in_2, in_2);
-#else
+	}
+	else {
+#endif
 	if (strcmp(out, in_2)) {
 		sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = %s.x + %s.y;\n\
@@ -1471,6 +1500,8 @@ static inline VkFFTResult VkShuffleComplexInv(VkFFTSpecializationConstantsLayout
 		}
 		else
 			return VKFFT_ERROR_NULL_TEMP_PASSED;
+	}
+#if(VKFFT_BACKEND==2)
 	}
 #endif
 	res = VkAppendLine(sc);
@@ -8383,18 +8414,18 @@ temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 				if (res != VKFFT_SUCCESS) return res;
 			}
 		}
-#if(VKFFT_BACKEND==2)
-		sprintf(sc->temp2, "temp2");
-		sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->temp2);
-		res = VkAppendLine(sc);
-		if (res != VKFFT_SUCCESS) return res;
-		sc->tempLen = sprintf(sc->tempStr, "	%s.x=0;\n", sc->temp2);
-		res = VkAppendLine(sc);
-		if (res != VKFFT_SUCCESS) return res;
-		sc->tempLen = sprintf(sc->tempStr, "	%s.y=0;\n", sc->temp2);
-		res = VkAppendLine(sc);
-		if (res != VKFFT_SUCCESS) return res;
-#endif
+		/*#if(VKFFT_BACKEND==2)
+				sprintf(sc->temp2, "temp2");
+				sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->temp2);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.x=0;\n", sc->temp2);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+				sc->tempLen = sprintf(sc->tempStr, "	%s.y=0;\n", sc->temp2);
+				res = VkAppendLine(sc);
+				if (res != VKFFT_SUCCESS) return res;
+		#endif*/
 	}
 	//sc->tempLen = sprintf(sc->tempStr, "	%s temp2;\n", vecType);
 	//res = VkAppendLine(sc);
@@ -33936,13 +33967,20 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 	axis->specializationConstants.numAxisUploads = FFTPlan->numAxisUploads[0];
 	axis->specializationConstants.reorderFourStep = ((FFTPlan->numAxisUploads[0] > 1) && (!app->useBluesteinFFT[0])) ? app->configuration.reorderFourStep : 0;
 	uint64_t complexSize;
-	if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory)
+	if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+		axis->specializationConstants.precision = 1;
 		complexSize = (2 * sizeof(double));
-	else
-		if (app->configuration.halfPrecision)
+	}
+	else {
+		if (app->configuration.halfPrecision) {
+			axis->specializationConstants.precision = 0;
 			complexSize = (2 * sizeof(float));
-		else
+		}
+		else {
+			axis->specializationConstants.precision = 0;
 			complexSize = (2 * sizeof(float));
+		}
+	}
 	axis->specializationConstants.complexSize = complexSize;
 	axis->specializationConstants.supportAxis = 0;
 	axis->specializationConstants.symmetricKernel = app->configuration.symmetricKernel;
@@ -35698,13 +35736,20 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axis->specializationConstants.inline_rader_g_pow = (axis->specializationConstants.raderUintLUT) ? 2 : 1;
 	axis->specializationConstants.inline_rader_kernel = (app->configuration.useLUT == 1) ? 0 : 1;
 	uint64_t complexSize;
-	if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory)
+	if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+		axis->specializationConstants.precision = 1;
 		complexSize = (2 * sizeof(double));
-	else
-		if (app->configuration.halfPrecision)
+	}
+	else {
+		if (app->configuration.halfPrecision) {
+			axis->specializationConstants.precision = 0;
 			complexSize = (2 * sizeof(float));
-		else
+		}
+		else {
+			axis->specializationConstants.precision = 0;
 			complexSize = (2 * sizeof(float));
+		}
+	}
 	axis->specializationConstants.complexSize = complexSize;
 	axis->specializationConstants.supportAxis = 0;
 	axis->specializationConstants.symmetricKernel = app->configuration.symmetricKernel;
@@ -40111,7 +40156,10 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 
 	switch (app->configuration.vendorID) {
 	case 0x1002://AMD profile
-		app->configuration.fixMinRaderPrimeFFT = 29;
+		if (app->configuration.doublePrecision)
+			app->configuration.fixMinRaderPrimeFFT = 29;
+		else
+			app->configuration.fixMinRaderPrimeFFT = 17;
 		break;
 	default:
 		app->configuration.fixMinRaderPrimeFFT = 17;
