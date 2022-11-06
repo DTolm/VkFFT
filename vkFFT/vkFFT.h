@@ -845,6 +845,7 @@ typedef struct {
 	char stageInvocationID[50];
 	char blockInvocationID[50];
 	char temp[50];
+	char temp2[50];
 	char w[50];
 	char iw[50];
 	char x0[33][40];
@@ -1196,11 +1197,31 @@ static inline VkFFTResult VkSubReal(VkFFTSpecializationConstantsLayout* sc, cons
 	if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
-static inline VkFFTResult VkFMA3Complex(VkFFTSpecializationConstantsLayout* sc, const char* out_1, const char* out_2, const char* in_1, const char* in_num, const char* in_conj) {
+static inline VkFFTResult VkFMA3Complex(VkFFTSpecializationConstantsLayout* sc, const char* out_1, const char* out_2, const char* in_1, const char* in_num, const char* in_conj, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f %%f %%f \\n \", %s, %s.x, %s.y, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, in_1, in_1, in_conj, in_conj);
 	//res = VkAppendLine(sc);
 	//if (res != VKFFT_SUCCESS) return res;
+#if(VKFFT_BACKEND==2)
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s.x = %s.x;\n\
+	%s.y = %s.y;\n", temp, in_1, temp, in_conj);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s * %s.x + %s;\n", out_1, temp, in_num, out_1);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s.x = %s.y;\n\
+	%s.y = %s.x;\n", temp, in_1, temp, in_conj);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s * %s.y + %s;\n", out_2, temp, in_num, out_2);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+#else
 	sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = fma(%s.x, %s.x, %s.x);\n\
 	%s.y = fma(%s.y, %s.x, %s.y);\n", out_1, in_1, in_num, out_1, out_1, in_conj, in_num, out_1);
@@ -1211,6 +1232,7 @@ static inline VkFFTResult VkFMA3Complex(VkFFTSpecializationConstantsLayout* sc, 
 	%s.y = fma(%s.x, %s.y, %s.y);\n", out_2, in_1, in_num, out_2, out_2, in_conj, in_num, out_2);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
+#endif
 	/*sc->tempLen = sprintf(sc->tempStr, "\
 	temp2.x = fma(%s.x, %s.x, %s.x);\n\
 	%s.x = temp2.x;\n\
@@ -1230,11 +1252,31 @@ static inline VkFFTResult VkFMA3Complex(VkFFTSpecializationConstantsLayout* sc, 
 	//if (res != VKFFT_SUCCESS) return res;
 	return res;
 }
-static inline VkFFTResult VkFMA3Complex_const_w(VkFFTSpecializationConstantsLayout* sc, const char* out_1, const char* out_2, const char* in_1, const char* in_num_x, const char* in_num_y, const char* in_conj) {
+static inline VkFFTResult VkFMA3Complex_const_w(VkFFTSpecializationConstantsLayout* sc, const char* out_1, const char* out_2, const char* in_1, const char* in_num_x, const char* in_num_y, const char* in_conj, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	//sc->tempLen = sprintf(sc->tempStr, "	printf(\"%%d %%f %%f %%f %%f \\n \", %s, %s.x, %s.y, %s.x, %s.y);\n\n", sc->gl_LocalInvocationID_x, in_1, in_1, in_conj, in_conj);
 	//res = VkAppendLine(sc);
 	//if (res != VKFFT_SUCCESS) return res;
+#if(VKFFT_BACKEND==2)
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s.x = %s.x;\n\
+	%s.y = %s.y;\n", temp, in_1, temp, in_conj);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s * %s + %s;\n", out_1, temp, in_num_x, out_1);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s.x = %s.y;\n\
+	%s.y = %s.x;\n", temp, in_1, temp, in_conj);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+	sc->tempLen = sprintf(sc->tempStr, "\
+	%s = %s * %s + %s;\n", out_2, temp, in_num_y, out_2);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+#else
 	sc->tempLen = sprintf(sc->tempStr, "\
 	%s.x = fma(%s.x, %s, %s.x);\n\
 	%s.y = fma(%s.y, %s, %s.y);\n", out_1, in_1, in_num_x, out_1, out_1, in_conj, in_num_x, out_1);
@@ -1245,15 +1287,23 @@ static inline VkFFTResult VkFMA3Complex_const_w(VkFFTSpecializationConstantsLayo
 	%s.y = fma(%s.x, %s, %s.y);\n", out_2, in_1, in_num_y, out_2, out_2, in_conj, in_num_y, out_2);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
+#endif
 	return res;
 }
-static inline VkFFTResult VkFMAComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num, const char* in_2) {
+static inline VkFFTResult VkFMAComplex(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num, const char* in_2, const char* temp) {
 	VkFFTResult res = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==2)
+	sc->tempLen = sprintf(sc->tempStr, "\
+    %s = %s * %s + %s;\n", out, in_1, in_num, in_2);
+	res = VkAppendLine(sc);
+	if (res != VKFFT_SUCCESS) return res;
+#else
 	sc->tempLen = sprintf(sc->tempStr, "\
     %s.x = fma(%s.x, %s, %s.x);\n\
     %s.y = fma(%s.y, %s, %s.y);\n", out, in_1, in_num, in_2, out, in_1, in_num, in_2);
 	res = VkAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
+#endif
 	return res;
 }
 static inline VkFFTResult VkFMAReal(VkFFTSpecializationConstantsLayout* sc, const char* out, const char* in_1, const char* in_num, const char* in_2) {
@@ -3085,7 +3135,7 @@ temp%s = loc_1 + loc_2;\n\
 temp%s = loc_1 - loc_2;\n", regID[1], regID[2]);*/
 		res = VkAddComplex(sc, sc->locID[0], regID[0], regID[1]);
 		if (res != VKFFT_SUCCESS) return res;
-		res = VkFMAComplex(sc, sc->locID[1], regID[1], tf[0], regID[0]);
+		res = VkFMAComplex(sc, sc->locID[1], regID[1], tf[0], regID[0], sc->w);
 		if (res != VKFFT_SUCCESS) return res;
 		res = VkMulComplexNumber(sc, sc->locID[2], regID[2], tf[1]);
 		if (res != VKFFT_SUCCESS) return res;
@@ -3461,9 +3511,9 @@ loc_4 = temp%s + temp%s;\n", regID[1], regID[2], regID[3], regID[4], regID[1], r
 		if (res != VKFFT_SUCCESS) return res;
 		res = VkAddComplex(sc, sc->locID[0], sc->locID[0], regID[2]);
 		if (res != VKFFT_SUCCESS) return res;
-		res = VkFMAComplex(sc, sc->locID[1], regID[1], tf[0], regID[0]);
+		res = VkFMAComplex(sc, sc->locID[1], regID[1], tf[0], regID[0], sc->w);
 		if (res != VKFFT_SUCCESS) return res;
-		res = VkFMAComplex(sc, sc->locID[2], regID[2], tf[0], regID[0]);
+		res = VkFMAComplex(sc, sc->locID[2], regID[2], tf[0], regID[0], sc->w);
 		if (res != VKFFT_SUCCESS) return res;
 		res = VkMulComplexNumber(sc, regID[3], regID[3], tf[1]);
 		if (res != VKFFT_SUCCESS) return res;
@@ -3667,7 +3717,7 @@ temp%s.y = loc_1.y + loc_4.x; \n", regID[1], regID[1], regID[2], regID[2], regID
 
 			res = VkAddComplex(sc, sc->locID[0], regID[i], regID[i + Q]);
 			if (res != VKFFT_SUCCESS) return res;
-			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i]);
+			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i], sc->w);
 			if (res != VKFFT_SUCCESS) return res;
 			res = VkMulComplexNumber(sc, sc->locID[2], regID[i + 2 * Q], tf[1]);
 			if (res != VKFFT_SUCCESS) return res;
@@ -4508,7 +4558,7 @@ temp%s = temp;\n\
 
 			res = VkAddComplex(sc, sc->locID[0], regID[i], regID[i + Q]);
 			if (res != VKFFT_SUCCESS) return res;
-			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i]);
+			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i], sc->w);
 			if (res != VKFFT_SUCCESS) return res;
 			res = VkMulComplexNumber(sc, sc->locID[2], regID[i + 2 * Q], tf[1]);
 			if (res != VKFFT_SUCCESS) return res;
@@ -4583,7 +4633,7 @@ temp%s = temp;\n\
 
 			res = VkAddComplex(sc, sc->locID[0], regID[Q * i], regID[Q * i + 1]);
 			if (res != VKFFT_SUCCESS) return res;
-			res = VkFMAComplex(sc, sc->locID[1], regID[Q * i + 1], tf[0], regID[Q * i]);
+			res = VkFMAComplex(sc, sc->locID[1], regID[Q * i + 1], tf[0], regID[Q * i], sc->w);
 			if (res != VKFFT_SUCCESS) return res;
 			res = VkMulComplexNumber(sc, sc->locID[2], regID[Q * i + 2], tf[1]);
 			if (res != VKFFT_SUCCESS) return res;
@@ -4765,9 +4815,9 @@ temp%s = temp;\n\
 			if (res != VKFFT_SUCCESS) return res;
 			res = VkAddComplex(sc, sc->locID[0], sc->locID[0], regID[i + 2 * Q]);
 			if (res != VKFFT_SUCCESS) return res;
-			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i]);
+			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i], sc->w);
 			if (res != VKFFT_SUCCESS) return res;
-			res = VkFMAComplex(sc, sc->locID[2], regID[i + 2 * Q], tf[0], regID[i]);
+			res = VkFMAComplex(sc, sc->locID[2], regID[i + 2 * Q], tf[0], regID[i], sc->w);
 			if (res != VKFFT_SUCCESS) return res;
 			res = VkMulComplexNumber(sc, regID[i + 3 * Q], regID[i + 3 * Q], tf[1]);
 			if (res != VKFFT_SUCCESS) return res;
@@ -5034,7 +5084,7 @@ temp%s = temp;\n\
 		for (uint64_t i = 0; i < 5; i++) {
 			for (uint64_t j = 0; j < 5; j++) {
 				uint64_t id = ((10 - i) + j) % 10;
-				res = VkFMA3Complex_const_w(sc, sc->locID[j + 1], sc->locID[j + 6], regID[i + 1], tf_x[id], tf_y[id], regID[i + 6]);
+				res = VkFMA3Complex_const_w(sc, sc->locID[j + 1], sc->locID[j + 6], regID[i + 1], tf_x[id], tf_y[id], regID[i + 6], w);
 				if (res != VKFFT_SUCCESS) return res;
 			}
 		}
@@ -5461,7 +5511,7 @@ temp%s = temp;\n\
 
 			res = VkAddComplex(sc, sc->locID[0], regID[i], regID[i + Q]);
 			if (res != VKFFT_SUCCESS) return res;
-			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i]);
+			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i], sc->w);
 			if (res != VKFFT_SUCCESS) return res;
 			res = VkMulComplexNumber(sc, sc->locID[2], regID[i + 2 * Q], tf[1]);
 			if (res != VKFFT_SUCCESS) return res;
@@ -5745,7 +5795,7 @@ temp%s = temp;\n\
 		for (uint64_t i = 0; i < 6; i++) {
 			for (uint64_t j = 0; j < 6; j++) {
 				uint64_t id = ((12 - i) + j) % 12;
-				res = VkFMA3Complex_const_w(sc, sc->locID[j + 1], sc->locID[j + 7], regID[i + 1], tf_x[id], tf_y[id], regID[i + 7]);
+				res = VkFMA3Complex_const_w(sc, sc->locID[j + 1], sc->locID[j + 7], regID[i + 1], tf_x[id], tf_y[id], regID[i + 7], w);
 				if (res != VKFFT_SUCCESS) return res;
 			}
 		}
@@ -6495,9 +6545,9 @@ temp%s = temp;\n\
 			if (res != VKFFT_SUCCESS) return res;
 			res = VkAddComplex(sc, sc->locID[0], sc->locID[0], regID[i + 2 * Q]);
 			if (res != VKFFT_SUCCESS) return res;
-			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i]);
+			res = VkFMAComplex(sc, sc->locID[1], regID[i + Q], tf[0], regID[i], sc->w);
 			if (res != VKFFT_SUCCESS) return res;
-			res = VkFMAComplex(sc, sc->locID[2], regID[i + 2 * Q], tf[0], regID[i]);
+			res = VkFMAComplex(sc, sc->locID[2], regID[i + 2 * Q], tf[0], regID[i], sc->w);
 			if (res != VKFFT_SUCCESS) return res;
 			res = VkMulComplexNumber(sc, regID[i + 3 * Q], regID[i + 3 * Q], tf[1]);
 			if (res != VKFFT_SUCCESS) return res;
@@ -6597,7 +6647,7 @@ temp%s = temp;\n\
 
 			res = VkAddComplex(sc, sc->locID[0], regID[Q * i], regID[Q * i + 1]);
 			if (res != VKFFT_SUCCESS) return res;
-			res = VkFMAComplex(sc, sc->locID[1], regID[Q * i + 1], tf2[0], regID[Q * i]);
+			res = VkFMAComplex(sc, sc->locID[1], regID[Q * i + 1], tf2[0], regID[Q * i], sc->w);
 			if (res != VKFFT_SUCCESS) return res;
 			res = VkMulComplexNumber(sc, sc->locID[2], regID[Q * i + 2], tf2[1]);
 			if (res != VKFFT_SUCCESS) return res;
@@ -8333,6 +8383,18 @@ temp%" PRIu64 "[i]=%s(dum, dum);\n", logicalRegistersPerThread, i, vecType);*/
 				if (res != VKFFT_SUCCESS) return res;
 			}
 		}
+#if(VKFFT_BACKEND==2)
+		sprintf(sc->temp2, "temp2");
+		sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->temp2);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, "	%s.x=0;\n", sc->temp2);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+		sc->tempLen = sprintf(sc->tempStr, "	%s.y=0;\n", sc->temp2);
+		res = VkAppendLine(sc);
+		if (res != VKFFT_SUCCESS) return res;
+#endif
 	}
 	//sc->tempLen = sprintf(sc->tempStr, "	%s temp2;\n", vecType);
 	//res = VkAppendLine(sc);
@@ -18086,7 +18148,7 @@ static inline VkFFTResult appendMultRaderStage(VkFFTSpecializationConstantsLayou
 					}
 #endif
 					sprintf(tempNum, "%s", sc->x0[t]);
-					res = VkFMA3Complex(sc, tempNum, sc->regIDs[2 * t + 1], sc->regIDs[0], sc->w, sc->temp);
+					res = VkFMA3Complex(sc, tempNum, sc->regIDs[2 * t + 1], sc->regIDs[0], sc->w, sc->temp, sc->temp2);
 					if (res != VKFFT_SUCCESS) return res;
 #if(VKFFT_BACKEND != 2) //AMD compiler fix
 					if ((require_cutoff_check) && (t == num_logical_groups - 1)) {
@@ -29536,7 +29598,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, uint
 							uint64_t maxRadixMinStages = 1;
 							uint64_t fixMaxCheckRadix2 = 3;
 #if(VKFFT_BACKEND==1)
-								fixMaxCheckRadix2 = (((fft_length >= 1024) || (fft_length == 256)) && (extraSharedMemoryForPow2) && (!useRader)) ? 5 : 3;
+							fixMaxCheckRadix2 = (((fft_length >= 1024) || (fft_length == 256)) && (extraSharedMemoryForPow2) && (!useRader)) ? 5 : 3;
 #endif
 							for (uint64_t i = 1; i <= fixMaxCheckRadix2; i++) {
 								uint64_t numStages = (uint64_t)ceil(log2(fft_length) / ((double)i));
@@ -34978,6 +35040,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				deleteVkFFT(app);
 				return VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM;
 			}
+#if (CUDA_VERSION >= 11030)
 			char* opts[5];
 			opts[0] = (char*)malloc(sizeof(char) * 50);
 			if (!opts[0]) {
@@ -34993,6 +35056,11 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				1,     // numOptions
 				(const char* const*)opts); // options
 			free(opts[0]);
+#else
+			result = nvrtcCompileProgram(prog,  // prog
+				0,     // numOptions
+				0); // options
+#endif
 			if (result != NVRTC_SUCCESS) {
 				printf("nvrtcCompileProgram error: %s\n", nvrtcGetErrorString(result));
 				char* log = (char*)malloc(sizeof(char) * 4000000);
@@ -38173,6 +38241,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				deleteVkFFT(app);
 				return VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM;
 			}
+#if (CUDA_VERSION >= 11030)
 			char* opts[5];
 			opts[0] = (char*)malloc(sizeof(char) * 50);
 			if (!opts[0]) {
@@ -38188,7 +38257,11 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				1,     // numOptions
 				(const char* const*)opts); // options
 			free(opts[0]);
-
+#else
+			result = nvrtcCompileProgram(prog,  // prog
+				0,     // numOptions
+				0); // options
+#endif
 			if (result != NVRTC_SUCCESS) {
 				printf("nvrtcCompileProgram error: %s\n", nvrtcGetErrorString(result));
 				char* log = (char*)malloc(sizeof(char) * 4000000);
