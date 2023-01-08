@@ -30796,6 +30796,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		}
 		if (tempSequence != 1) {
 			useRaderMult = 0;
+			forceRaderTwoUpload = 0;
 		}
 		if (useRaderMult) {
 			if (tempSequence == 1) usedSharedMemory -= (useRaderMult - 1) * complexSize; //reserve memory for Rader 
@@ -30803,7 +30804,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		maxSequenceLengthSharedMemory = usedSharedMemory / complexSize;
 		maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
 		//check once again for R2C
-		if ((axis_id == 0) && (app->configuration.performR2C) && ((app->configuration.size[axis_id] > maxSingleSizeNonStrided) || forceRaderTwoUpload)) {
+		if ((axis_id == 0) && (app->configuration.performR2C) && (tempSequence == 1) && ((app->configuration.size[axis_id] > maxSingleSizeNonStrided) || forceRaderTwoUpload)) {
 			FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
 			FFTPlan->actualPerformR2CPerAxis[axis_id] = 0;
 			FFTPlan->multiUploadR2C = 1;
