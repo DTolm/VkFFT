@@ -10270,7 +10270,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 					res = VkAppendLine(sc);
 					if (res != VKFFT_SUCCESS) return res;
 					if (sc->axisSwapped) {
-						if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
+						if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0) {
 #if (VKFFT_BACKEND!=2) //AMD compiler fix
 							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[0], sc->size[sc->axis_id + 1]);
 							res = VkAppendLine(sc);
@@ -10288,7 +10288,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						}
 					}
 					else {
-						if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
+						if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0) {
 #if (VKFFT_BACKEND!=2) //AMD compiler fix
 							sc->tempLen = sprintf(sc->tempStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", sc->fftDim / 2 + 1, sc->gl_WorkGroupID_y, shiftY2, mult * sc->localSize[1], sc->size[sc->axis_id + 1]);
 							res = VkAppendLine(sc);
@@ -10395,14 +10395,14 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 						}
 					}
 					if (sc->axisSwapped) {
-						if (sc->size[sc->axis_id + 1] % sc->localSize[0] != 0) {
+						if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[0] != 0) {
 							sc->tempLen = sprintf(sc->tempStr, "		}\n");
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
 						}
 					}
 					else {
-						if (sc->size[sc->axis_id + 1] % sc->localSize[1] != 0) {
+						if ((uint64_t)ceil(sc->size[1] / (double)mult) % sc->localSize[1] != 0) {
 							sc->tempLen = sprintf(sc->tempStr, "		}\n");
 							res = VkAppendLine(sc);
 							if (res != VKFFT_SUCCESS) return res;
