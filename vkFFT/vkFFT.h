@@ -9365,7 +9365,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		}
 		char shiftY2[100] = "";
 		if (sc->performWorkGroupShift[1])
-			sprintf(shiftY, " + consts.workGroupShiftY ");
+			sprintf(shiftY2, " + consts.workGroupShiftY ");
 		uint64_t used_registers_read = (sc->axisSwapped) ? (uint64_t)ceil(sc->fftDim / (double)sc->localSize[1]) : (uint64_t)ceil(sc->fftDim / (double)sc->localSize[0]);
 		if (sc->registerBoost > 1) used_registers_read /= sc->registerBoost;
 		if (sc->fftDim < sc->fft_dim_full) {
@@ -10225,7 +10225,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 			sprintf(shiftY, " + consts.workGroupShiftY*%s ", sc->gl_WorkGroupSize_y);
 		char shiftY2[100] = "";
 		if (sc->performWorkGroupShift[1])
-			sprintf(shiftY, " + consts.workGroupShiftY ");
+			sprintf(shiftY2, " + consts.workGroupShiftY ");
 		if (sc->fftDim < sc->fft_dim_full) {
 			//not implemented
 			if (sc->axisSwapped)
@@ -12271,7 +12271,7 @@ static inline VkFFTResult appendReadDataVkFFT(VkFFTSpecializationConstantsLayout
 		}
 		char shiftY2[100] = "";
 		if (sc->performWorkGroupShift[1])
-			sprintf(shiftY, " + consts.workGroupShiftY ");
+			sprintf(shiftY2, " + consts.workGroupShiftY ");
 		if (sc->fftDim < sc->fft_dim_full) {
 			if (sc->axisSwapped) {
 				sc->tempLen = sprintf(sc->tempStr, "		%s numActiveThreads = ((%s/%" PRIu64 ")==%" PRIu64 ") ? %" PRIu64 " : %" PRIu64 ";\n", uintType, sc->gl_WorkGroupID_x, sc->firstStageStartSize / sc->fftDim, ((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim), (sc->fft_dim_full - (sc->firstStageStartSize / sc->fftDim) * ((((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim)) * sc->localSize[0] * sc->fftDim)) / sc->min_registers_per_thread / (sc->firstStageStartSize / sc->fftDim), sc->localSize[0] * sc->localSize[1]);// sc->fft_dim_full, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full / (sc->localSize[0] * sc->fftDim));
@@ -21455,7 +21455,7 @@ static inline VkFFTResult appendWriteDataVkFFT(VkFFTSpecializationConstantsLayou
 
 		char shiftY2[100] = "";
 		if (sc->performWorkGroupShift[1])
-			sprintf(shiftY, " + consts.workGroupShiftY ");
+			sprintf(shiftY2, " + consts.workGroupShiftY ");
 		if (sc->fftDim < sc->fft_dim_full) {
 			if (sc->axisSwapped) {
 				if (!sc->reorderFourStep) {
@@ -24118,7 +24118,7 @@ if (%s==%" PRIu64 ") \n\
 
 		char shiftY2[100] = "";
 		if (sc->performWorkGroupShift[1])
-			sprintf(shiftY, " + consts.workGroupShiftY ");
+			sprintf(shiftY2, " + consts.workGroupShiftY ");
 		if (sc->fftDim < sc->fft_dim_full) {
 			if (sc->axisSwapped) {
 				if (!sc->reorderFourStep) {
