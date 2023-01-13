@@ -8114,8 +8114,9 @@ static inline VkFFTResult appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLa
 	maxSequenceSharedMemory = sc->sharedMemSize / vecSize;
 	//maxSequenceSharedMemoryPow2 = sc->sharedMemSizePow2 / vecSize;
 	uint64_t additionalR2Cshared = 0;
-	if ((sc->performR2C) && (sc->mergeSequencesR2C) && (sc->axis_id == 0) && (sc->sourceFFTSize == sc->fftDim)) {
-		additionalR2Cshared = (sc->sourceFFTSize % 2 == 0) ? 2 : 1;
+	if ((sc->performR2C || ((sc->performDCT == 2) || ((sc->performDCT == 4) && ((sc->fftDim % 2) != 0)))) && (sc->mergeSequencesR2C) && (sc->axis_id == 0) && (!sc->performR2CmultiUpload)) {
+		additionalR2Cshared = (sc->fftDim % 2 == 0) ? 2 : 1;
+		if ((sc->performDCT == 2) || ((sc->performDCT == 4) && ((sc->fftDim % 2) != 0))) additionalR2Cshared = 1;
 	}
 	switch (sharedType) {
 	case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144://single_c2c + single_r2c
@@ -35845,7 +35846,11 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		axis->specializationConstants.performDCT = app->configuration.performDCT;
 	}
 	if ((axis->specializationConstants.performR2CmultiUpload) && (app->configuration.size[0] % 2 != 0)) return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
-	uint64_t additionalR2Cshared = (axis->specializationConstants.fftDim % 2 == 0) ? 2 : 1;
+	uint64_t additionalR2Cshared = 0;
+	if ((axis->specializationConstants.performR2C || ((axis->specializationConstants.performDCT == 2) || ((axis->specializationConstants.performDCT == 4) && ((axis->specializationConstants.fftDim % 2) != 0)))) && (axis->specializationConstants.mergeSequencesR2C) && (axis->specializationConstants.axis_id == 0) && (!axis->specializationConstants.performR2CmultiUpload)) {
+		additionalR2Cshared = ((axis->specializationConstants.fftDim % 2) == 0) ? 2 : 1;
+		if ((axis->specializationConstants.performDCT == 2) || ((axis->specializationConstants.performDCT == 4) && ((axis->specializationConstants.fftDim % 2) != 0))) additionalR2Cshared = 1;
+	}
 	axis->specializationConstants.mergeSequencesR2C = (((axis->specializationConstants.fftDim + additionalR2Cshared) <= maxSequenceLengthSharedMemory) && ((FFTPlan->actualFFTSizePerAxis[axis_id][1] % 2) == 0) && ((FFTPlan->actualPerformR2CPerAxis[axis_id]) || (((app->configuration.performDCT == 3) || (app->configuration.performDCT == 2) || (app->configuration.performDCT == 1) || ((app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) != 0))) && (axis_id == 0)))) ? (1 - app->configuration.disableMergeSequencesR2C) : 0;
 	//uint64_t passID = FFTPlan->numAxisUploads[axis_id] - 1 - axis_upload_id;
 	axis->specializationConstants.fft_dim_full = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
