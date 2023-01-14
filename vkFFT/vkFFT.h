@@ -35847,7 +35847,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	}
 	if ((axis->specializationConstants.performR2CmultiUpload) && (app->configuration.size[0] % 2 != 0)) return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
 	uint64_t additionalR2Cshared = 0;
-	if ((axis->specializationConstants.performR2C || ((axis->specializationConstants.performDCT == 2) || ((axis->specializationConstants.performDCT == 4) && ((axis->specializationConstants.fftDim % 2) != 0)))) && (axis->specializationConstants.mergeSequencesR2C) && (axis->specializationConstants.axis_id == 0) && (!axis->specializationConstants.performR2CmultiUpload)) {
+	if ((axis->specializationConstants.performR2C || ((axis->specializationConstants.performDCT == 2) || ((axis->specializationConstants.performDCT == 4) && ((axis->specializationConstants.fftDim % 2) != 0)))) && (axis->specializationConstants.axis_id == 0) && (!axis->specializationConstants.performR2CmultiUpload)) {
 		additionalR2Cshared = ((axis->specializationConstants.fftDim % 2) == 0) ? 2 : 1;
 		if ((axis->specializationConstants.performDCT == 2) || ((axis->specializationConstants.performDCT == 4) && ((axis->specializationConstants.fftDim % 2) != 0))) additionalR2Cshared = 1;
 	}
