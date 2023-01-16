@@ -31305,25 +31305,29 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		//printf("sequence length exceeds boundaries\n");
 		return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
 	}
-	if (app->configuration.tempBufferSize[0] == 0) {
-		if ((app->configuration.performR2C) && (axis_id == 0)) {
-			if (FFTPlan->multiUploadR2C)
-				app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
-		}
-		else {
-			app->configuration.tempBufferSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
-		}
-	}
-	if (app->useBluesteinFFT[axis_id]) {
+	if (app->configuration.userTempBuffer == 0) {
+		uint64_t tempBufferSize = 1;
 		if ((app->configuration.performR2C) && (axis_id == 0)) {
 			if (FFTPlan->multiUploadR2C) {
-				if ((FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+				tempBufferSize = 1;
+				tempBufferSize *= (app->configuration.bufferStride[0] > (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1)) ? app->configuration.bufferStride[0] : (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1);
+				tempBufferSize *= ((app->configuration.bufferStride[1] / app->configuration.bufferStride[0]) > FFTPlan->actualFFTSizePerAxis[axis_id][1]) ? (app->configuration.bufferStride[1] / app->configuration.bufferStride[0]) : FFTPlan->actualFFTSizePerAxis[axis_id][1];
+				tempBufferSize *= ((app->configuration.bufferStride[2] / app->configuration.bufferStride[1]) > FFTPlan->actualFFTSizePerAxis[axis_id][2]) ? (app->configuration.bufferStride[2] / app->configuration.bufferStride[1]) : FFTPlan->actualFFTSizePerAxis[axis_id][2];
+				tempBufferSize *= app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+				//app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
 			}
 		}
 		else {
-			if (FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+			tempBufferSize = 1;
+			tempBufferSize *= (app->configuration.bufferStride[0] > FFTPlan->actualFFTSizePerAxis[axis_id][0]) ? app->configuration.bufferStride[0] : FFTPlan->actualFFTSizePerAxis[axis_id][0];
+			tempBufferSize *= ((app->configuration.bufferStride[1] / app->configuration.bufferStride[0]) > FFTPlan->actualFFTSizePerAxis[axis_id][1]) ? (app->configuration.bufferStride[1] / app->configuration.bufferStride[0]) : FFTPlan->actualFFTSizePerAxis[axis_id][1];
+			tempBufferSize *= ((app->configuration.bufferStride[2] / app->configuration.bufferStride[1]) > FFTPlan->actualFFTSizePerAxis[axis_id][2]) ? (app->configuration.bufferStride[2] / app->configuration.bufferStride[1]) : FFTPlan->actualFFTSizePerAxis[axis_id][2];
+			tempBufferSize *= app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+			//FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures* locNumBatches* app->configuration.numberKernels* complexSize;
 		}
+		if (tempBufferSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = tempBufferSize;
 	}
+	
 	if (((app->configuration.reorderFourStep) && (!app->useBluesteinFFT[axis_id]))) {
 		for (uint64_t i = 0; i < numPasses; i++) {
 			if ((locAxisSplit[0] % 2 != 0) && (locAxisSplit[i] % 2 == 0)) {
@@ -36952,21 +36956,21 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		axisStride[0] = 1;
 
 		if (axis_id == 0) {
-			axisStride[1] = FFTPlan->actualFFTSizePerAxis[axis_id][0];
-			axisStride[2] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1];
+			axisStride[1] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axisStride[1]) ? FFTPlan->actualFFTSizePerAxis[axis_id][0] : axisStride[1];
+			axisStride[2] = (axisStride[1] * FFTPlan->actualFFTSizePerAxis[axis_id][1] > axisStride[2]) ? axisStride[1] * FFTPlan->actualFFTSizePerAxis[axis_id][1] : axisStride[2];
 		}
 		if (axis_id == 1)
 		{
-			axisStride[1] = FFTPlan->actualFFTSizePerAxis[axis_id][0];
-			axisStride[2] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1];
+			axisStride[1] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axisStride[1]) ? FFTPlan->actualFFTSizePerAxis[axis_id][0] : axisStride[1];
+			axisStride[2] = (axisStride[1] * FFTPlan->actualFFTSizePerAxis[axis_id][1] > axisStride[2]) ? axisStride[1] * FFTPlan->actualFFTSizePerAxis[axis_id][1] : axisStride[2];
 		}
 		if (axis_id == 2)
 		{
-			axisStride[1] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1];
-			axisStride[2] = FFTPlan->actualFFTSizePerAxis[axis_id][0];
+			axisStride[2] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axisStride[2]) ? FFTPlan->actualFFTSizePerAxis[axis_id][0] : axisStride[2];
+			axisStride[1] = (axisStride[2] * FFTPlan->actualFFTSizePerAxis[axis_id][1] > axisStride[1]) ? axisStride[2] * FFTPlan->actualFFTSizePerAxis[axis_id][1] : axisStride[1];
 		}
 
-		axisStride[3] = axisStride[2] * FFTPlan->actualFFTSizePerAxis[axis_id][2];
+		axisStride[3] = (axisStride[2] * FFTPlan->actualFFTSizePerAxis[axis_id][2] > axisStride[3]) ? axisStride[2] * FFTPlan->actualFFTSizePerAxis[axis_id][2] : axisStride[3];
 
 		axisStride[4] = axisStride[3] * app->configuration.coordinateFeatures;
 	}
@@ -37011,21 +37015,21 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		axisStride[0] = 1;
 
 		if (axis_id == 0) {
-			axisStride[1] = FFTPlan->actualFFTSizePerAxis[axis_id][0];
-			axisStride[2] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1];
+			axisStride[1] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axisStride[1]) ? FFTPlan->actualFFTSizePerAxis[axis_id][0] : axisStride[1];
+			axisStride[2] = (axisStride[1] * FFTPlan->actualFFTSizePerAxis[axis_id][1] > axisStride[2]) ? axisStride[1] * FFTPlan->actualFFTSizePerAxis[axis_id][1] : axisStride[2];
 		}
 		if (axis_id == 1)
 		{
-			axisStride[1] = FFTPlan->actualFFTSizePerAxis[axis_id][0];
-			axisStride[2] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1];
+			axisStride[1] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axisStride[1]) ? FFTPlan->actualFFTSizePerAxis[axis_id][0] : axisStride[1];
+			axisStride[2] = (axisStride[1] * FFTPlan->actualFFTSizePerAxis[axis_id][1] > axisStride[2]) ? axisStride[1] * FFTPlan->actualFFTSizePerAxis[axis_id][1] : axisStride[2];
 		}
 		if (axis_id == 2)
 		{
-			axisStride[1] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1];
-			axisStride[2] = FFTPlan->actualFFTSizePerAxis[axis_id][0];
+			axisStride[2] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axisStride[2]) ? FFTPlan->actualFFTSizePerAxis[axis_id][0] : axisStride[2];
+			axisStride[1] = (axisStride[2] * FFTPlan->actualFFTSizePerAxis[axis_id][1] > axisStride[1]) ? axisStride[2] * FFTPlan->actualFFTSizePerAxis[axis_id][1] : axisStride[1];
 		}
 
-		axisStride[3] = axisStride[2] * FFTPlan->actualFFTSizePerAxis[axis_id][2];
+		axisStride[3] = (axisStride[2] * FFTPlan->actualFFTSizePerAxis[axis_id][2] > axisStride[3]) ? axisStride[2] * FFTPlan->actualFFTSizePerAxis[axis_id][2] : axisStride[3];
 
 		axisStride[4] = axisStride[3] * app->configuration.coordinateFeatures;
 	}
@@ -41862,6 +41866,6 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
 	return resFFT;
 }
 static inline int VkFFTGetVersion() {
-	return 10232; //X.XX.XX format
+	return 10233; //X.XX.XX format
 }
 #endif
