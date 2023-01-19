@@ -258,7 +258,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 
 				uint32_t commandQueueID = -1;
 				for (uint32_t i = 0; i < queueGroupCount; ++i) {
-					if ((cmdqueueGroupProperties[i].flags && ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_COMPUTE) && (cmdqueueGroupProperties[i].flags && ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_COPY)) {
+					if ((cmdqueueGroupProperties[i].flags & ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_COMPUTE) && (cmdqueueGroupProperties[i].flags & ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_COPY)) {
 						commandQueueID = i;
 						break;
 					}
