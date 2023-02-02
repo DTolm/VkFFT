@@ -138,16 +138,17 @@ if(VkFFT_use_FP128_Bluestein_RaderFFT)
 endif()  
 if(${VKFFT_BACKEND} EQUAL 0)
 	FetchContent_Declare(
-		glslang-master
+		glslang-main
+		GIT_TAG "origin/main"
 		GIT_REPOSITORY https://github.com/KhronosGroup/glslang
-		SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/glslang-master
+		SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/glslang-main
 	)
-	FetchContent_GetProperties(glslang-master)
-	if(NOT glslang-master_POPULATED)
-		FetchContent_Populate(glslang-master)
+	FetchContent_GetProperties(glslang-main)
+	if(NOT glslang-main_POPULATED)
+		FetchContent_Populate(glslang-main)
 	endif()
-	target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glslang-master/glslang/Include/)
-	add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-master)
+	target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glslang-main/glslang/Include/)
+	add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-main)
 endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/)
