@@ -2,15 +2,7 @@
 # VkFFT - Vulkan/CUDA/HIP/OpenCL/Level Zero/Metal Fast Fourier Transform library
 VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan/CUDA/HIP/OpenCL/Level Zero/Metal projects. VkFFT aims to provide the community with an open-source alternative to Nvidia's cuFFT library while achieving better performance. VkFFT is written in C language and supports Vulkan, CUDA, HIP, OpenCL, Level Zero and Metal as backends.
 
-## Check out my poster at SC22: https://sc22.supercomputing.org/presentation/?id=rpost143&sess=sess273
-
-## Check out my panel at Nvidia's GTC 2021 in Higher Education and Research category: https://gtc21.event.nvidia.com/
-
-## Python interface to VkFFT can be found here: https://github.com/vincefn/pyvkfft
-
-## Rust bindings to VkFFT can be found here: https://github.com/semio-ai/vkfft-rs
-
-## Benchmark results of VkFFT can be found here: https://openbenchmarking.org/test/pts/vkfft
+## The white paper of VkFFT is out - if you use VkFFT and want to cite it: https://ieeexplore.ieee.org/document/10036080
 
 ## Currently supported features:
   - 1D/2D/3D systems
@@ -33,9 +25,6 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - VkFFT supports Vulkan, CUDA, HIP, OpenCL, Level Zero and Metal as backend to cover wide range of APIs
   - Header-only library with Vulkan interface, which allows appending VkFFT directly to user's command buffer. Kernels are compiled at run-time
 ## Future release plan
- - ##### Planned
-    - Publication based on implemented optimizations
-    - Test mobile GPUs (they should work)
  - ##### Ambitious
     - Multiple GPU job splitting
 
@@ -90,6 +79,16 @@ Above, VkFFT precision is verified by comparing its results with FP128 version o
 For both precisions, all tested libraries exhibit logarithmic error scaling. The main source of error is imprecise twiddle factor computation – sines and cosines used by FFT algorithms. For FP64 they are calculated on the CPU either in FP128 or in FP64 and stored in the lookup tables. With FP128 precomputation (left) VkFFT is more precise than cuFFT and rocFFT. 
 
 For FP32, twiddle factors can be calculated on-the-fly in FP32 or precomputed in FP64/FP32. With FP32 twiddle factors (right) VkFFT is slightly less precise in Bluestein’s and Rader’s algorithms. If needed, this can be solved with FP64 precomputation. 
+
+## Check out my poster at SC22: https://sc22.supercomputing.org/presentation/?id=rpost143&sess=sess273
+
+## Check out my panel at Nvidia's GTC 2021 in Higher Education and Research category: https://gtc21.event.nvidia.com/
+
+## Python interface to VkFFT can be found here: https://github.com/vincefn/pyvkfft
+
+## Rust bindings to VkFFT can be found here: https://github.com/semio-ai/vkfft-rs
+
+## Benchmark results of VkFFT can be found here: https://openbenchmarking.org/test/pts/vkfft
 
 ## Contact information
 The initial version of VkFFT is developed by Tolmachev Dmitrii\
