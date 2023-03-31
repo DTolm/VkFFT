@@ -35090,7 +35090,6 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				deleteVkFFT(app);
 				return VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM;
 			}
-#if (CUDA_VERSION >= 11030)
 			char* opts[5];
 			opts[0] = (char*)malloc(sizeof(char) * 50);
 			if (!opts[0]) {
@@ -35099,18 +35098,17 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
+#if (CUDA_VERSION >= 11030)
 			sprintf(opts[0], "--gpu-architecture=sm_%" PRIu64 "%" PRIu64 "", app->configuration.computeCapabilityMajor, app->configuration.computeCapabilityMinor);
+#else
+			sprintf(opts[0], "--gpu-architecture=compute_%" PRIu64 "%" PRIu64 "", app->configuration.computeCapabilityMajor, app->configuration.computeCapabilityMinor);
+#endif
 			//result = nvrtcAddNameExpression(prog, "&consts");
 			//if (result != NVRTC_SUCCESS) printf("1.5 error: %s\n", nvrtcGetErrorString(result));
 			result = nvrtcCompileProgram(prog,  // prog
 				1,     // numOptions
 				(const char* const*)opts); // options
 			free(opts[0]);
-#else
-			result = nvrtcCompileProgram(prog,  // prog
-				0,     // numOptions
-				0); // options
-#endif
 			if (result != NVRTC_SUCCESS) {
 				printf("nvrtcCompileProgram error: %s\n", nvrtcGetErrorString(result));
 				char* log = (char*)malloc(sizeof(char) * 4000000);
