@@ -88,11 +88,10 @@ if (MSVC)
 else()
 		set_source_files_properties(Vulkan_FFT.cpp PROPERTIES LANGUAGE CUDA)
 endif()
-	set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 35 60 70 75 80 86)
+	set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 60 70 75 80 86)
 	target_compile_options(${PROJECT_NAME} PUBLIC "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:
 	-std=c++11
 	-DVKFFT_BACKEND=${VKFFT_BACKEND}
-	-gencode arch=compute_35,code=compute_35
 	-gencode arch=compute_60,code=compute_60
 	-gencode arch=compute_70,code=compute_70 
 	-gencode arch=compute_75,code=compute_75 
@@ -243,11 +242,10 @@ if(build_VkFFT_cuFFT_benchmark)
 		benchmark_scripts/cuFFT_scripts/src/sample_1001_benchmark_cuFFT_double_2_4096.cu
 		benchmark_scripts/cuFFT_scripts/src/sample_1003_benchmark_cuFFT_single_3d_2_512.cu)
 	endif()
-	set_property(TARGET cuFFT_scripts PROPERTY CUDA_ARCHITECTURES 35 60 70 75 80 86)
+	set_property(TARGET cuFFT_scripts PROPERTY CUDA_ARCHITECTURES 60 70 75 80 86)
 	CUDA_ADD_CUFFT_TO_TARGET(cuFFT_scripts)
 	target_compile_options(cuFFT_scripts PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:
 	-std=c++11
-	-gencode arch=compute_35,code=compute_35
 	-gencode arch=compute_60,code=compute_60
 	-gencode arch=compute_70,code=compute_70 
 	-gencode arch=compute_75,code=compute_75 
