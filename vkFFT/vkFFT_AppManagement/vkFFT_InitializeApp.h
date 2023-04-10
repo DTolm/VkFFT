@@ -1387,6 +1387,12 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (inputLaunchConfiguration.swapTo3Stage4Step != 0)	app->configuration.swapTo3Stage4Step = inputLaunchConfiguration.swapTo3Stage4Step;
 	if (app->configuration.performDCT > 0) app->configuration.performBandwidthBoost = -1;
 	if (inputLaunchConfiguration.performBandwidthBoost != 0)	app->configuration.performBandwidthBoost = inputLaunchConfiguration.performBandwidthBoost;
+	
+	if (inputLaunchConfiguration.groupedBatch[0] != 0)	app->configuration.groupedBatch[0] = inputLaunchConfiguration.groupedBatch[0];
+	if (inputLaunchConfiguration.groupedBatch[1] != 0)	app->configuration.groupedBatch[1] = inputLaunchConfiguration.groupedBatch[1];
+	if (inputLaunchConfiguration.groupedBatch[2] != 0)	app->configuration.groupedBatch[2] = inputLaunchConfiguration.groupedBatch[2];
+
+	
 	if (inputLaunchConfiguration.devicePageSize != 0)	app->configuration.devicePageSize = inputLaunchConfiguration.devicePageSize;
 	if (inputLaunchConfiguration.localPageSize != 0)	app->configuration.localPageSize = inputLaunchConfiguration.localPageSize;
 	if (inputLaunchConfiguration.keepShaderCode != 0)	app->configuration.keepShaderCode = inputLaunchConfiguration.keepShaderCode;

@@ -571,7 +571,7 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 			appendSharedToRegisters(sc, &sc->w, &sc->inoutID);
 
 			VkMod(sc, &sc->tempInt, &sc->combinedID, &fftDim_half);
-			temp_int.data.i == 0;
+			temp_int.data.i = 0;
 			VkIf_eq_start(sc, &sc->tempInt, &temp_int);
 			VkSetToZero(sc, &sc->w);
 			VkIf_end(sc);

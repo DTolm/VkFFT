@@ -8348,6 +8348,13 @@ if (%d) {\n", (left->data.d >= right->data.d));
 	return;
 }
 
+static inline void VkIf_start(VkFFTSpecializationConstantsLayout* sc) {
+	if (sc->res != VKFFT_SUCCESS) return;
+	sc->tempLen = sprintf(sc->tempStr, "\
+{\n");
+	VkAppendLine(sc);
+	return;
+}
 static inline void VkIfTrue(VkFFTSpecializationConstantsLayout* sc, VkContainer* in) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if (in->type > 100) {
