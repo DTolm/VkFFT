@@ -35474,7 +35474,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			res = clGetProgramInfo(axis->program, CL_PROGRAM_BINARIES, codeSize, &axis->binary, NULL);
+			res = clGetProgramInfo(axis->program, CL_PROGRAM_BINARIES, sizeof(unsigned char*), &axis->binary, NULL);
 			if (res != CL_SUCCESS) {
 				if (app->configuration.saveApplicationToString) {
 					free(axis->binary);
@@ -38749,7 +38749,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				deleteVkFFT(app);
 				return VKFFT_ERROR_MALLOC_FAILED;
 			}
-			res = clGetProgramInfo(axis->program, CL_PROGRAM_BINARIES, codeSize, &axis->binary, NULL);
+			res = clGetProgramInfo(axis->program, CL_PROGRAM_BINARIES, sizeof(unsigned char*), &axis->binary, NULL);
 			if (res != CL_SUCCESS) {
 				free(axis->binary);
 				axis->binary = 0;
