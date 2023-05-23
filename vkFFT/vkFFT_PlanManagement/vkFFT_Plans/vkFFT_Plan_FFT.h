@@ -432,6 +432,14 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		if (app->configuration.performConvolution)
 			axis->specializationConstants.performPostCompilationKernelOffset = 1;
 	}
+	else {
+		axis->specializationConstants.inputOffset.type = 31;
+		axis->specializationConstants.inputOffset.data.i = app->configuration.inputBufferOffset;
+		axis->specializationConstants.outputOffset.type = 31;
+		axis->specializationConstants.outputOffset.data.i = app->configuration.outputBufferOffset;
+		axis->specializationConstants.kernelOffset.type = 31;
+		axis->specializationConstants.kernelOffset.data.i = app->configuration.kernelOffset;
+	}
 	
 	resFFT = VkFFTCheckUpdateBufferSet(app, axis, 1, 0);
 	if (resFFT != VKFFT_SUCCESS) {

@@ -75,63 +75,74 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				}
 				if (axis->updatePushConstants) {
 					if (app->configuration.useUint64) {
-						uint64_t pushConstID = 0;
+						uint64_t offset = 0;
+						uint64_t temp = 0;
 						if (axis->specializationConstants.performWorkGroupShift[0]) {
-							axis->pushConstants.dataUint64[pushConstID] = axis->pushConstants.workGroupShift[0];
-							pushConstID++;
+							memcpy(&axis->pushConstants.data[offset], &axis->pushConstants.workGroupShift[0], sizeof(uint64_t));
+							offset+=sizeof(uint64_t);
 						}
 						if (axis->specializationConstants.performWorkGroupShift[1]) {
-							axis->pushConstants.dataUint64[pushConstID] = axis->pushConstants.workGroupShift[1];
-							pushConstID++;
+							memcpy(&axis->pushConstants.data[offset], &axis->pushConstants.workGroupShift[1], sizeof(uint64_t));
+							offset += sizeof(uint64_t);
 						}
 						if (axis->specializationConstants.performWorkGroupShift[2]) {
-							axis->pushConstants.dataUint64[pushConstID] = axis->pushConstants.workGroupShift[2];
-							pushConstID++;
+							memcpy(&axis->pushConstants.data[offset], &axis->pushConstants.workGroupShift[2], sizeof(uint64_t));
+							offset += sizeof(uint64_t);
 						}
 						if (axis->specializationConstants.performPostCompilationInputOffset) {
-							axis->pushConstants.dataUint64[pushConstID] = axis->specializationConstants.inputOffset.data.i / axis->specializationConstants.inputNumberByteSize;
-							pushConstID++;
+							temp = axis->specializationConstants.inputOffset.data.i / axis->specializationConstants.inputNumberByteSize;
+							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(uint64_t));
+							offset += sizeof(uint64_t);
 						}
 						if (axis->specializationConstants.performPostCompilationOutputOffset) {
-							axis->pushConstants.dataUint64[pushConstID] = axis->specializationConstants.outputOffset.data.i / axis->specializationConstants.outputNumberByteSize;
-							pushConstID++;
+							temp = axis->specializationConstants.outputOffset.data.i / axis->specializationConstants.outputNumberByteSize;
+							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(uint64_t));
+							offset += sizeof(uint64_t);
 						}
 						if (axis->specializationConstants.performPostCompilationKernelOffset) {
 							if (axis->specializationConstants.kernelNumberByteSize != 0)
-								axis->pushConstants.dataUint64[pushConstID] = axis->specializationConstants.kernelOffset.data.i / axis->specializationConstants.kernelNumberByteSize;
+								temp = axis->specializationConstants.kernelOffset.data.i / axis->specializationConstants.kernelNumberByteSize;
 							else
-								axis->pushConstants.dataUint64[pushConstID] = 0;
-							pushConstID++;
+								temp = 0;
+							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(uint64_t));
+							offset += sizeof(uint64_t);
 						}
 					}
 					else {
-						uint64_t pushConstID = 0;
+						uint64_t offset = 0;
+						uint32_t temp = 0;
 						if (axis->specializationConstants.performWorkGroupShift[0]) {
-							axis->pushConstants.dataUint32[pushConstID] = (uint32_t)axis->pushConstants.workGroupShift[0];
-							pushConstID++;
+							temp = (uint32_t)axis->pushConstants.workGroupShift[0];
+							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(uint32_t));
+							offset += sizeof(uint32_t);
 						}
 						if (axis->specializationConstants.performWorkGroupShift[1]) {
-							axis->pushConstants.dataUint32[pushConstID] = (uint32_t)axis->pushConstants.workGroupShift[1];
-							pushConstID++;
+							temp = (uint32_t)axis->pushConstants.workGroupShift[1];
+							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(uint32_t));
+							offset += sizeof(uint32_t);
 						}
 						if (axis->specializationConstants.performWorkGroupShift[2]) {
-							axis->pushConstants.dataUint32[pushConstID] = (uint32_t)axis->pushConstants.workGroupShift[2];
-							pushConstID++;
+							temp = (uint32_t)axis->pushConstants.workGroupShift[2];
+							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(uint32_t));
+							offset += sizeof(uint32_t);
 						}
 						if (axis->specializationConstants.performPostCompilationInputOffset) {
-							axis->pushConstants.dataUint32[pushConstID] = (uint32_t)(axis->specializationConstants.inputOffset.data.i / axis->specializationConstants.inputNumberByteSize);
-							pushConstID++;
+							temp = (uint32_t)(axis->specializationConstants.inputOffset.data.i / axis->specializationConstants.inputNumberByteSize);
+							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(uint32_t));
+							offset += sizeof(uint32_t);
 						}
 						if (axis->specializationConstants.performPostCompilationOutputOffset) {
-							axis->pushConstants.dataUint32[pushConstID] = (uint32_t)(axis->specializationConstants.outputOffset.data.i / axis->specializationConstants.outputNumberByteSize);
-							pushConstID++;
+							temp = (uint32_t)(axis->specializationConstants.outputOffset.data.i / axis->specializationConstants.outputNumberByteSize);
+							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(uint32_t));
+							offset += sizeof(uint32_t);
 						}
 						if (axis->specializationConstants.performPostCompilationKernelOffset) {
 							if (axis->specializationConstants.kernelNumberByteSize != 0)
-								axis->pushConstants.dataUint32[pushConstID] = (uint32_t)(axis->specializationConstants.kernelOffset.data.i / axis->specializationConstants.kernelNumberByteSize);
+								temp = (uint32_t)(axis->specializationConstants.kernelOffset.data.i / axis->specializationConstants.kernelNumberByteSize);
 							else
-								axis->pushConstants.dataUint64[pushConstID] = 0;
-							pushConstID++;
+								temp = 0;
+							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(uint32_t));
+							offset += sizeof(uint32_t);
 						}
 					}
 				}
@@ -140,12 +151,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				dispatchSize[2] = (k == blockNumber[2] - 1) ? lastBlockSize[2] : blockSize[2];
 #if(VKFFT_BACKEND==0)
 				if (axis->pushConstants.structSize > 0) {
-					if (app->configuration.useUint64) {
-						vkCmdPushConstants(app->configuration.commandBuffer[0], axis->pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, (uint32_t)axis->pushConstants.structSize, axis->pushConstants.dataUint64);
-					}
-					else {
-						vkCmdPushConstants(app->configuration.commandBuffer[0], axis->pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, (uint32_t)axis->pushConstants.structSize, axis->pushConstants.dataUint32);
-					}
+					vkCmdPushConstants(app->configuration.commandBuffer[0], axis->pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, (uint32_t)axis->pushConstants.structSize, axis->pushConstants.data);
 				}
 				vkCmdDispatch(app->configuration.commandBuffer[0], (uint32_t)dispatchSize[0], (uint32_t)dispatchSize[1], (uint32_t)dispatchSize[2]);
 #elif(VKFFT_BACKEND==1)
@@ -181,12 +187,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				if (axis->updatePushConstants) {
 					axis->updatePushConstants = 0;
 					if (axis->pushConstants.structSize > 0) {
-						if (app->configuration.useUint64) {
-							result = cuMemcpyHtoD(axis->consts_addr, axis->pushConstants.dataUint64, axis->pushConstants.structSize);
-						}
-						else {
-							result = cuMemcpyHtoD(axis->consts_addr, axis->pushConstants.dataUint32, axis->pushConstants.structSize);
-						}
+						result = cuMemcpyHtoD(axis->consts_addr, axis->pushConstants.data, axis->pushConstants.structSize);
 						if (result != CUDA_SUCCESS) {
 							printf("cuMemcpyHtoD error: %d\n", result);
 							return VKFFT_ERROR_FAILED_TO_COPY;
@@ -252,12 +253,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				if (axis->updatePushConstants) {
 					axis->updatePushConstants = 0;
 					if (axis->pushConstants.structSize > 0) {
-						if (app->configuration.useUint64) {
-							result = hipMemcpyHtoD(axis->consts_addr, axis->pushConstants.dataUint64, axis->pushConstants.structSize);
-						}
-						else {
-							result = hipMemcpyHtoD(axis->consts_addr, axis->pushConstants.dataUint32, axis->pushConstants.structSize);
-						}
+						result = hipMemcpyHtoD(axis->consts_addr, axis->pushConstants.data, axis->pushConstants.structSize);
 						if (result != hipSuccess) {
 							printf("hipMemcpyHtoD error: %d\n", result);
 							return VKFFT_ERROR_FAILED_TO_COPY;
@@ -350,12 +346,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				}
 
 				if (axis->pushConstants.structSize > 0) {
-					if (app->configuration.useUint64) {
-						result = clSetKernelArg(axis->kernel, (cl_uint)args_id, axis->pushConstants.structSize, axis->pushConstants.dataUint64);
-					}
-					else {
-						result = clSetKernelArg(axis->kernel, (cl_uint)args_id, axis->pushConstants.structSize, axis->pushConstants.dataUint32);
-					}
+					result = clSetKernelArg(axis->kernel, (cl_uint)args_id, axis->pushConstants.structSize, axis->pushConstants.data);
 					if (result != CL_SUCCESS) {
 						return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
 					}
@@ -428,12 +419,8 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				}
 
 				if (axis->pushConstants.structSize > 0) {
-					if (app->configuration.useUint64) {
-						result = zeKernelSetArgumentValue(axis->VkFFTKernel, (uint32_t)args_id, axis->pushConstants.structSize, axis->pushConstants.dataUint64);
-					}
-					else {
-						result = zeKernelSetArgumentValue(axis->VkFFTKernel, (uint32_t)args_id, axis->pushConstants.structSize, axis->pushConstants.dataUint32);
-					}
+					result = zeKernelSetArgumentValue(axis->VkFFTKernel, (uint32_t)args_id, axis->pushConstants.structSize, axis->pushConstants.data);
+
 					if (result != ZE_RESULT_SUCCESS) {
 						return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
 					}
@@ -480,30 +467,16 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				}
 				//args[args_id] = &axis->pushConstants;
 				if (axis->pushConstants.structSize > 0) {
-					if (app->configuration.useUint64) {
-						if (!axis->pushConstants.dataUintBuffer) {
-							axis->pushConstants.dataUintBuffer = app->configuration.device->newBuffer(axis->pushConstants.structSize, MTL::ResourceStorageModeShared);
-							memcpy(axis->pushConstants.dataUintBuffer->contents(), axis->pushConstants.dataUint64, axis->pushConstants.structSize);
-							axis->updatePushConstants = 0;
-						}
-						else if (axis->updatePushConstants) {
-							memcpy(axis->pushConstants.dataUintBuffer->contents(), axis->pushConstants.dataUint64, axis->pushConstants.structSize);
-							axis->updatePushConstants = 0;
-						}
-						app->configuration.commandEncoder->setBuffer(axis->pushConstants.dataUintBuffer, 0, args_id);
+					if (!axis->pushConstants.dataUintBuffer) {
+						axis->pushConstants.dataUintBuffer = app->configuration.device->newBuffer(axis->pushConstants.structSize, MTL::ResourceStorageModeShared);
+						memcpy(axis->pushConstants.dataUintBuffer->contents(), axis->pushConstants.data, axis->pushConstants.structSize);
+						axis->updatePushConstants = 0;
 					}
-					else {
-						if (!axis->pushConstants.dataUintBuffer) {
-							axis->pushConstants.dataUintBuffer = app->configuration.device->newBuffer(axis->pushConstants.structSize, MTL::ResourceStorageModeShared);
-							memcpy(axis->pushConstants.dataUintBuffer->contents(), axis->pushConstants.dataUint32, axis->pushConstants.structSize);
-							axis->updatePushConstants = 0;
-						}
-						else if (axis->updatePushConstants) {
-							memcpy(axis->pushConstants.dataUintBuffer->contents(), axis->pushConstants.dataUint32, axis->pushConstants.structSize);
-							axis->updatePushConstants = 0;
-						}
-						app->configuration.commandEncoder->setBuffer(axis->pushConstants.dataUintBuffer, 0, args_id);
+					else if (axis->updatePushConstants) {
+						memcpy(axis->pushConstants.dataUintBuffer->contents(), axis->pushConstants.data, axis->pushConstants.structSize);
+						axis->updatePushConstants = 0;
 					}
+					app->configuration.commandEncoder->setBuffer(axis->pushConstants.dataUintBuffer, 0, args_id);
 					args_id++;
 				}
 				MTL::Size threadsPerGrid = { dispatchSize[0] * axis->specializationConstants.localSize[0].data.i , dispatchSize[1] * axis->specializationConstants.localSize[1].data.i ,dispatchSize[2] * axis->specializationConstants.localSize[2].data.i };

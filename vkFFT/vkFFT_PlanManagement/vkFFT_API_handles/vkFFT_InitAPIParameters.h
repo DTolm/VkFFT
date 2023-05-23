@@ -310,6 +310,36 @@ static inline VkFFTResult initParametersAPI(VkFFTApplication* app, VkFFTSpeciali
 	VkAllocateContainerFlexible(sc, &sc->functionDef, 50);
 	sc->functionDef.type = 100;
 
+	if (sc->performWorkGroupShift[0]) {
+		VkAllocateContainerFlexible(sc, &sc->workGroupShiftX, 50);
+		sc->workGroupShiftX.type = 100 + sc->uintTypeCode;
+		sprintf(sc->workGroupShiftX.data.s, "workGroupShiftX");
+	}
+	if (sc->performWorkGroupShift[1]) {
+		VkAllocateContainerFlexible(sc, &sc->workGroupShiftY, 50);
+		sc->workGroupShiftY.type = 100 + sc->uintTypeCode;
+		sprintf(sc->workGroupShiftY.data.s, "workGroupShiftY");
+	}
+	if (sc->performWorkGroupShift[2]) {
+		VkAllocateContainerFlexible(sc, &sc->workGroupShiftZ, 50);
+		sc->workGroupShiftZ.type = 100 + sc->uintTypeCode;
+		sprintf(sc->workGroupShiftZ.data.s, "workGroupShiftZ");
+	}
+	if (sc->performPostCompilationInputOffset) {
+		VkAllocateContainerFlexible(sc, &sc->inputOffset, 50);
+		sc->inputOffset.type = 100 + sc->uintTypeCode;
+		sprintf(sc->inputOffset.data.s, "inputOffset");
+	}
+	if (sc->performPostCompilationOutputOffset) {
+		VkAllocateContainerFlexible(sc, &sc->outputOffset, 50);
+		sc->outputOffset.type = 100 + sc->uintTypeCode;
+		sprintf(sc->outputOffset.data.s, "outputOffset");
+	}
+	if (sc->performPostCompilationKernelOffset) {
+		VkAllocateContainerFlexible(sc, &sc->kernelOffset, 50);
+		sc->kernelOffset.type = 100 + sc->uintTypeCode;
+		sprintf(sc->kernelOffset.data.s, "kernelOffset");
+	}
 #if(VKFFT_BACKEND==0)
 	sprintf(sc->inputsStruct.data.s, "inputs");
 	sprintf(sc->outputsStruct.data.s, "outputs");
@@ -530,6 +560,25 @@ static inline VkFFTResult freeParametersAPI(VkFFTApplication* app, VkFFTSpeciali
 
 	VkDeallocateContainer(sc, &sc->constDef);
 	VkDeallocateContainer(sc, &sc->functionDef);
+
+	if (sc->performWorkGroupShift[0]) {
+		VkDeallocateContainer(sc, &sc->workGroupShiftX);
+	}
+	if (sc->performWorkGroupShift[1]) {
+		VkDeallocateContainer(sc, &sc->workGroupShiftY);
+	}
+	if (sc->performWorkGroupShift[2]) {
+		VkDeallocateContainer(sc, &sc->workGroupShiftZ);
+	}
+	if (sc->performPostCompilationInputOffset) {
+		VkDeallocateContainer(sc, &sc->inputOffset);
+	}
+	if (sc->performPostCompilationOutputOffset) {
+		VkDeallocateContainer(sc, &sc->outputOffset);
+	}
+	if (sc->performPostCompilationKernelOffset) {
+		VkDeallocateContainer(sc, &sc->kernelOffset);
+	}
 	return res;
 }
 

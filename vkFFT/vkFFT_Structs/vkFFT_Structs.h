@@ -973,8 +973,7 @@ typedef struct {
 } VkFFTSpecializationConstantsLayout;
 
 typedef struct {
-	uint32_t dataUint32[10];
-	uint64_t dataUint64[10];
+	char data[128];
 #if(VKFFT_BACKEND == 5)
 	MTL::Buffer* dataUintBuffer;
 #endif

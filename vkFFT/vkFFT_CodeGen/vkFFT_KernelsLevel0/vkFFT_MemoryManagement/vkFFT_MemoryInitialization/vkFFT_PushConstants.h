@@ -24,19 +24,24 @@
 #include "vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
-static inline VkFFTResult appendPushConstant(VkFFTSpecializationConstantsLayout* sc, const char* type, const char* name) {
-	VkFFTResult res = VKFFT_SUCCESS;
-	sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", type, name);
-	VkAppendLine(sc);
-	
-	return res;
+
+static inline void appendPushConstant(VkFFTSpecializationConstantsLayout* sc, VkContainer* var) {
+	if (sc->res != VKFFT_SUCCESS) return;
+	if (var->type > 100) {
+		VkContainer* varType;
+		VkGetTypeFromCode(sc, var->type, &varType);
+		sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", varType->data.s, var->data.s);
+		VkAppendLine(sc);
+	}
+	else {
+		sc->res = VKFFT_ERROR_MATH_FAILED;
+	}
+	return;
 }
-static inline VkFFTResult appendPushConstants(VkFFTSpecializationConstantsLayout* sc) {
-	VkFFTResult res = VKFFT_SUCCESS;
+static inline void appendPushConstants(VkFFTSpecializationConstantsLayout* sc) {
+	if (sc->res != VKFFT_SUCCESS) return;
 	if (sc->pushConstantsStructSize == 0)
-		return res;
-	VkContainer* intType;
-	VkGetTypeFromCode(sc, sc->intTypeCode, &intType);
+		return;
 #if(VKFFT_BACKEND==0)
 	sc->tempLen = sprintf(sc->tempStr, "layout(push_constant) uniform PushConsts\n{\n");
 	VkAppendLine(sc);
@@ -54,29 +59,36 @@ static inline VkFFTResult appendPushConstants(VkFFTSpecializationConstantsLayout
 	VkAppendLine(sc);
 	
 #endif
+	char tempCopyStr[60];
 	if (sc->performWorkGroupShift[0]) {
-		res = appendPushConstant(sc, intType->data.s, "workGroupShiftX");
-		
+		appendPushConstant(sc, &sc->workGroupShiftX);
+		sprintf(tempCopyStr, "consts.%s", sc->workGroupShiftX.data.s);
+		sprintf(sc->workGroupShiftX.data.s, "%s", tempCopyStr);
 	}
 	if (sc->performWorkGroupShift[1]) {
-		res = appendPushConstant(sc, intType->data.s, "workGroupShiftY");
-		
+		appendPushConstant(sc, &sc->workGroupShiftY);
+		sprintf(tempCopyStr, "consts.%s", sc->workGroupShiftY.data.s);
+		sprintf(sc->workGroupShiftY.data.s, "%s", tempCopyStr);
 	}
 	if (sc->performWorkGroupShift[2]) {
-		res = appendPushConstant(sc, intType->data.s, "workGroupShiftZ");
-		
+		appendPushConstant(sc, &sc->workGroupShiftZ);
+		sprintf(tempCopyStr, "consts.%s", sc->workGroupShiftZ.data.s);
+		sprintf(sc->workGroupShiftZ.data.s, "%s", tempCopyStr);
 	}
 	if (sc->performPostCompilationInputOffset) {
-		res = appendPushConstant(sc, intType->data.s, "inputOffset");
-		
+		appendPushConstant(sc, &sc->inputOffset);
+		sprintf(tempCopyStr, "consts.%s", sc->inputOffset.data.s);
+		sprintf(sc->inputOffset.data.s, "%s", tempCopyStr);
 	}
 	if (sc->performPostCompilationOutputOffset) {
-		res = appendPushConstant(sc, intType->data.s, "outputOffset");
-		
+		appendPushConstant(sc, &sc->outputOffset);
+		sprintf(tempCopyStr, "consts.%s", sc->outputOffset.data.s);
+		sprintf(sc->outputOffset.data.s, "%s", tempCopyStr);
 	}
 	if (sc->performPostCompilationKernelOffset) {
-		res = appendPushConstant(sc, intType->data.s, "kernelOffset");
-		
+		appendPushConstant(sc, &sc->kernelOffset);
+		sprintf(tempCopyStr, "consts.%s", sc->kernelOffset.data.s);
+		sprintf(sc->kernelOffset.data.s, "%s", tempCopyStr);
 	}
 #if(VKFFT_BACKEND==0)
 	sc->tempLen = sprintf(sc->tempStr, "} consts;\n\n");
@@ -99,6 +111,7 @@ static inline VkFFTResult appendPushConstants(VkFFTSpecializationConstantsLayout
 	VkAppendLine(sc);
 	
 #endif
-	return res;
+	return;
 }
+
 #endif

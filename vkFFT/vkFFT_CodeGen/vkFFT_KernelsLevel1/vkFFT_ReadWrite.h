@@ -547,10 +547,6 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 		VkDiv(sc, &used_registers, &used_registers, &temp_int);
 	}
 
-	if (sc->useDisableThreads) {
-		temp_int.data.i = 0;
-		VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
-	}
 	if (sc->fftDim.data.i != sc->fft_dim_full.data.i) {
 		if ((sc->reorderFourStep) && (readWrite == 1)) {
 			//sc->tempLen = sprintf(sc->tempStr, "		if (((%s + %" PRIu64 " * %s) %% %" PRIu64 " + ((%s%s) / %" PRIu64 ")*%" PRIu64 " < %" PRIu64 ")){\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, sc->localSize[1], sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[1], sc->fft_dim_full / sc->firstStageStartSize);
@@ -581,12 +577,13 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 			VkDiv(sc, &sc->tempInt, &sc->gl_WorkGroupID_x, &temp_int);
 			temp_int1.data.i = ((int64_t)floor(sc->fft_dim_full.data.i / ((long double)batching_localSize.data.i * sc->fftDim.data.i))) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i);
 			VkIf_eq_start(sc, &sc->tempInt, &temp_int1);
-			temp_int.data.i = (int64_t)ceil(((sc->fft_dim_full.data.i - (sc->firstStageStartSize.data.i / sc->fftDim.data.i) * ((((int64_t)floor(sc->fft_dim_full.data.i / ((long double)batching_localSize.data.i * sc->fftDim.data.i))) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i)) * batching_localSize.data.i * sc->fftDim.data.i)) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i)) / (long double)used_registers.data.i);
-			VkMov(sc, &sc->blockInvocationID, &temp_int);
+			temp_int1.data.i = ((sc->fft_dim_full.data.i - (sc->firstStageStartSize.data.i / sc->fftDim.data.i) * ((((int64_t)floor(sc->fft_dim_full.data.i / ((long double)batching_localSize.data.i * sc->fftDim.data.i))) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i)) * batching_localSize.data.i * sc->fftDim.data.i)) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i));
+			VkMov(sc, &sc->blockInvocationID, &temp_int1);
 			VkIf_else(sc);
-			temp_int.data.i = sc->localSize[0].data.i * sc->localSize[1].data.i;
-			VkMov(sc, &sc->blockInvocationID, &temp_int);
+			temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+			VkMov(sc, &sc->blockInvocationID, &temp_int1);
 			VkIf_end(sc);
+
 
 			if (sc->stridedSharedLayout) {
 
@@ -603,11 +600,11 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 			temp_int.data.i = 0;
 			VkMov(sc, &sc->disableThreads, &temp_int);
 			VkIf_end(sc);*/
-
-			VkMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
-			VkAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
-			VkIf_lt_start(sc, &sc->combinedID, &sc->blockInvocationID);
 		}
+	}
+	if (sc->useDisableThreads) {
+		temp_int.data.i = 0;
+		VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
 	if (bufferStride[1].data.i == fftDim.data.i) {
 		VkMul(sc, &sc->inoutID, &bufferStride[1], &sc->shiftY, 0);
@@ -626,59 +623,20 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 		//for (uint64_t i = 0; i < used_registers; i++) {
 		for (int i = 0; i < used_registers.data.i; i++) {
 			//combined thread numeration
-			if ((sc->fftDim.data.i != sc->fft_dim_full.data.i) && (!((sc->reorderFourStep) && (readWrite == 1)))) {
-				if ((sc->fft_dim_full.data.i - (sc->firstStageStartSize.data.i / sc->fftDim.data.i) * ((((int64_t)floor(sc->fft_dim_full.data.i / ((long double)batching_localSize.data.i * sc->fftDim.data.i))) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i)) * batching_localSize.data.i * sc->fftDim.data.i)) / used_registers.data.i / (sc->firstStageStartSize.data.i / sc->fftDim.data.i) > batching_localSize.data.i) {
-					if (sc->localSize[1].data.i == 1) {
-						//sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 ";\n", sc->gl_LocalInvocationID_x, (i + k * used_registers_read) * sc->localSize[0]);
-						temp_int.data.i = (k * used_registers.data.i + i) * sc->localSize[0].data.i;
-						VkAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
-					}
-					else {
-						//sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 "*numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * used_registers_read));
-						temp_int.data.i = (k * used_registers.data.i + i);
-						VkMul(sc, &sc->combinedID, &sc->blockInvocationID, &temp_int, 0);
+			if (sc->localSize[1].data.i == 1) {
+				//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		combinedID = %s + %" PRIu64 ";\n", &sc->gl_LocalInvocationID_x, (i + k * used_registers) * &sc->localSize[0]);
+				temp_int.data.i = (k * used_registers.data.i + i) * sc->localSize[0].data.i;
 
-						VkMul(sc, &sc->tempInt, &sc->gl_LocalInvocationID_y, &sc->localSize[0], 0);
-						VkAdd(sc, &sc->tempInt, &sc->tempInt, &sc->gl_LocalInvocationID_x);
-
-						VkAdd(sc, &sc->combinedID, &sc->combinedID, &sc->tempInt);
-					}
-				}
-				else {
-					if (sc->localSize[1].data.i == 1) {
-						//sc->tempLen = sprintf(sc->tempStr, "		combinedID = %s + %" PRIu64 "*numActiveThreads;\n", sc->gl_LocalInvocationID_x, (i + k * used_registers_read));
-						temp_int.data.i = (k * used_registers.data.i + i);
-						VkMul(sc, &sc->combinedID, &sc->blockInvocationID, &temp_int, 0);
-						VkAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
-					}
-					else {
-						//sc->tempLen = sprintf(sc->tempStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 "*numActiveThreads;\n", sc->gl_LocalInvocationID_x, sc->localSize[0], sc->gl_LocalInvocationID_y, (i + k * used_registers_read));
-						temp_int.data.i = (k * used_registers.data.i + i);
-						VkMul(sc, &sc->combinedID, &sc->blockInvocationID, &temp_int, 0);
-
-						VkMul(sc, &sc->tempInt, &sc->gl_LocalInvocationID_y, &sc->localSize[0], 0);
-						VkAdd(sc, &sc->tempInt, &sc->tempInt, &sc->gl_LocalInvocationID_x);
-
-						VkAdd(sc, &sc->combinedID, &sc->combinedID, &sc->tempInt);
-					}
-				}
+				VkAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
 			}
 			else {
-				if (sc->localSize[1].data.i == 1) {
-					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		combinedID = %s + %" PRIu64 ";\n", &sc->gl_LocalInvocationID_x, (i + k * used_registers) * &sc->localSize[0]);
-					temp_int.data.i = (k * used_registers.data.i + i) * sc->localSize[0].data.i;
+				//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", &sc->gl_LocalInvocationID_x, &sc->localSize[0], &sc->gl_LocalInvocationID_y, (i + k * used_registers) * &sc->localSize[0] * &sc->localSize[1]);
+				VkMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
+				VkAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
 
-					VkAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
-				}
-				else {
-					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", &sc->gl_LocalInvocationID_x, &sc->localSize[0], &sc->gl_LocalInvocationID_y, (i + k * used_registers) * &sc->localSize[0] * &sc->localSize[1]);
-					VkMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
-					VkAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
+				temp_int.data.i = (k * used_registers.data.i + i) * sc->localSize[0].data.i * sc->localSize[1].data.i;
 
-					temp_int.data.i = (k * used_registers.data.i + i) * sc->localSize[0].data.i * sc->localSize[1].data.i;
-
-					VkAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
-				}
+				VkAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
 			}
 			//set inoutID - global array index. Two batching options - in consecutive x (if multi-upload), &in y if multidimensional.
 			if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {
@@ -758,19 +716,24 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 				}
 			}
 
-			temp_int.data.i = (k * used_registers.data.i + i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
-
-			temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
-
-			if ((sc->mergeSequencesR2C) && (mult.data.i == 1))
-				temp_int1.data.i *= 2;
-
-			if (temp_int.data.i > temp_int1.data.i) {
-				//check that we only read fftDim * local batch data
-				//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
-				VkIf_lt_start(sc, &sc->combinedID, &temp_int1);
+			if ((sc->fftDim.data.i != sc->fft_dim_full.data.i) && (!((sc->reorderFourStep) && (readWrite == 1)))) {
+				VkIf_lt_start(sc, &sc->combinedID, &sc->blockInvocationID);
 			}
+			else {
+				temp_int.data.i = (k * used_registers.data.i + i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
 
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+
+				if ((sc->mergeSequencesR2C) && (mult.data.i == 1))
+					temp_int1.data.i *= 2;
+
+				if (temp_int.data.i > temp_int1.data.i) {
+					//check that we only read fftDim * local batch data
+					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
+					VkIf_lt_start(sc, &sc->combinedID, &temp_int1);
+				}
+
+			}
 			if (bufferStride[1].data.i == fftDim.data.i) {
 				if (k * used_registers.data.i + i > 0) {
 					temp_int.data.i = sc->localSize[0].data.i * sc->localSize[1].data.i;
@@ -1013,17 +976,21 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 			if ((sc->zeropad[readWrite]) || ((sc->numAxisUploads > 1) && (sc->zeropadBluestein[readWrite]))) {
 				VkIf_end(sc);
 			}
-			temp_int.data.i = (k * used_registers.data.i + i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
-
-			temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
-
-			if ((sc->mergeSequencesR2C) && (mult.data.i == 1))
-				temp_int1.data.i *= 2;
-
-			if (temp_int.data.i > temp_int1.data.i) {
+			if ((sc->fftDim.data.i != sc->fft_dim_full.data.i) && (!((sc->reorderFourStep) && (readWrite == 1)))) {
 				VkIf_end(sc);
 			}
+			else {
+				temp_int.data.i = (k * used_registers.data.i + i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
 
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+
+				if ((sc->mergeSequencesR2C) && (mult.data.i == 1))
+					temp_int1.data.i *= 2;
+
+				if (temp_int.data.i > temp_int1.data.i) {
+					VkIf_end(sc);
+				}
+			}
 			if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {
 				VkCheckZeropadEnd(sc, 1);
 				temp_int.data.i = batching_localSize.data.i;
@@ -1054,13 +1021,13 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 		}
 	}
 
-
-	if (sc->fftDim.data.i != sc->fft_dim_full.data.i) {
-		VkIf_end(sc);
-	}
 	if (sc->useDisableThreads) {
 		VkIf_end(sc);
 	}
+	if ((sc->fftDim.data.i != sc->fft_dim_full.data.i) && ((sc->reorderFourStep) && (readWrite == 1))) {
+		VkIf_end(sc);
+	}
+	
 	return;
 }
 static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstantsLayout* sc, int readWrite, int type) {
