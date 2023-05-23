@@ -732,12 +732,20 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
 					VkIf_lt_start(sc, &sc->combinedID, &temp_int1);
 				}
-
 			}
-			if (bufferStride[1].data.i == fftDim.data.i) {
+            temp_int.data.i = batching_localSize.data.i;
+            //we switched to reading 2x more data, but we still need to check out of bounds for odd size1
+            if ((sc->mergeSequencesR2C) && (mult.data.i == 1))
+                temp_int.data.i *= 2;
+            
+#if (VKFFT_BACKEND!=2) //AMD compiler fix
+            if ((bufferStride[1].data.i == fftDim.data.i) && (!(((size1.data.i % temp_int.data.i) != 0) && (sc->mergeSequencesR2C) && (sc->size[1].data.i % 2) && (readWrite == 0))) && (!sc->mergeSequencesR2C)) {
+#else
+            if ((bufferStride[1].data.i == fftDim.data.i) && (!(((size1.data.i % temp_int.data.i) != 0) && (readWrite == 0))) && (!sc->mergeSequencesR2C)) {
+#endif
 				if (k * used_registers.data.i + i > 0) {
 					temp_int.data.i = sc->localSize[0].data.i * sc->localSize[1].data.i;
-					VkAdd(sc, &sc->inoutID, &sc->inoutID, &temp_int);
+                    VkAdd(sc, &sc->inoutID, &sc->inoutID, &temp_int);
 				}
 			}
 			else {

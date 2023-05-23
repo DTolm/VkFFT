@@ -480,7 +480,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 					args_id++;
 				}
 				MTL::Size threadsPerGrid = { dispatchSize[0] * axis->specializationConstants.localSize[0].data.i , dispatchSize[1] * axis->specializationConstants.localSize[1].data.i ,dispatchSize[2] * axis->specializationConstants.localSize[2].data.i };
-				MTL::Size threadsPerThreadgroup = { (NS:UInteger) axis->specializationConstants.localSize[0].data.i, (NS:UInteger) axis->specializationConstants.localSize[1].data.i, (NS:UInteger) axis->specializationConstants.localSize[2].data.i };
+				MTL::Size threadsPerThreadgroup = { (NS::Integer) axis->specializationConstants.localSize[0].data.i, (NS::UInteger) axis->specializationConstants.localSize[1].data.i, (NS::UInteger) axis->specializationConstants.localSize[2].data.i };
 
 				app->configuration.commandEncoder->dispatchThreads(threadsPerGrid, threadsPerThreadgroup);
 
