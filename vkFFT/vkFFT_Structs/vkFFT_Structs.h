@@ -103,12 +103,12 @@ typedef struct {
 	CUdevice* device;//pointer to CUDA device, obtained from cuDeviceGet
 	//CUcontext* context;//pointer to CUDA context, obtained from cuDeviceGet
 	cudaStream_t* stream;//pointer to streams (can be more than 1), where to execute the kernels
-	uint64_t num_streams;//try to submit CUDA kernels in multiple streams for asynchronous execution. Default 1
+	uint64_t num_streams;//try to submit CUDA kernels in multiple streams for asynchronous execution. Default 0, set to >=1 if you pass values in the stream pointer.
 #elif(VKFFT_BACKEND==2)
 	hipDevice_t* device;//pointer to HIP device, obtained from hipDeviceGet
 	//hipCtx_t* context;//pointer to HIP context, obtained from hipDeviceGet
 	hipStream_t* stream;//pointer to streams (can be more than 1), where to execute the kernels
-	uint64_t num_streams;//try to submit HIP kernels in multiple streams for asynchronous execution. Default 1
+	uint64_t num_streams;//try to submit HIP kernels in multiple streams for asynchronous execution. Default 0, set to >=1 if you pass values in the stream pointer.
 #elif(VKFFT_BACKEND==3)
 	cl_platform_id* platform;//not required
 	cl_device_id* device;

@@ -73,12 +73,7 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 		}
 	}
 
-	if (sc->stridedSharedLayout) {
-		VkDivCeil(sc, &used_registers, &fftDim, &sc->localSize[1]);
-	}
-	else {
-		VkDivCeil(sc, &used_registers, &fftDim, &sc->localSize[0]);
-	}
+	VkDivCeil(sc, &used_registers, &fftDim, &localSize);
 
 	appendBarrierVkFFT(sc);
 	if (sc->useDisableThreads) {
@@ -245,7 +240,7 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 
 	if (sc->zeropadBluestein[0]) {
 		fftDim.data.i = sc->fft_dim_full.data.i;
-		VkDivCeil(sc, &used_registers, &fftDim, &batching_localSize);
+		VkDivCeil(sc, &used_registers, &fftDim, &localSize);
 	}
 	if (!sc->readToRegisters) {
 		appendBarrierVkFFT(sc);
