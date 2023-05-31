@@ -763,9 +763,9 @@ static inline VkFFTResult VkFFTCheckUpdateBufferSet(VkFFTApplication* app, VkFFT
 }
 static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan* FFTPlan, VkFFTAxis* axis, uint64_t axis_id, uint64_t axis_upload_id, uint64_t inverse) {
 	if (axis->specializationConstants.performOffsetUpdate || axis->specializationConstants.performBufferSetUpdate) {
-		axis->specializationConstants.inputOffset.type = 1;
-		axis->specializationConstants.outputOffset.type = 1;
-		axis->specializationConstants.kernelOffset.type = 1;
+		axis->specializationConstants.inputOffset.type = 31;
+		axis->specializationConstants.outputOffset.type = 31;
+		axis->specializationConstants.kernelOffset.type = 31;
 #if(VKFFT_BACKEND==0)
 		const VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 #endif

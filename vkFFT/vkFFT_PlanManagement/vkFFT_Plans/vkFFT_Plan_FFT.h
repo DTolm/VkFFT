@@ -190,7 +190,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		axis->specializationConstants.performDCT = app->configuration.performDCT;
 	}
 	if ((axis->specializationConstants.performR2CmultiUpload) && (app->configuration.size[0] % 2 != 0)) return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
-	axis->specializationConstants.mergeSequencesR2C = ((axis->specializationConstants.fftDim.data.i < maxSequenceLengthSharedMemory) && (FFTPlan->actualFFTSizePerAxis[axis_id][1] > 1) && ((FFTPlan->actualPerformR2CPerAxis[axis_id]) || (((app->configuration.performDCT == 3) || (app->configuration.performDCT == 2) || (app->configuration.performDCT == 1) || ((app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) != 0))) && (axis_id == 0)))) ? (1 - app->configuration.disableMergeSequencesR2C) : 0;
+	uint64_t additionalR2Cshared = 0;
+	if ((axis->specializationConstants.performR2C || ((axis->specializationConstants.performDCT == 2) || ((axis->specializationConstants.performDCT == 4) && ((axis->specializationConstants.fftDim.data.i % 2) != 0)))) && (axis->specializationConstants.axis_id == 0) && (!axis->specializationConstants.performR2CmultiUpload)) {
+		additionalR2Cshared = ((axis->specializationConstants.fftDim.data.i % 2) == 0) ? 2 : 1;
+		if ((axis->specializationConstants.performDCT == 2) || ((axis->specializationConstants.performDCT == 4) && ((axis->specializationConstants.fftDim.data.i % 2) != 0))) additionalR2Cshared = 1;
+	}
+	axis->specializationConstants.mergeSequencesR2C = (((axis->specializationConstants.fftDim.data.i + additionalR2Cshared) <= maxSequenceLengthSharedMemory) && (FFTPlan->actualFFTSizePerAxis[axis_id][1] > 1) && ((FFTPlan->actualPerformR2CPerAxis[axis_id]) || (((app->configuration.performDCT == 3) || (app->configuration.performDCT == 2) || (app->configuration.performDCT == 1) || ((app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) != 0))) && (axis_id == 0)))) ? (1 - app->configuration.disableMergeSequencesR2C) : 0;
 	//uint64_t passID = FFTPlan->numAxisUploads[axis_id] - 1 - axis_upload_id;
 	axis->specializationConstants.fft_dim_full.type = 31;
 	axis->specializationConstants.fft_dim_full.data.i = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];

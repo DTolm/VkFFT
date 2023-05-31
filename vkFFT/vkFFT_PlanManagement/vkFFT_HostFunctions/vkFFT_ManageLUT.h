@@ -240,17 +240,17 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 			long double double_PI = 3.14159265358979323846264338327950288419716939937510L;
 			if (axis->specializationConstants.axis_upload_id > 0) {
 				if ((app->configuration.performDCT == 2) || (app->configuration.performDCT == 3)) {
-					axis->specializationConstants.startDCT3LUT.type = 1;
+					axis->specializationConstants.startDCT3LUT.type = 31;
 					axis->specializationConstants.startDCT3LUT.data.i = (maxStageSum);
 					if (app->configuration.useLUT_4step == 1) axis->specializationConstants.startDCT3LUT.data.i += axis->specializationConstants.stageStartSize.data.i * axis->specializationConstants.fftDim.data.i;
 					axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis->specializationConstants.axis_id] / 2 + 2)) * 2 * sizeof(double);
 				}
 				else {
 					if ((app->configuration.performDCT == 4) && (app->configuration.size[axis->specializationConstants.axis_id] % 2 == 0)) {
-						axis->specializationConstants.startDCT3LUT.type = 1;
+						axis->specializationConstants.startDCT3LUT.type = 31;
 						axis->specializationConstants.startDCT3LUT.data.i = (maxStageSum);
 						if (app->configuration.useLUT_4step == 1) axis->specializationConstants.startDCT3LUT.data.i += axis->specializationConstants.stageStartSize.data.i * axis->specializationConstants.fftDim.data.i;
-						axis->specializationConstants.startDCT4LUT.type = 1;
+						axis->specializationConstants.startDCT4LUT.type = 31;
 						axis->specializationConstants.startDCT4LUT.data.i = (axis->specializationConstants.startDCT3LUT.data.i + (app->configuration.size[axis->specializationConstants.axis_id] / 4 + 2));
 						axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis->specializationConstants.axis_id] / 4 + 2) + app->configuration.size[axis->specializationConstants.axis_id] / 2) * 2 * sizeof(double);
 					}
@@ -261,15 +261,15 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 			}
 			else {
 				if ((app->configuration.performDCT == 2) || (app->configuration.performDCT == 3)) {
-					axis->specializationConstants.startDCT3LUT.type = 1;
+					axis->specializationConstants.startDCT3LUT.type = 31;
 					axis->specializationConstants.startDCT3LUT.data.i = (maxStageSum);
 					axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis->specializationConstants.axis_id] / 2 + 2)) * 2 * sizeof(double);
 				}
 				else {
 					if ((app->configuration.performDCT == 4) && (app->configuration.size[axis->specializationConstants.axis_id] % 2 == 0)) {
-						axis->specializationConstants.startDCT3LUT.type = 1;
+						axis->specializationConstants.startDCT3LUT.type = 31;
 						axis->specializationConstants.startDCT3LUT.data.i = (maxStageSum);
-						axis->specializationConstants.startDCT4LUT.type = 1;
+						axis->specializationConstants.startDCT4LUT.type = 31;
 						axis->specializationConstants.startDCT4LUT.data.i = (axis->specializationConstants.startDCT3LUT.data.i + (app->configuration.size[axis->specializationConstants.axis_id] / 4 + 2));
 						axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis->specializationConstants.axis_id] / 4 + 2) + app->configuration.size[axis->specializationConstants.axis_id] / 2) * 2 * sizeof(double);
 
@@ -579,17 +579,17 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 			double double_PI = 3.14159265358979323846264338327950288419716939937510;
 			if (axis->specializationConstants.axis_upload_id > 0) {
 				if ((app->configuration.performDCT == 2) || (app->configuration.performDCT == 3)) {
-					axis->specializationConstants.startDCT3LUT.type = 1;
+					axis->specializationConstants.startDCT3LUT.type = 31;
 					axis->specializationConstants.startDCT3LUT.data.i = (maxStageSum);
 					if (app->configuration.useLUT_4step == 1) axis->specializationConstants.startDCT3LUT.data.i += axis->specializationConstants.stageStartSize.data.i * axis->specializationConstants.fftDim.data.i;
 					axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis->specializationConstants.axis_id] / 2 + 2)) * 2 * sizeof(float);
 				}
 				else {
 					if ((app->configuration.performDCT == 4) && (app->configuration.size[axis->specializationConstants.axis_id] % 2 == 0)) {
-						axis->specializationConstants.startDCT3LUT.type = 1;
+						axis->specializationConstants.startDCT3LUT.type = 31;
 						axis->specializationConstants.startDCT3LUT.data.i = (maxStageSum);
 						if (app->configuration.useLUT_4step == 1) axis->specializationConstants.startDCT3LUT.data.i += axis->specializationConstants.stageStartSize.data.i * axis->specializationConstants.fftDim.data.i;
-						axis->specializationConstants.startDCT4LUT.type = 1;
+						axis->specializationConstants.startDCT4LUT.type = 31;
 						axis->specializationConstants.startDCT4LUT.data.i = (axis->specializationConstants.startDCT3LUT.data.i + (axis->specializationConstants.fftDim.data.i / 4 + 2));
 						axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis->specializationConstants.axis_id] / 4 + 2) + app->configuration.size[axis->specializationConstants.axis_id] / 2) * 2 * sizeof(float);
 					}
@@ -600,15 +600,15 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 			}
 			else {
 				if ((app->configuration.performDCT == 2) || (app->configuration.performDCT == 3)) {
-					axis->specializationConstants.startDCT3LUT.type = 1;
+					axis->specializationConstants.startDCT3LUT.type = 31;
 					axis->specializationConstants.startDCT3LUT.data.i = (maxStageSum);
 					axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis->specializationConstants.axis_id] / 2 + 2)) * 2 * sizeof(float);
 				}
 				else {
 					if ((app->configuration.performDCT == 4) && (app->configuration.size[axis->specializationConstants.axis_id] % 2 == 0)) {
-						axis->specializationConstants.startDCT3LUT.type = 1;
+						axis->specializationConstants.startDCT3LUT.type = 31;
 						axis->specializationConstants.startDCT3LUT.data.i = (maxStageSum);
-						axis->specializationConstants.startDCT4LUT.type = 1;
+						axis->specializationConstants.startDCT4LUT.type = 31;
 						axis->specializationConstants.startDCT4LUT.data.i = (axis->specializationConstants.startDCT3LUT.data.i + (app->configuration.size[axis->specializationConstants.axis_id] / 4 + 2));
 						axis->bufferLUTSize = (maxStageSum + (app->configuration.size[axis->specializationConstants.axis_id] / 4 + 2) + app->configuration.size[axis->specializationConstants.axis_id] / 2) * 2 * sizeof(float);
 					}

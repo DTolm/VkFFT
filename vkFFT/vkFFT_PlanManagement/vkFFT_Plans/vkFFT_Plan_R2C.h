@@ -210,7 +210,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			axis->specializationConstants.numBatches.data.i = app->actualNumBatches;
 		}
 
-		axis->specializationConstants.numKernels.type = 1;
+		axis->specializationConstants.numKernels.type = 31;
 		axis->specializationConstants.numKernels.data.i = app->configuration.numberKernels;
 		axis->specializationConstants.sharedMemSize = app->configuration.sharedMemorySize;
 		axis->specializationConstants.sharedMemSizePow2 = app->configuration.sharedMemorySizePow2;

@@ -29,7 +29,7 @@ static inline void VkCheckZeropadStart(VkFFTSpecializationConstantsLayout* sc, V
 	//return if sequence is full of zeros from the start
 	if (sc->res != VKFFT_SUCCESS) return;
 	VkContainer temp_int = {};
-	temp_int.type = 1;
+	temp_int.type = 31;
 	if ((sc->frequencyZeropadding)) {
 		switch (sc->axis_id) {
 		case 0: {
@@ -111,7 +111,7 @@ static inline void VkCheckZeropadEnd(VkFFTSpecializationConstantsLayout* sc, int
 	//return if sequence is full of zeros from the start
 	if (sc->res != VKFFT_SUCCESS) return;
 	VkContainer temp_int = {};
-	temp_int.type = 1;
+	temp_int.type = 31;
 	if ((sc->frequencyZeropadding)) {
 		switch (sc->axis_id) {
 		case 0: {
@@ -194,7 +194,7 @@ static inline void VkCheckZeropad(VkFFTSpecializationConstantsLayout* sc, VkCont
 	//return if sequence is full of zeros from the start
 	if (sc->res != VKFFT_SUCCESS) return;
 	VkContainer temp_int = {};
-	temp_int.type = 1;
+	temp_int.type = 31;
 	if ((sc->frequencyZeropadding)) {
 		switch (sc->axis_id) {
 		case 0: {
