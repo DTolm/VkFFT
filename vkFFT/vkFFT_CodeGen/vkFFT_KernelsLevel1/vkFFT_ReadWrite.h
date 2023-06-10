@@ -399,8 +399,8 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 	VkContainer batching_localSize = {};
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = {0};
+	VkContainer* batchingInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;

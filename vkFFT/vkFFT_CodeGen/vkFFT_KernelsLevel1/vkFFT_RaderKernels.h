@@ -80,7 +80,7 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, V
 	}
 	//rotate the stage
 
-	VkContainer* localInvocationID = {};
+	VkContainer* localInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		localInvocationID = &sc->gl_LocalInvocationID_y;
@@ -1332,7 +1332,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 	int64_t require_cutoff_check = ((sc->fftDim.data.i == (num_logical_subgroups * num_logical_groups.data.i * stageRadix->data.i))) ? 0 : 1;
 	int64_t require_cutoff_check2;
 	
-	VkContainer* localInvocationID = {};
+	VkContainer* localInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		localInvocationID = &sc->gl_LocalInvocationID_y;

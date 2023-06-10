@@ -46,8 +46,8 @@ static inline void appendDCTI_read(VkFFTSpecializationConstantsLayout* sc, int t
 	VkContainer batching_localSize = {};
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = {0};
+	VkContainer* batchingInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -201,8 +201,8 @@ static inline void appendDCTII_read_III_write(VkFFTSpecializationConstantsLayout
 	VkContainer batching_localSize = {};
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = {0};
+	VkContainer* batchingInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -372,8 +372,8 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 	VkContainer batching_localSize = {};
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = {0};
+	VkContainer* batchingInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -636,8 +636,8 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 	VkContainer batching_localSize = {};
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = {0};
+	VkContainer* batchingInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -1251,8 +1251,8 @@ static inline void appendDCTIV_even_write(VkFFTSpecializationConstantsLayout* sc
 	VkContainer batching_localSize = {};
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = {0};
+	VkContainer* batchingInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -1520,8 +1520,8 @@ static inline void appendDCTIV_odd_read(VkFFTSpecializationConstantsLayout* sc, 
 	VkContainer batching_localSize = {};
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = {0};
+	VkContainer* batchingInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -1799,8 +1799,8 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 	VkContainer batching_localSize = {};
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = {0};
+	VkContainer* batchingInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;

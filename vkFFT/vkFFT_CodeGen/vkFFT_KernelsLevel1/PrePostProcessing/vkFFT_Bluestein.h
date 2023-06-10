@@ -60,9 +60,9 @@ static inline void appendBluesteinMultiplication(VkFFTSpecializationConstantsLay
 	VkContainer localSize = {};
 	localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
+	VkContainer* localInvocationID = {0};
 	
-	VkContainer* batching_localInvocationID = {};
+	VkContainer* batching_localInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		localSize.data.i = sc->localSize[1].data.i;
@@ -214,7 +214,7 @@ static inline void appendBluesteinConvolution(VkFFTSpecializationConstantsLayout
 	VkContainer localSize = {};
 	localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
+	VkContainer* localInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		localSize.data.i = sc->localSize[1].data.i;

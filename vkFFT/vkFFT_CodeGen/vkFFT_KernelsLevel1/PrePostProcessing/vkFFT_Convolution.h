@@ -45,7 +45,7 @@ static inline void appendRegisterStorage(VkFFTSpecializationConstantsLayout* sc,
 	VkContainer localSize = {};
 	localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
+	VkContainer* localInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		localSize.data.i = sc->localSize[1].data.i;
@@ -137,8 +137,8 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 	VkContainer batching_localSize = {};
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = {0};
+	VkContainer* batchingInvocationID = {0};
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
