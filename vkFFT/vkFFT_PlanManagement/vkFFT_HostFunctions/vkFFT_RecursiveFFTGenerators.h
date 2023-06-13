@@ -336,7 +336,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 				commandBufferAllocateInfo.commandPool = kernelPreparationApplication.configuration.commandPool[0];
 				commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 				commandBufferAllocateInfo.commandBufferCount = 1;
-				VkCommandBuffer commandBuffer = {0};
+				VkCommandBuffer commandBuffer = ZERO_INIT;
 				res = vkAllocateCommandBuffers(kernelPreparationApplication.configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
 				if (res != 0) {
 					free(phaseVectors);
@@ -561,7 +561,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			commandBufferAllocateInfo.commandPool = kernelPreparationApplication.configuration.commandPool[0];
 			commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 			commandBufferAllocateInfo.commandBufferCount = 1;
-			VkCommandBuffer commandBuffer = {0};
+			VkCommandBuffer commandBuffer = ZERO_INIT;
 			res = vkAllocateCommandBuffers(kernelPreparationApplication.configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
 			if (res != 0) {
 				free(phaseVectors);
@@ -621,7 +621,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			commandBufferAllocateInfo.commandPool = kernelPreparationApplication.configuration.commandPool[0];
 			commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 			commandBufferAllocateInfo.commandBufferCount = 1;
-			VkCommandBuffer commandBuffer = {0};
+			VkCommandBuffer commandBuffer = ZERO_INIT;
 			res = vkAllocateCommandBuffers(kernelPreparationApplication.configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
 			if (res != 0) {
 				free(phaseVectors);
@@ -1098,7 +1098,7 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 					commandBufferAllocateInfo.commandPool = kernelPreparationApplication.configuration.commandPool[0];
 					commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 					commandBufferAllocateInfo.commandBufferCount = 1;
-					VkCommandBuffer commandBuffer = {0};
+					VkCommandBuffer commandBuffer = ZERO_INIT;
 					res = vkAllocateCommandBuffers(kernelPreparationApplication.configuration.device[0], &commandBufferAllocateInfo, &commandBuffer);
 					if (res != 0) {
 						free(axis->specializationConstants.raderContainer[i].raderFFTkernel);

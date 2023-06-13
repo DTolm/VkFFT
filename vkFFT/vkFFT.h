@@ -58,6 +58,12 @@
 #endif
 #endif
 
+#ifdef __cplusplus
+#define ZERO_INIT {}
+#else
+#define ZERO_INIT {0}
+#endif
+
 #include "vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT_AppManagement/vkFFT_RunApp.h"
 #include "vkFFT_AppManagement/vkFFT_InitializeApp.h"
