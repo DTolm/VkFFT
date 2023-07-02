@@ -59,15 +59,15 @@
 #endif
 
 #ifdef __cplusplus
-#define ZERO_INIT {}
+#define VKFFT_ZERO_INIT {}
 #else
-#define ZERO_INIT {0}
+#define VKFFT_ZERO_INIT {0}
 #endif
 
-#include "vkFFT_Structs/vkFFT_Structs.h"
-#include "vkFFT_AppManagement/vkFFT_RunApp.h"
-#include "vkFFT_AppManagement/vkFFT_InitializeApp.h"
-#include "vkFFT_AppManagement/vkFFT_DeleteApp.h"
+#include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
+#include "vkFFT/vkFFT_AppManagement/vkFFT_RunApp.h"
+#include "vkFFT/vkFFT_AppManagement/vkFFT_InitializeApp.h"
+#include "vkFFT/vkFFT_AppManagement/vkFFT_DeleteApp.h"
 
 static inline int VkFFTGetVersion() {
 	return 10300; //X.XX.XX format
