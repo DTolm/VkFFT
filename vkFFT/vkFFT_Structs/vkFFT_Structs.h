@@ -67,13 +67,13 @@
 #endif
 
 //unified VkFFT container
-union VkData {
+typedef union VkData {
 	int64_t i;
 	long double d;
 	long double c[2];
 
 	char* s;
-};
+} VkData;
 typedef struct VkContainer VkContainer;
 struct VkContainer{
 	int type; // 0 - uninitialized
