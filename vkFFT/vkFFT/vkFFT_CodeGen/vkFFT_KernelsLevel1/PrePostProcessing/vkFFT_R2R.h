@@ -27,27 +27,27 @@
 
 static inline void appendDCTI_read(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer used_registers = {};
+	VkContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
 	
-	VkContainer fftDim = {};
+	VkContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
 
-	VkContainer localSize = {};
+	VkContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer batching_localSize = {};
+	VkContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
+	VkContainer* batchingInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -182,27 +182,27 @@ static inline void appendDCTI_read(VkFFTSpecializationConstantsLayout* sc, int t
 
 static inline void appendDCTII_read_III_write(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer used_registers = {};
+	VkContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
 
-	VkContainer fftDim = {};
+	VkContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
 
-	VkContainer localSize = {};
+	VkContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer batching_localSize = {};
+	VkContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
+	VkContainer* batchingInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -350,30 +350,30 @@ static inline void appendDCTII_read_III_write(VkFFTSpecializationConstantsLayout
 }
 static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer used_registers = {};
+	VkContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
 
-	VkContainer fftDim = {};
+	VkContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
 
-	VkContainer fftDim_half = {};
+	VkContainer fftDim_half = VKFFT_ZERO_INIT;
 	fftDim_half.type = 31;
 
-	VkContainer localSize = {};
+	VkContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer batching_localSize = {};
+	VkContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
+	VkContainer* batchingInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -616,28 +616,28 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 
 static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer used_registers = {};
+	VkContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
 
-	VkContainer fftDim = {};
+	VkContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
-	VkContainer fftDim_half = {};
+	VkContainer fftDim_half = VKFFT_ZERO_INIT;
 	fftDim_half.type = 31;
-	VkContainer localSize = {};
+	VkContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer batching_localSize = {};
+	VkContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
+	VkContainer* batchingInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -1230,29 +1230,29 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 }
 static inline void appendDCTIV_even_write(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_int2 = {};
+	VkContainer temp_int2 = VKFFT_ZERO_INIT;
 	temp_int2.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer used_registers = {};
+	VkContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
 
-	VkContainer fftDim = {};
+	VkContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
 
-	VkContainer localSize = {};
+	VkContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer batching_localSize = {};
+	VkContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
+	VkContainer* batchingInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -1501,27 +1501,27 @@ static inline void appendDCTIV_even_write(VkFFTSpecializationConstantsLayout* sc
 
 static inline void appendDCTIV_odd_read(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer used_registers = {};
+	VkContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
 
-	VkContainer fftDim = {};
+	VkContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
 
-	VkContainer localSize = {};
+	VkContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer batching_localSize = {};
+	VkContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
+	VkContainer* batchingInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -1780,27 +1780,27 @@ static inline void appendDCTIV_odd_read(VkFFTSpecializationConstantsLayout* sc, 
 
 static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer used_registers = {};
+	VkContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
 
-	VkContainer fftDim = {};
+	VkContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
 
-	VkContainer localSize = {};
+	VkContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer batching_localSize = {};
+	VkContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
+	VkContainer* batchingInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;

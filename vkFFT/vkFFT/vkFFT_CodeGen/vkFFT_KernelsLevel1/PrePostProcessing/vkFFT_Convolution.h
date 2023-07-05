@@ -32,20 +32,20 @@
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel1/vkFFT_ReadWrite.h"
 static inline void appendRegisterStorage(VkFFTSpecializationConstantsLayout* sc, int readType, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer used_registers = {};
+	VkContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
 
-	VkContainer localSize = {};
+	VkContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
+	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		localSize.data.i = sc->localSize[1].data.i;
@@ -105,11 +105,11 @@ static inline void appendRegisterStorage(VkFFTSpecializationConstantsLayout* sc,
 
 static inline void appendPreparationBatchedKernelConvolution(VkFFTSpecializationConstantsLayout* sc, int dataType) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32; 
 	
 	for (uint64_t i = 0; i < sc->registers_per_thread; i++) {
@@ -124,21 +124,21 @@ static inline void appendPreparationBatchedKernelConvolution(VkFFTSpecialization
 
 static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* sc, uint64_t strideType) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer localSize = {};
+	VkContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer batching_localSize = {};
+	VkContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
+	VkContainer* batchingInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -156,7 +156,7 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 		temp_int.data.i = 0;
 		VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
-	VkContainer used_registers = {};
+	VkContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
 
 	if (sc->stridedSharedLayout) {

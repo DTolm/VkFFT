@@ -30,11 +30,11 @@
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel0/vkFFT_MemoryManagement/vkFFT_MemoryTransfers/vkFFT_Transfers.h"
 static inline void appendReorder4Step(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 	uint64_t logicalRegistersPerThread;
 	if (readWrite==0)

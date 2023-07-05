@@ -251,7 +251,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
-		ze_device_mem_alloc_desc_t device_desc = {};
+		ze_device_mem_alloc_desc_t device_desc = VKFFT_ZERO_INIT;
 		device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
 		res = zeMemAllocDevice(app->configuration.context[0], &device_desc, app->configuration.tempBufferSize[0], sizeof(float), app->configuration.device[0], app->configuration.tempBuffer);
 		if (res != ZE_RESULT_SUCCESS) {

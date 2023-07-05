@@ -31,11 +31,11 @@
 
 static inline void appendBluesteinMultiplication(VkFFTSpecializationConstantsLayout* sc, uint64_t strideType, uint64_t pre_or_post_multiplication) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
 	
@@ -51,18 +51,18 @@ static inline void appendBluesteinMultiplication(VkFFTSpecializationConstantsLay
 		VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
 
-	VkContainer used_registers = {};
+	VkContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
 
-	VkContainer batching_localSize = {};
+	VkContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer localSize = {};
+	VkContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
+	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
 	
-	VkContainer* batching_localInvocationID = {};
+	VkContainer* batching_localInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		localSize.data.i = sc->localSize[1].data.i;
@@ -197,24 +197,24 @@ static inline void appendBluesteinMultiplication(VkFFTSpecializationConstantsLay
 
 static inline void appendBluesteinConvolution(VkFFTSpecializationConstantsLayout* sc, uint64_t strideType) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 	
 	if (sc->useDisableThreads) {
 		temp_int.data.i = 0;
 		VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
-	VkContainer used_registers = {};
+	VkContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
 
-	VkContainer localSize = {};
+	VkContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
+	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		localSize.data.i = sc->localSize[1].data.i;

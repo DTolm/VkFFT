@@ -47,9 +47,9 @@
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
 static inline VkFFTResult VkShaderGen_FFT(VkFFTSpecializationConstantsLayout* sc, int type) {
 	
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	appendVersion(sc);
 	appendExtensions(sc);

@@ -28,7 +28,7 @@
 static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayout* sc, int type) {
 
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 
 	//sc->tempLen = sprintf(sc->tempStr, "	uint dum=gl_LocalInvocationID.x;\n");
@@ -309,7 +309,7 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 static inline void appendRegisterInitialization_R2C(VkFFTSpecializationConstantsLayout* sc, int type) {
 
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 
 	sc->regIDs = (VkContainer*)calloc(sc->registers_per_thread, sizeof(VkContainer));
@@ -398,7 +398,7 @@ static inline void appendRegisterInitialization_R2C(VkFFTSpecializationConstants
 static inline void freeRegisterInitialization(VkFFTSpecializationConstantsLayout* sc, int type) {
 
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 
 	//sc->tempLen = sprintf(sc->tempStr, "	uint dum=gl_LocalInvocationID.x;\n");
@@ -552,7 +552,7 @@ static inline void freeRegisterInitialization(VkFFTSpecializationConstantsLayout
 static inline void freeRegisterInitialization_R2C(VkFFTSpecializationConstantsLayout* sc, int type) {
 
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 
 	for (int i = 0; i < sc->registers_per_thread; i++) {

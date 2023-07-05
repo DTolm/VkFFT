@@ -27,29 +27,29 @@
 
 static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer used_registers = {};
+	VkContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
-	VkContainer mult = {};
+	VkContainer mult = VKFFT_ZERO_INIT;
 	mult.type = 31;
 
-	VkContainer fftDim = {};
+	VkContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
 
-	VkContainer localSize = {};
+	VkContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer batching_localSize = {};
+	VkContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
+	VkContainer* batchingInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -233,7 +233,14 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 	if (sc->useDisableThreads) {
 		VkIf_end(sc);
 	}
-	if ((sc->rader_generator[0] > 0) || ((sc->fftDim.data.i % sc->localSize[0].data.i) && (!sc->stridedSharedLayout)) || ((sc->fftDim.data.i % sc->localSize[1].data.i) && (sc->stridedSharedLayout)))
+	VkContainer logicalStoragePerThread;
+	logicalStoragePerThread.type = 31;
+	logicalStoragePerThread.data.i = sc->registers_per_thread_per_radix[sc->stageRadix[0]] * sc->registerBoost;// (sc->registers_per_thread % stageRadix->data.i == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+	VkContainer logicalGroupSize;
+	logicalGroupSize.type = 31;
+	VkDivCeil(sc, &logicalGroupSize, &sc->fftDim, &logicalStoragePerThread);
+
+	if ((sc->rader_generator[0] > 0) || ((sc->fftDim.data.i % sc->localSize[0].data.i) && (!sc->stridedSharedLayout)) || ((sc->fftDim.data.i % sc->localSize[1].data.i) && (sc->stridedSharedLayout)) || (logicalGroupSize.data.i != localSize.data.i))
 		sc->readToRegisters = 0;
 	else
 		sc->readToRegisters = 1;
@@ -284,32 +291,32 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 
 static inline void appendR2C_write(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer used_registers = {};
+	VkContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
-	VkContainer mult = {};
+	VkContainer mult = VKFFT_ZERO_INIT;
 	mult.type = 31;
 
-	VkContainer fftDim = {};
+	VkContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
 
-	VkContainer fftDim_half = {};
+	VkContainer fftDim_half = VKFFT_ZERO_INIT;
 	fftDim_half.type = 31;
 
-	VkContainer localSize = {};
+	VkContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer batching_localSize = {};
+	VkContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = {};
-	VkContainer* batchingInvocationID = {};
+	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
+	VkContainer* batchingInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;

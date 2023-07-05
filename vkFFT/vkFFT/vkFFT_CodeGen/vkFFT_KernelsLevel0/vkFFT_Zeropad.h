@@ -110,7 +110,7 @@ static inline void VkCheckZeropadStart(VkFFTSpecializationConstantsLayout* sc, V
 static inline void VkCheckZeropadEnd(VkFFTSpecializationConstantsLayout* sc, int axisCheck) {
 	//return if sequence is full of zeros from the start
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	if ((sc->frequencyZeropadding)) {
 		switch (sc->axis_id) {

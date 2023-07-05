@@ -55,7 +55,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 	}
 	else
 	{
-		glslang_resource_t default_resource = {};
+		glslang_resource_t default_resource = VKFFT_ZERO_INIT;
 		default_resource.max_lights = 32;
 		default_resource.max_clip_planes = 6;
 		default_resource.max_texture_units = 32;

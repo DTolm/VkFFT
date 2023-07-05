@@ -39,11 +39,11 @@
 
 static inline VkFFTResult VkShaderGen_R2C_even_decomposition(VkFFTSpecializationConstantsLayout* sc, int type) {
 	
-	VkContainer temp_int = {};
+	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = {};
+	VkContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = {};
+	VkContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 	appendVersion(sc);
 	appendExtensions(sc);
