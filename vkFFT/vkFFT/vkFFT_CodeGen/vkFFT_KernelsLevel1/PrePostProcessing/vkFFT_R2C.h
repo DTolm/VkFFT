@@ -234,12 +234,16 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 		VkIf_end(sc);
 	}
 	VkContainer logicalStoragePerThread;
-	logicalStoragePerThread.type = 31;
-	logicalStoragePerThread.data.i = sc->registers_per_thread_per_radix[sc->stageRadix[0]] * sc->registerBoost;// (sc->registers_per_thread % stageRadix->data.i == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
 	VkContainer logicalGroupSize;
+	logicalStoragePerThread.type = 31;
 	logicalGroupSize.type = 31;
-	VkDivCeil(sc, &logicalGroupSize, &sc->fftDim, &logicalStoragePerThread);
-
+	if (sc->rader_generator[0] == 0) {
+		logicalStoragePerThread.data.i = sc->registers_per_thread_per_radix[sc->stageRadix[0]] * sc->registerBoost;// (sc->registers_per_thread % stageRadix->data.i == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		VkDivCeil(sc, &logicalGroupSize, &sc->fftDim, &logicalStoragePerThread);
+	}
+	else {
+		logicalGroupSize.data.i = localSize.data.i;
+	}
 	if ((sc->rader_generator[0] > 0) || ((sc->fftDim.data.i % sc->localSize[0].data.i) && (!sc->stridedSharedLayout)) || ((sc->fftDim.data.i % sc->localSize[1].data.i) && (sc->stridedSharedLayout)) || (logicalGroupSize.data.i != localSize.data.i))
 		sc->readToRegisters = 0;
 	else
