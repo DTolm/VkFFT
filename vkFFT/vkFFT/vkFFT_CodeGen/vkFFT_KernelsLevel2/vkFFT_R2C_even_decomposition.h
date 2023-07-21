@@ -81,16 +81,17 @@ static inline VkFFTResult VkShaderGen_R2C_even_decomposition(VkFFTSpecialization
 	VkMod(sc, &sc->inoutID_x, &sc->shiftX, &temp_int);
 
 	VkDiv(sc, &sc->tempInt, &sc->shiftX, &temp_int);
-	
-	VkMod(sc, &sc->shiftY, &sc->tempInt, &sc->size[1]);
-	VkDiv(sc, &sc->shiftZ, &sc->tempInt, &sc->size[1]);
-	VkMul(sc, &sc->shiftY, &sc->shiftY, &sc->inputStride[1], 0);
-	VkMul(sc, &sc->shiftZ, &sc->shiftZ, &sc->inputStride[2], 0);
-	VkAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->shiftY);
+	for (int i = 1; i < sc->numFFTdims; i++){
+        VkMod(sc, &sc->shiftY, &sc->tempInt, &sc->size[i]);
+        VkMul(sc, &sc->shiftY, &sc->shiftY, &sc->inputStride[i], 0);
+        VkAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->shiftY);
+		if (i!=(sc->numFFTdims-1))
+			VkDiv(sc, &sc->tempInt, &sc->tempInt, &sc->size[i]);
+    }
 
 	appendOffset(sc, 0, 0);
-
-	temp_int.data.i *= sc->size[1].data.i * sc->size[2].data.i;
+	for(int i = 1; i < sc->numFFTdims; i++)
+		temp_int.data.i *= sc->size[i].data.i;
 	VkIf_lt_start(sc, &sc->shiftX, &temp_int);	
 
 	VkAdd(sc, &sc->inoutID, &sc->inoutID_x, &sc->shiftZ);

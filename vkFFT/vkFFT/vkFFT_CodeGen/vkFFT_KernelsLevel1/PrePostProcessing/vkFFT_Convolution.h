@@ -241,10 +241,7 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 
 			VkAdd(sc, &sc->inoutID_x, &sc->inoutID_x, &sc->tempInt2);
 		}
-		if (sc->inputStride[0].data.i != 1)
-			VkMul(sc, &sc->inoutID, &sc->inoutID_x, &sc->inputStride[0], 0);
-		else
-			VkMov(sc, &sc->inoutID, &sc->inoutID_x);
+		VkMov(sc, &sc->inoutID, &sc->inoutID_x);
 
 		if (sc->axis_id > 0) {
 			VkMul(sc, &sc->tempInt, &sc->inoutID_y, &sc->inputStride[1], 0);
@@ -317,10 +314,7 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 				//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
 				VkIf_lt_start(sc, &sc->combinedID, &temp_int1);
 			}
-			if (sc->inputStride[0].data.i != 1)
-				VkMul(sc, &sc->inoutID, &sc->inoutID_x, &sc->inputStride[0], 0);
-			else
-				VkMov(sc, &sc->inoutID, &sc->inoutID_x);
+			VkMov(sc, &sc->inoutID, &sc->inoutID_x);
 
 			if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {
 				VkMul(sc, &sc->tempInt, &sc->inoutID_y, &sc->inputStride[1], 0);
@@ -362,7 +356,7 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 				else {
 					k = (j * sc->matrixConvolution + l);
 				}
-				temp_int.data.i = k * sc->inputStride[3].data.i;
+				temp_int.data.i = k * sc->inputStride[sc->numFFTdims].data.i;
 				VkAdd(sc, &sc->tempInt, &sc->inoutID, &temp_int);
 				appendGlobalToRegisters(sc, &sc->temp, &sc->kernelStruct, &sc->tempInt);
 

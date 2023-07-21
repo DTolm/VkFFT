@@ -977,6 +977,11 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		deleteVkFFT(app);
 		return VKFFT_ERROR_EMPTY_FFTdim;
 	}
+    if (inputLaunchConfiguration.FFTdim > VKFFT_MAX_FFT_DIMENSIONS) {
+        deleteVkFFT(app);
+        return VKFFT_ERROR_FFTdim_GT_MAX_FFT_DIMENSIONS;
+    }
+    
 	app->configuration.FFTdim = inputLaunchConfiguration.FFTdim;
 	if (inputLaunchConfiguration.size[0] == 0) {
 		deleteVkFFT(app);
@@ -1011,7 +1016,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	}
 	else
 		app->configuration.outputBufferStride[0] = inputLaunchConfiguration.outputBufferStride[0];
-	for (uint64_t i = 1; i < 3; i++) {
+	for (uint64_t i = 1; i < VKFFT_MAX_FFT_DIMENSIONS; i++) {
 		if (inputLaunchConfiguration.size[i] == 0)
 			app->configuration.size[i] = 1;
 		else
@@ -1355,23 +1360,35 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 			return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
 		}
 	}
-	if (inputLaunchConfiguration.omitDimension[2] != 0) {
-		app->configuration.omitDimension[2] = inputLaunchConfiguration.omitDimension[2];
-		app->lastAxis--;
-		if (app->configuration.performConvolution) {
-			deleteVkFFT(app);
-			return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
+	for (int i = 0; i < app->configuration.FFTdim; i++) {
+		app->configuration.omitDimension[i] = inputLaunchConfiguration.omitDimension[i];
+		if ((app->configuration.size[i] == 1) && (!(app->configuration.performR2C && (i == 0))) && (!app->configuration.performConvolution)) app->configuration.omitDimension[i] = 1;
+	}
+	for (int i = app->configuration.FFTdim - 1; i >= 0; i--) {
+		if (app->configuration.omitDimension[i] != 0) {
+			app->lastAxis--;
+			if (app->configuration.performConvolution) {
+				deleteVkFFT(app);
+				return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
+			}
+		}
+		else {
+			i = 0;
 		}
 	}
-	if (inputLaunchConfiguration.omitDimension[1] != 0) {
-		app->configuration.omitDimension[1] = inputLaunchConfiguration.omitDimension[1];
-		if (app->configuration.omitDimension[0] == 1) app->firstAxis++;
-		if (app->configuration.omitDimension[2] == 1) app->lastAxis--;
-		if (app->configuration.performConvolution) {
-			deleteVkFFT(app);
-			return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
+	for (int i = 0; i < app->configuration.FFTdim; i++) {
+		if (app->configuration.omitDimension[i] != 0) {
+			app->firstAxis++;
+			if (app->configuration.performConvolution) {
+				deleteVkFFT(app);
+				return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
+			}
+		}
+		else {
+			i = app->configuration.FFTdim;
 		}
 	}
+	
 	if (app->firstAxis > app->lastAxis) {
 		deleteVkFFT(app);
 		return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
@@ -1388,10 +1405,9 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (app->configuration.performDCT > 0) app->configuration.performBandwidthBoost = -1;
 	if (inputLaunchConfiguration.performBandwidthBoost != 0)	app->configuration.performBandwidthBoost = inputLaunchConfiguration.performBandwidthBoost;
 	
-	if (inputLaunchConfiguration.groupedBatch[0] != 0)	app->configuration.groupedBatch[0] = inputLaunchConfiguration.groupedBatch[0];
-	if (inputLaunchConfiguration.groupedBatch[1] != 0)	app->configuration.groupedBatch[1] = inputLaunchConfiguration.groupedBatch[1];
-	if (inputLaunchConfiguration.groupedBatch[2] != 0)	app->configuration.groupedBatch[2] = inputLaunchConfiguration.groupedBatch[2];
-
+    for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
+        if (inputLaunchConfiguration.groupedBatch[i] != 0)	app->configuration.groupedBatch[i] = inputLaunchConfiguration.groupedBatch[i];
+    }
 	
 	if (inputLaunchConfiguration.devicePageSize != 0)	app->configuration.devicePageSize = inputLaunchConfiguration.devicePageSize;
 	if (inputLaunchConfiguration.localPageSize != 0)	app->configuration.localPageSize = inputLaunchConfiguration.localPageSize;

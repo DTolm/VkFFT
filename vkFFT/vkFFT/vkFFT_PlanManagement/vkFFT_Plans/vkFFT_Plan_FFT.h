@@ -51,7 +51,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axis->specializationConstants.sourceFFTSize.data.i = app->configuration.size[axis_id];
 	axis->specializationConstants.axis_id = axis_id;
 	axis->specializationConstants.axis_upload_id = axis_upload_id;
-
+    axis->specializationConstants.numFFTdims = app->configuration.FFTdim;
 	if ((app->configuration.FFTdim == 1) && (FFTPlan->actualFFTSizePerAxis[axis_id][1] == 1) && ((app->configuration.numberBatches > 1) || (app->actualNumBatches > 1)) && (!app->configuration.performConvolution) && (app->configuration.coordinateFeatures == 1)) {
 		if (app->configuration.numberBatches > 1) {
 			app->actualNumBatches = app->configuration.numberBatches;
@@ -124,8 +124,13 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axis->specializationConstants.firstStageStartSize.type = 31;
 	axis->specializationConstants.firstStageStartSize.data.i = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / FFTPlan->axisSplit[axis_id][FFTPlan->numAxisUploads[axis_id] - 1];
 	axis->specializationConstants.dispatchZactualFFTSize.type = 31;
-	axis->specializationConstants.dispatchZactualFFTSize.data.i = (axis_id < 2) ? FFTPlan->actualFFTSizePerAxis[axis_id][2] : FFTPlan->actualFFTSizePerAxis[axis_id][1];
-	axis->specializationConstants.fft_dim_x.type = 31;
+    axis->specializationConstants.dispatchZactualFFTSize.data.i = 1;
+    for (int i = 1; i < app->configuration.FFTdim; i++){
+        if (((axis_id>0)||(i>1)) && (i != axis_id)){
+            axis->specializationConstants.dispatchZactualFFTSize.data.i *= FFTPlan->actualFFTSizePerAxis[axis_id][i];
+        }
+    }
+    axis->specializationConstants.fft_dim_x.type = 31;
 	if (axis_id == 0) {
 		//configure radix stages
 		axis->specializationConstants.fft_dim_x.data.i = axis->specializationConstants.stageStartSize.data.i;
@@ -296,63 +301,66 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axisStride[0].type = 31;
 	axisStride[0].data.i = 1;
 
-	if (axis_id == 0) {
-		axisStride[1].type = 31;
-		axisStride[1].data.i = usedStride[0];
-		axisStride[2].type = 31;
-		axisStride[2].data.i = usedStride[1];
-	}
-	if (axis_id == 1)
-	{
-		axisStride[1].type = 31;
-		axisStride[1].data.i = usedStride[0];
-		axisStride[2].type = 31;
-		axisStride[2].data.i = usedStride[1];
-	}
-	if (axis_id == 2)
-	{
-		axisStride[1].type = 31;
-		axisStride[1].data.i = usedStride[1];
-		axisStride[2].type = 31;
-		axisStride[2].data.i = usedStride[0];
-	}
+    if (axis_id == 0) {
+        for (int i = 1; i < app->configuration.FFTdim; i++){
+            axisStride[i].type = 31;
+            axisStride[i].data.i = usedStride[i-1];
+        }
+    }else{
+        int locStrideOrder = 2;
+        for (int i = 1; i < app->configuration.FFTdim; i++){
+            if(i==axis_id){
+                axisStride[1].type = 31;
+                axisStride[1].data.i = usedStride[i-1];
+            }else{
+                axisStride[locStrideOrder].type = 31;
+                axisStride[locStrideOrder].data.i = usedStride[i-1];
+                locStrideOrder++;
+            }
+        }
+        
+    }
 
-	axisStride[3].type = 31;
-	axisStride[3].data.i = usedStride[2];
+	axisStride[app->configuration.FFTdim].type = 31;
+	axisStride[app->configuration.FFTdim].data.i = usedStride[app->configuration.FFTdim-1];
 
-	axisStride[4].type = 31;
-	axisStride[4].data.i = axisStride[3].data.i * app->configuration.coordinateFeatures;
+	axisStride[app->configuration.FFTdim+1].type = 31;
+	axisStride[app->configuration.FFTdim+1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
 	if (app->useBluesteinFFT[axis_id] && (FFTPlan->numAxisUploads[axis_id] > 1) && (!((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload == 0)))) {
 		axisStride[0].data.i = 1;
-
+        int64_t prevStride = axisStride[0].data.i;
+        
 		if (axis_id == 0) {
-			axisStride[1].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][0];
-			axisStride[2].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1];
-		}
-		if (axis_id == 1)
-		{
-			axisStride[1].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][0];
-			axisStride[2].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1];
-		}
-		if (axis_id == 2)
-		{
-			axisStride[1].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1];
-			axisStride[2].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][0];
-		}
+            for (int i = 1; i < app->configuration.FFTdim; i++){
+                axisStride[i].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][i-1];
+                prevStride = axisStride[i].data.i;
+            }
+        }else{
+            int locStrideOrder = 2;
+            for (int i = 1; i < app->configuration.FFTdim; i++){
+                if(i==axis_id){
+                    axisStride[1].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][i-1];
+                    prevStride = axisStride[1].data.i;
+                }else{
+                    axisStride[locStrideOrder].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][i-1];
+                    prevStride = axisStride[locStrideOrder].data.i;
+                    locStrideOrder++;
+                }
+            }
+            
+        }
 
-		axisStride[3].data.i = axisStride[2].data.i * FFTPlan->actualFFTSizePerAxis[axis_id][2];
+		axisStride[app->configuration.FFTdim].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim-1];
 
-		axisStride[4].type = 31;
-		axisStride[4].data.i = axisStride[3].data.i * app->configuration.coordinateFeatures;
+		axisStride[app->configuration.FFTdim+1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
 	}
 	if ((!inverse) && (axis_id == 0) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload == 0) && (axis->specializationConstants.performR2C || FFTPlan->multiUploadR2C) && (!(app->configuration.isInputFormatted))) {
-		axisStride[1].data.i *= 2;
-		axisStride[2].data.i *= 2;
-		axisStride[3].data.i *= 2;
-		axisStride[4].data.i *= 2;
+        for (int i = 1; i < (app->configuration.FFTdim+2); i++){
+            axisStride[i].data.i *= 2;
+        }
 	}
 	if ((FFTPlan->multiUploadR2C) && (!inverse) && (axis_id == 0) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload == 0)) {
-		for (uint64_t i = 1; i < 5; i++) {
+		for (uint64_t i = 1; i < (app->configuration.FFTdim+2); i++) {
 			axisStride[i].data.i /= 2;
 		}
 	}
@@ -365,62 +373,66 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axisStride[0].type = 31;
 	axisStride[0].data.i = 1;
 
-	if (axis_id == 0) {
-		axisStride[1].type = 31;
-		axisStride[1].data.i = usedStride[0];
-		axisStride[2].type = 31;
-		axisStride[2].data.i = usedStride[1];
-	}
-	if (axis_id == 1)
-	{
-		axisStride[1].type = 31;
-		axisStride[1].data.i = usedStride[0];
-		axisStride[2].type = 31;
-		axisStride[2].data.i = usedStride[1];
-	}
-	if (axis_id == 2)
-	{
-		axisStride[1].type = 31;
-		axisStride[1].data.i = usedStride[1];
-		axisStride[2].type = 31;
-		axisStride[2].data.i = usedStride[0];
-	}
+    if (axis_id == 0) {
+        for (int i = 1; i < app->configuration.FFTdim; i++){
+            axisStride[i].type = 31;
+            axisStride[i].data.i = usedStride[i-1];
+        }
+    }else{
+        int locStrideOrder = 2;
+        for (int i = 1; i < app->configuration.FFTdim; i++){
+            if(i==axis_id){
+                axisStride[1].type = 31;
+                axisStride[1].data.i = usedStride[i-1];
+            }else{
+                axisStride[locStrideOrder].type = 31;
+                axisStride[locStrideOrder].data.i = usedStride[i-1];
+                locStrideOrder++;
+            }
+        }
+        
+    }
 
-	axisStride[3].type = 31;
-	axisStride[3].data.i = usedStride[2];
+    axisStride[app->configuration.FFTdim].type = 31;
+    axisStride[app->configuration.FFTdim].data.i = usedStride[app->configuration.FFTdim-1];
 
-	axisStride[4].type = 31;
-	axisStride[4].data.i = axisStride[3].data.i * app->configuration.coordinateFeatures;
+    axisStride[app->configuration.FFTdim+1].type = 31;
+    axisStride[app->configuration.FFTdim+1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
 	if (app->useBluesteinFFT[axis_id] && (FFTPlan->numAxisUploads[axis_id] > 1) && (!((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload == 1)))) {
 		axisStride[0].data.i = 1;
+        int64_t prevStride = axisStride[0].data.i;
+        
+        if (axis_id == 0) {
+            for (int i = 1; i < app->configuration.FFTdim; i++){
+                axisStride[i].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][i-1];
+                prevStride = axisStride[i].data.i;
+            }
+        }else{
+            int locStrideOrder = 2;
+            for (int i = 1; i < app->configuration.FFTdim; i++){
+                if(i==axis_id){
+                    axisStride[1].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][i-1];
+                    prevStride = axisStride[1].data.i;
+                }else{
+                    axisStride[locStrideOrder].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][i-1];
+                    prevStride = axisStride[locStrideOrder].data.i;
+                    locStrideOrder++;
+                }
+            }
+            
+        }
 
-		if (axis_id == 0) {
-			axisStride[1].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][0];
-			axisStride[2].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1];
-		}
-		if (axis_id == 1)
-		{
-			axisStride[1].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][0];
-			axisStride[2].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1];
-		}
-		if (axis_id == 2)
-		{
-			axisStride[1].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1];
-			axisStride[2].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][0];
-		}
+        axisStride[app->configuration.FFTdim].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim-1];
 
-		axisStride[3].data.i = axisStride[2].data.i * FFTPlan->actualFFTSizePerAxis[axis_id][2];
-
-		axisStride[4].data.i = axisStride[3].data.i * app->configuration.coordinateFeatures;
+        axisStride[app->configuration.FFTdim+1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
 	}
 	if ((inverse) && (axis_id == 0) && (((!app->useBluesteinFFT[axis_id]) && (axis_upload_id == 0)) || ((app->useBluesteinFFT[axis_id]) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1)))) && (axis->specializationConstants.performR2C || FFTPlan->multiUploadR2C) && (!((app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer))) && (!app->configuration.isOutputFormatted)) {
-		axisStride[1].data.i *= 2;
-		axisStride[2].data.i *= 2;
-		axisStride[3].data.i *= 2;
-		axisStride[4].data.i *= 2;
+        for (int i = 1; i < (app->configuration.FFTdim+2); i++){
+            axisStride[i].data.i *= 2;
+        }
 	}
 	if ((FFTPlan->multiUploadR2C) && (inverse) && (axis_id == 0) && (((!app->useBluesteinFFT[axis_id]) && (axis_upload_id == 0)) || ((app->useBluesteinFFT[axis_id]) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1))))) {
-		for (uint64_t i = 1; i < 5; i++) {
+		for (uint64_t i = 1; i < (app->configuration.FFTdim+2); i++) {
 			axisStride[i].data.i /= 2;
 		}
 	}
@@ -492,14 +504,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		axis->specializationConstants.sharedMemSize = app->configuration.sharedMemorySize;
 		axis->specializationConstants.sharedMemSizePow2 = app->configuration.sharedMemorySizePow2;
 		axis->specializationConstants.normalize = (reverseBluesteinMultiUpload) ? 1 : app->configuration.normalize;
-		axis->specializationConstants.size[0].type = 31;
-		axis->specializationConstants.size[1].type = 31;
-		axis->specializationConstants.size[2].type = 31;
-		axis->specializationConstants.size[0].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][0];
-		axis->specializationConstants.size[1].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][1];
-		axis->specializationConstants.size[2].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][2];
-
-		for (uint64_t i = 0; i < 3; i++) {
+        for (uint64_t i = 0; i < VKFFT_MAX_FFT_DIMENSIONS; i++) {
+            axis->specializationConstants.size[i].type = 31;
+            axis->specializationConstants.size[i].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][i];
+        }
+		
+		for (uint64_t i = 0; i < VKFFT_MAX_FFT_DIMENSIONS; i++) {
 			axis->specializationConstants.frequencyZeropadding = app->configuration.frequencyZeroPadding;
 			axis->specializationConstants.performZeropaddingFull[i] = app->configuration.performZeropadding[i]; // don't read if input is zeropadded (0 - off, 1 - on)
 			axis->specializationConstants.fft_zeropad_left_full[i].type = 31;
@@ -588,38 +598,33 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			axis->specializationConstants.BluesteinPostMultiplication = 0;
 
 
-		uint64_t tempSize[3] = { FFTPlan->actualFFTSizePerAxis[axis_id][0], FFTPlan->actualFFTSizePerAxis[axis_id][1], FFTPlan->actualFFTSizePerAxis[axis_id][2] };
-
+        uint64_t tempSize[3];
 
 		if (axis_id == 0) {
 			if (axis_upload_id == 0)
 				tempSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] / axis->specializationConstants.fftDim.data.i / axis->axisBlock[1];
 			else
 				tempSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] / axis->specializationConstants.fftDim.data.i / axis->axisBlock[0];
+            tempSize[1] = FFTPlan->actualFFTSizePerAxis[axis_id][1];
 			if ((FFTPlan->actualPerformR2CPerAxis[axis_id] == 1) && (axis->specializationConstants.mergeSequencesR2C)) tempSize[1] = (uint64_t)ceil(tempSize[1] / 2.0);
-			tempSize[2] *= app->configuration.numberKernels * app->configuration.numberBatches;
-			if (!(axis->specializationConstants.convolutionStep && (app->configuration.matrixConvolution > 1))) tempSize[2] *= app->configuration.coordinateFeatures;
+            
 			//if (app->configuration.performZeropadding[1]) tempSize[1] = (uint64_t)ceil(tempSize[1] / 2.0);
 			//if (app->configuration.performZeropadding[2]) tempSize[2] = (uint64_t)ceil(tempSize[2] / 2.0);
-		}
-		if (axis_id == 1) {
-			tempSize[0] = (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][0] / (double)axis->axisBlock[0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] / (double)axis->specializationConstants.fftDim.data.i);
+        }else{
+			tempSize[0] = (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][0] / (double)axis->axisBlock[0] * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)axis->specializationConstants.fftDim.data.i);
 			tempSize[1] = 1;
-			tempSize[2] = FFTPlan->actualFFTSizePerAxis[axis_id][2];
-			tempSize[2] *= app->configuration.numberKernels * app->configuration.numberBatches;
-			if (!(axis->specializationConstants.convolutionStep && (app->configuration.matrixConvolution > 1))) tempSize[2] *= app->configuration.coordinateFeatures;
+			
 			//if (app->configuration.actualPerformR2C == 1) tempSize[0] = (uint64_t)ceil(tempSize[0] / 2.0);
 			//if (app->configuration.performZeropadding[2]) tempSize[2] = (uint64_t)ceil(tempSize[2] / 2.0);
 		}
-		if (axis_id == 2) {
-			tempSize[0] = (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][0] / (double)axis->axisBlock[0] * FFTPlan->actualFFTSizePerAxis[axis_id][2] / (double)axis->specializationConstants.fftDim.data.i);
-			tempSize[1] = 1;
-			tempSize[2] = FFTPlan->actualFFTSizePerAxis[axis_id][1];
-			tempSize[2] *= app->configuration.numberKernels * app->configuration.numberBatches;
-			if (!(axis->specializationConstants.convolutionStep && (app->configuration.matrixConvolution > 1))) tempSize[2] *= app->configuration.coordinateFeatures;
-			//if (app->configuration.actualPerformR2C == 1) tempSize[0] = (uint64_t)ceil(tempSize[0] / 2.0);
-
-		}
+        tempSize[2] = 1;
+        for (uint64_t i = 1; i < app->configuration.FFTdim; i++) {
+            if (i!=axis_id)
+                tempSize[2] *= FFTPlan->actualFFTSizePerAxis[axis_id][i];
+        }
+        tempSize[2] *= app->configuration.numberKernels * app->configuration.numberBatches;
+        if (!(axis->specializationConstants.convolutionStep && (app->configuration.matrixConvolution > 1))) tempSize[2] *= app->configuration.coordinateFeatures;
+        
 		if ((app->configuration.maxComputeWorkGroupCount[0] > app->configuration.maxComputeWorkGroupCount[1]) && (tempSize[1] > app->configuration.maxComputeWorkGroupCount[1]) && (tempSize[1] > tempSize[0]) && (tempSize[1] >= tempSize[2])) {
 			uint64_t temp_tempSize = tempSize[0];
 			tempSize[0] = tempSize[1];

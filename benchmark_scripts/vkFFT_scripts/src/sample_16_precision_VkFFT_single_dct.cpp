@@ -72,19 +72,22 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 		fprintf(output, "16 - VkFFT/FFTW R2R DCT-I, II, III and IV precision test in single precision\n");
 	printf("16 - VkFFT/FFTW R2R DCT-I, II, III and IV precision test in single precision\n");
 
-	const int num_benchmark_samples = 182;
+	const int num_benchmark_samples = 235;
 	const int num_runs = 1;
 
-	uint64_t benchmark_dimensions[num_benchmark_samples][4] = { {3, 1, 1, 1},{5, 1, 1, 1},{6, 1, 1, 1},{7, 1, 1, 1},{8, 1, 1, 1},{9, 1, 1, 1},{10, 1, 1, 1},{11, 1, 1, 1},{12, 1, 1, 1},{13, 1, 1, 1},{14, 1, 1, 1},
-		{15, 1, 1, 1},{16, 1, 1, 1},{17, 1, 1, 1},{21, 1, 1, 1},{22, 1, 1, 1},{23, 1, 1, 1},{24, 1, 1, 1},{25, 1, 1, 1},{26, 1, 1, 1},{27, 1, 1, 1},{28, 1, 1, 1},{29, 1, 1, 1},{30, 1, 1, 1},{31, 1, 1, 1},{32, 1, 1, 1},{33, 1, 1, 1},{34, 1, 1, 1},{35, 1, 1, 1},{37, 1, 1, 1},{38, 1, 1, 1},{39, 1, 1, 1},{41, 1, 1, 1},{42, 1, 1, 1},{44, 1, 1, 1},{45, 1, 1, 1},{46, 1, 1, 1},{49, 1, 1, 1},{52, 1, 1, 1},{55, 1, 1, 1},{56, 1, 1, 1},{58, 1, 1, 1},{60, 1, 1, 1},{64, 1, 1, 1},{65, 1, 1, 1},{66, 1, 1, 1},{81, 1, 1, 1},
-		{121, 1, 1, 1},{125, 1, 1, 1},{128, 1, 1, 1},{143, 1, 1, 1},{146,1,1,1}, {169, 1, 1, 1},{243, 1, 1, 1},{256, 1, 1, 1},{283, 1, 1, 1},{286, 1, 1, 1},{343, 1, 1, 1},{429, 1, 1, 1},{512, 1, 1, 1},{572, 1, 1, 1},{625, 1, 1, 1},{720, 1, 1, 1},{1024, 1, 1, 1},{1080, 1, 1, 1},{1001, 1, 1, 1},{1229, 1, 1, 1},{1287, 1, 1, 1},{1400, 1, 1, 1},{1440, 1, 1, 1},{1676, 1, 1, 1},{1920, 1, 1, 1},{2048, 1, 1, 1},{2160, 1, 1, 1},{3024,1,1,1},{3500,1,1,1},
-		{3840, 1, 1, 1},{4000 , 1, 1, 1},{4050, 1, 1, 1},{4096 , 1, 1, 1},
-		{8, 3, 1, 2},{8, 5, 1, 2},{8, 6, 1, 2},{8, 7, 1, 2},{8, 8, 1, 2},{8, 9, 1, 2},{8, 10, 1, 2},{8, 11, 1, 2},{8, 12, 1, 2},{8, 13, 1, 2},{8, 14, 1, 2},{8, 15, 1, 2},{8, 16, 1, 2},{8, 17, 1, 2},{8, 21, 1, 2},{8, 22, 1, 2},{8, 23, 1, 2},{8, 24, 1, 2},
-		{8, 25, 1, 2},{8, 26, 1, 2},{8, 27, 1, 2},{8, 28, 1, 2},{8, 29, 1, 2},{8, 30, 1, 2},{8, 31, 1, 2},{8, 32, 1, 2},{8, 33, 1, 2},{8, 34, 1, 2},{8, 35, 1, 2},{8, 37, 1, 2},{8, 38, 1, 2},{8, 39, 1, 2},{8, 41, 1, 2},{8, 44, 1, 2},{8, 45, 1, 2},{8, 46, 1, 2},{8, 49, 1, 2},{8, 52, 1, 2},{8, 56, 1, 2},{8, 58, 1, 2},{8, 60, 1, 2},{8, 64, 1, 2},{8, 66, 1, 2},{8, 81, 1, 2},{8, 125, 1, 2},{8, 128, 1, 2},{8, 243, 1, 2},{8, 256, 1, 2},{8, 343, 1, 2},{8, 358, 1, 2},{8, 429, 1, 2},{8, 512, 1, 2},{8, 1024, 1, 2},
-	    {720, 480, 1, 2},{1280, 720, 1, 2},
-		{3, 3, 3, 3},{5, 5, 5, 3},{6, 6, 6, 3},{7, 7, 7, 3},{8, 8, 8, 3},{9, 9, 9, 3},{10, 10, 10, 3},{11, 11, 11, 3},{12, 12, 12, 3},{13, 13, 13, 3},{14, 14, 14, 3},
-		{15, 15, 15, 3},{16, 16, 16, 3},{17, 17, 17, 3},{21, 21, 21, 3},{22, 22, 22, 3},{23, 23, 23, 3},{24, 24, 24, 3},{25, 25, 25, 3},{26, 26, 26, 3},{27, 27, 27, 3},{28, 28, 28, 3},{29, 29, 29, 3},{30, 30, 30, 3},{31, 31, 31, 3},{32, 32, 32, 3},{33, 33, 33, 3},{34, 34, 34, 3},{35, 35, 35, 3},{39, 39, 39, 3},{42, 42, 42, 3},{44, 44, 44, 3},{45, 45, 45, 3},{46, 46, 46, 3},{49, 49, 49, 3},{52, 52, 52, 3},{56, 56, 56, 3},{60, 60, 60, 3},{64, 64, 64, 3},{81, 81, 81, 3},
-		{121, 121, 121, 3},{128, 128, 128, 3},{125, 125, 125, 3},{143, 143, 143, 3},{169, 169, 169, 3},{243, 243, 243, 3},{256, 256, 256, 3}
+	uint64_t benchmark_dimensions[num_benchmark_samples][5] = { {2, 1, 1, 1, 1},{3, 1, 1, 1, 1},{5, 1, 1, 1, 1},{6, 1, 1, 1, 1},{7, 1, 1, 1, 1},{8, 1, 1, 1, 1},{9, 1, 1, 1, 1},{10, 1, 1, 1, 1},{11, 1, 1, 1, 1},{12, 1, 1, 1, 1},{13, 1, 1, 1, 1},{14, 1, 1, 1, 1},
+		{15, 1, 1, 1, 1},{16, 1, 1, 1, 1},{17, 1, 1, 1, 1},{21, 1, 1, 1, 1},{22, 1, 1, 1, 1},{23, 1, 1, 1, 1},{24, 1, 1, 1, 1},{25, 1, 1, 1, 1},{26, 1, 1, 1, 1},{27, 1, 1, 1, 1},{28, 1, 1, 1, 1},{29, 1, 1, 1, 1},{30, 1, 1, 1, 1},{31, 1, 1, 1, 1},{32, 1, 1, 1, 1},{33, 1, 1, 1, 1},{34, 1, 1, 1, 1},{35, 1, 1, 1, 1},{37, 1, 1, 1, 1},{38, 1, 1, 1, 1},{39, 1, 1, 1, 1},{41, 1, 1, 1, 1},{42, 1, 1, 1, 1},{44, 1, 1, 1, 1},{45, 1, 1, 1, 1},{46, 1, 1, 1, 1},{49, 1, 1, 1, 1},{52, 1, 1, 1, 1},{55, 1, 1, 1, 1},{56, 1, 1, 1, 1},{58, 1, 1, 1, 1},{60, 1, 1, 1, 1},{64, 1, 1, 1, 1},{65, 1, 1, 1, 1},{66, 1, 1, 1, 1},{81, 1, 1, 1, 1},
+		{121, 1, 1, 1, 1},{125, 1, 1, 1, 1},{128, 1, 1, 1, 1},{143, 1, 1, 1, 1},{146, 1, 1, 1, 1}, {169, 1, 1, 1, 1},{243, 1, 1, 1, 1},{256, 1, 1, 1, 1},{283, 1, 1, 1, 1},{286, 1, 1, 1, 1},{343, 1, 1, 1, 1},{429, 1, 1, 1, 1},{512, 1, 1, 1, 1},{572, 1, 1, 1, 1},{625, 1, 1, 1, 1},{720, 1, 1, 1, 1},{1024, 1, 1, 1, 1},{1080, 1, 1, 1, 1},{1001, 1, 1, 1, 1},{1229, 1, 1, 1, 1},{1287, 1, 1, 1, 1},{1400, 1, 1, 1, 1},{1440, 1, 1, 1, 1},{1676, 1, 1, 1, 1},{1920, 1, 1, 1, 1},{2048, 1, 1, 1, 1},{2160, 1, 1, 1, 1},{3024,1,1, 1, 1},{3500,1,1, 1, 1},
+		{3840, 1, 1, 1, 1},{4000 , 1, 1, 1, 1},{4050, 1, 1, 1, 1},{4096 , 1, 1, 1, 1},
+		{8, 3, 1, 1, 2},{8, 5, 1, 1, 2},{8, 6, 1, 1, 2},{8, 7, 1, 1, 2},{8, 8, 1, 1, 2},{8, 9, 1, 1, 2},{8, 10, 1, 1, 2},{8, 11, 1, 1, 2},{8, 12, 1, 1, 2},{8, 13, 1, 1, 2},{8, 14, 1, 1, 2},{8, 15, 1, 1, 2},{8, 16, 1, 1, 2},{8, 17, 1, 1, 2},{8, 21, 1, 1, 2},{8, 22, 1, 1, 2},{8, 23, 1, 1, 2},{8, 24, 1, 1, 2},
+		{8, 25, 1, 1, 2},{8, 26, 1, 1, 2},{8, 27, 1, 1, 2},{8, 28, 1, 1, 2},{8, 29, 1, 1, 2},{8, 30, 1, 1, 2},{8, 31, 1, 1, 2},{8, 32, 1, 1, 2},{8, 33, 1, 1, 2},{8, 34, 1, 1, 2},{8, 35, 1, 1, 2},{8, 37, 1, 1, 2},{8, 38, 1, 1, 2},{8, 39, 1, 1, 2},{8, 41, 1, 1, 2},{8, 44, 1, 1, 2},{8, 45, 1, 1, 2},{8, 46, 1, 1, 2},{8, 49, 1, 1, 2},{8, 52, 1, 1, 2},{8, 56, 1, 1, 2},{8, 58, 1, 1, 2},{8, 60, 1, 1, 2},{8, 64, 1, 1, 2},{8, 66, 1, 1, 2},{8, 81, 1, 1, 2},{8, 125, 1, 1, 2},{8, 128, 1, 1, 2},{8, 243, 1, 1, 2},{8, 256, 1, 1, 2},{8, 343, 1, 1, 2},{8, 358, 1, 1, 2},{8, 429, 1, 1, 2},{8, 512, 1, 1, 2},{8, 1024, 1, 1, 2},
+	    {720, 480, 1, 1, 2},{1280, 720, 1, 1, 2},
+		{2, 2, 2, 1, 3},{3, 3, 3, 1, 3},{5, 5, 5, 1, 3},{6, 6, 6, 1, 3},{7, 7, 7, 1, 3},{8, 8, 8, 1, 3},{9, 9, 9, 1, 3},{10, 10, 10, 1, 3},{11, 11, 11, 1, 3},{12, 12, 12, 1, 3},{13, 13, 13, 1, 3},{14, 14, 14, 1, 3},
+		{15, 15, 15, 1, 3},{16, 16, 16, 1, 3},{17, 17, 17, 1, 3},{21, 21, 21, 1, 3},{22, 22, 22, 1, 3},{23, 23, 23, 1, 3},{24, 24, 24, 1, 3},{25, 25, 25, 1, 3},{26, 26, 26, 1, 3},{27, 27, 27, 1, 3},{28, 28, 28, 1, 3},{29, 29, 29, 1, 3},{30, 30, 30, 1, 3},{31, 31, 31, 1, 3},{32, 32, 32, 1, 3},{33, 33, 33, 1, 3},{34, 34, 34, 1, 3},{35, 35, 35, 1, 3},{39, 39, 39, 1, 3},{42, 42, 42, 1, 3},{44, 44, 44, 1, 3},{45, 45, 45, 1, 3},{46, 46, 46, 1, 3},{49, 49, 49, 1, 3},{52, 52, 52, 1, 3},{56, 56, 56, 1, 3},{60, 60, 60, 1, 3},{64, 64, 64, 1, 3},{81, 81, 81, 1, 3},
+		{121, 121, 121, 1, 3},{128, 128, 128, 1, 3},{125, 125, 125, 1, 3},{143, 143, 143, 1, 3},{169, 169, 169, 1, 3},{243, 243, 243, 1, 3},{256, 256, 256, 1, 3},
+		{2, 2, 2, 2, 4},{3, 3, 3, 3, 4},{5, 5, 5, 5, 4},{6, 6, 6, 6, 4},{7, 7, 7, 7, 4},{9, 9, 9, 9, 4},{10, 10, 10, 10, 4},{11, 11, 11, 11, 4},{12, 12, 12, 12, 4},{13, 13, 13, 13, 4},{14, 14, 14, 14, 4},
+		{15, 15, 15, 15, 4},{17, 17, 17, 17, 4},{21, 21, 21, 21, 4},{22, 22, 22, 22, 4},{23, 23, 23, 23, 4},{24, 24, 24, 24, 4},{25, 25, 25, 25, 4},{26, 26, 26, 26, 4},{27, 27, 27, 27, 4},{28, 28, 28, 28, 4},{29, 29, 29, 29, 4},{30, 30, 30, 30, 4},{31, 31, 31, 31, 4},{33, 33, 33, 33, 4},{35, 35, 35, 35, 4},{37, 37, 37, 37, 4},{39, 39, 39, 39, 4},{41, 41, 41, 41, 4},{42, 42, 42, 42, 4},{43, 43, 43, 43, 4},{44, 44, 44, 44, 4},{45, 45, 45, 45, 4},{47, 47, 47, 47, 4},{49, 49, 49, 49, 4},{52, 52, 52, 52, 4},{53, 53, 53, 53, 4},{56, 56, 56, 56, 4},{59, 59, 59, 59, 4},{60, 60, 60, 60, 4},{61, 61, 61, 61, 4},{81, 81, 81, 81, 4},
+		{3, 5, 7, 9, 4},{5, 3, 7, 9, 4},{9, 7, 5, 3, 4},{23, 25, 27, 29, 4},{25, 23, 27, 29, 4},{29, 27, 25, 23, 4},{123, 25, 127, 129, 4},{125, 123, 27, 129, 4},{129, 127, 125, 23, 4}
 	};
 
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
@@ -94,25 +97,27 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 			for (int t = 1; t < 5; t++) {
 				float* inputC;
 				double* inputC_double;
-				uint64_t dims[3] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] ,benchmark_dimensions[n][2] };
+				uint64_t dims[4] = { benchmark_dimensions[n][0] , benchmark_dimensions[n][1] , benchmark_dimensions[n][2] , benchmark_dimensions[n][3]};
 
-				inputC = (float*)(malloc(sizeof(float) * dims[0] * dims[1] * dims[2]));
+				inputC = (float*)(malloc(sizeof(float) * dims[0] * dims[1] * dims[2] * dims[3]));
 				if (!inputC) return VKFFT_ERROR_MALLOC_FAILED;
-				inputC_double = (double*)(malloc(sizeof(double) * dims[0] * dims[1] * dims[2]));
+				inputC_double = (double*)(malloc(sizeof(double) * dims[0] * dims[1] * dims[2] * dims[3]));
 				if (!inputC_double) return VKFFT_ERROR_MALLOC_FAILED;
 
-				for (uint64_t l = 0; l < dims[2]; l++) {
-					for (uint64_t j = 0; j < dims[1]; j++) {
-						for (uint64_t i = 0; i < dims[0]; i++) {
-							inputC[i + j * dims[0] + l * dims[0] * dims[1]] = (float)(2 * ((float)rand()) / RAND_MAX - 1.0);
-							inputC_double[i + j * dims[0] + l * dims[0] * dims[1]] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1]];
+				for (uint64_t k = 0; k < dims[3]; k++) {
+					for (uint64_t l = 0; l < dims[2]; l++) {
+						for (uint64_t j = 0; j < dims[1]; j++) {
+							for (uint64_t i = 0; i < dims[0]; i++) {
+								inputC[i + j * dims[0] + l * dims[0] * dims[1] + k * dims[0] * dims[1] * dims[2]] = (float)(2 * ((float)rand()) / RAND_MAX - 1.0);
+								inputC_double[i + j * dims[0] + l * dims[0] * dims[1] + k * dims[0] * dims[1] * dims[2]] = (double)inputC[i + j * dims[0] + l * dims[0] * dims[1] + k * dims[0] * dims[1] * dims[2]];
+							}
 						}
 					}
 				}
 
 				fftw_plan p;
 
-				double* output_FFTW = (double*)(malloc(sizeof(double) * dims[0] * dims[1] * dims[2]));
+				double* output_FFTW = (double*)(malloc(sizeof(double) * dims[0] * dims[1] * dims[2] * dims[3]));
 
 				enum fftw_r2r_kind_do_not_use_me dct_type;
 				switch (t)
@@ -132,7 +137,7 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 				}
 
 				if (!output_FFTW) return VKFFT_ERROR_MALLOC_FAILED;
-				switch (benchmark_dimensions[n][3]) {
+				switch (benchmark_dimensions[n][4]) {
 				case 1:
 					p = fftw_plan_r2r_1d((int)benchmark_dimensions[n][0], inputC_double, output_FFTW, dct_type, FFTW_ESTIMATE);
 					break;
@@ -141,6 +146,44 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 					break;
 				case 3:
 					p = fftw_plan_r2r_3d((int)benchmark_dimensions[n][2], (int)benchmark_dimensions[n][1], (int)benchmark_dimensions[n][0], inputC_double, output_FFTW, dct_type, dct_type, dct_type, FFTW_ESTIMATE);
+					break;
+				case 4:
+					fftw_iodim fftw_iodims[4];
+					fftw_iodims[0].n = (int)benchmark_dimensions[n][3];
+					fftw_iodims[0].is = (int)(benchmark_dimensions[n][2] * benchmark_dimensions[n][1] * benchmark_dimensions[n][0]);
+					fftw_iodims[0].os = (int)(benchmark_dimensions[n][2] * benchmark_dimensions[n][1] * benchmark_dimensions[n][0]);
+					fftw_iodims[1].n = (int)benchmark_dimensions[n][2];
+					fftw_iodims[1].is = (int)(benchmark_dimensions[n][1] * benchmark_dimensions[n][0]);
+					fftw_iodims[1].os = (int)(benchmark_dimensions[n][1] * benchmark_dimensions[n][0]);
+					fftw_iodims[2].n = (int)benchmark_dimensions[n][1];
+					fftw_iodims[2].is = (int)(benchmark_dimensions[n][0]);
+					fftw_iodims[2].os = (int)(benchmark_dimensions[n][0]);
+					fftw_iodims[3].n = (int)benchmark_dimensions[n][0];
+					fftw_iodims[3].is = 1;
+					fftw_iodims[3].os = 1;
+					fftw_iodim howmany_dims[1];
+					howmany_dims[0].n = 1;
+					howmany_dims[0].is = 1;
+					howmany_dims[0].os = 1;
+					fftw_r2r_kind_do_not_use_me dct_type_nd[4];
+					for (int p = 0; p < 4; p++){
+						switch (t)
+						{
+						case 1:
+							dct_type_nd[p] = FFTW_REDFT00;
+							break;
+						case 2:
+							dct_type_nd[p] = FFTW_REDFT10;
+							break;
+						case 3:
+							dct_type_nd[p] = FFTW_REDFT01;
+							break;
+						case 4:
+							dct_type_nd[p] = FFTW_REDFT11;
+							break;
+						}
+					}
+					p = fftw_plan_guru_r2r(4, fftw_iodims, 1, howmany_dims, inputC_double, output_FFTW, dct_type_nd, FFTW_ESTIMATE);
 					break;
 				}
 
@@ -153,10 +196,11 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 
 				VkFFTConfiguration configuration = {};
 				VkFFTApplication app = {};
-				configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
+				configuration.FFTdim = benchmark_dimensions[n][4]; //FFT dimension, 1D, 2D or 3D (default 1).
 				configuration.size[0] = benchmark_dimensions[n][0]; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 				configuration.size[1] = benchmark_dimensions[n][1];
 				configuration.size[2] = benchmark_dimensions[n][2];
+				configuration.size[3] = benchmark_dimensions[n][3];
 				configuration.performDCT = t;// DCT type. Currently supported 1, 2, 3 and 4
 				
 				//configuration.keepShaderCode = 1;
@@ -191,7 +235,7 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 				if (!bufferSize) return VKFFT_ERROR_MALLOC_FAILED;
 				for (uint64_t i = 0; i < numBuf; i++) {
 					bufferSize[i] = {};
-					bufferSize[i] = (uint64_t)sizeof(float) * configuration.size[0] * configuration.size[1] * configuration.size[2] / numBuf;
+					bufferSize[i] = (uint64_t)sizeof(float) * configuration.size[0] * configuration.size[1] * configuration.size[2] * configuration.size[3]/ numBuf;
 				}
 #if(VKFFT_BACKEND==0)
 				VkBuffer* buffer = (VkBuffer*)malloc(numBuf * sizeof(VkBuffer));
@@ -262,8 +306,8 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 				resFFT = initializeVkFFT(&app, configuration);
 				if (resFFT == VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT) {
 					if (file_output)
-						fprintf(output, "VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " - UNSUPPORTED\n", t, dims[0], dims[1], dims[2]);
-					printf("VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " - UNSUPPORTED\n", t, dims[0], dims[1], dims[2]);
+						fprintf(output, "VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 "x%" PRIu64 " - UNSUPPORTED\n", t, dims[0], dims[1], dims[2], dims[3]);
+					printf("VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 "x%" PRIu64 " - UNSUPPORTED\n", t, dims[0], dims[1], dims[2], dims[3]);
 					for (uint64_t i = 0; i < numBuf; i++) {
 
 #if(VKFFT_BACKEND==0)
@@ -314,7 +358,7 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 #endif
 				resFFT = performVulkanFFT(vkGPU, &app, &launchParams, -1, num_iter);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
-				float* output_VkFFT = (float*)(malloc(sizeof(float) * dims[0] * dims[1] * dims[2]));
+				float* output_VkFFT = (float*)(malloc(sizeof(float) * dims[0] * dims[1] * dims[2] * dims[3]));
 				if (!output_VkFFT) return VKFFT_ERROR_MALLOC_FAILED;
 				//Transfer data from GPU using staging buffer.
 				shift = 0;
@@ -332,35 +376,33 @@ VkFFTResult sample_16_precision_VkFFT_single_dct(VkGPU* vkGPU, uint64_t file_out
 				double max_difference[2] = { 0,0 };
 				double avg_eps[2] = { 0,0 };
 				double max_eps[2] = { 0,0 };
-				for (uint64_t l = 0; l < dims[2]; l++) {
-					for (uint64_t j = 0; j < dims[1]; j++) {
-						for (uint64_t i = 0; i < dims[0]; i++) {
-							uint64_t loc_i = i;
-							uint64_t loc_j = j;
-							uint64_t loc_l = l;
+				for (uint64_t k = 0; k < dims[3]; k++) {
+					for (uint64_t l = 0; l < dims[2]; l++) {
+						for (uint64_t j = 0; j < dims[1]; j++) {
+							for (uint64_t i = 0; i < dims[0]; i++) {
+								//if (file_output) fprintf(output, "%.2e %.2e - %.2e %.2e \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(i + j * dims[0] + l * dims[0] * dims[1])][0], output_VkFFT[(i + j * dims[0] + l * dims[0] * dims[1])][1]);
 
-							//if (file_output) fprintf(output, "%.2e %.2e - %.2e %.2e \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][0] / N, output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]][1] / N, output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][0], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])][1]);
+								//printf("%.2e - %.2e \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]], output_VkFFT[(i + j * dims[0] + l * dims[0] * dims[1])]);
+								double current_data_norm = sqrt(output_FFTW[i + j * dims[0] + l * dims[0] * dims[1] + k * dims[0] * dims[1] * dims[2]] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1] + k * dims[0] * dims[1] * dims[2]]);
 
-							//printf("%.2e - %.2e \n", output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]], output_VkFFT[(loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1])]);
-							double current_data_norm = sqrt(output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]] * output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]]);
-
-							double current_diff_norm_VkFFT = sqrt((output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]])*(output_VkFFT[loc_i + loc_j * dims[0] + loc_l * dims[0] * dims[1]] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1]]));
-							if (current_diff_norm_VkFFT > max_difference[1]) max_difference[1] = current_diff_norm_VkFFT;
-							avg_difference[1] += current_diff_norm_VkFFT;
-							if ((current_diff_norm_VkFFT / current_data_norm > max_eps[1])) {
-								max_eps[1] = current_diff_norm_VkFFT / current_data_norm;
+								double current_diff_norm_VkFFT = sqrt((output_VkFFT[i + j * dims[0] + l * dims[0] * dims[1] + k * dims[0] * dims[1] * dims[2]] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1] + k * dims[0] * dims[1] * dims[2]]) * (output_VkFFT[i + j * dims[0] + l * dims[0] * dims[1] + k * dims[0] * dims[1] * dims[2]] - output_FFTW[i + j * dims[0] + l * dims[0] * dims[1] + k * dims[0] * dims[1] * dims[2]]));
+								if (current_diff_norm_VkFFT > max_difference[1]) max_difference[1] = current_diff_norm_VkFFT;
+								avg_difference[1] += current_diff_norm_VkFFT;
+								if ((current_diff_norm_VkFFT / current_data_norm > max_eps[1])) {
+									max_eps[1] = current_diff_norm_VkFFT / current_data_norm;
+								}
+								avg_eps[1] += current_diff_norm_VkFFT / current_data_norm;
 							}
-							avg_eps[1] += current_diff_norm_VkFFT / current_data_norm;
+						}
+					}
 				}
-				}
-				}
-				avg_difference[0] /= (dims[0] * dims[1] * dims[2]);
-				avg_eps[0] /= (dims[0] * dims[1] * dims[2]);
-				avg_difference[1] /= (dims[0] * dims[1] * dims[2]);
-				avg_eps[1] /= (dims[0] * dims[1] * dims[2]);
+				avg_difference[0] /= (dims[0] * dims[1] * dims[2] * dims[3]);
+				avg_eps[0] /= (dims[0] * dims[1] * dims[2] * dims[3]);
+				avg_difference[1] /= (dims[0] * dims[1] * dims[2] * dims[3]);
+				avg_eps[1] /= (dims[0] * dims[1] * dims[2] * dims[3]);
 				if (file_output)
-					fprintf(output, "VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.2e max_difference: %.2e avg_eps: %.2e max_eps: %.2e\n", t, dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
-				printf("VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.2e max_difference: %.2e avg_eps: %.2e max_eps: %.2e\n", t, dims[0], dims[1], dims[2], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+					fprintf(output, "VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.2e max_difference: %.2e avg_eps: %.2e max_eps: %.2e\n", t, dims[0], dims[1], dims[2], dims[3], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
+				printf("VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 "x%" PRIu64 " avg_difference: %.2e max_difference: %.2e avg_eps: %.2e max_eps: %.2e\n", t, dims[0], dims[1], dims[2], dims[3], avg_difference[1], max_difference[1], avg_eps[1], max_eps[1]);
 				free(output_VkFFT);
 				for (uint64_t i = 0; i < numBuf; i++) {
 

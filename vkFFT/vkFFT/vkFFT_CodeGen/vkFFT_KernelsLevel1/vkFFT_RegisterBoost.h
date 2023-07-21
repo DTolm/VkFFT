@@ -30,6 +30,7 @@
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel0/vkFFT_MemoryManagement/vkFFT_MemoryTransfers/vkFFT_Transfers.h"
 static inline void appendBoostThreadDataReorder(VkFFTSpecializationConstantsLayout* sc, int type, int start) {
 	if (sc->res != VKFFT_SUCCESS) return;
+	if (sc->fftDim.data.i == 1) return;
 	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	VkContainer temp_int1 = VKFFT_ZERO_INIT;

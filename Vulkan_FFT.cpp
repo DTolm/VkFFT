@@ -55,9 +55,7 @@
 #include "user_benchmark_VkFFT.h"
 #include "sample_0_benchmark_VkFFT_single.h"
 #include "sample_1_benchmark_VkFFT_double.h"
-#if(VKFFT_BACKEND==0)
 #include "sample_2_benchmark_VkFFT_half.h"
-#endif
 #include "sample_3_benchmark_VkFFT_single_3d.h"
 #include "sample_4_benchmark_VkFFT_single_3d_zeropadding.h"
 #include "sample_5_benchmark_VkFFT_single_disableReorderFourStep.h"
@@ -68,9 +66,7 @@
 #ifdef USE_FFTW
 #include "sample_11_precision_VkFFT_single.h"
 #include "sample_12_precision_VkFFT_double.h"
-#if(VKFFT_BACKEND==0)
 #include "sample_13_precision_VkFFT_half.h"
-#endif
 #include "sample_14_precision_VkFFT_single_nonPow2.h"
 #include "sample_15_precision_VkFFT_single_r2c.h"
 #include "sample_16_precision_VkFFT_single_dct.h"
@@ -209,7 +205,8 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 				cl_command_queue commandQueue = clCreateCommandQueue(vkGPU->context, vkGPU->device, 0, &res);
 				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
 				vkGPU->commandQueue = commandQueue;
-				k++;
+				k=numDevices;
+				j=numPlatforms;
 			}
 			else {
 				k++;
@@ -304,13 +301,11 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
         resFFT = sample_1_benchmark_VkFFT_double(vkGPU, file_output, output, isCompilerInitialized);
         break;
     }
-#if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
-    case 2:
+	case 2:
     {
         resFFT = sample_2_benchmark_VkFFT_half(vkGPU, file_output, output, isCompilerInitialized);
         break;
     }
-#endif
     case 3:
     {
         resFFT = sample_3_benchmark_VkFFT_single_3d(vkGPU, file_output, output, isCompilerInitialized);
@@ -359,13 +354,11 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
         resFFT = sample_12_precision_VkFFT_double(vkGPU, file_output, output, isCompilerInitialized);
         break;
     }
-#if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
-    case 13:
+	case 13:
     {
         resFFT = sample_13_precision_VkFFT_half(vkGPU, file_output, output, isCompilerInitialized);
         break;
     }
-#endif
     case 14:
     {
         resFFT = sample_14_precision_VkFFT_single_nonPow2(vkGPU, file_output, output, isCompilerInitialized);
@@ -452,13 +445,11 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
         resFFT = user_benchmark_VkFFT(vkGPU, file_output, output, isCompilerInitialized, userParams);
         break;
     }
-#if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
-    case 202:
+	case 202:
     {
         resFFT = user_benchmark_VkFFT(vkGPU, file_output, output, isCompilerInitialized, userParams);
         break;
     }
-#endif
     case 1000:
     {
         resFFT = sample_1000_VkFFT_single_2_4096(vkGPU, file_output, output, isCompilerInitialized);
@@ -533,7 +524,7 @@ int main(int argc, char* argv[])
 		version_decomposed[0] = version / 10000;
 		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
 		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
-		printf("VkFFT v%d.%d.%d (02-04-2023). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
+		printf("VkFFT v%d.%d.%d (21-07-2023). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
@@ -554,9 +545,7 @@ int main(int argc, char* argv[])
 		printf("	-vkfft X: launch VkFFT sample X:\n");
 		printf("		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n");
 		printf("		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n");
-#if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
-		printf("		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n");
-#endif
+		printf("		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n");	
 		printf("		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n");
 		printf("		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
 		printf("		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n");
@@ -570,9 +559,7 @@ int main(int argc, char* argv[])
 #ifdef USE_cuFFT
 		printf("		11 - VkFFT / cuFFT / FFTW C2C precision test in single precision\n");
 		printf("		12 - VkFFT / cuFFT / FFTW C2C precision test in double precision\n");
-#if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
 		printf("		13 - VkFFT / cuFFT / FFTW C2C precision test in half precision\n");
-#endif
 		printf("		14 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in single precision\n");
 		printf("		15 - VkFFT / cuFFT / FFTW R2C+C2R precision test in single precision\n");
 		printf("		16 - VkFFT / FFTW R2R DCT-I, II, III and IV precision test in single precision\n");
@@ -581,9 +568,7 @@ int main(int argc, char* argv[])
 #elif USE_rocFFT
 		printf("		11 - VkFFT / rocFFT / FFTW C2C precision test in single precision\n");
 		printf("		12 - VkFFT / rocFFT / FFTW C2C precision test in double precision\n");
-#if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
 		printf("		13 - VkFFT / FFTW C2C precision test in half precision\n");
-#endif
 		printf("		14 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in single precision\n");
 		printf("		15 - VkFFT / rocFFT / FFTW R2C+C2R precision test in single precision\n");
 		printf("		16 - VkFFT / FFTW R2R DCT-I, II, III and IV precision test in single precision\n");
@@ -592,9 +577,7 @@ int main(int argc, char* argv[])
 #else
 		printf("		11 - VkFFT / FFTW C2C precision test in single precision\n");
 		printf("		12 - VkFFT / FFTW C2C precision test in double precision\n");
-#if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
 		printf("		13 - VkFFT / FFTW C2C precision test in half precision\n");
-#endif
 		printf("		14 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in single precision\n");
 		printf("		15 - VkFFT / FFTW R2C+C2R precision test in single precision\n");
 		printf("		16 - VkFFT / FFTW R2R DCT-I, II, III and IV precision test in single precision\n");
@@ -619,13 +602,8 @@ int main(int argc, char* argv[])
 		printf("		1003 - FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
 		printf("	-benchmark_vkfft: run VkFFT benchmark on a user-defined system:\n\
 		-X uint, -Y uint, -Z uint - FFT dimensions (default Y and Z are 1)\n");
-#if ((VKFFT_BACKEND==0)&&(VK_API_VERSION>10))
 		printf("\
 		-P uint - precision (0 - single, 1 - double, 2 - half) (default 0)\n");
-#else
-		printf("\
-		-P uint - precision (0 - single, 1 - double) (default 0)\n");
-#endif
 		printf("\
 		-B uint - number of batched systems (default 1)\n\
 		-N uint - number of consecutive FFT+iFFT iterations (default 1)\n\

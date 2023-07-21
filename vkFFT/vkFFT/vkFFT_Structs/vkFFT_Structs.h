@@ -90,7 +90,7 @@ typedef struct {
 
 	//required parameters:
 	uint64_t FFTdim; //FFT dimensionality (1, 2 or 3)
-	uint64_t size[3]; // WHD -system dimensions
+	uint64_t size[VKFFT_MAX_FFT_DIMENSIONS]; // WHD -system dimensions
 
 #if(VKFFT_BACKEND==0)
 	VkPhysicalDevice* physicalDevice;//pointer to Vulkan physical device, obtained from vkEnumeratePhysicalDevices
@@ -193,9 +193,9 @@ typedef struct {
 	uint64_t inverseReturnToInputBuffer;//return data to the input buffer in inverse transform (0 - off, 1 - on). isInputFormatted must be enabled
 	uint64_t numberBatches;// N - used to perform multiple batches of initial data. Default 1
 	uint64_t useUint64;// use 64-bit addressing mode in generated kernels
-	uint64_t omitDimension[3];//disable FFT for this dimension (0 - FFT enabled, 1 - FFT disabled). Default 0. Doesn't work for R2C dimension 0 for now. Doesn't work with convolutions.
+	uint64_t omitDimension[VKFFT_MAX_FFT_DIMENSIONS];//disable FFT for this dimension (0 - FFT enabled, 1 - FFT disabled). Default 0. Doesn't work for R2C dimension 0 for now. Doesn't work with convolutions.
 	uint64_t performBandwidthBoost;//try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise 
-	uint64_t groupedBatch[3];
+	uint64_t groupedBatch[VKFFT_MAX_FFT_DIMENSIONS];
 
 	uint64_t doublePrecision; //perform calculations in double precision (0 - off, 1 - on).
 	uint64_t halfPrecision; //perform calculations in half precision (0 - off, 1 - on)
@@ -212,11 +212,11 @@ typedef struct {
 	uint64_t makeForwardPlanOnly; //generate code only for forward FFT (0 - off, 1 - on)
 	uint64_t makeInversePlanOnly; //generate code only for inverse FFT (0 - off, 1 - on)
 
-	uint64_t bufferStride[3];//buffer strides - default set to x - x*y - x*y*z values
+	uint64_t bufferStride[VKFFT_MAX_FFT_DIMENSIONS];//buffer strides - default set to x - x*y - x*y*z values
 	uint64_t isInputFormatted; //specify if input buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
 	uint64_t isOutputFormatted; //specify if output buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
-	uint64_t inputBufferStride[3];//input buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
-	uint64_t outputBufferStride[3];//output buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
+	uint64_t inputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];//input buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
+	uint64_t outputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];//output buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
 
 	uint64_t considerAllAxesStrided;//will create plan for nonstrided axis similar as a strided axis - used with disableReorderFourStep to get the same layout for Bluestein kernel (0 - off, 1 - on)
 	uint64_t keepShaderCode;//will keep shader code and print all executed shaders during the plan execution in order (0 - off, 1 - on)
@@ -244,9 +244,9 @@ typedef struct {
 	uint64_t fixMaxRaderPrimeFFT;//switch to Bluestein's algorithm for radix primes from this number. Switch may happen earlier if prime can't fit in shared memory. Default is 16384, which is bigger than most current GPU's shared memory.
 
 	//optional zero padding control parameters: (default 0 if not stated otherwise)
-	uint64_t performZeropadding[3]; // don't read some data/perform computations if some input sequences are zeropadded for each axis (0 - off, 1 - on)
-	uint64_t fft_zeropad_left[3];//specify start boundary of zero block in the system for each axis
-	uint64_t fft_zeropad_right[3];//specify end boundary of zero block in the system for each axis
+	uint64_t performZeropadding[VKFFT_MAX_FFT_DIMENSIONS]; // don't read some data/perform computations if some input sequences are zeropadded for each axis (0 - off, 1 - on)
+	uint64_t fft_zeropad_left[VKFFT_MAX_FFT_DIMENSIONS];//specify start boundary of zero block in the system for each axis
+	uint64_t fft_zeropad_right[VKFFT_MAX_FFT_DIMENSIONS];//specify end boundary of zero block in the system for each axis
 	uint64_t frequencyZeroPadding; //set to 1 if zeropadding of frequency domain, default 0 - spatial zeropadding
 
 	//optional convolution control parameters: (default 0 if not stated otherwise)
@@ -272,8 +272,8 @@ typedef struct {
 	//automatically filled based on device info (still can be reconfigured by user):
 	uint64_t computeCapabilityMajor; // CUDA/HIP compute capability of the device
 	uint64_t computeCapabilityMinor; // CUDA/HIP compute capability of the device
-	uint64_t maxComputeWorkGroupCount[3]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
-	uint64_t maxComputeWorkGroupSize[3]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
+	uint64_t maxComputeWorkGroupCount[VKFFT_MAX_FFT_DIMENSIONS]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
+	uint64_t maxComputeWorkGroupSize[VKFFT_MAX_FFT_DIMENSIONS]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
 	uint64_t maxThreadsNum; //max number of threads from VkPhysicalDeviceLimits
 	uint64_t sharedMemorySizeStatic; //available for static allocation shared memory size, in bytes
 	uint64_t sharedMemorySize; //available for allocation shared memory size, in bytes
@@ -372,6 +372,7 @@ typedef enum VkFFTResult {
 	VKFFT_ERROR_PLAN_NOT_INITIALIZED = 4,
 	VKFFT_ERROR_NULL_TEMP_PASSED = 5,
 	VKFFT_ERROR_MATH_FAILED = 6,
+    VKFFT_ERROR_FFTdim_GT_MAX_FFT_DIMENSIONS = 7,
 	VKFFT_ERROR_INVALID_PHYSICAL_DEVICE = 1001,
 	VKFFT_ERROR_INVALID_DEVICE = 1002,
 	VKFFT_ERROR_INVALID_QUEUE = 1003,
@@ -477,6 +478,8 @@ static inline const char* getVkFFTErrorString(VkFFTResult result)
 		return "VKFFT_ERROR_NULL_TEMP_PASSED";
 	case VKFFT_ERROR_MATH_FAILED:
 		return "VKFFT_ERROR_MATH_FAILED";
+    case VKFFT_ERROR_FFTdim_GT_MAX_FFT_DIMENSIONS:
+        return "VKFFT_ERROR_FFTdim_GT_MAX_FFT_DIMENSIONS";
 	case VKFFT_ERROR_INVALID_PHYSICAL_DEVICE:
 		return "VKFFT_ERROR_INVALID_PHYSICAL_DEVICE";
 	case VKFFT_ERROR_INVALID_DEVICE:
@@ -694,8 +697,8 @@ struct VkFFTRaderContainer {
 typedef struct {
 	VkFFTResult res;
 	long double double_PI; 
-
-	VkContainer size[3];
+    int numFFTdims;
+	VkContainer size[VKFFT_MAX_FFT_DIMENSIONS];
 	VkContainer localSize[3];
 	int numSubgroups;
 	VkContainer sourceFFTSize;
@@ -732,21 +735,21 @@ typedef struct {
 	int performDCT;
 	int performBandwidthBoost;
 	int frequencyZeropadding;
-	int performZeropaddingFull[3]; // don't do read/write if full sequence is omitted
-	int performZeropaddingInput[3]; // don't read if input is zeropadded (0 - off, 1 - on)
-	int performZeropaddingOutput[3]; // don't write if output is zeropadded (0 - off, 1 - on)
-	VkContainer fft_zeropad_left_full[3];
-	VkContainer fft_zeropad_left_read[3];
-	VkContainer fft_zeropad_left_write[3];
-	VkContainer fft_zeropad_right_full[3];
-	VkContainer fft_zeropad_right_read[3];
-	VkContainer fft_zeropad_right_write[3];
-	VkContainer fft_zeropad_Bluestein_left_read[3];
-	VkContainer fft_zeropad_Bluestein_left_write[3];
-	VkContainer fft_zeropad_Bluestein_right_read[3];
-	VkContainer fft_zeropad_Bluestein_right_write[3];
-	VkContainer inputStride[5];
-	VkContainer outputStride[5];
+	int performZeropaddingFull[VKFFT_MAX_FFT_DIMENSIONS]; // don't do read/write if full sequence is omitted
+	int performZeropaddingInput[VKFFT_MAX_FFT_DIMENSIONS]; // don't read if input is zeropadded (0 - off, 1 - on)
+	int performZeropaddingOutput[VKFFT_MAX_FFT_DIMENSIONS]; // don't write if output is zeropadded (0 - off, 1 - on)
+	VkContainer fft_zeropad_left_full[VKFFT_MAX_FFT_DIMENSIONS];
+	VkContainer fft_zeropad_left_read[VKFFT_MAX_FFT_DIMENSIONS];
+	VkContainer fft_zeropad_left_write[VKFFT_MAX_FFT_DIMENSIONS];
+	VkContainer fft_zeropad_right_full[VKFFT_MAX_FFT_DIMENSIONS];
+	VkContainer fft_zeropad_right_read[VKFFT_MAX_FFT_DIMENSIONS];
+	VkContainer fft_zeropad_right_write[VKFFT_MAX_FFT_DIMENSIONS];
+	VkContainer fft_zeropad_Bluestein_left_read[VKFFT_MAX_FFT_DIMENSIONS];
+	VkContainer fft_zeropad_Bluestein_left_write[VKFFT_MAX_FFT_DIMENSIONS];
+	VkContainer fft_zeropad_Bluestein_right_read[VKFFT_MAX_FFT_DIMENSIONS];
+	VkContainer fft_zeropad_Bluestein_right_write[VKFFT_MAX_FFT_DIMENSIONS];
+	VkContainer inputStride[VKFFT_MAX_FFT_DIMENSIONS+2];
+	VkContainer outputStride[VKFFT_MAX_FFT_DIMENSIONS+2];
 	VkContainer fft_dim_full;
 	VkContainer stageStartSize;
 	VkContainer firstStageStartSize;
@@ -759,7 +762,7 @@ typedef struct {
 	VkContainer outputOffset;
 	int reorderFourStep;
 	int pushConstantsStructSize;
-	int performWorkGroupShift[3];
+	int performWorkGroupShift[VKFFT_MAX_FFT_DIMENSIONS];
 	int performPostCompilationInputOffset;
 	int performPostCompilationOutputOffset;
 	int performPostCompilationKernelOffset;
@@ -980,8 +983,8 @@ typedef struct {
 	MTL::Buffer* dataUintBuffer;
 #endif
 	//specify what can be in layout
-	uint64_t performWorkGroupShift[3];
-	uint64_t workGroupShift[3];
+	uint64_t performWorkGroupShift[VKFFT_MAX_FFT_DIMENSIONS];
+	uint64_t workGroupShift[VKFFT_MAX_FFT_DIMENSIONS];
 
 	uint64_t performPostCompilationInputOffset;
 	uint64_t inputOffset;
@@ -1077,15 +1080,15 @@ typedef struct {
 } VkFFTAxis;
 
 typedef struct {
-	uint64_t actualFFTSizePerAxis[3][3];
-	uint64_t numAxisUploads[3];
-	uint64_t axisSplit[3][4];
-	VkFFTAxis axes[3][4];
+	uint64_t actualFFTSizePerAxis[VKFFT_MAX_FFT_DIMENSIONS][VKFFT_MAX_FFT_DIMENSIONS];
+	uint64_t numAxisUploads[VKFFT_MAX_FFT_DIMENSIONS];
+	uint64_t axisSplit[VKFFT_MAX_FFT_DIMENSIONS][4];
+	VkFFTAxis axes[VKFFT_MAX_FFT_DIMENSIONS][4];
 
 	uint64_t multiUploadR2C;
-	uint64_t actualPerformR2CPerAxis[3]; // automatically specified, shows if R2C is actually performed or inside FFT or as a separate step
+	uint64_t actualPerformR2CPerAxis[VKFFT_MAX_FFT_DIMENSIONS]; // automatically specified, shows if R2C is actually performed or inside FFT or as a separate step
 	VkFFTAxis R2Cdecomposition;
-	VkFFTAxis inverseBluesteinAxes[3][4];
+	VkFFTAxis inverseBluesteinAxes[VKFFT_MAX_FFT_DIMENSIONS][4];
 } VkFFTPlan;
 typedef struct {
 	VkFFTConfiguration configuration;
@@ -1096,46 +1099,46 @@ typedef struct {
 	uint64_t firstAxis;
 	uint64_t lastAxis;
 	//Bluestein buffers reused among plans
-	uint64_t useBluesteinFFT[3];
+	uint64_t useBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
 #if(VKFFT_BACKEND==0)
-	VkDeviceMemory bufferRaderUintLUTDeviceMemory[3][4];
-	VkBuffer bufferRaderUintLUT[3][4];
-	VkDeviceMemory bufferBluesteinDeviceMemory[3];
-	VkDeviceMemory bufferBluesteinFFTDeviceMemory[3];
-	VkDeviceMemory bufferBluesteinIFFTDeviceMemory[3];
-	VkBuffer bufferBluestein[3];
-	VkBuffer bufferBluesteinFFT[3];
-	VkBuffer bufferBluesteinIFFT[3];
+	VkDeviceMemory bufferRaderUintLUTDeviceMemory[VKFFT_MAX_FFT_DIMENSIONS][4];
+	VkBuffer bufferRaderUintLUT[VKFFT_MAX_FFT_DIMENSIONS][4];
+	VkDeviceMemory bufferBluesteinDeviceMemory[VKFFT_MAX_FFT_DIMENSIONS];
+	VkDeviceMemory bufferBluesteinFFTDeviceMemory[VKFFT_MAX_FFT_DIMENSIONS];
+	VkDeviceMemory bufferBluesteinIFFTDeviceMemory[VKFFT_MAX_FFT_DIMENSIONS];
+	VkBuffer bufferBluestein[VKFFT_MAX_FFT_DIMENSIONS];
+	VkBuffer bufferBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
+	VkBuffer bufferBluesteinIFFT[VKFFT_MAX_FFT_DIMENSIONS];
 #elif(VKFFT_BACKEND==1)
-	void* bufferRaderUintLUT[3][4];
-	void* bufferBluestein[3];
-	void* bufferBluesteinFFT[3];
-	void* bufferBluesteinIFFT[3];
+	void* bufferRaderUintLUT[VKFFT_MAX_FFT_DIMENSIONS][4];
+	void* bufferBluestein[VKFFT_MAX_FFT_DIMENSIONS];
+	void* bufferBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
+	void* bufferBluesteinIFFT[VKFFT_MAX_FFT_DIMENSIONS];
 #elif(VKFFT_BACKEND==2)
-	void* bufferRaderUintLUT[3][4];
-	void* bufferBluestein[3];
-	void* bufferBluesteinFFT[3];
-	void* bufferBluesteinIFFT[3];
+	void* bufferRaderUintLUT[VKFFT_MAX_FFT_DIMENSIONS][4];
+	void* bufferBluestein[VKFFT_MAX_FFT_DIMENSIONS];
+	void* bufferBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
+	void* bufferBluesteinIFFT[VKFFT_MAX_FFT_DIMENSIONS];
 #elif(VKFFT_BACKEND==3)
-	cl_mem bufferRaderUintLUT[3][4];
-	cl_mem bufferBluestein[3];
-	cl_mem bufferBluesteinFFT[3];
-	cl_mem bufferBluesteinIFFT[3];
+	cl_mem bufferRaderUintLUT[VKFFT_MAX_FFT_DIMENSIONS][4];
+	cl_mem bufferBluestein[VKFFT_MAX_FFT_DIMENSIONS];
+	cl_mem bufferBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
+	cl_mem bufferBluesteinIFFT[VKFFT_MAX_FFT_DIMENSIONS];
 #elif(VKFFT_BACKEND==4)
-	void* bufferRaderUintLUT[3][4];
-	void* bufferBluestein[3];
-	void* bufferBluesteinFFT[3];
-	void* bufferBluesteinIFFT[3];
+	void* bufferRaderUintLUT[VKFFT_MAX_FFT_DIMENSIONS][4];
+	void* bufferBluestein[VKFFT_MAX_FFT_DIMENSIONS];
+	void* bufferBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
+	void* bufferBluesteinIFFT[VKFFT_MAX_FFT_DIMENSIONS];
 #elif(VKFFT_BACKEND==5)
-	MTL::Buffer* bufferRaderUintLUT[3][4];
-	MTL::Buffer* bufferBluestein[3];
-	MTL::Buffer* bufferBluesteinFFT[3];
-	MTL::Buffer* bufferBluesteinIFFT[3];
+	MTL::Buffer* bufferRaderUintLUT[VKFFT_MAX_FFT_DIMENSIONS][4];
+	MTL::Buffer* bufferBluestein[VKFFT_MAX_FFT_DIMENSIONS];
+	MTL::Buffer* bufferBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
+	MTL::Buffer* bufferBluesteinIFFT[VKFFT_MAX_FFT_DIMENSIONS];
 #endif
-	uint64_t bufferRaderUintLUTSize[3][4];
-	uint64_t bufferBluesteinSize[3];
-	void* applicationBluesteinString[3];
-	uint64_t applicationBluesteinStringSize[3];
+	uint64_t bufferRaderUintLUTSize[VKFFT_MAX_FFT_DIMENSIONS][4];
+	uint64_t bufferBluesteinSize[VKFFT_MAX_FFT_DIMENSIONS];
+	void* applicationBluesteinString[VKFFT_MAX_FFT_DIMENSIONS];
+	uint64_t applicationBluesteinStringSize[VKFFT_MAX_FFT_DIMENSIONS];
 
 	uint64_t numRaderFFTPrimes;
 	uint64_t rader_primes[30];

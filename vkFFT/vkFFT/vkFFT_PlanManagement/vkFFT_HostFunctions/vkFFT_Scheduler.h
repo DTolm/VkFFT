@@ -1952,9 +1952,12 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 
 	int nonStridedAxisId = (app->configuration.considerAllAxesStrided) ? -1 : 0;
 	int max_rhs = 1;
-	for (int i = 0; i < 3; i++) {
+	for (int i = 0; i < app->configuration.FFTdim; i++) {
 		FFTPlan->actualFFTSizePerAxis[axis_id][i] = app->configuration.size[i];
 		if ((FFTPlan->actualFFTSizePerAxis[axis_id][i] > 0)) max_rhs *= FFTPlan->actualFFTSizePerAxis[axis_id][i];
+	}
+	for (int i = app->configuration.FFTdim; i < VKFFT_MAX_FFT_DIMENSIONS; i++) {
+		FFTPlan->actualFFTSizePerAxis[axis_id][i] = 1;
 	}
 	if (app->configuration.numberBatches > app->actualNumBatches)
 		max_rhs *= app->configuration.numberBatches;
@@ -2588,21 +2591,35 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	}
 	if (app->configuration.tempBufferSize[0] == 0) {
 		if ((app->configuration.performR2C) && (axis_id == 0)) {
-			if (FFTPlan->multiUploadR2C)
-				app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+			if (FFTPlan->multiUploadR2C) {
+				app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+				for (int i = 1; i < app->configuration.FFTdim; i++)
+					app->configuration.tempBufferSize[0] *= FFTPlan->actualFFTSizePerAxis[axis_id][i];
+		
+			}
 		}
 		else {
-			app->configuration.tempBufferSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+			app->configuration.tempBufferSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+			for (int i = 1; i < app->configuration.FFTdim; i++)
+				app->configuration.tempBufferSize[0] *= FFTPlan->actualFFTSizePerAxis[axis_id][i];
 		}
 	}
 	if (app->useBluesteinFFT[axis_id]) {
 		if ((app->configuration.performR2C) && (axis_id == 0)) {
 			if (FFTPlan->multiUploadR2C) {
-				if ((FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+				uint64_t tempSize = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+				for (int i = 1; i < app->configuration.FFTdim; i++)
+					tempSize *= FFTPlan->actualFFTSizePerAxis[axis_id][i];
+		
+				if (tempSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = tempSize;
 			}
 		}
 		else {
-			if (FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] * FFTPlan->actualFFTSizePerAxis[axis_id][1] * FFTPlan->actualFFTSizePerAxis[axis_id][2] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+			uint64_t tempSize = FFTPlan->actualFFTSizePerAxis[axis_id][0] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+			for (int i = 1; i < app->configuration.FFTdim; i++)
+				tempSize *= FFTPlan->actualFFTSizePerAxis[axis_id][i];
+		
+			if (tempSize > app->configuration.tempBufferSize[0]) app->configuration.tempBufferSize[0] = tempSize;
 		}
 	}
 	if (((app->configuration.reorderFourStep) && (!app->useBluesteinFFT[axis_id]))) {
@@ -2898,7 +2915,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				axes[k].specializationConstants.numStages++;
 			}
 		}
-
+		
 		//add more registers for Rader FFT if needed
 		if (axes[k].specializationConstants.useRaderMult) {
 			axes[k].specializationConstants.rader_min_registers = rader_min_registers;
@@ -2931,7 +2948,10 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		axes[k].specializationConstants.registerBoost = registerBoost;
 		axes[k].specializationConstants.registers_per_thread = registers_per_thread;
 		axes[k].specializationConstants.min_registers_per_thread = min_registers_per_thread;
-
+		if (axes[k].specializationConstants.registers_per_thread == 0) {
+			axes[k].specializationConstants.registers_per_thread = 2;
+			axes[k].specializationConstants.min_registers_per_thread = 2;
+		}
 		if (switchRegisterBoost > 0) {
 			axes[k].specializationConstants.stageRadix[axes[k].specializationConstants.numStages] = switchRegisterBoost;
 			axes[k].specializationConstants.numStages++;

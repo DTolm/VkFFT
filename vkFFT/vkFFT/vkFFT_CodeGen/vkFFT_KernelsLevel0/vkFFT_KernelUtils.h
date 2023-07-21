@@ -79,11 +79,21 @@ static inline void appendExtensions(VkFFTSpecializationConstantsLayout* sc) {
 		VkAppendLine(sc);
 	}
 #elif(VKFFT_BACKEND==1)
+	if ((((sc->floatTypeInputMemoryCode / 10) % 10) == 0) || (((sc->floatTypeOutputMemoryCode / 10) % 10) == 0) || (((sc->floatTypeCode / 10) % 10) == 0)) {
+		sc->tempLen = sprintf(sc->tempStr, "\
+#include <%s/include/cuda_fp16.h>\n", CUDA_TOOLKIT_ROOT_DIR);
+		VkAppendLine(sc);
+	}
 #elif(VKFFT_BACKEND==2)
 #ifdef VKFFT_OLD_ROCM
 	sc->tempLen = sprintf(sc->tempStr, "\
 #include <hip/hip_runtime.h>\n");
 	VkAppendLine(sc);
+	if ((((sc->floatTypeInputMemoryCode / 10) % 10) == 0) || (((sc->floatTypeOutputMemoryCode / 10) % 10) == 0) || (((sc->floatTypeCode / 10) % 10) == 0)) {
+		sc->tempLen = sprintf(sc->tempStr, "\
+#include <hip/hip_fp16.h>\n");
+		VkAppendLine(sc);
+	}
 #endif
 #elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
 	if ((((sc->floatTypeCode / 10) % 10) == 2) || (sc->useUint64)) {
@@ -91,6 +101,11 @@ static inline void appendExtensions(VkFFTSpecializationConstantsLayout* sc) {
 #pragma OPENCL EXTENSION cl_khr_fp64 : enable\n\n");
 		VkAppendLine(sc);
 	}
+    if ((((sc->floatTypeInputMemoryCode / 10) % 10) == 0) || (((sc->floatTypeOutputMemoryCode / 10) % 10) == 0) || (((sc->floatTypeCode / 10) % 10) == 0)) {
+        sc->tempLen = sprintf(sc->tempStr, "\
+#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n\n");
+        VkAppendLine(sc);
+    }
 #elif(VKFFT_BACKEND==5)
 	sc->tempLen = sprintf(sc->tempStr, "\
 #include <metal_math>\n\

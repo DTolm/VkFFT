@@ -33,7 +33,7 @@ static inline void setReadToRegisters(VkFFTSpecializationConstantsLayout* sc, in
 	switch (readType) {
 	case 0: //single_c2c
 	{
-		if ((sc->localSize[1].data.i > 1) || ((sc->performR2C) && (sc->actualInverse)) || (sc->localSize[0].data.i * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim.data.i) || (sc->rader_generator[0] > 0))
+		if ((sc->localSize[1].data.i > 1) || ((sc->performR2C) && (sc->actualInverse)) || ((sc->fftDim.data.i>1)&&((sc->localSize[0].data.i * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim.data.i) || (sc->rader_generator[0] > 0))))
 			sc->readToRegisters = 0;
 		else
 			sc->readToRegisters = 1;
@@ -41,7 +41,7 @@ static inline void setReadToRegisters(VkFFTSpecializationConstantsLayout* sc, in
 	}
 	case 1: //grouped_c2c
 	{
-		if ((sc->localSize[1].data.i * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim.data.i) || (sc->rader_generator[0] > 0))
+		if ((sc->fftDim.data.i>1)&&(((sc->localSize[1].data.i * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim.data.i) || (sc->rader_generator[0] > 0))))
 			sc->readToRegisters = 0;
 		else
 			sc->readToRegisters = 1;
@@ -49,7 +49,7 @@ static inline void setReadToRegisters(VkFFTSpecializationConstantsLayout* sc, in
 	}
 	case 2: //single_c2c_strided
 	{
-		if ((sc->localSize[1].data.i * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim.data.i) || (sc->rader_generator[0] > 0))
+		if ((sc->fftDim.data.i>1)&&(((sc->localSize[1].data.i * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim.data.i) || (sc->rader_generator[0] > 0))))
 			sc->readToRegisters = 0;
 		else
 			sc->readToRegisters = 1;
@@ -57,7 +57,7 @@ static inline void setReadToRegisters(VkFFTSpecializationConstantsLayout* sc, in
 	}
 	case 5://single_r2c
 	{
-		if ((sc->stridedSharedLayout) || (sc->localSize[1].data.i > 1) || (sc->localSize[0].data.i * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim.data.i) || (sc->rader_generator[0] > 0))
+		if ((sc->stridedSharedLayout) || (sc->localSize[1].data.i > 1) || (sc->fftDim.data.i == 1) || ((sc->fftDim.data.i>1)&&((sc->localSize[0].data.i * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim.data.i) || (sc->rader_generator[0] > 0))))
 			sc->readToRegisters = 0;
 		else
 			sc->readToRegisters = 1;
@@ -99,7 +99,7 @@ static inline void setWriteFromRegisters(VkFFTSpecializationConstantsLayout* sc,
 	switch (writeType) {
 	case 0: //single_c2c
 	{
-		if ((sc->localSize[1].data.i > 1) || (sc->localSize[0].data.i * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim.data.i) || (sc->rader_generator[sc->numStages - 1] > 0)) {
+		if ((sc->localSize[1].data.i > 1) || ((sc->fftDim.data.i>1)&&((sc->localSize[0].data.i * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim.data.i) || (sc->rader_generator[sc->numStages - 1] > 0)))) {
 			sc->writeFromRegisters = 0;
 		}
 		else
@@ -108,7 +108,7 @@ static inline void setWriteFromRegisters(VkFFTSpecializationConstantsLayout* sc,
 	}
 	case 1: //grouped_c2c
 	{
-		if ((sc->localSize[1].data.i * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim.data.i) || (sc->rader_generator[sc->numStages - 1] > 0)) {
+		if ((sc->fftDim.data.i>1)&&(((sc->localSize[1].data.i * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim.data.i) || (sc->rader_generator[sc->numStages - 1] > 0)))) {
 			sc->writeFromRegisters = 0;
 		}
 		else
@@ -117,7 +117,7 @@ static inline void setWriteFromRegisters(VkFFTSpecializationConstantsLayout* sc,
 	}
 	case 2: //single_c2c_strided
 	{
-		if ((sc->localSize[1].data.i * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim.data.i) || (sc->rader_generator[sc->numStages - 1] > 0)) {
+		if ((sc->fftDim.data.i>1)&&(((sc->localSize[1].data.i * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim.data.i) || (sc->rader_generator[sc->numStages - 1] > 0)))) {
 			sc->writeFromRegisters = 0;
 		}
 		else
@@ -131,7 +131,7 @@ static inline void setWriteFromRegisters(VkFFTSpecializationConstantsLayout* sc,
 	}
 	case 6: //single_c2r
 	{
-		if ((sc->stridedSharedLayout) || (sc->localSize[1].data.i > 1) || (sc->localSize[0].data.i * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim.data.i) || (sc->rader_generator[sc->numStages - 1] > 0)) {
+		if ((sc->stridedSharedLayout) || (sc->localSize[1].data.i > 1) || (sc->fftDim.data.i==1) || ((sc->fftDim.data.i>1)&&((sc->localSize[0].data.i * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim.data.i) || (sc->rader_generator[sc->numStages - 1] > 0)))) {
 			sc->writeFromRegisters = 0;
 		}
 		else
@@ -153,72 +153,68 @@ static inline void appendOffset(VkFFTSpecializationConstantsLayout* sc, int read
 
 	VkContainer* bufferStride = (readWrite) ? sc->outputStride : sc->inputStride;
 
-	if (sc->size[2].data.i > 1) {
+	if (sc->numFFTdims > 2) {
 		if (sc->numCoordinates * sc->matrixConvolution * sc->numBatches.data.i > 1) {
 			if (sc->performWorkGroupShift[2]) {
 				VkMul(sc, &sc->tempInt, &sc->workGroupShiftZ, &sc->gl_WorkGroupSize_z, 0);
 				VkAdd(sc, &sc->tempInt, &sc->tempInt, &sc->gl_GlobalInvocationID_z);
 				VkMod(sc, &sc->tempInt, &sc->tempInt, &sc->dispatchZactualFFTSize);
-				if (sc->axis_id == 2)
-					VkCheckZeropad(sc, &sc->tempInt, 1);
-				else
-					VkCheckZeropad(sc, &sc->tempInt, 2);
-				VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[2], 0);
-				VkAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->tempInt);
 			}
 			else {
 				VkMod(sc, &sc->tempInt, &sc->gl_GlobalInvocationID_z, &sc->dispatchZactualFFTSize);
-				if (sc->axis_id == 2)
-					VkCheckZeropad(sc, &sc->tempInt, 1);
-				else
-					VkCheckZeropad(sc, &sc->tempInt, 2);
-				VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[2], 0);
-				VkAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->tempInt);
 			}
 		}
 		else {
 			if (sc->performWorkGroupShift[2]) {
 				VkMul(sc, &sc->tempInt, &sc->workGroupShiftZ, &sc->gl_WorkGroupSize_z, 0);
 				VkAdd(sc, &sc->tempInt, &sc->tempInt, &sc->gl_GlobalInvocationID_z);
-				if (sc->axis_id == 2)
-					VkCheckZeropad(sc, &sc->tempInt, 1);
-				else
-					VkCheckZeropad(sc, &sc->tempInt, 2);
-				VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[2], 0);
-				VkAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->tempInt);
 			}
 			else {
-				if (sc->axis_id == 2)
-					VkCheckZeropad(sc, &sc->gl_GlobalInvocationID_z, 1);
-				else
-					VkCheckZeropad(sc, &sc->gl_GlobalInvocationID_z, 2);
-				VkMul(sc, &sc->tempInt, &sc->gl_GlobalInvocationID_z, &bufferStride[2], 0);
-				VkAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->tempInt);
+                VkMov(sc, &sc->tempInt, &sc->gl_GlobalInvocationID_z);
 			}
 		}
+        
+        /*if (sc->axis_id == 2)
+            VkCheckZeropad(sc, &sc->tempInt, 1);
+        else
+            VkCheckZeropad(sc, &sc->tempInt, 2);
+        VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[2], 0);
+        VkAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->tempInt);*/
+        int locStrideOrder = 2;
+        for (int i = 1; i < sc->numFFTdims; i++){
+            if (((i != sc->axis_id)&&(sc->axis_id > 0)) || ((i>1) && (sc->axis_id == 0))) {
+                VkMod(sc, &sc->inoutID_y, &sc->tempInt, &sc->size[i]);
+                VkCheckZeropad(sc, &sc->inoutID_y, i);
+                VkMul(sc, &sc->inoutID_y, &sc->inoutID_y, &bufferStride[locStrideOrder], 0);
+                VkAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->inoutID_y);
+				if ((i!=(sc->numFFTdims-1) && (sc->axis_id != (sc->numFFTdims-1))) || ((i!=(sc->numFFTdims-2)) && (sc->axis_id == (sc->numFFTdims-1))))
+					VkDiv(sc, &sc->tempInt, &sc->tempInt, &sc->size[i]);
+                locStrideOrder++;
+            }
+        }
 	}
 	int64_t maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
 	if (sc->numCoordinates * sc->matrixConvolution > 1) {
 		VkDiv(sc, &sc->tempInt, &sc->gl_GlobalInvocationID_z, &sc->dispatchZactualFFTSize);
 		temp_int.data.i = maxCoordinate;
 		VkMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-		VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[3], 0);
+		VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[sc->numFFTdims], 0);
 		VkAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->tempInt);
 	}
 	if ((sc->matrixConvolution > 1) && (sc->convolutionStep)) {
 		maxCoordinate = 1;
-		VkMul(sc, &temp_int, &sc->coordinate, &bufferStride[3], 0);
+		VkMul(sc, &temp_int, &sc->coordinate, &bufferStride[sc->numFFTdims], 0);
 		VkAdd(sc, &sc->shiftZ, &sc->shiftZ, &temp_int);
 	}
 	if ((sc->numBatches.data.i > 1) || (sc->numKernels.data.i > 1)) {
 		if (sc->convolutionStep && (sc->numKernels.data.i > 1)) {
-			VkMul(sc, &sc->tempInt, &sc->batchID, &bufferStride[4], 0);
+			VkMul(sc, &sc->tempInt, &sc->batchID, &bufferStride[sc->numFFTdims+1], 0);
 			VkAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->tempInt);
 		}
 		else {
 			temp_int.data.i = sc->dispatchZactualFFTSize.data.i * maxCoordinate;
 			VkDiv(sc, &sc->tempInt, &sc->gl_GlobalInvocationID_z, &temp_int);
-			VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[4], 0);
+			VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[sc->numFFTdims+1], 0);
 			VkAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->tempInt);
 
 		}
@@ -308,56 +304,70 @@ static inline void appendKernelOffset(VkFFTSpecializationConstantsLayout* sc, in
 			VkSetToZero(sc, &sc->blockInvocationID);
 		}
 	}
-	if (sc->size[2].data.i > 1) {
+    if (sc->numFFTdims > 2) {
 		if (sc->numCoordinates * sc->matrixConvolution * sc->numBatches.data.i > 1) {
 			if (sc->performWorkGroupShift[2]) {
 				VkMul(sc, &sc->tempInt, &sc->workGroupShiftZ, &sc->gl_WorkGroupSize_z, 0);
 				VkAdd(sc, &sc->tempInt, &sc->tempInt, &sc->gl_GlobalInvocationID_z);
 				VkMod(sc, &sc->tempInt, &sc->tempInt, &sc->dispatchZactualFFTSize);
-				VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[2], 0);
-				VkAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &sc->tempInt);
+                //VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[2], 0);
+                //VkAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &sc->tempInt);
 			}
 			else {
 				VkMod(sc, &sc->tempInt, &sc->gl_GlobalInvocationID_z, &sc->dispatchZactualFFTSize);
-				VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[2], 0);
-				VkAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &sc->tempInt);
+				//VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[2], 0);
+				//VkAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &sc->tempInt);
 			}
+           
 		}
 		else {
 			if (sc->performWorkGroupShift[2]) {
 				VkMul(sc, &sc->tempInt, &sc->workGroupShiftZ, &sc->gl_WorkGroupSize_z, 0);
 				VkAdd(sc, &sc->tempInt, &sc->tempInt, &sc->gl_GlobalInvocationID_z);
-				VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[2], 0);
-				VkAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &sc->tempInt);
+				//VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[2], 0);
+				//VkAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &sc->tempInt);
 			}
 			else {
-				VkMul(sc, &sc->tempInt, &sc->gl_GlobalInvocationID_z, &bufferStride[2], 0);
-				VkAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &sc->tempInt);
+                VkMov(sc, &sc->tempInt, &sc->gl_GlobalInvocationID_z);
+				//VkMul(sc, &sc->tempInt, &sc->gl_GlobalInvocationID_z, &bufferStride[2], 0);
+				//VkAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &sc->tempInt);
 			}
 		}
+        int locStrideOrder = 2;
+        for (int i = 1; i < sc->numFFTdims; i++){
+            if (((i != sc->axis_id)&&(sc->axis_id > 0)) || ((i>1) && (sc->axis_id == 0))) {
+                VkMod(sc, &sc->inoutID_y, &sc->tempInt, &sc->size[i]);
+                VkCheckZeropad(sc, &sc->inoutID_y, i);
+                VkMul(sc, &sc->inoutID_y, &sc->inoutID_y, &bufferStride[locStrideOrder], 0);
+                VkAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->inoutID_y);
+				if ((i!=(sc->numFFTdims-1) && (sc->axis_id != (sc->numFFTdims-1))) || ((i!=(sc->numFFTdims-2)) && (sc->axis_id == (sc->numFFTdims-1))))
+					VkDiv(sc, &sc->tempInt, &sc->tempInt, &sc->size[i]);
+                locStrideOrder++;
+            }
+        }
 	}
 	int64_t maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
 	if (sc->numCoordinates * sc->matrixConvolution > 1) {
 		VkDiv(sc, &sc->tempInt, &sc->gl_GlobalInvocationID_z, &sc->dispatchZactualFFTSize);
 		temp_int.data.i = maxCoordinate;
 		VkMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-		VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[3], 0);
+		VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[sc->numFFTdims], 0);
 		VkAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &sc->tempInt);
 	}
 	if ((sc->matrixConvolution > 1) && (sc->convolutionStep)) {
 		maxCoordinate = 1;
-		VkMul(sc, &temp_int, &sc->coordinate, &bufferStride[3], 0);
+		VkMul(sc, &temp_int, &sc->coordinate, &bufferStride[sc->numFFTdims], 0);
 		VkAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &temp_int);
 	}
 	if ((sc->numBatches.data.i > 1) || (sc->numKernels.data.i > 1)) {
 		if (sc->convolutionStep && (sc->numKernels.data.i > 1)) {
-			VkMul(sc, &sc->tempInt, &sc->batchID, &sc->inputStride[4], 0);
+			VkMul(sc, &sc->tempInt, &sc->batchID, &sc->inputStride[sc->numFFTdims+1], 0);
 			VkAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &sc->tempInt);
 		}
 		else {
 			temp_int.data.i = sc->dispatchZactualFFTSize.data.i * maxCoordinate;
 			VkDiv(sc, &sc->tempInt, &sc->gl_GlobalInvocationID_z, &temp_int);
-			VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[4], 0);
+			VkMul(sc, &sc->tempInt, &sc->tempInt, &bufferStride[sc->numFFTdims+1], 0);
 			VkAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &sc->tempInt);
 
 		}
@@ -509,7 +519,13 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 
 	}
 	else {
-		if ((sc->inputStride[1].data.i != sc->outputStride[1].data.i) || (sc->inputStride[2].data.i != sc->outputStride[2].data.i) || (sc->inputStride[3].data.i != sc->outputStride[3].data.i) || (sc->inputStride[4].data.i != sc->outputStride[4].data.i) || (sc->performPostCompilationInputOffset) || (sc->performPostCompilationOutputOffset) || ((sc->inputOffset.data.i != sc->outputOffset.data.i) && (sc->inputOffset.type < 100) && (sc->outputOffset.type < 100)) || ((sc->convolutionStep) && (sc->matrixConvolution > 1)) || (sc->batchID.data.i > 0)) {
+        int isInputStrideNotEqualToOutput = 0;
+        for (int i = 0; i < sc->numFFTdims+2; i++){
+            if ((sc->inputStride[i].type>100)||(sc->outputStride[i].type>100)||(sc->inputStride[i].data.i != sc->outputStride[i].data.i)) {
+                isInputStrideNotEqualToOutput = 1;
+            }
+        }
+		if ((isInputStrideNotEqualToOutput) || (sc->performPostCompilationInputOffset) || (sc->performPostCompilationOutputOffset) || ((sc->inputOffset.data.i != sc->outputOffset.data.i) && (sc->inputOffset.type < 100) && (sc->outputOffset.type < 100)) || ((sc->convolutionStep) && (sc->matrixConvolution > 1)) || (sc->batchID.data.i > 0)) {
 			if ((sc->size[1].data.i > 1) && (sc->numAxisUploads != 1)) {
 				if (sc->performWorkGroupShift[1]) {
 					temp_int.data.i = sc->outputStride[1].data.i;
@@ -749,10 +765,7 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 				}
 			}
 			else {
-				if (bufferStride[0].data.i != 1)
-					VkMul(sc, &sc->inoutID, &sc->inoutID_x, &bufferStride[0], 0);
-				else
-					VkMov(sc, &sc->inoutID, &sc->inoutID_x);
+				VkMov(sc, &sc->inoutID, &sc->inoutID_x);
 
 				if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {
 					VkMul(sc, &sc->tempInt, &sc->inoutID_y, &bufferStride[1], 0);
@@ -1154,7 +1167,13 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 		//VkIf_gt_start(sc, &sc->disableThreads, &temp_int1);
 	}
 	else {
-		if ((sc->inputStride[1].data.i != sc->outputStride[1].data.i) || (sc->inputStride[2].data.i != sc->outputStride[2].data.i) || (sc->inputStride[3].data.i != sc->outputStride[3].data.i) || (sc->inputStride[4].data.i != sc->outputStride[4].data.i) || (sc->performPostCompilationInputOffset) || (sc->performPostCompilationOutputOffset) || ((sc->inputOffset.data.i != sc->outputOffset.data.i) && (sc->inputOffset.type < 100) && (sc->outputOffset.type < 100)) || ((sc->convolutionStep) && (sc->matrixConvolution > 1)) || (sc->batchID.data.i > 0)) {
+		int isInputStrideNotEqualToOutput = 0;
+        for (int i = 0; i < sc->numFFTdims+2; i++){
+            if ((sc->inputStride[i].type>100)||(sc->outputStride[i].type>100)||(sc->inputStride[i].data.i != sc->outputStride[i].data.i)) {
+                isInputStrideNotEqualToOutput = 1;
+            }
+        }
+		if ((isInputStrideNotEqualToOutput) || (sc->performPostCompilationInputOffset) || (sc->performPostCompilationOutputOffset) || ((sc->inputOffset.data.i != sc->outputOffset.data.i) && (sc->inputOffset.type < 100) && (sc->outputOffset.type < 100)) || ((sc->convolutionStep) && (sc->matrixConvolution > 1)) || (sc->batchID.data.i > 0)) {
 			if (sc->axis_id == 0) {
 				if (sc->size[1].data.i > 1) {
 					if (sc->performWorkGroupShift[1]) {
@@ -1248,10 +1267,7 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 
 		VkAdd(sc, &sc->inoutID_x, &sc->inoutID_x, &sc->tempInt2);
 	}
-	if (bufferStride[0].data.i != 1)
-		VkMul(sc, &sc->inoutID, &sc->inoutID_x, &bufferStride[0], 0);
-	else
-		VkMov(sc, &sc->inoutID, &sc->inoutID_x);
+	VkMov(sc, &sc->inoutID, &sc->inoutID_x);
 
 	if (sc->axis_id > 0) {
 		VkMul(sc, &sc->tempInt, &sc->inoutID_y, &bufferStride[1], 0);
@@ -1298,7 +1314,7 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 				}
 				else {
 					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		inoutID = (%s%s) %% (%" PRIu64 ") + %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") * (%" PRIu64 ");\n", &sc->gl_GlobalInvocationID_x, shiftX, &sc->stageStartSize, &sc->stageStartSize, &sc->gl_LocalInvocationID_y, (i + k * used_registers) * &sc->localSize[1], &sc->gl_GlobalInvocationID_x, shiftX, &sc->stageStartSize, &sc->stageStartSize * &sc->fftDim);
-					temp_int1.data.i = sc->stageStartSize.data.i * bufferStride[0].data.i * sc->localSize[1].data.i;
+					temp_int1.data.i = sc->stageStartSize.data.i * sc->localSize[1].data.i;
 					VkAdd(sc, &sc->inoutID, &sc->inoutID, &temp_int1);
 				}
 			}

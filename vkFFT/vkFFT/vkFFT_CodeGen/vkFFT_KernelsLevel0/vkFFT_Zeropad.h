@@ -31,79 +31,28 @@ static inline void VkCheckZeropadStart(VkFFTSpecializationConstantsLayout* sc, V
 	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	if ((sc->frequencyZeropadding)) {
-		switch (sc->axis_id) {
-		case 0: {
-			break;
-		}
-		case 1: {
-			if (axisCheck == 0) {
-				if (sc->performZeropaddingFull[0]) {
-					if (sc->fft_zeropad_left_full[0].data.i < sc->fft_zeropad_right_full[0].data.i) {
-						VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[0]);
-						VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[0]);
-					}
-				}
-			}
-			break;
-		}
-		case 2: {
-			if (axisCheck == 0) {
-				if (sc->performZeropaddingFull[0]) {
-					if (sc->fft_zeropad_left_full[0].data.i < sc->fft_zeropad_right_full[0].data.i) {
-						VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[0]);
-						VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[0]);
-					}
-				}
-			}
-			if (axisCheck == 1) {
-				if (sc->performZeropaddingFull[1]) {
-					if (sc->fft_zeropad_left_full[1].data.i < sc->fft_zeropad_right_full[1].data.i) {
-						VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[1]);
-						VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[1]);
-					}
-				}
-			}
-			break;
-		}
-		}
+        for (int i =0; i <sc->axis_id; i++){
+            if (axisCheck == i) {
+                if (sc->performZeropaddingFull[i]) {
+                    if (sc->fft_zeropad_left_full[i].data.i < sc->fft_zeropad_right_full[i].data.i) {
+                        VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[i]);
+                        VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[i]);
+                    }
+                }
+            }
+        }
 	}
 	else {
-		switch (sc->axis_id) {
-		case 0: {
-			if (axisCheck == 1) {
-				if (sc->performZeropaddingFull[1]) {
-					if (sc->fft_zeropad_left_full[1].data.i < sc->fft_zeropad_right_full[1].data.i) {
-						VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[1]);
-						VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[1]);
-					}
-				}
-			}
-			if (axisCheck == 2) {
-				if (sc->performZeropaddingFull[2]) {
-					if (sc->fft_zeropad_left_full[2].data.i < sc->fft_zeropad_right_full[2].data.i) {
-						VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[2]);
-						VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[2]);
-					}
-				}
-			}
-			break;
-		}
-		case 1: {
-			if (axisCheck == 2) {
-				if (sc->performZeropaddingFull[2]) {
-					if (sc->fft_zeropad_left_full[2].data.i < sc->fft_zeropad_right_full[2].data.i) {
-						VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[2]);
-						VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[2]);
-					}
-				}
-			}
-			break;
-		}
-		case 2: {
-
-			break;
-		}
-		}
+        for (int i = (sc->axis_id+1); i < sc->numFFTdims; i++){
+            if (axisCheck == i) {
+                if (sc->performZeropaddingFull[i]) {
+                    if (sc->fft_zeropad_left_full[i].data.i < sc->fft_zeropad_right_full[i].data.i) {
+                        VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[i]);
+                        VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[i]);
+                    }
+                }
+            }
+        }
 	}
 	return;
 }
@@ -112,81 +61,30 @@ static inline void VkCheckZeropadEnd(VkFFTSpecializationConstantsLayout* sc, int
 	if (sc->res != VKFFT_SUCCESS) return;
 	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	if ((sc->frequencyZeropadding)) {
-		switch (sc->axis_id) {
-		case 0: {
-			break;
-		}
-		case 1: {
-			if (axisCheck == 0) {
-				if (sc->performZeropaddingFull[0]) {
-					if (sc->fft_zeropad_left_full[0].data.i < sc->fft_zeropad_right_full[0].data.i) {
-						VkIf_end(sc);
-						VkIf_end(sc);
-					}
-				}
-			}
-			break;
-		}
-		case 2: {
-			if (axisCheck == 0) {
-				if (sc->performZeropaddingFull[0]) {
-					if (sc->fft_zeropad_left_full[0].data.i < sc->fft_zeropad_right_full[0].data.i) {
-						VkIf_end(sc);
-						VkIf_end(sc);
-					}
-				}
-			}
-			if (axisCheck == 1) {
-				if (sc->performZeropaddingFull[1]) {
-					if (sc->fft_zeropad_left_full[1].data.i < sc->fft_zeropad_right_full[1].data.i) {
-						VkIf_end(sc);
-						VkIf_end(sc);
-					}
-				}
-			}
-			break;
-		}
-		}
-	}
-	else {
-		switch (sc->axis_id) {
-		case 0: {
-			if (axisCheck == 1) {
-				if (sc->performZeropaddingFull[1]) {
-					if (sc->fft_zeropad_left_full[1].data.i < sc->fft_zeropad_right_full[1].data.i) {
-						VkIf_end(sc);
-						VkIf_end(sc);
-					}
-				}
-			}
-			if (axisCheck == 2) {
-				if (sc->performZeropaddingFull[2]) {
-					if (sc->fft_zeropad_left_full[2].data.i < sc->fft_zeropad_right_full[2].data.i) {
-						VkIf_end(sc);
-						VkIf_end(sc);
-					}
-				}
-			}
-			break;
-		}
-		case 1: {
-			if (axisCheck == 2) {
-				if (sc->performZeropaddingFull[2]) {
-					if (sc->fft_zeropad_left_full[2].data.i < sc->fft_zeropad_right_full[2].data.i) {
-						VkIf_end(sc);
-						VkIf_end(sc);
-					}
-				}
-			}
-			break;
-		}
-		case 2: {
-
-			break;
-		}
-		}
-	}
+    if ((sc->frequencyZeropadding)) {
+        for (int i =0; i <sc->axis_id; i++){
+            if (axisCheck == i) {
+                if (sc->performZeropaddingFull[i]) {
+                    if (sc->fft_zeropad_left_full[i].data.i < sc->fft_zeropad_right_full[i].data.i) {
+                        VkIf_end(sc);
+                        VkIf_end(sc);
+                    }
+                }
+            }
+        }
+    }
+    else {
+        for (int i = (sc->axis_id+1); i < sc->numFFTdims; i++){
+            if (axisCheck == i) {
+                if (sc->performZeropaddingFull[i]) {
+                    if (sc->fft_zeropad_left_full[i].data.i < sc->fft_zeropad_right_full[i].data.i) {
+                        VkIf_end(sc);
+                        VkIf_end(sc);
+                    }
+                }
+            }
+        }
+    }
 	return;
 }
 
@@ -195,111 +93,40 @@ static inline void VkCheckZeropad(VkFFTSpecializationConstantsLayout* sc, VkCont
 	if (sc->res != VKFFT_SUCCESS) return;
 	VkContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	if ((sc->frequencyZeropadding)) {
-		switch (sc->axis_id) {
-		case 0: {
-			break;
-		}
-		case 1: {
-			if (axisCheck == 0) {
-				if (sc->performZeropaddingFull[0]) {
-					if (sc->fft_zeropad_left_full[0].data.i < sc->fft_zeropad_right_full[0].data.i) {
-						sc->useDisableThreads = 1;
-						VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[0]);
-						VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[0]);
-						temp_int.data.i = 0;
-						VkMov(sc, &sc->disableThreads, &temp_int);
-						VkIf_end(sc);
-						VkIf_end(sc);
-					}
-				}
-			}
-			break;
-		}
-		case 2: {
-			if (axisCheck == 0) {
-				if (sc->performZeropaddingFull[0]) {
-					if (sc->fft_zeropad_left_full[0].data.i < sc->fft_zeropad_right_full[0].data.i) {
-						sc->useDisableThreads = 1; 
-						VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[0]);
-						VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[0]);
-						temp_int.data.i = 0;
-						VkMov(sc, &sc->disableThreads, &temp_int);
-						VkIf_end(sc);
-						VkIf_end(sc);
-					}
-				}
-			}
-			if (axisCheck == 1) {
-				if (sc->performZeropaddingFull[1]) {
-					if (sc->fft_zeropad_left_full[1].data.i < sc->fft_zeropad_right_full[1].data.i) {
-						sc->useDisableThreads = 1; 
-						VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[1]);
-						VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[1]);
-						temp_int.data.i = 0;
-						VkMov(sc, &sc->disableThreads, &temp_int);
-						VkIf_end(sc);
-						VkIf_end(sc);
-					}
-				}
-			}
-			break;
-		}
-		}
-	}
-	else {
-		switch (sc->axis_id) {
-		case 0: {
-			if (axisCheck == 1) {
-				if (sc->performZeropaddingFull[1]) {
-					if (sc->fft_zeropad_left_full[1].data.i < sc->fft_zeropad_right_full[1].data.i) {
-						sc->useDisableThreads = 1; 
-						VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[1]);
-						VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[1]);
-						temp_int.data.i = 0;
-						VkMov(sc, &sc->disableThreads, &temp_int);
-						VkIf_end(sc);
-						VkIf_end(sc);
-					}
-				}
-			}
-			if (axisCheck == 2) {
-				if (sc->performZeropaddingFull[2]) {
-					if (sc->fft_zeropad_left_full[2].data.i < sc->fft_zeropad_right_full[2].data.i) {
-						sc->useDisableThreads = 1; 
-						VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[2]);
-						VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[2]);
-						temp_int.data.i = 0;
-						VkMov(sc, &sc->disableThreads, &temp_int);
-						VkIf_end(sc);
-						VkIf_end(sc);
-					}
-				}
-			}
-			break;
-		}
-		case 1: {
-			if (axisCheck == 2) {
-				if (sc->performZeropaddingFull[2]) {
-					if (sc->fft_zeropad_left_full[2].data.i < sc->fft_zeropad_right_full[2].data.i) {
-						sc->useDisableThreads = 1; 
-						VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[2]);
-						VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[2]);
-						temp_int.data.i = 0;
-						VkMov(sc, &sc->disableThreads, &temp_int);
-						VkIf_end(sc);
-						VkIf_end(sc);
-					}
-				}
-			}
-			break;
-		}
-		case 2: {
-
-			break;
-		}
-		}
-	}
+    if ((sc->frequencyZeropadding)) {
+        for (int i =0; i <sc->axis_id; i++){
+            if (axisCheck == i) {
+                if (sc->performZeropaddingFull[i]) {
+                    if (sc->fft_zeropad_left_full[i].data.i < sc->fft_zeropad_right_full[i].data.i) {
+                        sc->useDisableThreads = 1;
+                        VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[i]);
+                        VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[i]);
+                        temp_int.data.i = 0;
+                        VkMov(sc, &sc->disableThreads, &temp_int);
+                        VkIf_end(sc);
+                        VkIf_end(sc);
+                    }
+                }
+            }
+        }
+    }
+    else {
+        for (int i = (sc->axis_id+1); i < sc->numFFTdims; i++){
+            if (axisCheck == i) {
+                if (sc->performZeropaddingFull[i]) {
+                    if (sc->fft_zeropad_left_full[i].data.i < sc->fft_zeropad_right_full[i].data.i) {
+                        sc->useDisableThreads = 1;
+                        VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[i]);
+                        VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[i]);
+                        temp_int.data.i = 0;
+                        VkMov(sc, &sc->disableThreads, &temp_int);
+                        VkIf_end(sc);
+                        VkIf_end(sc);
+                    }
+                }
+            }
+        }
+    }
 	return;
 }
 

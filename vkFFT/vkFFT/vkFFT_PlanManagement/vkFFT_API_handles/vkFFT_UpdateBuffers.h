@@ -212,23 +212,7 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 	descriptorPoolSize.descriptorCount = (uint32_t)(axis->specializationConstants.inputBufferBlockNum + axis->specializationConstants.outputBufferBlockNum);
 #endif
 	axis->specializationConstants.convolutionBindingID = -1;
-	if ((axis_id == 0) && (axis_upload_id == 0) && (app->configuration.FFTdim == 1) && (app->configuration.performConvolution)) {
-		axis->specializationConstants.convolutionBindingID = axis->numBindings;
-		axis->specializationConstants.numBuffersBound[axis->numBindings] = axis->specializationConstants.kernelBlockNum;
-#if(VKFFT_BACKEND==0)
-		descriptorPoolSize.descriptorCount += (uint32_t)axis->specializationConstants.kernelBlockNum;
-#endif
-		axis->numBindings++;
-	}
-	if ((axis_id == 1) && (axis_upload_id == 0) && (app->configuration.FFTdim == 2) && (app->configuration.performConvolution)) {
-		axis->specializationConstants.convolutionBindingID = axis->numBindings;
-		axis->specializationConstants.numBuffersBound[axis->numBindings] = axis->specializationConstants.kernelBlockNum;
-#if(VKFFT_BACKEND==0)
-		descriptorPoolSize.descriptorCount += (uint32_t)axis->specializationConstants.kernelBlockNum;
-#endif
-		axis->numBindings++;
-	}
-	if ((axis_id == 2) && (axis_upload_id == 0) && (app->configuration.FFTdim == 3) && (app->configuration.performConvolution)) {
+	if ((axis_id == (app->configuration.FFTdim-1)) && (axis_upload_id == 0) && (app->configuration.performConvolution)) {
 		axis->specializationConstants.convolutionBindingID = axis->numBindings;
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = axis->specializationConstants.kernelBlockNum;
 #if(VKFFT_BACKEND==0)
@@ -550,7 +534,7 @@ static inline VkFFTResult VkFFTConfigureDescriptorsR2CMultiUploadDecomposition(V
 	VkDescriptorPoolSize descriptorPoolSize = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 	descriptorPoolSize.descriptorCount = (uint32_t)(axis->specializationConstants.numBuffersBound[0] + axis->specializationConstants.numBuffersBound[1]);
 #endif
-	if ((axis_id == 0) && (axis_upload_id == 0) && (app->configuration.FFTdim == 1) && (app->configuration.performConvolution)) {
+	if ((axis_id == (app->configuration.FFTdim-1)) && (axis_upload_id == 0) && (app->configuration.performConvolution)) {
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = axis->specializationConstants.kernelBlockNum;
 #if(VKFFT_BACKEND==0)
 		descriptorPoolSize.descriptorCount += (uint32_t)axis->specializationConstants.kernelBlockNum;

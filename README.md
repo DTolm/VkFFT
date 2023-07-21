@@ -5,7 +5,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
 ## The white paper of VkFFT is out - if you use VkFFT and want to cite it: https://ieeexplore.ieee.org/document/10036080
 
 ## Currently supported features:
-  - 1D/2D/3D systems
+  - 1D/2D/3D/ND systems - specify VKFFT_MAX_FFT_DIMENSIONS for arbitrary number of dimensions
   - Forward and inverse directions of FFT
   - Support for big FFT dimension sizes. Current limits: C2C or even C2R/R2C - (2^32, 2^32, 2^32).  Odd C2R/R2C - (2^12, 2^32, 2^32). R2R - (2^12, 2^12, 2^12). Depends on the amount of shared memory on the device. (will be increased later).
   - Radix-2/3/4/5/7/8/11/13 FFT. Sequences using radix 3, 5, 7, 11 and 13 have comparable performance to that of powers of 2.

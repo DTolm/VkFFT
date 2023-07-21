@@ -148,7 +148,7 @@ static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* 
 			}
 
 		}
-		if (axis_id == 1) {
+		if (axis_id >= 1) {
 
 			axis->axisBlock[1] = ((uint64_t)ceil(axis->specializationConstants.fftDim.data.i / (double)axis->specializationConstants.min_registers_per_thread) / axis->specializationConstants.registerBoost > 1) ? ((uint64_t)ceil(axis->specializationConstants.fftDim.data.i / (double)axis->specializationConstants.min_registers_per_thread)) / axis->specializationConstants.registerBoost : 1;
 			if (axis->specializationConstants.useRaderMult) {
@@ -176,7 +176,7 @@ static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* 
 
 			axis->axisBlock[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axis->groupedBatch) ? axis->groupedBatch : FFTPlan->actualFFTSizePerAxis[axis_id][0];
 			
-			axis->axisBlock[0] = (axis->axisBlock[0] > app->configuration.groupedBatch[1]) ? app->configuration.groupedBatch[1] : axis->axisBlock[0];
+			axis->axisBlock[0] = (axis->axisBlock[0] > app->configuration.groupedBatch[1]) ? app->configuration.groupedBatch[axis_id] : axis->axisBlock[0];
 
 			
 			if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
@@ -188,43 +188,7 @@ static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* 
 			axis->groupedBatch = axis->axisBlock[0];
 
 		}
-		if (axis_id == 2) {
-			axis->axisBlock[1] = ((uint64_t)ceil(axis->specializationConstants.fftDim.data.i / (double)axis->specializationConstants.min_registers_per_thread) / axis->specializationConstants.registerBoost > 1) ? ((uint64_t)ceil(axis->specializationConstants.fftDim.data.i / (double)axis->specializationConstants.min_registers_per_thread)) / axis->specializationConstants.registerBoost : 1;
-			if (axis->specializationConstants.useRaderMult) {
-				uint64_t final_rader_thread_count = 0;
-				for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
-					if (axis->specializationConstants.raderContainer[i].type == 1) {
-						uint64_t temp_rader = (uint64_t)ceil((axis->specializationConstants.fftDim.data.i / (double)((axis->specializationConstants.rader_min_registers / 2) * 2)) / (double)((axis->specializationConstants.raderContainer[i].prime + 1) / 2));
-						uint64_t active_rader = (uint64_t)ceil((axis->specializationConstants.fftDim.data.i / axis->specializationConstants.raderContainer[i].prime) / (double)temp_rader);
-						if (active_rader > 1) {
-							if ((((double)active_rader - (axis->specializationConstants.fftDim.data.i / axis->specializationConstants.raderContainer[i].prime) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((axis->specializationConstants.fftDim.data.i / axis->specializationConstants.raderContainer[i].prime) / (double)(active_rader - 1)) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
-						}
-						uint64_t local_estimate_rader_threadnum = (uint64_t)ceil((axis->specializationConstants.fftDim.data.i / axis->specializationConstants.raderContainer[i].prime) / (double)active_rader) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2);
-
-						uint64_t temp_rader_thread_count = ((uint64_t)ceil(axis->axisBlock[1] / (double)((axis->specializationConstants.raderContainer[i].prime + 1) / 2))) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2);
-						if (temp_rader_thread_count < local_estimate_rader_threadnum) temp_rader_thread_count = local_estimate_rader_threadnum;
-						if (temp_rader_thread_count > final_rader_thread_count) final_rader_thread_count = temp_rader_thread_count;
-					}
-				}
-				axis->axisBlock[1] = final_rader_thread_count;
-				if (axis->groupedBatch * axis->axisBlock[1] > maxThreadNum) axis->groupedBatch = maxBatchCoalesced;
-			}
-			if (axis->specializationConstants.useRaderFFT) {
-				if (axis->axisBlock[1] < axis->specializationConstants.minRaderFFTThreadNum) axis->axisBlock[1] = axis->specializationConstants.minRaderFFTThreadNum;
-			}
-
-			axis->axisBlock[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axis->groupedBatch) ? axis->groupedBatch : FFTPlan->actualFFTSizePerAxis[axis_id][0];
-			
-			axis->axisBlock[0] = (axis->axisBlock[0] > app->configuration.groupedBatch[2]) ? app->configuration.groupedBatch[2] : axis->axisBlock[0];
-
-			if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
-			if (axis->axisBlock[0] * axis->axisBlock[1] > maxThreadNum) {
-				axis->axisBlock[0] = maxThreadNum / axis->axisBlock[0];
-			}
-			axis->axisBlock[2] = 1;
-			axis->axisBlock[3] = axis->specializationConstants.fftDim.data.i;
-			axis->groupedBatch = axis->axisBlock[0];
-		}
+		
 		return VKFFT_SUCCESS;
 	}
 	/*if ((FFTPlan->actualFFTSizePerAxis[axis_id][0] < 4096) && (FFTPlan->actualFFTSizePerAxis[axis_id][1] < 512) && (FFTPlan->actualFFTSizePerAxis[axis_id][2] == 1)) {
@@ -453,7 +417,7 @@ static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* 
 		}
 
 	}
-	if (axis_id == 1) {
+	if (axis_id >= 1) {
 
 		axis->axisBlock[1] = ((uint64_t)ceil(axis->specializationConstants.fftDim.data.i / (double)axis->specializationConstants.min_registers_per_thread) / axis->specializationConstants.registerBoost > 1) ? ((uint64_t)ceil(axis->specializationConstants.fftDim.data.i / (double)axis->specializationConstants.min_registers_per_thread)) / axis->specializationConstants.registerBoost : 1;
 		if (axis->specializationConstants.useRaderMult) {
@@ -501,53 +465,6 @@ static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* 
 		axis->axisBlock[3] = axis->specializationConstants.fftDim.data.i;
 		axis->groupedBatch = axis->axisBlock[0];
 
-	}
-	if (axis_id == 2) {
-		axis->axisBlock[1] = ((uint64_t)ceil(axis->specializationConstants.fftDim.data.i / (double)axis->specializationConstants.min_registers_per_thread) / axis->specializationConstants.registerBoost > 1) ? ((uint64_t)ceil(axis->specializationConstants.fftDim.data.i / (double)axis->specializationConstants.min_registers_per_thread)) / axis->specializationConstants.registerBoost : 1;
-		if (axis->specializationConstants.useRaderMult) {
-			uint64_t final_rader_thread_count = 0;
-			for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
-				if (axis->specializationConstants.raderContainer[i].type == 1) {
-					uint64_t temp_rader = (uint64_t)ceil((axis->specializationConstants.fftDim.data.i / (double)((axis->specializationConstants.rader_min_registers / 2) * 2)) / (double)((axis->specializationConstants.raderContainer[i].prime + 1) / 2));
-					uint64_t active_rader = (uint64_t)ceil((axis->specializationConstants.fftDim.data.i / axis->specializationConstants.raderContainer[i].prime) / (double)temp_rader);
-					if (active_rader > 1) {
-						if ((((double)active_rader - (axis->specializationConstants.fftDim.data.i / axis->specializationConstants.raderContainer[i].prime) / (double)temp_rader) >= 0.5) && ((((uint64_t)ceil((axis->specializationConstants.fftDim.data.i / axis->specializationConstants.raderContainer[i].prime) / (double)(active_rader - 1)) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
-					}
-					uint64_t local_estimate_rader_threadnum = (uint64_t)ceil((axis->specializationConstants.fftDim.data.i / axis->specializationConstants.raderContainer[i].prime) / (double)active_rader) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2);
-
-					uint64_t temp_rader_thread_count = ((uint64_t)ceil(axis->axisBlock[1] / (double)((axis->specializationConstants.raderContainer[i].prime + 1) / 2))) * ((axis->specializationConstants.raderContainer[i].prime + 1) / 2);
-					if (temp_rader_thread_count < local_estimate_rader_threadnum) temp_rader_thread_count = local_estimate_rader_threadnum;
-					if (temp_rader_thread_count > final_rader_thread_count) final_rader_thread_count = temp_rader_thread_count;
-				}
-			}
-			axis->axisBlock[1] = final_rader_thread_count;
-			if (axis->groupedBatch * axis->axisBlock[1] > maxThreadNum) axis->groupedBatch = maxBatchCoalesced;
-		}
-		if (axis->specializationConstants.useRaderFFT) {
-			if (axis->axisBlock[1] < axis->specializationConstants.minRaderFFTThreadNum) axis->axisBlock[1] = axis->specializationConstants.minRaderFFTThreadNum;
-		}
-
-		axis->axisBlock[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axis->groupedBatch) ? axis->groupedBatch : FFTPlan->actualFFTSizePerAxis[axis_id][0];
-		if (app->configuration.vendorID == 0x10DE) {
-			while ((axis->axisBlock[1] * axis->axisBlock[0] >= 2 * app->configuration.aimThreads) && (axis->axisBlock[0] > maxBatchCoalesced)) {
-				axis->axisBlock[0] /= 2;
-				if (axis->axisBlock[0] < maxBatchCoalesced) axis->axisBlock[0] = maxBatchCoalesced;
-			}
-		}
-		if (axis->axisBlock[0] > app->configuration.maxComputeWorkGroupSize[0]) axis->axisBlock[0] = app->configuration.maxComputeWorkGroupSize[0];
-		if (axis->axisBlock[0] * axis->axisBlock[1] > maxThreadNum) {
-			for (uint64_t i = 1; i <= axis->axisBlock[0]; i++) {
-				if ((axis->axisBlock[0] / i) * axis->axisBlock[1] <= maxThreadNum)
-				{
-					axis->axisBlock[0] /= i;
-					i = axis->axisBlock[0] + 1;
-				}
-
-			}
-		}
-		axis->axisBlock[2] = 1;
-		axis->axisBlock[3] = axis->specializationConstants.fftDim.data.i;
-		axis->groupedBatch = axis->axisBlock[0];
 	}
 	return VKFFT_SUCCESS;
 }
