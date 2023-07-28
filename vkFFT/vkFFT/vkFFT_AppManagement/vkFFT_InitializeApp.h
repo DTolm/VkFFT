@@ -1348,18 +1348,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	}
 	app->firstAxis = 0;
 	app->lastAxis = app->configuration.FFTdim - 1;
-	if (inputLaunchConfiguration.omitDimension[0] != 0) {
-		app->configuration.omitDimension[0] = inputLaunchConfiguration.omitDimension[0];
-		app->firstAxis++;
-		if (app->configuration.performConvolution) {
-			deleteVkFFT(app);
-			return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
-		}
-		if (app->configuration.performR2C) {
-			deleteVkFFT(app);
-			return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
-		}
-	}
 	for (int i = 0; i < app->configuration.FFTdim; i++) {
 		app->configuration.omitDimension[i] = inputLaunchConfiguration.omitDimension[i];
 		if ((app->configuration.size[i] == 1) && (!(app->configuration.performR2C && (i == 0))) && (!app->configuration.performConvolution)) app->configuration.omitDimension[i] = 1;
@@ -1380,6 +1368,10 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		if (app->configuration.omitDimension[i] != 0) {
 			app->firstAxis++;
 			if (app->configuration.performConvolution) {
+				deleteVkFFT(app);
+				return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
+			}
+			if ((i == 0) && (app->configuration.performR2C)) {
 				deleteVkFFT(app);
 				return VKFFT_ERROR_UNSUPPORTED_FFT_OMIT;
 			}
