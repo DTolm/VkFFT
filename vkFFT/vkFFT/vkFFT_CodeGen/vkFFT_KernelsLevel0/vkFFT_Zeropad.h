@@ -25,18 +25,18 @@
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
 
-static inline void VkCheckZeropadStart(VkFFTSpecializationConstantsLayout* sc, VkContainer* location, int axisCheck) {
+static inline void checkZeropadStart(VkFFTSpecializationConstantsLayout* sc, PfContainer* location, int axisCheck) {
 	//return if sequence is full of zeros from the start
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = VKFFT_ZERO_INIT;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	if ((sc->frequencyZeropadding)) {
         for (int i =0; i <sc->axis_id; i++){
             if (axisCheck == i) {
                 if (sc->performZeropaddingFull[i]) {
                     if (sc->fft_zeropad_left_full[i].data.i < sc->fft_zeropad_right_full[i].data.i) {
-                        VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[i]);
-                        VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[i]);
+                        PfIf_ge_start(sc, location, &sc->fft_zeropad_left_full[i]);
+                        PfIf_lt_start(sc, location, &sc->fft_zeropad_right_full[i]);
                     }
                 }
             }
@@ -47,8 +47,8 @@ static inline void VkCheckZeropadStart(VkFFTSpecializationConstantsLayout* sc, V
             if (axisCheck == i) {
                 if (sc->performZeropaddingFull[i]) {
                     if (sc->fft_zeropad_left_full[i].data.i < sc->fft_zeropad_right_full[i].data.i) {
-                        VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[i]);
-                        VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[i]);
+                        PfIf_ge_start(sc, location, &sc->fft_zeropad_left_full[i]);
+                        PfIf_lt_start(sc, location, &sc->fft_zeropad_right_full[i]);
                     }
                 }
             }
@@ -56,18 +56,18 @@ static inline void VkCheckZeropadStart(VkFFTSpecializationConstantsLayout* sc, V
 	}
 	return;
 }
-static inline void VkCheckZeropadEnd(VkFFTSpecializationConstantsLayout* sc, int axisCheck) {
+static inline void checkZeropadEnd(VkFFTSpecializationConstantsLayout* sc, int axisCheck) {
 	//return if sequence is full of zeros from the start
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = VKFFT_ZERO_INIT;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
     if ((sc->frequencyZeropadding)) {
         for (int i =0; i <sc->axis_id; i++){
             if (axisCheck == i) {
                 if (sc->performZeropaddingFull[i]) {
                     if (sc->fft_zeropad_left_full[i].data.i < sc->fft_zeropad_right_full[i].data.i) {
-                        VkIf_end(sc);
-                        VkIf_end(sc);
+                        PfIf_end(sc);
+                        PfIf_end(sc);
                     }
                 }
             }
@@ -78,8 +78,8 @@ static inline void VkCheckZeropadEnd(VkFFTSpecializationConstantsLayout* sc, int
             if (axisCheck == i) {
                 if (sc->performZeropaddingFull[i]) {
                     if (sc->fft_zeropad_left_full[i].data.i < sc->fft_zeropad_right_full[i].data.i) {
-                        VkIf_end(sc);
-                        VkIf_end(sc);
+                        PfIf_end(sc);
+                        PfIf_end(sc);
                     }
                 }
             }
@@ -88,10 +88,10 @@ static inline void VkCheckZeropadEnd(VkFFTSpecializationConstantsLayout* sc, int
 	return;
 }
 
-static inline void VkCheckZeropad(VkFFTSpecializationConstantsLayout* sc, VkContainer* location, int axisCheck) {
+static inline void checkZeropad(VkFFTSpecializationConstantsLayout* sc, PfContainer* location, int axisCheck) {
 	//return if sequence is full of zeros from the start
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = VKFFT_ZERO_INIT;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
     if ((sc->frequencyZeropadding)) {
         for (int i =0; i <sc->axis_id; i++){
@@ -99,12 +99,12 @@ static inline void VkCheckZeropad(VkFFTSpecializationConstantsLayout* sc, VkCont
                 if (sc->performZeropaddingFull[i]) {
                     if (sc->fft_zeropad_left_full[i].data.i < sc->fft_zeropad_right_full[i].data.i) {
                         sc->useDisableThreads = 1;
-                        VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[i]);
-                        VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[i]);
+                        PfIf_ge_start(sc, location, &sc->fft_zeropad_left_full[i]);
+                        PfIf_lt_start(sc, location, &sc->fft_zeropad_right_full[i]);
                         temp_int.data.i = 0;
-                        VkMov(sc, &sc->disableThreads, &temp_int);
-                        VkIf_end(sc);
-                        VkIf_end(sc);
+                        PfMov(sc, &sc->disableThreads, &temp_int);
+                        PfIf_end(sc);
+                        PfIf_end(sc);
                     }
                 }
             }
@@ -116,12 +116,12 @@ static inline void VkCheckZeropad(VkFFTSpecializationConstantsLayout* sc, VkCont
                 if (sc->performZeropaddingFull[i]) {
                     if (sc->fft_zeropad_left_full[i].data.i < sc->fft_zeropad_right_full[i].data.i) {
                         sc->useDisableThreads = 1;
-                        VkIf_ge_start(sc, location, &sc->fft_zeropad_left_full[i]);
-                        VkIf_lt_start(sc, location, &sc->fft_zeropad_right_full[i]);
+                        PfIf_ge_start(sc, location, &sc->fft_zeropad_left_full[i]);
+                        PfIf_lt_start(sc, location, &sc->fft_zeropad_right_full[i]);
                         temp_int.data.i = 0;
-                        VkMov(sc, &sc->disableThreads, &temp_int);
-                        VkIf_end(sc);
-                        VkIf_end(sc);
+                        PfMov(sc, &sc->disableThreads, &temp_int);
+                        PfIf_end(sc);
+                        PfIf_end(sc);
                     }
                 }
             }

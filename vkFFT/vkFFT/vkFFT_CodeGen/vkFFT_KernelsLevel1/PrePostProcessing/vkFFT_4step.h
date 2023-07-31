@@ -30,11 +30,11 @@
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel0/vkFFT_MemoryManagement/vkFFT_MemoryTransfers/vkFFT_Transfers.h"
 static inline void appendReorder4Step(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = VKFFT_ZERO_INIT;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = VKFFT_ZERO_INIT;
+	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = VKFFT_ZERO_INIT;
+	PfContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 	uint64_t logicalRegistersPerThread;
 	if (readWrite==0)
@@ -49,66 +49,66 @@ static inline void appendReorder4Step(VkFFTSpecializationConstantsLayout* sc, in
 			}
 			if (sc->useDisableThreads) {
 				temp_int.data.i = 0;
-				VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
+				PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 			}
-			VkDivCeil(sc, &temp_int1, &sc->fftDim, &sc->localSize[1]);
+			PfDivCeil(sc, &temp_int1, &sc->fftDim, &sc->localSize[1]);
 			if (type == 1) {
-				VkDiv(sc, &sc->inoutID, &sc->shiftX, &sc->fft_dim_x);
-				VkMod(sc, &sc->inoutID, &sc->inoutID, &sc->stageStartSize);
+				PfDiv(sc, &sc->inoutID, &sc->shiftX, &sc->fft_dim_x);
+				PfMod(sc, &sc->inoutID, &sc->inoutID, &sc->stageStartSize);
 			}
 			else {
-				VkMod(sc, &sc->inoutID, &sc->shiftX, &sc->stageStartSize);
+				PfMod(sc, &sc->inoutID, &sc->shiftX, &sc->stageStartSize);
 			}
-			for (uint64_t i = 0; i < temp_int1.data.i; i++) {
-				VkMod(sc, &temp_int, &sc->fftDim, &sc->localSize[1]);
+			for (uint64_t i = 0; i < (uint64_t)temp_int1.data.i; i++) {
+				PfMod(sc, &temp_int, &sc->fftDim, &sc->localSize[1]);
 				if ((temp_int.data.i != 0) && (i == (temp_int1.data.i - 1))) {
-					VkIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &temp_int);				
+					PfIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &temp_int);				
 				}
 				uint64_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
 
 				if ((sc->LUT) && (sc->LUT_4step)) {
 					temp_int.data.i = i * sc->localSize[1].data.i;
-					VkAdd(sc, &sc->tempInt, &sc->gl_LocalInvocationID_y, &temp_int);
-					VkMul(sc, &sc->tempInt, &sc->tempInt, &sc->stageStartSize, 0);
-					VkAdd(sc, &sc->tempInt, &sc->tempInt, &sc->inoutID);
+					PfAdd(sc, &sc->tempInt, &sc->gl_LocalInvocationID_y, &temp_int);
+					PfMul(sc, &sc->tempInt, &sc->tempInt, &sc->stageStartSize, 0);
+					PfAdd(sc, &sc->tempInt, &sc->tempInt, &sc->inoutID);
 					temp_int.data.i = sc->maxStageSumLUT;
-					VkAdd(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+					PfAdd(sc, &sc->tempInt, &sc->tempInt, &temp_int);
 					appendGlobalToRegisters(sc, &sc->mult, &sc->LUTStruct, &sc->tempInt);
 					
 					if (!sc->inverse) {
-						VkConjugate(sc, &sc->mult, &sc->mult);
+						PfConjugate(sc, &sc->mult, &sc->mult);
 					}
 				}
 				else {
 					temp_int.data.i = i * sc->localSize[1].data.i;
-					VkAdd(sc, &sc->tempInt, &sc->gl_LocalInvocationID_y, &temp_int);
-					VkMul(sc, &sc->tempInt, &sc->inoutID, &sc->tempInt, 0);
+					PfAdd(sc, &sc->tempInt, &sc->gl_LocalInvocationID_y, &temp_int);
+					PfMul(sc, &sc->tempInt, &sc->inoutID, &sc->tempInt, 0);
 					temp_double.data.d = 2 * sc->double_PI/ (long double)(sc->stageStartSize.data.i * sc->fftDim.data.i);
-					VkMul(sc, &sc->angle, &sc->tempInt, &temp_double, 0);
-					VkSinCos(sc, &sc->mult, &sc->angle);
+					PfMul(sc, &sc->angle, &sc->tempInt, &temp_double, 0);
+					PfSinCos(sc, &sc->mult, &sc->angle);
 					if ((!sc->inverse) && (readWrite == 1)) {
-						VkConjugate(sc, &sc->mult, &sc->mult);
+						PfConjugate(sc, &sc->mult, &sc->mult);
 					}
 				}
 				if (((sc->readToRegisters) && (readWrite == 0)) || ((sc->writeFromRegisters) && (readWrite == 1))) {
-					VkMul(sc, &sc->regIDs[id], &sc->regIDs[id], &sc->mult, &sc->temp);
+					PfMul(sc, &sc->regIDs[id], &sc->regIDs[id], &sc->mult, &sc->temp);
 				}
 				else {
 					temp_int.data.i = i * sc->localSize[1].data.i;
-					VkAdd(sc, &sc->sdataID, &sc->gl_LocalInvocationID_y, &temp_int);
-					VkMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+					PfAdd(sc, &sc->sdataID, &sc->gl_LocalInvocationID_y, &temp_int);
+					PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
 					appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
-					VkMul(sc, &sc->w, &sc->w, &sc->mult, &sc->temp);
+					PfMul(sc, &sc->w, &sc->w, &sc->mult, &sc->temp);
 					appendRegistersToShared(sc, &sc->sdataID, &sc->w);
 				}
-				VkMod(sc, &temp_int, &sc->fftDim, &sc->localSize[1]);
+				PfMod(sc, &temp_int, &sc->fftDim, &sc->localSize[1]);
 				if ((temp_int.data.i != 0) && (i == (temp_int1.data.i - 1))) {
-					VkIf_end(sc);
+					PfIf_end(sc);
 				}
 			}
 			if (sc->useDisableThreads) {
-				VkIf_end(sc);
+				PfIf_end(sc);
 			}
 		}
 

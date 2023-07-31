@@ -1,4 +1,4 @@
-%% LyX 2.3.6.1 created this file.  For more info, see http://www.lyx.org/.
+%% LyX 2.3.7 created this file.  For more info, see http://www.lyx.org/.
 %% Do not edit unless you really know what you are doing.
 \documentclass[12pt,english]{article}
 \usepackage{amsmath}
@@ -44,7 +44,7 @@
 {\Large Dmitrii Tolmachev\par} 	
 	
 \vspace{1cm} 	
-{\large October 2022, version 1.2.30\par} 
+{\large July 2023, version 1.3.0\par} 
 \end{titlepage}
 
 \newpage{}
@@ -78,7 +78,7 @@ sequence and $k\in[0,N-1],k\in\mathbb{Z}$is the output index, corresponding
 to frequency in Fourier space. Corresponding to that, inverse DFT
 is defined as following:
 \begin{equation}
-x_{n}=\stackrel[k=0]{\mathrm{N-1}}{\sum}X_{k}e^{\frac{2\pi i}{N}nk}=\mathrm{iDFT}{}_{N}(X_{k},n)
+x_{n}=\stackrel[k=0]{\mathrm{N-1}}{\sum}X_{k}e^{\frac{2\pi i}{N}nk}=\mathrm{IDFT}{}_{N}(X_{k},n)
 \end{equation}
 
 VkFFT follows the same definitions as FFTW and cuFFT - forward FFT
@@ -89,12 +89,13 @@ the result by $N$.
 
 \subsection{Installing VkFFT}
 
-VkFFT is distributed as a header-only library. The installation process
-consists of the following steps:
+VkFFT is distributed as a header-only library (strating from the version
+1.3, it is no longer a single header). The installation process consists
+of the following steps:
 \begin{enumerate}
 \item \begin{flushleft}
-Copy vkFFT.h file into one of the directories included in the user's
-project.
+Copy vkFFT.h file and vkFFT directory into one of the directories
+included in the user's project.
 \par\end{flushleft}
 \item Define VKFFT\_BACKEND as a number corresponding to the API used in
 the user's project: 0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL, 4 -
@@ -107,6 +108,8 @@ Level Zero, 5 - Metal. Definition is done like:\begin{mdframed}[backgroundcolor=
 set(VKFFT_BACKEND 1 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL, 4 - Level Zero, 5 - Metal")
 \end{minted}
 \end{mdframed}in CMake.
+\item Define VKFFT\_MAX\_FFT\_DIMENSIONS as the number of max dimensions
+to be supported by VkFFT. Default is 4.
 \item Depending on the API backend, the project must use additional libraries
 for run-time compilation:
 \begin{enumerate}
@@ -132,7 +135,6 @@ enable_language(CUDA)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 35 60 70 75 80 86) 	
 target_compile_options(${PROJECT_NAME} PUBLIC "$<$<COMPILE_LANGUAGE:CUDA>:SHELL: 	
 	-DVKFFT_BACKEND=${VKFFT_BACKEND} 	
-	-gencode arch=compute_35,code=compute_35
 	-gencode arch=compute_60,code=compute_60
 	-gencode arch=compute_70,code=compute_70
 	-gencode arch=compute_75,code=compute_75
@@ -142,6 +144,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(${PROJECT_NAME} PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 
 find_library(CUDA_NVRTC_LIB libnvrtc nvrtc HINTS "${CUDA_TOOLKIT_ROOT_DIR}/lib64" "${LIBNVRTC_LIBRARY_DIR}" "${CUDA_TOOLKIT_ROOT_DIR}/lib/x64" /usr/lib64 /usr/local/cuda/lib64)
+add_definitions(-DCUDA_TOOLKIT_ROOT_DIR="${CUDA_TOOLKIT_ROOT_DIR}")
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/)
 add_library(VkFFT INTERFACE)
@@ -268,22 +271,22 @@ consecutive elements stride, while VkFFT does the opposite - the first
 axis is the non-strided axis (the one that has elements located consecutively
 in memory with no gaps, usually named as the X-axis). So, in FFTW
 dimensions are specified as ZYX and in VkFFT as XYZ. This felt more
-logical to me - no matter if there are 1, 2 or 3 dimensions, the user
-can always find the axis with the same stride at the same position.
-This choice doesn't require any modification in the user's data management
-- just provide the FFT dimensions in the reverse order to VkFFT. 
+logical to me - no matter if there are 1, 2, 3 or more dimensions,
+the user can always find the axis with the same stride at the same
+position. This choice doesn't require any modification in the user's
+data management - just provide the FFT dimensions in the reverse order
+to VkFFT. 
 
-In addition to up to the 3 dimensions of FFT, VkFFT supports two forms
-of batching: the number of coordinates and the number of systems.
-The choice of two distinct batching ways is made to support matrix-vector
-convolutions, where the kernel is presented as a matrix. Overall,
-the layout of VkFFT can be described as WHDCN - width, height, depth,
-coordinate and number of systems (in order of increasing strides,
-starting with 1 for width). Coordinate and number of systems can be
-1, if the user has 1 as one of the FFT dimensions, the user can omit
-it from setup altogether as FFT of size 1 produces the same number
-as the input. Often, the coordinate part of the layout is not used,
-so the main batching is done by specifying N.
+The 1.3 version of VkFFT supports arbitrary number of dimensions,
+defined as VKFFT\_MAX\_FFT\_DIMENSIONS compile constant. VkFFT also
+supports two forms of batching: the number of coordinates and the
+number of systems. The choice of two distinct batching ways is made
+to support matrix-vector convolutions, where the kernel is presented
+as a matrix. Overall, the layout of VkFFT can be described as WHD+CN
+- width, height, depth, other dimensions, coordinate and number of
+systems (in order of increasing strides, starting with 1 for width).
+Often, the coordinate part of the layout is not used, so the main
+batching is done by specifying N.
 
 VkFFT assumes that complex numbers are stored consecutively in memory:
 RIRIRI... where R denotes the real part of the complex number and
@@ -385,18 +388,20 @@ FFT transform.
 \subsubsection{VkFFT buffers strides. A special case of R2C/C2R transforms}
 
 To have better control of memory, the user can specify the strides
-between consecutive elements of different axis for H (height), D (depth)
-and C (coordinate) parts of the WHDCN layout (W (width) stride is
-fixed to be 1, N (number of systems) stride will be consecutive of
-C in memory if C is used, otherwise N will propagate the previous
-non-uniform stride multiplied by the corresponding axis length). Strides
-are specified not in bytes, but in the element type used - similar
-to the way how the user would access the corresponding element in
-the array. If all elements are consecutive in C2C, stride for H will
-be equal to the FFT length of W axis, stride for D will be multiplication
-of first two FFT axis lengths, stride for C will be multiplication
-of first three FFT axis lengths, etc. These are the default values
-of C2C and R2R strides if they are not explicitly specified.
+between consecutive elements of different axes. The W (width) stride
+is fixed to be 1, so to achieve innermost batching, user needs to
+initialize an N+1 dimension FFT and omit the innermost dimension using
+omitDimension{[}0{]} = 1 parameter. N (number of systems) stride will
+be consecutive of C in memory if C is used, otherwise N will propagate
+the previous non-uniform stride multiplied by the corresponding axis
+length). Strides are specified not in bytes, but in the element type
+used - similar to the way how the user would access the corresponding
+element in the array. If all elements are consecutive in C2C, stride
+for H will be equal to the FFT length of W axis, stride for D will
+be multiplication of first two FFT axis lengths and so on, stride
+for C will be multiplication of all FFT axes lengths, etc. These are
+the default values of C2C and R2R strides if they are not explicitly
+specified.
 
 One of the main use-cases of strides comes to solve the R2C/C2R Hermitian
 symmetry H stride mismatch - for real space, it is equal to $N_{x}$
@@ -703,6 +708,166 @@ size.
 
 \newpage{}
 
+\section{Runtime code optimization platform\label{sec:Modern-GPU-architecture.}}
+
+\subsection{Platform for GPU code generation}
+
+While GPUs show extraordinary performance, they are harder to program
+for compared to regular CPUs. Firstly, the algorithms must be optimized
+for SIMT (single instruction, multiple threads) execution, which is
+the soul of the GPU model. Secondly, rapid GPU development makes all
+vendor architectures (Nvidia, AMD, Intel) largely different. Below
+we will list some examples:
+\begin{itemize}
+\item Shared memory size. If your code uses the full 64KB of shared memory
+on AMD MI250X, it won't be optimal on Nvidia H100 which has 256KB
+of it. The same goes for L2/L3 cache size.
+\item Warp size. If your code uses 32 core warps (usual on Nvidia), it will
+not work or work inefficiently for 64 core warps of AMD CDNA.
+\item Coalesced memory. For Nvidia and AMD we have to coalesce 32-byte memory
+requests, for Intel, it is equal to 64 bytes. Multiple of these requests
+are then combined into 128-byte transactions to the chip. However,
+this is a big simplification. There exist undocumented issues for
+Nvidia and AMD, when bandwidth drops when code tries to do distant,
+but coalesced memory accesses, i.e. data are still grouped in 32-byte
+transactions but target addresses with > 2\textasciicircum 18 bytes
+between them (and the bigger the distance - the bigger the drop).
+The load-store unit (LSU) can not group 32-byte transactions. It is
+possible to regain full bandwidth by switching to 128-byte memory
+coalescing on Nvidia, while on AMD memory management follows different
+rules and these requests just happen to hit the same physical memory
+pin and thus be serialized. All this information is usually never
+shared by vendors, so programmers have to find solutions by trial
+and error.
+\item Compute unit composition. Some compute units have special function
+units that can evaluate single precision sines and cosines in one
+cycle (AMD and Nvidia). On Intel GPUs, they are often imprecise. The
+ratio between FP32 and FP64 units also imposes limitations on the
+algorithm - compute units with low FP64 core count will benefit from
+data precomputation in the lookup tables more. Some compute units
+have tensor cores for accelerated matrix products.
+\item There are many other nuanced differences (like the number of supported
+by hardware queues/streams, support for CUDA MPS execution model,
+register spilling control) which result in some complicated kernels
+being unpredictable in performance before you try. So having an option
+to tweak some of its parameters loosely related to hardware is a huge
+benefit. 
+\end{itemize}
+This brings us to a big obstacle: all vendors have their own computing
+platforms. CUDA for Nvidia, HIP for AMD, Level Zero for Intel, Metal
+for Apple. To facilitate the development of code for all these different
+in details but similar in SIMD nature GPUs, I used all the knowledge
+obtained via numerous experiments with VkFFT to generalize GPU programming
+as much as possible - and create a unified platform for GPU code generation. 
+
+\subsection{Platform structure}
+
+The project structure is split into four main parts:
+\begin{itemize}
+\item Application manager. We use a container-based model of management
+- the user fills out the configuration struct and then initializes
+the application with only one initializer function. So this part of
+the platform performs initial configuration management, pass of the
+parameters to the corresponding to the particular subprogram plan
+initializer, binary load/store for future reuse and resources deallocation.
+Here we have application dispatch handlers, which abstract the actual
+application-dependent code dispatch handlers in the same way as we
+have one function for initialization.
+\item Plan manager. After configuration propagation, the plan manager performs
+extensive configuration of parameters for a particular task code generation.
+It also performs general API-dependent parameter initialization for
+supported backends. The plan manager also performs code compilation
+using supported by the target API runtime compiler (NVRTC by Nvidia
+CUDA, HIPRTC by AMD HIP, glslang by Vulkan, native OpenCL, clang and
+llvm-spirv for Intel Level Zero). It manages additional memory allocations
+and backend-specific memory management. Finally, it has plan-specific
+dispatch routines and a plan resource deallocation manager.
+\item Code manager. This part of the platform is solely responsible for
+GPU code generation. It takes a special input configuration structure
+created from user configuration and API-derived parameters and produces
+a char array containing code to be executed. The code manager has
+a block structure that developers can use. This allows reusing parts
+of code between kernels. The block structure has the following designations:
+\begin{itemize}
+\item Level 2 kernels: problem-specific kernels and layout configuration.
+These functions are called by the plan manager and they are intended
+to have a clear description of what is going on in the function. There
+is no pure code here - only calls to append lower-level functions
+code to the kernel code and additional inlining constants configuration
+that can be performed by the propagated from the plan manager information.
+This kernel also performs calls to additional kernel configuration
+routines like shared memory and register inlining inside a kernel
+and overall kernel decoration (like calls to inlining structure definitions,
+calls to kernel name inlining) - these routines are defined in lower
+kernels levels.
+\item Level 1 kernels: less abstract simple routine kernels, like matrix-vector
+products, copy kernels, radix components of FFT, read/write managers.
+All of them must have a specified structure so they can be reused,
+for example, considering all input data to be in shared memory with
+a specific layout - then level 2 kernels will have a simple job of
+providing data to level 1 kernels in a specified manner and get the
+output in an also specified manner.
+\item Level 0 kernels: memory management kernels. Here we have the absolute
+simplest kernel blocks, like memory data transfer request calls, synchronization,
+inlining of register/shared memory initialization code, etc. Many
+APIs have their own definitions for particular math operations, so
+we can define functions for inlining additions multiplications and
+other basic arithmetics here as well. The target of this level is
+to provide level 1 and 2 kernels with an easy way to reuse things
+that can be generalized between the widest range of math algorithms. 
+\end{itemize}
+All of the different level kernels have full access to the target
+GPU hardware parameters - hence (depending on the quality of implemented
+kernels) it is possible to autotune the algorithm at run-time and
+simplify the compiler job as much as possible. This involves loop
+unrolling, constants inlining, etc. Having an additional level (level
+1) dedicated to the simple algorithms allows for kernel merging. 
+\item Structs definitions. Here we define all structs used by the platform.
+It also contains some helper structs that can be used to manage GPU
+with different APIs and collect generated applications in a library
+struct for easier access through a map key (if the user's code uses
+many applications, this turns out to be extremely helpful).
+\end{itemize}
+
+\subsection{Container abstractions}
+
+The main design improvement that enables the platform functionality
+and greatly expands its usability are container abstractions. The
+code generator now operates on special data containers (implemented
+as C-unions), that can hold integer/float/complex numbers either as
+known during the plan creation values or as strings of variable names
+- no more sprintf calls with big chunks of unreadable code. 
+
+An example operation that uses containers is a MUL operation that
+performs a multiplication A equals B multiplied by C. If all containers
+have known values, A can be precomputed during plan creation. If A
+, B and C are, for example, register names, we print to the kernel
+an operation of multiplication. Each operation like MUL has its own
+representation for all supported APIs in the vkFFT\_MathUtils.h file.
+An important distinction is that it is not a full compiler, but a
+simple tool that unifies syntaxis of different APIs and supports JIT
+optimizations. However, as the code manager outputs code that resembles
+binary, one of the future exploration possibilities it may be interesting
+to try to make level 0 and 1 kernels output assembly without additional
+compilation by the plan manager. 
+
+Usage of container abstractions brings exciting opportunities to code
+creation. Behaving as multi-API templates it will be possible to implement
+double-double FP128 mathematics support on GPU without modifying any
+of the already written algorithm code. Another big benefit is automatic
+type casting between precisions and option to perform precomputation
+in higher precision than the GPU code executes in. 
+
+I have also explored other ways to implement these container abstractions
+- including switching to C++ from C99 and using templates and operator
+overloading, however this turned out to be just a syntactic sugar,
+as if it did not reduce number of lines of code and did not increase
+readibility. So the code is still C with almost instant compilations
+as a bonus. All this is subject to change in the future if people
+present convincing arguments. 
+
+\newpage{}
+
 \section{VkFFT API Reference}
 
 This section covers error codes, API functions that can be used by
@@ -725,6 +890,8 @@ VKFFT_ERROR_INSUFFICIENT_CODE_BUFFER = 2,	// Generated kernel is bigger than def
 VKFFT_ERROR_INSUFFICIENT_TEMP_BUFFER = 3,	// Temporary string used in kernel generation is bigger than default temporary string array. Increase it with maxTempLength parameter of configuration.
 VKFFT_ERROR_PLAN_NOT_INITIALIZED = 4,	// Code attempts to use uninitialized plan (it is zero inside VkFFTApplication)		
 VKFFT_ERROR_NULL_TEMP_PASSED = 5,	// Internal kernel generation error
+VKFFT_ERROR_MATH_FAILED = 6,	// Math instruction in code generator failed     
+VKFFT_ERROR_FFTdim_GT_MAX_FFT_DIMENSIONS = 7,	// User specified a number of dimensions higher than the code is compiled to handle with VKFFT_MAX_FFT_DIMENSIONS
 VKFFT_ERROR_INVALID_PHYSICAL_DEVICE = 1001,	// No physical device is provided (Vulkan API)
 VKFFT_ERROR_INVALID_DEVICE = 1002,	// No device is provided (All APIs)
 VKFFT_ERROR_INVALID_QUEUE = 1003,	// No queue is provided (Vulkan API)
@@ -747,6 +914,7 @@ VKFFT_ERROR_EMPTY_outputBufferSize = 2009,	// Same error as VKFFT_ERROR_EMPTY_bu
 VKFFT_ERROR_EMPTY_outputBuffer = 2010,	// Same error as VKFFT_ERROR_EMPTY_buffer if isOutputFormatted is enabled
 VKFFT_ERROR_EMPTY_kernelSize = 2011,	// Same error as VKFFT_ERROR_EMPTY_bufferSize if performConvolution is enabled
 VKFFT_ERROR_EMPTY_kernel = 2012,	// Same error as VKFFT_ERROR_EMPTY_buffer if performConvolution is enabled
+VKFFT_ERROR_EMPTY_applicationString = 2013,	// loadApplicationString is zero when loadApplicationFromString is enabled
 VKFFT_ERROR_EMPRY_useCustomBluesteinPaddingPattern_arrays = 2014,	// pointers to primeSizes or paddedSizes arrays are zero when useCustomBluesteinPaddingPattern is enabled	
 VKFFT_ERROR_UNSUPPORTED_RADIX = 3001,	// VkFFT has encountered unsupported radix (more than 13) during decomposition and Bluestein's FFT fallback did not work
 VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH = 3002,	// VkFFT can not do this sequence length currently - it requires mor than three-upload Four step FFT
@@ -946,7 +1114,7 @@ each field in detail.
 typedef struct {
 // Required parameters: 	
 uint64_t FFTdim;	// FFT dimensionality (1, 2 or 3)
-uint64_t size[3];	// WHD - system dimensions
+uint64_t size[VKFFT_MAX_FFT_DIMENSIONS];	// WHD+ - system dimensions
 #if(VKFFT_BACKEND==0) //Vulkan API
 VkPhysicalDevice* physicalDevice;	// Pointer to Vulkan physical device, obtained from vkEnumeratePhysicalDevices
 VkDevice* device;	// Pointer to Vulkan device, created with vkCreateDevice
@@ -1039,7 +1207,7 @@ uint64_t numSharedBanks;	// How many banks shared memory has. Default 32
 uint64_t inverseReturnToInputBuffer;	// return data to the input buffer in inverse transform (0 - off, 1 - on). isInputFormatted must be enabled
 uint64_t numberBatches;	// N - used to perform multiple batches of initial data. Default 1
 uint64_t useUint64;	// Use 64-bit addressing mode in generated kernels
-uint64_t omitDimension[3];	// Disable FFT for this dimension (0 - FFT enabled, 1 - FFT disabled). Default 0. Doesn't work for R2C for now. Doesn't work with convolutions.
+uint64_t omitDimension[VKFFT_MAX_FFT_DIMENSIONS];	// Disable FFT for this dimension (0 - FFT enabled, 1 - FFT disabled). Default 0. Doesn't work for R2C first axis for now. Doesn't work with convolutions.
 uint64_t performBandwidthBoost; // Try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise  
 
 uint64_t doublePrecision;	// Perform calculations in double precision (0 - off, 1 - on).
@@ -1054,11 +1222,11 @@ uint64_t disableReorderFourStep;	// Disables unshuffling of Four step algorithm.
 uint64_t useLUT;	// Switches from calculating sincos to using precomputed LUT tables (0 - off, 1 - on). Configured by initialization routine
 uint64_t makeForwardPlanOnly;	// Generate code only for forward FFT (0 - off, 1 - on)
 uint64_t makeInversePlanOnly;	// Generate code only for inverse FFT (0 - off, 1 - on)
-uint64_t bufferStride[3];	// Buffer strides - default set to x - x*y - x*y*z values
+uint64_t bufferStride[VKFFT_MAX_FFT_DIMENSIONS];	// Buffer strides - default set to x - x*y - x*y*z values
 uint64_t isInputFormatted;	// Specify if input buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
 uint64_t isOutputFormatted;	// Specify if output buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
-uint64_t inputBufferStride[3];	// Input buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
-uint64_t outputBufferStride[3];	// Output buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
+uint64_t inputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];	// Input buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
+uint64_t outputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];	// Output buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
 uint64_t considerAllAxesStrided;	// Will create plan for non-strided axis similar as a strided axis - used with disableReorderFourStep to get the same layout for Bluestein kernel (0 - off, 1 - on)
 uint64_t keepShaderCode;	// Will keep shader code and print all executed shaders during the plan execution in order (0 - off, 1 - on)
 uint64_t printMemoryLayout;	// Will print order of buffers used in shaders (0 - off, 1 - on) 
@@ -1083,9 +1251,9 @@ uint64_t fixMinRaderPrimeFFT;	// start FFT convolution version of Rader for radi
 uint64_t fixMaxRaderPrimeFFT;	// switch to Bluestein's algorithm for radix primes from this number. Switch may happen earlier if prime can't fit in shared memory. Default is 16384, which is bigger than most current GPU's shared memory.
 
 // Optional zero padding control parameters: (default 0 if not stated otherwise)
-uint64_t performZeropadding[3];	// Don't read some data/perform computations if some input sequences are zeropadded for each axis (0 - off, 1 - on)
-uint64_t fft_zeropad_left[3];	// Specify start boundary of zero block in the system for each axis
-uint64_t fft_zeropad_right[3];	// Specify end boundary of zero block in the system for each axis
+uint64_t performZeropadding[VKFFT_MAX_FFT_DIMENSIONS];	// Don't read some data/perform computations if some input sequences are zeropadded for each axis (0 - off, 1 - on)
+uint64_t fft_zeropad_left[VKFFT_MAX_FFT_DIMENSIONS];	// Specify start boundary of zero block in the system for each axis
+uint64_t fft_zeropad_right[VKFFT_MAX_FFT_DIMENSIONS];	// Specify end boundary of zero block in the system for each axis
 uint64_t frequencyZeroPadding;	// Set to 1 if zeropadding of frequency domain, default 0 - spatial zeropadding
 
 // Optional convolution control parameters: (default 0 if not stated otherwise)
@@ -1108,8 +1276,8 @@ uint64_t localPageSize;	// In KB, the size to split page into if sequence spans 
 // Automatically filled based on device info (still can be reconfigured by user):
 uint64_t computeCapabilityMajor;	// CUDA/HIP compute capability of the device
 uint64_t computeCapabilityMinor;	// CUDA/HIP compute capability of the device 	
-uint64_t maxComputeWorkGroupCount[3];	// maxComputeWorkGroupCount from VkPhysicalDeviceLimits
-uint64_t maxComputeWorkGroupSize[3];	// maxComputeWorkGroupCount from VkPhysicalDeviceLimits
+uint64_t maxComputeWorkGroupCount[VKFFT_MAX_FFT_DIMENSIONS];	// maxComputeWorkGroupCount from VkPhysicalDeviceLimits
+uint64_t maxComputeWorkGroupSize[VKFFT_MAX_FFT_DIMENSIONS];	// maxComputeWorkGroupCount from VkPhysicalDeviceLimits
 uint64_t maxThreadsNum;	// Max number of threads from VkPhysicalDeviceLimits
 uint64_t sharedMemorySizeStatic;	// Available for static allocation shared memory size, in bytes
 uint64_t sharedMemorySize;	// Available for allocation shared memory size, in bytes
@@ -1278,13 +1446,13 @@ uint64\_t value. Can be provided at launch time, if specifyOffsetsAtLaunch
 parameter is enabled during initialization call. Optional parameters.
 
 User can provide custom dimension strides for buffer/inputBuffer/outputBuffer
-buffers - uint64\_t{[}3{]} array. Strides are specified in elements
-used in the array (not bytes). The first element corresponds to the
-stride between elements in the H direction, the second corresponds
-to the D direction and the third to C (or N, if the number of elements
-in C is 1). The first axis is assumed to be non-strided. Must be at
-least of the same size as default strides, otherwise the behavior
-is undefined. Optional parameters.
+buffers - uint64\_t{[}VKFFT\_MAX\_FFT\_DIMENSIONS{]} array. Strides
+are specified in elements used in the array (not bytes). The first
+element corresponds to the stride between elements in the H direction,
+the second corresponds to the D direction and the third to C (or N,
+if the number of elements in C is 1). The first axis is assumed to
+be non-strided. Must be at least of the same size as default strides,
+otherwise the behavior is undefined. Optional parameters.
 
 uint64\_t inverseReturnToInputBuffer - an option that allows setting
 the final output buffer of the inverse transform to the same buffer,
@@ -1296,11 +1464,11 @@ if isInputFormatted enabled). Optional parameter.
 This section describes part of the configuration structure responsible
 for FFT specification. 
 
-uint64\_t FFTdim - dimensionality of the transform (1, 2 or 3). Required
-parameter.
+uint64\_t FFTdim - dimensionality of the transform (up to VKFFT\_MAX\_FFT\_DIMENSIONS).
+Required parameter.
 
-uint64\_t size{[}3{]} - WHD dimensions of the transform. Required
-parameter.
+uint64\_t size{[}VKFFT\_MAX\_FFT\_DIMENSIONS{]} - WHD+ dimensions
+of the transform. Required parameter.
 
 uint64\_t numberBatches - N parameter of the transform. By default,
 it is set to 1. Optional parameter.
@@ -1350,23 +1518,28 @@ in the base halfPrecision case. halfPrecision must be set to 1. Default
 0, set to 1 to enable. Works only in Vulkan API now, experimental
 feature. Optional parameter.
 
-uint64\_t useLUT - switches from calculating sines and cosines (via
+int64\_t useLUT - switches from calculating sines and cosines (via
 special function units in single precision or as a polynomial approximation
-in double precision) to using precomputed Look-Up Tables. Default
-0 in single precision, 1 in double precision, set to 1 to enable.
+in double precision) to using precomputed Look-Up Tables. -1 - off,
+0 - auto, 1 - on. Default 0 in single precision, 1 in double precision.
 Set to 1 by default for Intel GPUs. If you have issues with single-precision
 accuracy on your GPU, try enabling this parameter (mobile GPUs may
 be affected). Optional parameter.
 
+int64\_t useLUT\_4step - switches from calculating sincos to using
+precomputed LUT tables for intermediate roots of 1 in the Four-step
+FFT algorithm. (-1 - off, 0 - auto, 1 - on). Configured by initialization
+routine. Optional parameter. 
+
 \subsubsection{Advanced parameters (code will work fine without using them)}
 
-uint64\_t omitDimension{[}3{]} - parameter, that disables the FFT
-calculation for a particular axis (WHD). Note, that omitted dimensions
-still need to be included in FFTdim and size. This parameter simply
-works as a switch during execution - by not executing the particular
-dimension code. It doesn't work with the non-strided axis (W) of R2C/C2R
-mode. It doesn't work with convolution calculations. Default 0, set
-to 1 to enable. Optional parameter.
+uint64\_t omitDimension{[}VKFFT\_MAX\_FFT\_DIMENSIONS{]} - parameter,
+that disables the FFT calculation for a particular axis (WHD). Note,
+that omitted dimensions still need to be included in FFTdim and size.
+This parameter simply works as a switch during execution - by not
+executing the particular dimension code. It doesn't work with the
+non-strided axis (W) of R2C/C2R mode. It doesn't work with convolution
+calculations. Default 0, set to 1 to enable. Optional parameter.
 
 uint64\_t useUint64 - forces VkFFT to use 64-bit addressing in generated
 kernels. It is automatically enabled if the estimated buffer size
@@ -1453,6 +1626,10 @@ uint64\_t disableSetLocale - disables all VkFFT attempts to set locale
 to C - user must ensure that VkFFT has C locale during the plan initialization.
 This option is needed for multithreading. Default 0.
 
+uint64\_t groupedBatch{[}VKFFT\_MAX\_FFT\_DIMENSIONS{]} - try to force
+this many FFTs to be perfromed by one threadblock for each dimension.
+Optional parameter. 
+
 \subsubsection{Rader control parameters}
 
 uint64\_t fixMinRaderPrimeMult - start direct multiplication Rader's
@@ -1513,19 +1690,21 @@ uint64\_t{*} paddedSizes - described in useCustomBluesteinPaddingPattern
 
 \subsubsection{Zero padding parameters}
 
-uint64\_t performZeropadding{[}3{]} - do not read/write some data/perform
-computations if some part of the sequence is known to have zeros.
-Set separately for each axis (WHD). If enabled, all 1D sequences in
-this direction will be considered padded (independent of other zero-padded
-axes). Default 0, set to 1 to enable. Optional parameter. 
+uint64\_t performZeropadding{[}VKFFT\_MAX\_FFT\_DIMENSIONS{]} - do
+not read/write some data/perform computations if some part of the
+sequence is known to have zeros. Set separately for each axis (WHD).
+If enabled, all 1D sequences in this direction will be considered
+padded (independent of other zero-padded axes). Default 0, set to
+1 to enable. Optional parameter. 
 
-uint64\_t fft\_zeropad\_left{[}3{]} - specify start boundary of zero
-block in the system for each axis. Default 0, set to the value between
-0 and size{[}X{]}-1. Optional parameter.
+uint64\_t fft\_zeropad\_left{[}VKFFT\_MAX\_FFT\_DIMENSIONS{]} - specify
+start boundary of zero block in the system for each axis. Default
+0, set to the value between 0 and size{[}X{]}-1. Optional parameter.
 
-uint64\_t fft\_zeropad\_right{[}3{]} - specify end boundary of zero
-block in the system for each axis. Default 0, set to the value between
-fft\_zeropad\_left{[}X{]} and size{[}X{]}-1. Optional parameter.
+uint64\_t fft\_zeropad\_right{[}VKFFT\_MAX\_FFT\_DIMENSIONS{]} - specify
+end boundary of zero block in the system for each axis. Default 0,
+set to the value between fft\_zeropad\_left{[}X{]} and size{[}X{]}-1.
+Optional parameter.
 
 uint64\_t frequencyZeroPadding - enables zero padding of the frequency
 domain, so the first read of inverse FFT will consider the parts of
@@ -1891,7 +2070,8 @@ for (uint64_t j = 0; j < numPlatforms; j++) {
 			cl_command_queue commandQueue = clCreateCommandQueue(vkGPU->context, vkGPU->device, 0, &res);
 			if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
 			vkGPU->commandQueue = commandQueue;
-			k++;
+			i=numDevices; 		
+			j=numPlatforms;
 		}
 		else {
 			k++;
@@ -1955,7 +2135,8 @@ free(platforms);
 				res = zeCommandQueueCreate(vkGPU->context, vkGPU->device, &commandQueueDescription, &vkGPU->commandQueue);
 				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
 				free(cmdqueueGroupProperties);
-				k++;
+				i=numDevices; 		
+				j=numPlatforms;
 			}
 			else {
 				k++;
@@ -1965,6 +2146,12 @@ free(platforms);
 		free(deviceList);
 	}
 	free(drivers);
+#elif(VKFFT_BACKEND==5)
+    NS::Array* devices = MTL::CopyAllDevices();
+    MTL::Device* device = (MTL::Device*)devices->object(vkGPU->device_id);
+    vkGPU->device = device;
+    MTL::CommandQueue* queue = device->newCommandQueue();
+    vkGPU->queue = queue;
 #endif
 \end{minted}
 \end{mdframed}
@@ -1985,12 +2172,16 @@ creation).
 VkFFTConfiguration configuration = {};
 VkFFTApplication app = {};
 
-configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D
+configuration.FFTdim = 1; //FFT dimension
 configuration.size[0] = Nx; //FFT size
 uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * configuration.size[0];
 
 //Device management + code submission
-configuration.device = &vkGPU->device; 
+#if(VKFFT_BACKEND==5)
+configuration.device = vkGPU->device;
+#else
+configuration.device = &vkGPU->device;
+#endif
 
 #if(VKFFT_BACKEND==0) //Vulkan API		
 configuration.queue = &vkGPU->queue;
@@ -2004,6 +2195,8 @@ configuration.context = &vkGPU->context;
 configuration.context = &vkGPU->context;
 configuration.commandQueue = &vkGPU->commandQueue;
 configuration.commandQueueID = vkGPU->commandQueueID;
+#elif(VKFFT_BACKEND==5)             
+configuration.queue = vkGPU->queue;
 #endif
 
 allocateBuffer(buffer, bufferSize); //Pseudocode for buffer allocation, differs between APIs
@@ -2056,7 +2249,7 @@ of batches, R2C - real to complex mode 0 or 1 (on/off), DCT - 0, 1,
 VkFFTConfiguration configuration = {};
 VkFFTApplication app = {};
 
-configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D
+configuration.FFTdim = 1; //FFT dimension
 configuration.size[0] = X;
 configuration.size[1] = Y;
 configuration.size[2] = Z;
@@ -2099,7 +2292,7 @@ inputBuffer and produces the result in the buffer.
 VkFFTConfiguration configuration = {};
 VkFFTApplication app = {};
 
-configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D
+configuration.FFTdim = 3; //FFT dimension
 configuration.size[0] = Nx;
 configuration.size[1] = Ny;
 configuration.size[2] = Nz;
@@ -2125,6 +2318,32 @@ uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * (configuration.size[0]/2+1) 
 \end{minted}
 \end{mdframed}
 
+\subsection{Advanced FFT application example: 3D FFT with innermost batching}
+
+In this example, VkFFT is configured to calculate a 3D in-place C2C
+FFT of a system with innermost (fast axis) batching. 
+
+\begin{mdframed}[backgroundcolor=bg]
+\begin{minted}[tabsize=4,obeytabs,breaklines]{C}
+//zero-initialize configuration + FFT application
+VkFFTConfiguration configuration = {};
+VkFFTApplication app = {};
+
+configuration.FFTdim = 4; //FFT dimension, 3+1
+configuration.size[0] = Nbatch;
+configuration.size[1] = Nx;
+configuration.size[2] = Ny;
+configuration.size[3] = Nz;
+
+configuration.omitDimension[0] = 1; // disable FFT over the batching dimension
+
+uint64_t bufferSize = (uint64_t)sizeof(float) * configuration.size[0] * configuration.size[1] * configuration.size[2] * configuration.size[3];
+
+//Device management + code submission - code is identical to the first example, except that you need to allocate two buffers (and provide them in the launch configuration).
+
+\end{minted}
+\end{mdframed}
+
 \subsection{Advanced FFT application example: 3D zero-padded FFT}
 
 In this example, VkFFT is configured to calculate a 3D FFT of a system.
@@ -2138,7 +2357,7 @@ part of the convolution and allows modelling of open systems.
 VkFFTConfiguration configuration = {};
 VkFFTApplication app = {};
 
-configuration.FFTdim = 3; //FFT dimension, 1D, 2D or 3D
+configuration.FFTdim = 3; //FFT dimension
 configuration.size[0] = Nx;
 configuration.size[1] = Ny;
 configuration.size[2] = Nz;
@@ -2177,7 +2396,7 @@ VkFFTApplication app_kernel = {};
 VkFFTApplication app_convolution = {};
 
 
-kernel_configuration.FFTdim = 1; //FFT dimension, 1D, 2D or 3D
+kernel_configuration.FFTdim = 1; //FFT dimension
 kernel_configuration.size[0] = Nx; //FFT size
 
 uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * kernel_configuration.size[0];
@@ -2221,7 +2440,7 @@ VkFFTApplication app_kernel = {};
 VkFFTApplication app_convolution = {};
 
 
-kernel_configuration.FFTdim = 2; //FFT dimension, 1D, 2D or 3D
+kernel_configuration.FFTdim = 2; //FFT dimension
 kernel_configuration.size[0] = Nx;
 kernel_configuration.size[1] = Ny; 
 kernel_configuration.coordinateFeatures = 3;

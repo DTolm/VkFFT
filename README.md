@@ -1,29 +1,28 @@
-[![Build Status](https://travis-ci.com/DTolm/VkFFT.svg?token=nMgUQeqx7PXMeCFaXqsb&branch=master)](https://travis-ci.com/github/DTolm/VkFFT)
 # VkFFT - Vulkan/CUDA/HIP/OpenCL/Level Zero/Metal Fast Fourier Transform library
 VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform library for Vulkan/CUDA/HIP/OpenCL/Level Zero/Metal projects. VkFFT aims to provide the community with an open-source alternative to Nvidia's cuFFT library while achieving better performance. VkFFT is written in C language and supports Vulkan, CUDA, HIP, OpenCL, Level Zero and Metal as backends.
 
-## The white paper of VkFFT is out - if you use VkFFT and want to cite it: https://ieeexplore.ieee.org/document/10036080
+## The white paper of VkFFT is out - if you use VkFFT, you can cite it: https://ieeexplore.ieee.org/document/10036080
 
 ## Currently supported features:
-  - 1D/2D/3D/ND systems - specify VKFFT_MAX_FFT_DIMENSIONS for arbitrary number of dimensions
-  - Forward and inverse directions of FFT
+  - 1D/2D/3D/ND systems - specify VKFFT_MAX_FFT_DIMENSIONS for arbitrary number of dimensions.
+  - Forward and inverse directions of FFT.
   - Support for big FFT dimension sizes. Current limits: C2C or even C2R/R2C - (2^32, 2^32, 2^32).  Odd C2R/R2C - (2^12, 2^32, 2^32). R2R - (2^12, 2^12, 2^12). Depends on the amount of shared memory on the device. (will be increased later).
   - Radix-2/3/4/5/7/8/11/13 FFT. Sequences using radix 3, 5, 7, 11 and 13 have comparable performance to that of powers of 2.
   - Rader's FFT algorithm for primes from 17 up to max shared memory length (~10000). Inlined and done without additional memory transfers.
-  - Bluestein's FFT algorithm for all other sequences. Full coverage of C2C range, single upload (2^12, 2^12, 2^12) for R2C/C2R/R2R. Optimized to have as few memory transfers as possible by using zero padding and merged convolution support of VkFFT
+  - Bluestein's FFT algorithm for all other sequences. Full coverage of C2C range, single upload (2^12, 2^12, 2^12) for R2C/C2R/R2R. Optimized to have as few memory transfers as possible by using zero padding and merged convolution support of VkFFT.
   - Single, double and half precision support. Double precision uses CPU-generated LUT tables. Half precision still does all computations in single and only uses half precision to store data.
   - All transformations are performed in-place with no performance loss. Out-of-place transforms are supported by selecting different input/output buffers.
   - No additional transposition uploads. Note: Data can be reshuffled after the Four Step FFT algorithm with an additional buffer (for big sequences). Doesn't matter for convolutions - they return to the input ordering (saves memory).
-  - Complex to complex (C2C), real to complex (R2C), complex to real (C2R) transformations and real to real (R2R) Discrete Cosine Transformations of types I, II, III and IV. R2R, R2C and C2R are optimized to run up to 2x times faster than C2C and take 2x less memory
-  - 1x1, 2x2, 3x3 convolutions with symmetric or nonsymmetric kernel (no register overutilization)
-  - Native zero padding to model open systems (up to 2x faster than simply padding input array with zeros). Can specify the range of sequences filled with zeros and the direction where zero padding is applied (read or write stage)
-  - WHDCN layout - data is stored in the following order (sorted by increase in strides): the width, the height, the depth, the coordinate (the number of feature maps), the batch number
-  - Multiple feature/batch convolutions - one input, multiple kernels
+  - Complex to complex (C2C), real to complex (R2C), complex to real (C2R) transformations and real to real (R2R) Discrete Cosine Transformations of types I, II, III and IV. R2R, R2C and C2R are optimized to run up to 2x times faster than C2C and take 2x less memory.
+  - 1x1, 2x2, 3x3 convolutions with symmetric or nonsymmetric kernel (no register overutilization).
+  - Native zero padding to model open systems (up to 2x faster than simply padding input array with zeros). Can specify the range of sequences filled with zeros and the direction where zero padding is applied (read or write stage).
+  - WHD+CN layout - data is stored in the following order (sorted by increase in strides): the width, the height, the depth, other dimensions, the coordinate (the number of feature maps), the batch number.
+  - Multiple feature/batch convolutions - one input, multiple kernels.
   - Multiple input/output/temporary buffer split. Allows using data split between different memory allocations and mitigates 4GB single allocation limit.
   - Works on Nvidia, AMD, Intel and Apple GPUs. And Raspberry Pi 4 GPU.
-  - Works on Windows, Linux and macOS
-  - VkFFT supports Vulkan, CUDA, HIP, OpenCL, Level Zero and Metal as backend to cover wide range of APIs
-  - Header-only library with Vulkan interface, which allows appending VkFFT directly to user's command buffer. Kernels are compiled at run-time
+  - Works on Windows, Linux and macOS.
+  - VkFFT supports Vulkan, CUDA, HIP, OpenCL, Level Zero and Metal as backend to cover wide range of APIs.
+  - Header-only library, which allows appending VkFFT directly to user's command buffer. Kernels are compiled at run-time.
 ## Future release plan
  - ##### Ambitious
     - Multiple GPU job splitting
@@ -60,10 +59,10 @@ VkFFT has a command-line interface with the following set of commands:\
 -rocfft X: launch rocFFT sample X (0-4, 1000-1003) (if enabled in CMakeLists.txt)\
 -test: (or no other keys) launch all VkFFT and cuFFT benchmarks\
 So, the command to launch single precision benchmark of VkFFT and cuFFT and save log to output.txt file on device 0 will look like this on Windows:\
-.\Vulkan_FFT.exe -d 0 -o output.txt -vkfft 0 -cufft 0\
+.\VkFFT_TestSuite.exe -d 0 -o output.txt -vkfft 0 -cufft 0\
 For double precision benchmark, replace -vkfft 0 -cufft 0 with -vkfft 1 -cufft 1. For half precision benchmark, replace -vkfft 0 -cufft 0 with -vkfft 2 -cufft 2.
 ## How to use VkFFT
-VkFFT.h is a library that can append FFT, iFFT or convolution calculation to the user-defined command buffer. It operates on storage buffers allocated by the user and doesn't require any additional memory by itself (except for LUT, if they are enabled). All computations are fully based on Vulkan compute shaders with no CPU usage except for FFT planning. VkFFT creates and optimizes memory layout by itself and performs FFT with the best-chosen parameters. For an example application, see Vulkan_FFT.cpp file, which has comments explaining the VkFFT configuration process.\
+VkFFT.h is a library that can append FFT, iFFT or convolution calculation to the user-defined command buffer. It operates on storage buffers allocated by the user and doesn't require any additional memory by itself (except for LUT, if they are enabled). All computations are fully based on Vulkan compute shaders with no CPU usage except for FFT planning. VkFFT creates and optimizes memory layout by itself and performs FFT with the best-chosen parameters. For an example application, see VkFFT_TestSuite.cpp file, which has comments explaining the VkFFT configuration process.\
 VkFFT achieves striding by grouping nearby FFTs instead of transpositions. \
 Explicit VkFFT documentation can be found in the documentation folder.
 ## Benchmark results in comparison to cuFFT
@@ -79,6 +78,10 @@ Above, VkFFT precision is verified by comparing its results with FP128 version o
 For both precisions, all tested libraries exhibit logarithmic error scaling. The main source of error is imprecise twiddle factor computation – sines and cosines used by FFT algorithms. For FP64 they are calculated on the CPU either in FP128 or in FP64 and stored in the lookup tables. With FP128 precomputation (left) VkFFT is more precise than cuFFT and rocFFT. 
 
 For FP32, twiddle factors can be calculated on-the-fly in FP32 or precomputed in FP64/FP32. With FP32 twiddle factors (right) VkFFT is slightly less precise in Bluestein’s and Rader’s algorithms. If needed, this can be solved with FP64 precomputation. 
+
+## VkFFT - a story of Vulkan Compute GPU HPC library development: https://youtu.be/FQuJJ0m-my0
+
+## VkFFT and beyond – a platform for runtime GPU code generation: https://youtu.be/lHlFPqlOezo
 
 ## Check out my poster at SC22: https://sc22.supercomputing.org/presentation/?id=rpost143&sess=sess273
 

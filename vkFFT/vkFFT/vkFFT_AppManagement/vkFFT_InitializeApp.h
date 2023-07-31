@@ -1352,7 +1352,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.omitDimension[i] = inputLaunchConfiguration.omitDimension[i];
 		if ((app->configuration.size[i] == 1) && (!(app->configuration.performR2C && (i == 0))) && (!app->configuration.performConvolution)) app->configuration.omitDimension[i] = 1;
 	}
-	for (int i = app->configuration.FFTdim - 1; i >= 0; i--) {
+	for (int i = (int)app->configuration.FFTdim - 1; i >= 0; i--) {
 		if (app->configuration.omitDimension[i] != 0) {
 			app->lastAxis--;
 			if (app->configuration.performConvolution) {
@@ -1377,7 +1377,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 			}
 		}
 		else {
-			i = app->configuration.FFTdim;
+			i = (int)app->configuration.FFTdim;
 		}
 	}
 	
@@ -1448,7 +1448,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		if (app->localFFTPlan_inverse) {
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 				//app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
-				resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, i);
+				resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, (int)i);
 				if (resFFT == VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH) {
 					//try again with Rader disabled - sequences like 89^4 can still be done with Bluestein FFT
 					memset(app->localFFTPlan_inverse, 0, sizeof(VkFFTPlan));
@@ -1456,7 +1456,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 					app->configuration.fixMaxRaderPrimeFFT = app->configuration.fixMinRaderPrimeFFT;
 					uint64_t temp_fixMaxRaderPrimeMult = app->configuration.fixMaxRaderPrimeMult;
 					app->configuration.fixMaxRaderPrimeMult = app->configuration.fixMinRaderPrimeMult;
-					resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, i);
+					resFFT = VkFFTScheduler(app, app->localFFTPlan_inverse, (int)i);
 					app->configuration.fixMaxRaderPrimeFFT = temp_fixMaxRaderPrimeFFT;
 					app->configuration.fixMaxRaderPrimeMult = temp_fixMaxRaderPrimeMult;
 				}
@@ -1507,7 +1507,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		if (app->localFFTPlan) {
 			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
 				//app->configuration.sharedMemorySize = ((app->configuration.size[i] & (app->configuration.size[i] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : initSharedMemory;
-				resFFT = VkFFTScheduler(app, app->localFFTPlan, i);
+				resFFT = VkFFTScheduler(app, app->localFFTPlan, (int)i);
 				if (resFFT == VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH) {
 					//try again with Rader disabled - sequences like 89^4 can still be done with Bluestein FFT
 					memset(app->localFFTPlan, 0, sizeof(VkFFTPlan));
@@ -1515,7 +1515,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 					app->configuration.fixMaxRaderPrimeFFT = app->configuration.fixMinRaderPrimeFFT;
 					uint64_t temp_fixMaxRaderPrimeMult = app->configuration.fixMaxRaderPrimeMult;
 					app->configuration.fixMaxRaderPrimeMult = app->configuration.fixMinRaderPrimeMult;
-					resFFT = VkFFTScheduler(app, app->localFFTPlan, i);
+					resFFT = VkFFTScheduler(app, app->localFFTPlan, (int)i);
 					app->configuration.fixMaxRaderPrimeFFT = temp_fixMaxRaderPrimeFFT;
 					app->configuration.fixMaxRaderPrimeMult = temp_fixMaxRaderPrimeMult;
 				}

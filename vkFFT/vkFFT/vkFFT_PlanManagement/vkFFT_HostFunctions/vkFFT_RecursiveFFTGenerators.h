@@ -25,6 +25,9 @@
 
 #include "vkFFT/vkFFT_PlanManagement/vkFFT_API_handles/vkFFT_ManageMemory.h"
 #include "vkFFT/vkFFT_AppManagement/vkFFT_InitializeApp.h"
+#ifdef VkFFT_use_FP128_Bluestein_RaderFFT
+#include "fftw3.h"
+#endif
 static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfiguration inputLaunchConfiguration);
 
 static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t axis_id) {
@@ -158,7 +161,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 				phaseVectors_fp64[2 * out] = (double)phaseVectors_fp128_out[2 * i];
 				phaseVectors_fp64[2 * out + 1] = (double)phaseVectors_fp128_out[2 * i + 1];
 			}
-			resFFT = VkFFT_transferDataFromCPU(app, phaseVectors_fp64, &app->bufferBluesteinIFFT[axis_id], bufferSize);
+			resFFT = VkFFT_TransferDataFromCPU(app, phaseVectors_fp64, &app->bufferBluesteinIFFT[axis_id], bufferSize);
 			if (resFFT != VKFFT_SUCCESS) {
 				free(phaseVectors_fp64);
 				free(phaseVectors_fp128);
@@ -173,7 +176,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			phaseVectors_fp64[2 * i] = (double)phaseVectors_fp128[2 * i];
 			phaseVectors_fp64[2 * i + 1] = (double)phaseVectors_fp128[2 * i + 1];
 		}
-		resFFT = VkFFT_transferDataFromCPU(app, phaseVectors_fp64, &app->bufferBluestein[axis_id], bufferSize);
+		resFFT = VkFFT_TransferDataFromCPU(app, phaseVectors_fp64, &app->bufferBluestein[axis_id], bufferSize);
 		if (resFFT != VKFFT_SUCCESS) {
 			free(phaseVectors_fp64);
 			free(phaseVectors_fp128);
@@ -199,7 +202,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 				phaseVectors_fp64[2 * out] = (double)phaseVectors_fp128_out[2 * i];
 				phaseVectors_fp64[2 * out + 1] = (double)phaseVectors_fp128_out[2 * i + 1];
 			}
-			resFFT = VkFFT_transferDataFromCPU(app, phaseVectors_fp64, &app->bufferBluesteinFFT[axis_id], bufferSize);
+			resFFT = VkFFT_TransferDataFromCPU(app, phaseVectors_fp64, &app->bufferBluesteinFFT[axis_id], bufferSize);
 			if (resFFT != VKFFT_SUCCESS) {
 				free(phaseVectors_fp64);
 				free(phaseVectors_fp128);
@@ -217,7 +220,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 				phaseVectors_fp64[2 * i] = (double)phaseVectors_fp128_out[2 * i];
 				phaseVectors_fp64[2 * i + 1] = (double)phaseVectors_fp128_out[2 * i + 1];
 			}
-			resFFT = VkFFT_transferDataFromCPU(app, phaseVectors_fp64, &app->bufferBluesteinIFFT[axis_id], bufferSize);
+			resFFT = VkFFT_TransferDataFromCPU(app, phaseVectors_fp64, &app->bufferBluesteinIFFT[axis_id], bufferSize);
 			if (resFFT != VKFFT_SUCCESS) {
 				free(phaseVectors_fp64);
 				free(phaseVectors_fp128);

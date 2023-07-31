@@ -32,13 +32,13 @@
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel1/vkFFT_RadixKernels.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel1/vkFFT_RaderKernels.h"
 
-static inline void appendRadixStageNonStrided(VkFFTSpecializationConstantsLayout* sc, VkContainer* stageSize, VkContainer* stageSizeSum, VkContainer* stageAngle, VkContainer* stageRadix) {
+static inline void appendRadixStageNonStrided(VkFFTSpecializationConstantsLayout* sc, PfContainer* stageSize, PfContainer* stageSizeSum, PfContainer* stageAngle, PfContainer* stageRadix) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = VKFFT_ZERO_INIT;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = VKFFT_ZERO_INIT;
+	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = VKFFT_ZERO_INIT;
+	PfContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 	/*char convolutionInverse[10] = "";
 	if (sc->convolutionStep) {
@@ -47,15 +47,15 @@ static inline void appendRadixStageNonStrided(VkFFTSpecializationConstantsLayout
 		else
 			sprintf(convolutionInverse, ", 1");
 	}*/
-	VkContainer logicalStoragePerThread;
+	PfContainer logicalStoragePerThread;
 	logicalStoragePerThread.type = 31;
 	logicalStoragePerThread.data.i = sc->registers_per_thread_per_radix[stageRadix->data.i] * sc->registerBoost;// (sc->registers_per_thread % stageRadix->data.i == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-	VkContainer logicalRegistersPerThread;
+	PfContainer logicalRegistersPerThread;
 	logicalRegistersPerThread.type = 31;
 	logicalRegistersPerThread.data.i = sc->registers_per_thread_per_radix[stageRadix->data.i];// (sc->registers_per_thread % stageRadix->data.i == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
-	VkContainer logicalGroupSize;
+	PfContainer logicalGroupSize;
 	logicalGroupSize.type = 31;
-	VkDivCeil(sc, &logicalGroupSize, &sc->fftDim, &logicalStoragePerThread);
+	PfDivCeil(sc, &logicalGroupSize, &sc->fftDim, &logicalStoragePerThread);
 
 	if ((!((sc->readToRegisters == 1) && (stageSize->data.i == 1) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle->data.d > 0) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)))))) && ((sc->localSize[0].data.i * logicalStoragePerThread.data.i > sc->fftDim.data.i) || (stageSize->data.i > 1) || ((sc->localSize[1].data.i > 1) && (!(sc->performR2C && (sc->actualInverse)))) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)) && (stageAngle->data.d > 0)) || (sc->performDCT)))
 	{
@@ -65,7 +65,7 @@ static inline void appendRadixStageNonStrided(VkFFTSpecializationConstantsLayout
 	
 	if (sc->useDisableThreads) {
 		temp_int.data.i = 0;
-		VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
+		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
 	//upload second stage of LUT to sm
 	uint64_t numLUTelementsStage = 0;
@@ -99,56 +99,56 @@ static inline void appendRadixStageNonStrided(VkFFTSpecializationConstantsLayout
 
 	for (uint64_t k = 0; k < sc->registerBoost; k++) {
 		if (logicalGroupSize.data.i != sc->localSize[0].data.i) {
-			VkIf_lt_start(sc, &sc->gl_LocalInvocationID_x, &logicalGroupSize);
+			PfIf_lt_start(sc, &sc->gl_LocalInvocationID_x, &logicalGroupSize);
 		}
-		for (uint64_t j = 0; j < logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
-			if (logicalGroupSize.data.i * ((j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) continue;
-			if (logicalGroupSize.data.i * ((1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
-				VkContainer current_group_cut;
+		for (uint64_t j = 0; j < (uint64_t)(logicalRegistersPerThread.data.i / stageRadix->data.i); j++) {
+			if (logicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) continue;
+			if (logicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
+				PfContainer current_group_cut;
 				current_group_cut.type = 31;
 				current_group_cut.data.i = sc->fftDim.data.i / stageRadix->data.i - (j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * logicalGroupSize.data.i;
-				VkIf_lt_start(sc, &sc->gl_LocalInvocationID_x, &current_group_cut);
+				PfIf_lt_start(sc, &sc->gl_LocalInvocationID_x, &current_group_cut);
 			}
 
 			temp_int.data.i = (j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * logicalGroupSize.data.i;
-			VkAdd(sc, &sc->stageInvocationID, &sc->gl_LocalInvocationID_x, &temp_int);
+			PfAdd(sc, &sc->stageInvocationID, &sc->gl_LocalInvocationID_x, &temp_int);
 			temp_int.data.i = stageSize->data.i;
-			VkMod(sc, &sc->stageInvocationID, &sc->stageInvocationID, &temp_int);
+			PfMod(sc, &sc->stageInvocationID, &sc->stageInvocationID, &temp_int);
 			
 			
 			if (sc->LUT) {
 				temp_int.data.i = stageSizeSum->data.i;
-				VkAdd(sc, &sc->LUTId, &sc->stageInvocationID, &temp_int);
+				PfAdd(sc, &sc->LUTId, &sc->stageInvocationID, &temp_int);
 			}
 			else {
 				temp_double.data.d = stageAngle->data.d;
-				VkMul(sc, &sc->angle, &sc->stageInvocationID, &temp_double, 0);
+				PfMul(sc, &sc->angle, &sc->stageInvocationID, &temp_double, 0);
 			}
 				
 			if ((!((sc->readToRegisters == 1) && (stageSize->data.i == 1) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle->data.d > 0) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)))))) && ((sc->registerBoost == 1) && ((sc->localSize[0].data.i * logicalStoragePerThread.data.i > sc->fftDim.data.i) || (stageSize->data.i > 1) || ((sc->localSize[1].data.i > 1) && (!(sc->performR2C && (sc->actualInverse)))) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)) && (stageAngle->data.d > 0)) || (sc->performDCT)))) {
 				//if(sc->readToRegisters==0){
-				for (uint64_t i = 0; i < stageRadix->data.i; i++) {
-					VkContainer id;
+				for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
+					PfContainer id;
 					id.type = 31;
 					id.data.i = j + i * logicalRegistersPerThread.data.i / stageRadix->data.i;
 					id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
 
 					temp_int.data.i = j * logicalGroupSize.data.i + i * sc->fftDim.data.i / stageRadix->data.i;
-					VkAdd(sc, &sc->sdataID, &sc->gl_LocalInvocationID_x, &temp_int);					
+					PfAdd(sc, &sc->sdataID, &sc->gl_LocalInvocationID_x, &temp_int);					
 
 					if (sc->resolveBankConflictFirstStages == 1) {
 						temp_int.data.i = sc->numSharedBanks / 2;
-						VkDiv(sc, &sc->tempInt, &sc->sdataID, &temp_int);
+						PfDiv(sc, &sc->tempInt, &sc->sdataID, &temp_int);
 						temp_int.data.i = sc->numSharedBanks / 2 + 1;
-						VkMul(sc, &sc->tempInt, &sc->tempInt, &temp_int, 0);
+						PfMul(sc, &sc->tempInt, &sc->tempInt, &temp_int, 0);
 						temp_int.data.i = sc->numSharedBanks / 2;
-						VkMod(sc, &sc->sdataID, &sc->sdataID, &temp_int);
-						VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+						PfMod(sc, &sc->sdataID, &sc->sdataID, &temp_int);
+						PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
 					}
 
 					if (sc->localSize[1].data.i > 1) {
-						VkMul(sc, &sc->tempInt, &sc->sharedStride, &sc->gl_LocalInvocationID_y, 0);
-						VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+						PfMul(sc, &sc->tempInt, &sc->sharedStride, &sc->gl_LocalInvocationID_y, 0);
+						PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
 					}
 
 					appendSharedToRegisters(sc, &sc->regIDs[id.data.i], &sc->sdataID);
@@ -156,27 +156,27 @@ static inline void appendRadixStageNonStrided(VkFFTSpecializationConstantsLayout
 				}
 			}
 			if (!sc->useCoalescedLUTUploadToSM) {
-				VkContainer* regID = (VkContainer*)calloc(stageRadix->data.i, sizeof(VkContainer));
+				PfContainer* regID = (PfContainer*)calloc(stageRadix->data.i, sizeof(PfContainer));
 				if (regID) {
-					for (uint64_t i = 0; i < stageRadix->data.i; i++) {
-						VkContainer id;
+					for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
+						PfContainer id;
 						id.type = 31;
 						id.data.i = j + k * logicalRegistersPerThread.data.i / stageRadix->data.i + i * logicalStoragePerThread.data.i / stageRadix->data.i;
 						id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
-						VkAllocateContainerFlexible(sc, &regID[i], 50);
+						PfAllocateContainerFlexible(sc, &regID[i], 50);
 						regID[i].type = sc->regIDs[id.data.i].type;
-						VkCopyContainer(sc, &regID[i], &sc->regIDs[id.data.i]);
+						PfCopyContainer(sc, &regID[i], &sc->regIDs[id.data.i]);
 					}
 
 					inlineRadixKernelVkFFT(sc, stageRadix->data.i, stageSize->data.i, stageSizeSum->data.i, stageAngle->data.d, regID);
 					
-					for (uint64_t i = 0; i < stageRadix->data.i; i++) {
-						VkContainer id;
+					for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
+						PfContainer id;
 						id.type = 31; 
 						id.data.i = j + k * logicalRegistersPerThread.data.i / stageRadix->data.i + i * logicalStoragePerThread.data.i / stageRadix->data.i;
 						id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
-						VkCopyContainer(sc, &sc->regIDs[id.data.i], &regID[i]);
-						VkDeallocateContainer(sc, &regID[i]);
+						PfCopyContainer(sc, &sc->regIDs[id.data.i], &regID[i]);
+						PfDeallocateContainer(sc, &regID[i]);
 					}
 					free(regID);
 					regID = 0;
@@ -187,90 +187,90 @@ static inline void appendRadixStageNonStrided(VkFFTSpecializationConstantsLayout
 				}
 			}
 
-			if (logicalGroupSize.data.i * ((1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
-				VkIf_end(sc);
+			if (logicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
+				PfIf_end(sc);
 			}
 		}
 		if (logicalGroupSize.data.i != sc->localSize[0].data.i) {
-			VkIf_end(sc);			
+			PfIf_end(sc);			
 		}
 		if (sc->useCoalescedLUTUploadToSM) {
 			if (sc->useDisableThreads) {
-				VkIf_end(sc);
+				PfIf_end(sc);
 			}
 			
 			appendBarrierVkFFT(sc);
 			
 
 			sc->useCoalescedLUTUploadToSM = 1;
-			VkMov(sc, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+			PfMov(sc, &sc->sdataID, &sc->gl_LocalInvocationID_x);
 			
 			if (sc->localSize[1].data.i > 1) {
-				VkMul(sc, &sc->tempInt, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
-				VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+				PfMul(sc, &sc->tempInt, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
 			}
 
 			for (uint64_t i = 0; i < (uint64_t)ceil(numLUTelementsStage * stageSize->data.i / ((double)sc->localSize[0].data.i * sc->localSize[1].data.i)); i++) {
 				if (i > 0) {
 					temp_int.data.i = sc->localSize[0].data.i * sc->localSize[1].data.i;
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);					
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);					
 				}
 				if (i == (uint64_t)ceil(numLUTelementsStage * stageSize->data.i / ((double)sc->localSize[0].data.i * sc->localSize[1].data.i)) - 1) {
 					temp_int.data.i = numLUTelementsStage * stageSize->data.i;
-					VkIf_lt_start(sc, &sc->sdataID, &temp_int);					
+					PfIf_lt_start(sc, &sc->sdataID, &temp_int);					
 				}
 				temp_int.data.i = stageSizeSum->data.i;
-				VkAdd(sc, &sc->inoutID, &sc->sdataID, &temp_int);
+				PfAdd(sc, &sc->inoutID, &sc->sdataID, &temp_int);
 				appendGlobalToShared(sc, &sc->sdataID, &sc->LUTStruct, &sc->inoutID);
 				
 				if (i == (uint64_t)ceil(numLUTelementsStage * stageSize->data.i / ((double)sc->localSize[0].data.i * sc->localSize[1].data.i)) - 1) {
-					VkIf_end(sc);
+					PfIf_end(sc);
 				}
 			}
 			appendBarrierVkFFT(sc);
 			
 			if (sc->useDisableThreads) {
 				temp_int.data.i = 0;
-				VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
+				PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 			}
 
 			if (logicalGroupSize.data.i != sc->localSize[0].data.i) {
-				VkIf_lt_start(sc, &sc->gl_LocalInvocationID_x, &logicalGroupSize);
+				PfIf_lt_start(sc, &sc->gl_LocalInvocationID_x, &logicalGroupSize);
 			}
-			for (uint64_t j = 0; j < logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
-				if (logicalGroupSize.data.i * ((j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) continue;
-				if (logicalGroupSize.data.i * ((1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
-					VkContainer current_group_cut;
+			for (uint64_t j = 0; j < (uint64_t)logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
+				if (logicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) continue;
+				if (logicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
+					PfContainer current_group_cut;
 					current_group_cut.type = 31;
 					current_group_cut.data.i = sc->fftDim.data.i / stageRadix->data.i - (j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * logicalGroupSize.data.i;
-					VkIf_lt_start(sc, &sc->gl_LocalInvocationID_x, &current_group_cut);
+					PfIf_lt_start(sc, &sc->gl_LocalInvocationID_x, &current_group_cut);
 				}
-				VkContainer* regID = (VkContainer*)calloc(stageRadix->data.i, sizeof(VkContainer));
+				PfContainer* regID = (PfContainer*)calloc(stageRadix->data.i, sizeof(PfContainer));
 				if (regID) {
-					for (uint64_t i = 0; i < stageRadix->data.i; i++) {
-						VkContainer id;
+					for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
+						PfContainer id;
 						id.type = 31;
 						id.data.i = j + k * logicalRegistersPerThread.data.i / stageRadix->data.i + i * logicalStoragePerThread.data.i / stageRadix->data.i;
 						id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
-						VkAllocateContainerFlexible(sc, &regID[i], 50);
+						PfAllocateContainerFlexible(sc, &regID[i], 50);
 						regID[i].type = sc->regIDs[id.data.i].type;
-						VkCopyContainer(sc, &regID[i], &sc->regIDs[id.data.i]);
+						PfCopyContainer(sc, &regID[i], &sc->regIDs[id.data.i]);
 					}
 
 					temp_int.data.i = (j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * logicalGroupSize.data.i;
-					VkAdd(sc, &sc->stageInvocationID, &sc->gl_LocalInvocationID_x, &temp_int);
+					PfAdd(sc, &sc->stageInvocationID, &sc->gl_LocalInvocationID_x, &temp_int);
 					temp_int.data.i = stageSize->data.i;
-					VkMod(sc, &sc->stageInvocationID, &sc->stageInvocationID, &temp_int);
+					PfMod(sc, &sc->stageInvocationID, &sc->stageInvocationID, &temp_int);
 					
 					inlineRadixKernelVkFFT(sc, stageRadix->data.i, stageSize->data.i, stageSizeSum->data.i, stageAngle->data.d, regID);
 					
-					for (uint64_t i = 0; i < stageRadix->data.i; i++) {
-						VkContainer id;
+					for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
+						PfContainer id;
 						id.type = 31;
 						id.data.i = j + k * logicalRegistersPerThread.data.i / stageRadix->data.i + i * logicalStoragePerThread.data.i / stageRadix->data.i;
 						id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
-						VkCopyContainer(sc, &sc->regIDs[id.data.i], &regID[i]);
-						VkDeallocateContainer(sc, &regID[i]);
+						PfCopyContainer(sc, &sc->regIDs[id.data.i], &regID[i]);
+						PfDeallocateContainer(sc, &regID[i]);
 					}
 					free(regID);
 					regID = 0;
@@ -280,30 +280,30 @@ static inline void appendRadixStageNonStrided(VkFFTSpecializationConstantsLayout
 					sc->res = VKFFT_ERROR_MALLOC_FAILED;
 					return;
 				}
-				if (logicalGroupSize.data.i * ((1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
-					VkIf_end(sc);
+				if (logicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
+					PfIf_end(sc);
 				}
 			}
 			if (logicalGroupSize.data.i != sc->localSize[0].data.i) {
-				VkIf_end(sc);
+				PfIf_end(sc);
 			}
 		}
 	}
 
 	if (sc->useDisableThreads) {
-		VkIf_end(sc);
+		PfIf_end(sc);
 	}
 	
 	return;
 }
 
-static inline void appendRadixStageStrided(VkFFTSpecializationConstantsLayout* sc, VkContainer* stageSize, VkContainer* stageSizeSum, VkContainer* stageAngle, VkContainer* stageRadix) {
+static inline void appendRadixStageStrided(VkFFTSpecializationConstantsLayout* sc, PfContainer* stageSize, PfContainer* stageSizeSum, PfContainer* stageAngle, PfContainer* stageRadix) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = VKFFT_ZERO_INIT;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = VKFFT_ZERO_INIT;
+	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = VKFFT_ZERO_INIT;
+	PfContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 	/*char convolutionInverse[10] = "";
 	if (sc->convolutionStep) {
@@ -312,15 +312,15 @@ static inline void appendRadixStageStrided(VkFFTSpecializationConstantsLayout* s
 		else
 			sprintf(convolutionInverse, ", 1");
 	}*/
-	VkContainer logicalStoragePerThread;
+	PfContainer logicalStoragePerThread;
 	logicalStoragePerThread.type = 31;
 	logicalStoragePerThread.data.i = sc->registers_per_thread_per_radix[stageRadix->data.i] * sc->registerBoost;// (sc->registers_per_thread % stageRadix->data.i == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-	VkContainer logicalRegistersPerThread;
+	PfContainer logicalRegistersPerThread;
 	logicalRegistersPerThread.type = 31;
 	logicalRegistersPerThread.data.i = sc->registers_per_thread_per_radix[stageRadix->data.i];// (sc->registers_per_thread % stageRadix->data.i == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
-	VkContainer logicalGroupSize;
+	PfContainer logicalGroupSize;
 	logicalGroupSize.type = 31;
-	VkDivCeil(sc, &logicalGroupSize, &sc->fftDim, &logicalStoragePerThread);
+	PfDivCeil(sc, &logicalGroupSize, &sc->fftDim, &logicalStoragePerThread);
 
 	if ((!((sc->readToRegisters == 1) && (stageSize->data.i == 1) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle->data.d > 0) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)))))) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0) && (!(sc->performR2C && (sc->actualInverse)))) || (sc->localSize[1].data.i * logicalStoragePerThread.data.i > sc->fftDim.data.i) || (stageSize->data.i > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)) && (stageAngle->data.d > 0)) || (sc->performDCT)))
 	{
@@ -329,7 +329,7 @@ static inline void appendRadixStageStrided(VkFFTSpecializationConstantsLayout* s
 	}
 	if (sc->useDisableThreads) {
 		temp_int.data.i = 0;
-		VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
+		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
 	//upload second stage of LUT to sm
 	uint64_t numLUTelementsStage = 0;
@@ -363,71 +363,71 @@ static inline void appendRadixStageStrided(VkFFTSpecializationConstantsLayout* s
 
 	for (uint64_t k = 0; k < sc->registerBoost; k++) {
 		if (logicalGroupSize.data.i != sc->localSize[1].data.i) {
-			VkIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &logicalGroupSize);
+			PfIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &logicalGroupSize);
 		}
-		for (uint64_t j = 0; j < logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
-			if (logicalGroupSize.data.i * ((j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) continue;
-			if (logicalGroupSize.data.i * ((1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
-				VkContainer current_group_cut;
+		for (uint64_t j = 0; j < (uint64_t)logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
+			if (logicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) continue;
+			if (logicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
+				PfContainer current_group_cut;
 				current_group_cut.type = 31;
 				current_group_cut.data.i = sc->fftDim.data.i / stageRadix->data.i - (j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * logicalGroupSize.data.i;
-				VkIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &current_group_cut);
+				PfIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &current_group_cut);
 			}
 
 			temp_int.data.i = (j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * logicalGroupSize.data.i;
-			VkAdd(sc, &sc->stageInvocationID, &sc->gl_LocalInvocationID_y, &temp_int);
+			PfAdd(sc, &sc->stageInvocationID, &sc->gl_LocalInvocationID_y, &temp_int);
 			temp_int.data.i = stageSize->data.i;
-			VkMod(sc, &sc->stageInvocationID, &sc->stageInvocationID, &temp_int);
+			PfMod(sc, &sc->stageInvocationID, &sc->stageInvocationID, &temp_int);
 
 
 			if (sc->LUT) {
 				temp_int.data.i = stageSizeSum->data.i;
-				VkAdd(sc, &sc->LUTId, &sc->stageInvocationID, &temp_int);
+				PfAdd(sc, &sc->LUTId, &sc->stageInvocationID, &temp_int);
 			}
 			else {
 				temp_double.data.d = stageAngle->data.d;
-				VkMul(sc, &sc->angle, &sc->stageInvocationID, &temp_double, 0);
+				PfMul(sc, &sc->angle, &sc->stageInvocationID, &temp_double, 0);
 			}
 
 			if ((!((sc->readToRegisters == 1) && (stageSize->data.i == 1) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle->data.d > 0) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)))))) && ((sc->registerBoost == 1) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0) && (!(sc->performR2C && (sc->actualInverse)))) || (sc->localSize[1].data.i * logicalStoragePerThread.data.i > sc->fftDim.data.i) || (stageSize->data.i > 1) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)) && (stageAngle->data.d > 0)) || (sc->performDCT)))) {
 				//if(sc->readToRegisters==0){
-				for (uint64_t i = 0; i < stageRadix->data.i; i++) {
-					VkContainer id;
+				for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
+					PfContainer id;
 					id.type = 31;
 					id.data.i = j + i * logicalRegistersPerThread.data.i / stageRadix->data.i;
 					id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
 
 					temp_int.data.i = j * logicalGroupSize.data.i + i * sc->fftDim.data.i / stageRadix->data.i;
-					VkAdd(sc, &sc->sdataID, &sc->gl_LocalInvocationID_y, &temp_int);
-					VkMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+					PfAdd(sc, &sc->sdataID, &sc->gl_LocalInvocationID_y, &temp_int);
+					PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
 
 					appendSharedToRegisters(sc, &sc->regIDs[id.data.i], &sc->sdataID);
 
 				}
 			}
 			if (!sc->useCoalescedLUTUploadToSM) {
-				VkContainer* regID = (VkContainer*)calloc(stageRadix->data.i, sizeof(VkContainer));
+				PfContainer* regID = (PfContainer*)calloc(stageRadix->data.i, sizeof(PfContainer));
 				if (regID) {
-					for (uint64_t i = 0; i < stageRadix->data.i; i++) {
-						VkContainer id;
+					for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
+						PfContainer id;
 						id.type = 31;
 						id.data.i = j + k * logicalRegistersPerThread.data.i / stageRadix->data.i + i * logicalStoragePerThread.data.i / stageRadix->data.i;
 						id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
-						VkAllocateContainerFlexible(sc, &regID[i], 50);
+						PfAllocateContainerFlexible(sc, &regID[i], 50);
 						regID[i].type = sc->regIDs[id.data.i].type;
-						VkCopyContainer(sc, &regID[i], &sc->regIDs[id.data.i]);
+						PfCopyContainer(sc, &regID[i], &sc->regIDs[id.data.i]);
 					}
 
 					inlineRadixKernelVkFFT(sc, stageRadix->data.i, stageSize->data.i, stageSizeSum->data.i, stageAngle->data.d, regID);
 
-					for (uint64_t i = 0; i < stageRadix->data.i; i++) {
-						VkContainer id;
+					for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
+						PfContainer id;
 						id.type = 31;
 						id.data.i = j + k * logicalRegistersPerThread.data.i / stageRadix->data.i + i * logicalStoragePerThread.data.i / stageRadix->data.i;
 						id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
-						VkCopyContainer(sc, &sc->regIDs[id.data.i], &regID[i]);
-						VkDeallocateContainer(sc, &regID[i]);
+						PfCopyContainer(sc, &sc->regIDs[id.data.i], &regID[i]);
+						PfDeallocateContainer(sc, &regID[i]);
 					}
 					free(regID);
 					regID = 0;
@@ -438,88 +438,88 @@ static inline void appendRadixStageStrided(VkFFTSpecializationConstantsLayout* s
 				}
 			}
 
-			if (logicalGroupSize.data.i * ((1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
-				VkIf_end(sc);
+			if (logicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
+				PfIf_end(sc);
 			}
 		}
 		if (logicalGroupSize.data.i != sc->localSize[1].data.i) {
-			VkIf_end(sc);
+			PfIf_end(sc);
 		}
 		if (sc->useCoalescedLUTUploadToSM) {
 			if (sc->useDisableThreads) {
-				VkIf_end(sc);
+				PfIf_end(sc);
 			}
 
 			appendBarrierVkFFT(sc);
 
 
 			sc->useCoalescedLUTUploadToSM = 1;
-			VkMov(sc, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+			PfMov(sc, &sc->sdataID, &sc->gl_LocalInvocationID_x);
 
-			VkMul(sc, &sc->tempInt, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
-			VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+			PfMul(sc, &sc->tempInt, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
+			PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
 
 			for (uint64_t i = 0; i < (uint64_t)ceil(numLUTelementsStage * stageSize->data.i / ((double)sc->localSize[0].data.i * sc->localSize[1].data.i)); i++) {
 				if (i > 0) {
 					temp_int.data.i = sc->localSize[0].data.i * sc->localSize[1].data.i;
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
 				}
 				if (i == (uint64_t)ceil(numLUTelementsStage * stageSize->data.i / ((double)sc->localSize[0].data.i * sc->localSize[1].data.i)) - 1) {
 					temp_int.data.i = numLUTelementsStage * stageSize->data.i;
-					VkIf_lt_start(sc, &sc->sdataID, &temp_int);
+					PfIf_lt_start(sc, &sc->sdataID, &temp_int);
 				}
 				temp_int.data.i = stageSizeSum->data.i;
-				VkAdd(sc, &sc->inoutID, &sc->sdataID, &temp_int);
+				PfAdd(sc, &sc->inoutID, &sc->sdataID, &temp_int);
 				appendGlobalToShared(sc, &sc->sdataID, &sc->LUTStruct, &sc->inoutID);
 
 				if (i == (uint64_t)ceil(numLUTelementsStage * stageSize->data.i / ((double)sc->localSize[0].data.i * sc->localSize[1].data.i)) - 1) {
-					VkIf_end(sc);
+					PfIf_end(sc);
 				}
 			}
 			appendBarrierVkFFT(sc);
 
 			if (sc->useDisableThreads) {
 				temp_int.data.i = 0;
-				VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
+				PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 			}
 
 			if (logicalGroupSize.data.i != sc->localSize[1].data.i) {
-				VkIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &logicalGroupSize);
+				PfIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &logicalGroupSize);
 			}
-			for (uint64_t j = 0; j < logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
-				if (logicalGroupSize.data.i * ((j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) continue;
-				if (logicalGroupSize.data.i * ((1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
-					VkContainer current_group_cut;
+			for (uint64_t j = 0; j < (uint64_t)logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
+				if (logicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) continue;
+				if (logicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
+					PfContainer current_group_cut;
 					current_group_cut.type = 31;
 					current_group_cut.data.i = sc->fftDim.data.i / stageRadix->data.i - (j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * logicalGroupSize.data.i;
-					VkIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &current_group_cut);
+					PfIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &current_group_cut);
 				}
-				VkContainer* regID = (VkContainer*)calloc(stageRadix->data.i, sizeof(VkContainer));
+				PfContainer* regID = (PfContainer*)calloc(stageRadix->data.i, sizeof(PfContainer));
 				if (regID) {
-					for (uint64_t i = 0; i < stageRadix->data.i; i++) {
-						VkContainer id;
+					for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
+						PfContainer id;
 						id.type = 31;
 						id.data.i = j + k * logicalRegistersPerThread.data.i / stageRadix->data.i + i * logicalStoragePerThread.data.i / stageRadix->data.i;
 						id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
-						VkAllocateContainerFlexible(sc, &regID[i], 50);
+						PfAllocateContainerFlexible(sc, &regID[i], 50);
 						regID[i].type = sc->regIDs[id.data.i].type;
-						VkCopyContainer(sc, &regID[i], &sc->regIDs[id.data.i]);
+						PfCopyContainer(sc, &regID[i], &sc->regIDs[id.data.i]);
 					}
 
 					temp_int.data.i = (j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * logicalGroupSize.data.i;
-					VkAdd(sc, &sc->stageInvocationID, &sc->gl_LocalInvocationID_y, &temp_int);
+					PfAdd(sc, &sc->stageInvocationID, &sc->gl_LocalInvocationID_y, &temp_int);
 					temp_int.data.i = stageSize->data.i;
-					VkMod(sc, &sc->stageInvocationID, &sc->stageInvocationID, &temp_int);
+					PfMod(sc, &sc->stageInvocationID, &sc->stageInvocationID, &temp_int);
 
 					inlineRadixKernelVkFFT(sc, stageRadix->data.i, stageSize->data.i, stageSizeSum->data.i, stageAngle->data.d, regID);
 
-					for (uint64_t i = 0; i < stageRadix->data.i; i++) {
-						VkContainer id;
+					for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
+						PfContainer id;
 						id.type = 31;
 						id.data.i = j + k * logicalRegistersPerThread.data.i / stageRadix->data.i + i * logicalStoragePerThread.data.i / stageRadix->data.i;
 						id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
-						VkCopyContainer(sc, &sc->regIDs[id.data.i], &regID[i]);
-						VkDeallocateContainer(sc, &regID[i]);
+						PfCopyContainer(sc, &sc->regIDs[id.data.i], &regID[i]);
+						PfDeallocateContainer(sc, &regID[i]);
 					}
 					free(regID);
 					regID = 0;
@@ -529,27 +529,27 @@ static inline void appendRadixStageStrided(VkFFTSpecializationConstantsLayout* s
 					sc->res = VKFFT_ERROR_MALLOC_FAILED;
 					return;
 				}
-				if (logicalGroupSize.data.i * ((1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
-					VkIf_end(sc);
+				if (logicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
+					PfIf_end(sc);
 				}
 			}
 			if (logicalGroupSize.data.i != sc->localSize[1].data.i) {
-				VkIf_end(sc);
+				PfIf_end(sc);
 			}
 		}
 	}
 
 	if (sc->useDisableThreads) {
-		VkIf_end(sc);
+		PfIf_end(sc);
 	}
 
 	if (stageSize->data.i == 1) {
-		VkMov(sc, &sc->sharedStride, &sc->localSize[0]);
+		PfMov(sc, &sc->sharedStride, &sc->localSize[0]);
 	}
 	return;
 }
 
-static inline void appendRadixStage(VkFFTSpecializationConstantsLayout* sc, VkContainer* stageSize, VkContainer* stageSizeSum, VkContainer* stageAngle, VkContainer* stageRadix, int stageID, int shuffleType) {
+static inline void appendRadixStage(VkFFTSpecializationConstantsLayout* sc, PfContainer* stageSize, PfContainer* stageSizeSum, PfContainer* stageAngle, PfContainer* stageRadix, int stageID, int shuffleType) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if (sc->rader_generator[stageID]) {
 		for (uint64_t i = 0; i < sc->numRaderPrimes; i++) {

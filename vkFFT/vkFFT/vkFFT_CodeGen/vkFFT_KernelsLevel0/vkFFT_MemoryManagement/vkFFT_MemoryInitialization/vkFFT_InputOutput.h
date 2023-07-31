@@ -24,11 +24,11 @@
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 /*
-static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc, VkContainer* output, VkContainer* index_x, VkContainer* index_y, int coordinate, int batchID) {
+static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc, PfContainer* output, PfContainer* index_x, PfContainer* index_y, int coordinate, int batchID) {
 	VkFFTResult res = VKFFT_SUCCESS;
 	switch (sc->inputType % 1000) {
 	case 0: case 2: case 3: case 4:case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144: {//single_c2c + single_c2c_strided
-		VkContainer locOffset;
+		PfContainer locOffset;
 		if (sc->inputOffset.type == 1) {
 			locOffset.type = 1;
 			locOffset.data.i = sc->inputOffset.data.i / sc->inputNumberByteSize;
@@ -47,7 +47,7 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 			}
 		}
 		if (sc->inputStride[0].data.i != 1)
-			VkMul(sc, index_x, index_x, &sc->inputStride[0], 0);
+			PfMul(sc, index_x, index_x, &sc->inputStride[0], 0);
 
 		int mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		if (sc->size[1].data.i > 1) {
@@ -105,7 +105,7 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 				sprintf(shiftBatch, " + (%s / %" PRIu64 ") * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->dispatchZactualFFTSize * maxCoordinate, sc->inputStride[4]);
 		}
 		sc->tempLen = sprintf(sc->tempStr, "%s%s%s%s%s%s", inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
-		res = VkAppendLine(sc);
+		res = PfAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		break;
 	}
@@ -165,7 +165,7 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 				sprintf(shiftBatch, " + (%s / %" PRIu64 ") * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->dispatchZactualFFTSize * maxCoordinate, sc->inputStride[4]);
 		}
 		sc->tempLen = sprintf(sc->tempStr, "%s%s%s%s%s%s", inputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
-		res = VkAppendLine(sc);
+		res = PfAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		break;
 	}
@@ -250,7 +250,7 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 				sprintf(shiftBatch, " + (%s / %" PRIu64 ") * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->dispatchZactualFFTSize * maxCoordinate, sc->outputStride[4]);
 		}
 		sc->tempLen = sprintf(sc->tempStr, "%s%s%s%s%s%s", outputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
-		res = VkAppendLine(sc);
+		res = PfAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		break;
 	}
@@ -308,7 +308,7 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 				sprintf(shiftBatch, " + (%s / %" PRIu64 ") * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->dispatchZactualFFTSize * maxCoordinate, sc->outputStride[4]);
 		}
 		sc->tempLen = sprintf(sc->tempStr, "%s%s%s%s%s%s", outputOffset, shiftX, shiftY, shiftZ, shiftCoordinate, shiftBatch);
-		res = VkAppendLine(sc);
+		res = PfAppendLine(sc);
 		if (res != VKFFT_SUCCESS) return res;
 		break;
 

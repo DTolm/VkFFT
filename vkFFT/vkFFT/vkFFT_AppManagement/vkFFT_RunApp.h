@@ -322,7 +322,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
     }
     if (app->configuration.performConvolution) {
         
-        for (int i = app->configuration.FFTdim-1; i > 0; i--){
+        for (int i = (int)app->configuration.FFTdim-1; i > 0; i--){
 
             //multiple upload ifft leftovers
             if (app->configuration.FFTdim == (i+1)) {
@@ -466,7 +466,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
     if (inverse == 1) {
         //we start from axis N and go back to axis 0
         
-        for (int i = app->configuration.FFTdim-1; i > 0; i--){
+        for (int i = (int)app->configuration.FFTdim-1; i > 0; i--){
             if (!app->configuration.omitDimension[i]) {
                 for (int64_t l = (int64_t)app->localFFTPlan_inverse->numAxisUploads[i] - 1; l >= 0; l--) {
                     //if ((!app->configuration.reorderFourStep) && (!app->useBluesteinFFT[2])) l = app->localFFTPlan_inverse->numAxisUploads[2] - 1 - l;

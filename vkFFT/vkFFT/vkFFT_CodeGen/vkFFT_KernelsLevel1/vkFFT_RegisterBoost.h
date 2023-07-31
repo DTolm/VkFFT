@@ -31,21 +31,21 @@
 static inline void appendBoostThreadDataReorder(VkFFTSpecializationConstantsLayout* sc, int type, int start) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if (sc->fftDim.data.i == 1) return;
-	VkContainer temp_int = VKFFT_ZERO_INIT;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = VKFFT_ZERO_INIT;
+	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = VKFFT_ZERO_INIT;
+	PfContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer localSize = VKFFT_ZERO_INIT;
+	PfContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer batching_localSize = VKFFT_ZERO_INIT;
+	PfContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
-	VkContainer* batchingInvocationID = VKFFT_ZERO_INIT;
+	PfContainer* localInvocationID = VKFFT_ZERO_INIT;
+	PfContainer* batchingInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -74,76 +74,76 @@ static inline void appendBoostThreadDataReorder(VkFFTSpecializationConstantsLayo
 			}
 			if (sc->useDisableThreads) {
 				temp_int.data.i = 0;
-				VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
+				PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 			}
 			if (start == 0) {
 				temp_int.data.i = logicalStoragePerThread;
-				VkDivCeil(sc, &temp_int1, &sc->fftDim, &temp_int);
-				VkIf_lt_start(sc, localInvocationID, &temp_int1);
+				PfDivCeil(sc, &temp_int1, &sc->fftDim, &temp_int);
+				PfIf_lt_start(sc, localInvocationID, &temp_int1);
 
-				for (uint64_t i = 0; i < logicalStoragePerThread / sc->registerBoost; i++) {
+				for (uint64_t i = 0; i < (uint64_t)logicalStoragePerThread / sc->registerBoost; i++) {
 					temp_int.data.i = i * logicalGroupSize;
-					VkAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
 					if (sc->stridedSharedLayout) {
-						VkMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
-						VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+						PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+						PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
 					}
 					appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[i + k * sc->registers_per_thread]);
 				}
-				VkIf_end(sc);
+				PfIf_end(sc);
 			}
 			else
 			{
 				for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 					temp_int.data.i = i * localSize.data.i;
-					VkAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
 					if (sc->stridedSharedLayout) {
-						VkMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
-						VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+						PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+						PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
 					}
 					appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[i + k * sc->registers_per_thread]);
 				}
 			}
 			if (sc->useDisableThreads) {
-				VkIf_end(sc);
+				PfIf_end(sc);
 			}
 			appendBarrierVkFFT(sc);
 
 			if (sc->useDisableThreads) {
 				temp_int.data.i = 0;
-				VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
+				PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 			}
 
 			if (start == 1) {
 				temp_int.data.i = logicalStoragePerThread;
-				VkDivCeil(sc, &temp_int1, &sc->fftDim, &temp_int);
-				VkIf_lt_start(sc, localInvocationID, &temp_int1);
+				PfDivCeil(sc, &temp_int1, &sc->fftDim, &temp_int);
+				PfIf_lt_start(sc, localInvocationID, &temp_int1);
 
-				for (uint64_t i = 0; i < logicalStoragePerThread / sc->registerBoost; i++) {
+				for (uint64_t i = 0; i < (uint64_t)logicalStoragePerThread / sc->registerBoost; i++) {
 					temp_int.data.i = i * logicalGroupSize;
-					VkAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
 					if (sc->stridedSharedLayout) {
-						VkMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
-						VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+						PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+						PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
 					}
 
 					appendSharedToRegisters(sc, &sc->regIDs[i + k * sc->registers_per_thread], &sc->sdataID);
 				}
-				VkIf_end(sc);
+				PfIf_end(sc);
 			}
 			else {
 				for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
 					temp_int.data.i = i * localSize.data.i;
-					VkAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
 					if (sc->stridedSharedLayout) {
-						VkMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
-						VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+						PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+						PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
 					}
 					appendSharedToRegisters(sc, &sc->regIDs[i + k * sc->registers_per_thread], &sc->sdataID);
 				}
 			}
 			if (sc->useDisableThreads) {
-				VkIf_end(sc);
+				PfIf_end(sc);
 			}
 		}
 	}

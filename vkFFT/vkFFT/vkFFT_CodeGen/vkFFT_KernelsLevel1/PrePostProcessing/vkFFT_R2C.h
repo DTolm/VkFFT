@@ -27,29 +27,29 @@
 
 static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = VKFFT_ZERO_INIT;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = VKFFT_ZERO_INIT;
+	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = VKFFT_ZERO_INIT;
+	PfContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer used_registers = VKFFT_ZERO_INIT;
+	PfContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
-	VkContainer mult = VKFFT_ZERO_INIT;
+	PfContainer mult = VKFFT_ZERO_INIT;
 	mult.type = 31;
 
-	VkContainer fftDim = VKFFT_ZERO_INIT;
+	PfContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
 
-	VkContainer localSize = VKFFT_ZERO_INIT;
+	PfContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer batching_localSize = VKFFT_ZERO_INIT;
+	PfContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
-	VkContainer* batchingInvocationID = VKFFT_ZERO_INIT;
+	PfContainer* localInvocationID = VKFFT_ZERO_INIT;
+	PfContainer* batchingInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -73,25 +73,25 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 		}
 	}
 
-	VkDivCeil(sc, &used_registers, &fftDim, &localSize);
+	PfDivCeil(sc, &used_registers, &fftDim, &localSize);
 
 	appendBarrierVkFFT(sc);
 	if (sc->useDisableThreads) {
 		temp_int.data.i = 0;
-		VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
+		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
-	for (uint64_t i = 0; i < used_registers.data.i; i++) {
-		if (i < ((fftDim.data.i / 2 + 1) / localSize.data.i)) {
+	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+		if (i < (uint64_t)((fftDim.data.i / 2 + 1) / localSize.data.i)) {
 			temp_int.data.i = i * localSize.data.i;
 			if (sc->stridedSharedLayout) {
-				VkAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
-				VkMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
-				VkAdd(sc, &sc->sdataID, &sc->sdataID, batchingInvocationID);
+				PfAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
+				PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, batchingInvocationID);
 			}
 			else {
-				VkMul(sc, &sc->sdataID, batchingInvocationID, &sc->sharedStride, 0);
-				VkAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
-				VkAdd(sc, &sc->sdataID, &sc->sdataID, localInvocationID);
+				PfMul(sc, &sc->sdataID, batchingInvocationID, &sc->sharedStride, 0);
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, localInvocationID);
 			}
 			appendSharedToRegisters(sc, &sc->regIDs[i], &sc->sdataID);
 			if (sc->mergeSequencesR2C) {
@@ -100,34 +100,34 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 				if (sc->stridedSharedLayout)
 					temp_int.data.i *= sc->sharedStride.data.i;
 
-				VkAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
 				appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
 
-				VkShuffleComplex(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, 0);
+				PfShuffleComplex(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, 0);
 			}
 		}
 		else {
-			if (i >= (int64_t)ceil((fftDim.data.i / 2 + 1) / (long double)localSize.data.i)) {
-				if ((1 + i) * localSize.data.i > fftDim.data.i) {
+			if (i >= (uint64_t)ceil((fftDim.data.i / 2 + 1) / (long double)localSize.data.i)) {
+				if ((1 + (int64_t)i) * localSize.data.i > fftDim.data.i) {
 					temp_int.data.i = fftDim.data.i - (i)*localSize.data.i;
-					VkIf_lt_start(sc, localInvocationID, &temp_int);
+					PfIf_lt_start(sc, localInvocationID, &temp_int);
 				}
-				if ((((int64_t)ceil(fftDim.data.i / 2.0) - 1 - (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1))) > (i - ((int64_t)ceil((fftDim.data.i / 2 + 1) / (long double)localSize.data.i))) * localSize.data.i) && ((uint64_t)ceil(fftDim.data.i / 2.0) - 1 > (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1)))) {
+				if ((((int64_t)ceil(fftDim.data.i / 2.0) - 1 - (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1))) > ((int64_t)i - ((int64_t)ceil((fftDim.data.i / 2 + 1) / (long double)localSize.data.i))) * localSize.data.i) && ((int64_t)ceil(fftDim.data.i / 2.0) - 1 > (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1)))) {
 					if (sc->zeropadBluestein[0]) {
 						temp_int.data.i = ((int64_t)ceil(fftDim.data.i / 2.0) - 1 - (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1))) - (i - ((int64_t)ceil((fftDim.data.i / 2 + 1) / (long double)localSize.data.i))) * localSize.data.i;
-						VkIf_gt_start(sc, &temp_int, localInvocationID);
+						PfIf_gt_start(sc, &temp_int, localInvocationID);
 					}
 
 					temp_int.data.i = ((int64_t)ceil(fftDim.data.i / 2.0) - 1 - (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1))) - (i - ((int64_t)ceil((fftDim.data.i / 2 + 1) / (long double)localSize.data.i))) * localSize.data.i;
 					if (sc->stridedSharedLayout) {
-						VkSub(sc, &sc->sdataID, &temp_int, localInvocationID);
-						VkMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
-						VkAdd(sc, &sc->sdataID, &sc->sdataID, batchingInvocationID);
+						PfSub(sc, &sc->sdataID, &temp_int, localInvocationID);
+						PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+						PfAdd(sc, &sc->sdataID, &sc->sdataID, batchingInvocationID);
 					}
 					else {
-						VkMul(sc, &sc->sdataID, batchingInvocationID, &sc->sharedStride, 0);
-						VkAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
-						VkSub(sc, &sc->sdataID, &sc->sdataID, localInvocationID);
+						PfMul(sc, &sc->sdataID, batchingInvocationID, &sc->sharedStride, 0);
+						PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
+						PfSub(sc, &sc->sdataID, &sc->sdataID, localInvocationID);
 					}
 					appendSharedToRegisters(sc, &sc->regIDs[i], &sc->sdataID);
 					if (sc->mergeSequencesR2C) {
@@ -136,46 +136,46 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 						if (sc->stridedSharedLayout)
 							temp_int.data.i *= sc->sharedStride.data.i;
 
-						VkAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
+						PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
 						appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
 
-						VkShuffleComplexInv(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, 0);
+						PfShuffleComplexInv(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, 0);
 					}
-					VkConjugate(sc, &sc->regIDs[i], &sc->regIDs[i]);
+					PfConjugate(sc, &sc->regIDs[i], &sc->regIDs[i]);
 
 					if (sc->zeropadBluestein[0]) {
-						VkIf_else(sc);
+						PfIf_else(sc);
 
-						VkSetToZero(sc, &sc->regIDs[i]);
+						PfSetToZero(sc, &sc->regIDs[i]);
 
-						VkIf_end(sc);
+						PfIf_end(sc);
 					}
 				}
 				else {
-					VkSetToZero(sc, &sc->regIDs[i]);
+					PfSetToZero(sc, &sc->regIDs[i]);
 				}
-				if ((1 + i) * localSize.data.i > fftDim.data.i) {
-					VkIf_end(sc);
+				if ((1 + (int64_t)i) * localSize.data.i > fftDim.data.i) {
+					PfIf_end(sc);
 				}
 			}
 			else {
 				if (localSize.data.i > fftDim.data.i) {
-					VkIf_lt_start(sc, localInvocationID, &fftDim);
+					PfIf_lt_start(sc, localInvocationID, &fftDim);
 				}
 				temp_int.data.i = (fftDim.data.i / 2 + 1) % localSize.data.i;
-				VkIf_lt_start(sc, localInvocationID, &temp_int);
+				PfIf_lt_start(sc, localInvocationID, &temp_int);
 
 				temp_int.data.i = i * localSize.data.i;
 				if (sc->stridedSharedLayout)
 				{
-					VkAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
-					VkMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, batchingInvocationID);
+					PfAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
+					PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, batchingInvocationID);
 				}
 				else {
-					VkMul(sc, &sc->sdataID, batchingInvocationID, &sc->sharedStride, 0);
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, localInvocationID);
+					PfMul(sc, &sc->sdataID, batchingInvocationID, &sc->sharedStride, 0);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, localInvocationID);
 				}
 				appendSharedToRegisters(sc, &sc->regIDs[i], &sc->sdataID);
 				if (sc->mergeSequencesR2C) {
@@ -184,25 +184,25 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 					if (sc->stridedSharedLayout)
 						temp_int.data.i *= sc->sharedStride.data.i;
 
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
 					appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
 
-					VkShuffleComplex(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, 0);
+					PfShuffleComplex(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, 0);
 				}
-				VkIf_else(sc);
+				PfIf_else(sc);
 
 				temp_int.data.i = ((int64_t)ceil(fftDim.data.i / 2.0) - 1 - (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1))) - (i - ((int64_t)ceil((fftDim.data.i / 2 + 1) / (long double)localSize.data.i))) * localSize.data.i;
 
 				if (sc->stridedSharedLayout)
 				{
-					VkSub(sc, &sc->sdataID, &temp_int, localInvocationID);
-					VkMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, batchingInvocationID);
+					PfSub(sc, &sc->sdataID, &temp_int, localInvocationID);
+					PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, batchingInvocationID);
 				}
 				else {
-					VkMul(sc, &sc->sdataID, batchingInvocationID, &sc->sharedStride, 0);
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
-					VkSub(sc, &sc->sdataID, &sc->sdataID, localInvocationID);
+					PfMul(sc, &sc->sdataID, batchingInvocationID, &sc->sharedStride, 0);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
+					PfSub(sc, &sc->sdataID, &sc->sdataID, localInvocationID);
 				}
 				appendSharedToRegisters(sc, &sc->regIDs[i], &sc->sdataID);
 				if (sc->mergeSequencesR2C) {
@@ -211,39 +211,39 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 					if (sc->stridedSharedLayout)
 						temp_int.data.i *= sc->sharedStride.data.i;
 
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
 					appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
 
-					VkShuffleComplexInv(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, 0);
+					PfShuffleComplexInv(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, 0);
 				}
-				VkConjugate(sc, &sc->regIDs[i], &sc->regIDs[i]);
+				PfConjugate(sc, &sc->regIDs[i], &sc->regIDs[i]);
 
-				VkIf_end(sc);
+				PfIf_end(sc);
 
 				if (localSize.data.i > fftDim.data.i) {
-					VkIf_else(sc);
+					PfIf_else(sc);
 
-					VkSetToZero(sc, &sc->regIDs[i]);
+					PfSetToZero(sc, &sc->regIDs[i]);
 
-					VkIf_end(sc);
+					PfIf_end(sc);
 				}
 			}
 		}
 	}
 	if (sc->useDisableThreads) {
-		VkIf_end(sc);
+		PfIf_end(sc);
 	}
 	if (sc->fftDim.data.i == 1) {
 		sc->readToRegisters = 0;
 	}
 	else {
-		VkContainer logicalStoragePerThread;
-		VkContainer logicalGroupSize;
+		PfContainer logicalStoragePerThread;
+		PfContainer logicalGroupSize;
 		logicalStoragePerThread.type = 31;
 		logicalGroupSize.type = 31;
 		if (sc->rader_generator[0] == 0) {
 			logicalStoragePerThread.data.i = sc->registers_per_thread_per_radix[sc->stageRadix[0]] * sc->registerBoost;// (sc->registers_per_thread % stageRadix->data.i == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-			VkDivCeil(sc, &logicalGroupSize, &sc->fftDim, &logicalStoragePerThread);
+			PfDivCeil(sc, &logicalGroupSize, &sc->fftDim, &logicalStoragePerThread);
 		}
 		else {
 			logicalGroupSize.data.i = localSize.data.i;
@@ -255,43 +255,43 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 	}
 	if (sc->zeropadBluestein[0]) {
 		fftDim.data.i = sc->fft_dim_full.data.i;
-		VkDivCeil(sc, &used_registers, &fftDim, &localSize);
+		PfDivCeil(sc, &used_registers, &fftDim, &localSize);
 	}
 	if (!sc->readToRegisters) {
 		appendBarrierVkFFT(sc);
 		if (sc->useDisableThreads) {
 			temp_int.data.i = 0;
-			VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
+			PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 		}
 		for (uint64_t k = 0; k < sc->registerBoost; k++) {
-			for (uint64_t i = 0; i < used_registers.data.i; i++) {
-				if ((1 + i + k * used_registers.data.i) * localSize.data.i > fftDim.data.i) {
+			for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+				if ((int64_t)(1 + i + k * used_registers.data.i) * localSize.data.i > fftDim.data.i) {
 					temp_int.data.i = fftDim.data.i - (i + k * used_registers.data.i) * localSize.data.i;
-					VkIf_lt_start(sc, localInvocationID, &temp_int);
+					PfIf_lt_start(sc, localInvocationID, &temp_int);
 				}
 
 				temp_int.data.i = (i + k * used_registers.data.i) * localSize.data.i;
 
 				if (sc->stridedSharedLayout)
 				{
-					VkAdd(sc, &sc->sdataID, &temp_int, localInvocationID);
-					VkMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, batchingInvocationID);
+					PfAdd(sc, &sc->sdataID, &temp_int, localInvocationID);
+					PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, batchingInvocationID);
 				}
 				else {
-					VkMul(sc, &sc->sdataID, batchingInvocationID, &sc->sharedStride, 0);
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
-					VkAdd(sc, &sc->sdataID, &sc->sdataID, localInvocationID);
+					PfMul(sc, &sc->sdataID, batchingInvocationID, &sc->sharedStride, 0);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, localInvocationID);
 				}
 				appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[i + k * used_registers.data.i]);
-				if ((1 + i + k * used_registers.data.i) * localSize.data.i > fftDim.data.i) {
+				if ((int64_t)(1 + i + k * used_registers.data.i) * localSize.data.i > fftDim.data.i) {
 					sc->tempLen = sprintf(sc->tempStr, "		}\n");
-					VkAppendLine(sc);
+					PfAppendLine(sc);
 				}
 			}
 		}
 		if (sc->useDisableThreads) {
-			VkIf_end(sc);
+			PfIf_end(sc);
 		}
 	}
 	return;
@@ -299,32 +299,32 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 
 static inline void appendR2C_write(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer temp_int = VKFFT_ZERO_INIT;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = VKFFT_ZERO_INIT;
+	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
-	VkContainer temp_double = VKFFT_ZERO_INIT;
+	PfContainer temp_double = VKFFT_ZERO_INIT;
 	temp_double.type = 32;
 
-	VkContainer used_registers = VKFFT_ZERO_INIT;
+	PfContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
-	VkContainer mult = VKFFT_ZERO_INIT;
+	PfContainer mult = VKFFT_ZERO_INIT;
 	mult.type = 31;
 
-	VkContainer fftDim = VKFFT_ZERO_INIT;
+	PfContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
 
-	VkContainer fftDim_half = VKFFT_ZERO_INIT;
+	PfContainer fftDim_half = VKFFT_ZERO_INIT;
 	fftDim_half.type = 31;
 
-	VkContainer localSize = VKFFT_ZERO_INIT;
+	PfContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
 
-	VkContainer batching_localSize = VKFFT_ZERO_INIT;
+	PfContainer batching_localSize = VKFFT_ZERO_INIT;
 	batching_localSize.type = 31;
 
-	VkContainer* localInvocationID = VKFFT_ZERO_INIT;
-	VkContainer* batchingInvocationID = VKFFT_ZERO_INIT;
+	PfContainer* localInvocationID = VKFFT_ZERO_INIT;
+	PfContainer* batchingInvocationID = VKFFT_ZERO_INIT;
 
 	if (sc->stridedSharedLayout) {
 		batching_localSize.data.i = sc->localSize[0].data.i;
@@ -356,8 +356,8 @@ static inline void appendR2C_write(VkFFTSpecializationConstantsLayout* sc, int t
 		mult.data.i = 1;
 
 	if ((type == 5) && (readWrite == 1)) {
-		VkMul(sc, &used_registers, &fftDim_half, &mult, 0);
-		VkDivCeil(sc, &used_registers, &used_registers, &localSize);
+		PfMul(sc, &used_registers, &fftDim_half, &mult, 0);
+		PfDivCeil(sc, &used_registers, &used_registers, &localSize);
 
 		//mult.data.i = 1;
 	}
@@ -365,25 +365,25 @@ static inline void appendR2C_write(VkFFTSpecializationConstantsLayout* sc, int t
 	appendBarrierVkFFT(sc);
 	if (sc->useDisableThreads) {
 		temp_int.data.i = 0;
-		VkIf_gt_start(sc, &sc->disableThreads, &temp_int);
+		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
 	//we actually construct 2x used_registers here, if mult = 2
-	for (uint64_t i = 0; i < used_registers.data.i; i++) {
+	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
 
 		if (sc->localSize[1].data.i == 1) {
 			//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		combinedID = %s + %" PRIu64 ";\n", &sc->gl_LocalInvocationID_x, (i + k * used_registers) * &sc->localSize[0]);
 			temp_int.data.i = (i)*sc->localSize[0].data.i;
 
-			VkAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
+			PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
 		}
 		else {
 			//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		combinedID = (%s + %" PRIu64 " * %s) + %" PRIu64 ";\n", &sc->gl_LocalInvocationID_x, &sc->localSize[0], &sc->gl_LocalInvocationID_y, (i + k * used_registers) * &sc->localSize[0] * &sc->localSize[1]);
-			VkMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
+			PfMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
 
 			temp_int.data.i = (i)*sc->localSize[0].data.i * sc->localSize[1].data.i;
 
-			VkAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
-			VkAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
+			PfAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
+			PfAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
 		}
 
 		temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
@@ -391,71 +391,71 @@ static inline void appendR2C_write(VkFFTSpecializationConstantsLayout* sc, int t
 		if (temp_int.data.i > temp_int1.data.i) {
 			//check that we only read fftDim * local batch data
 			//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
-			VkIf_lt_start(sc, &sc->combinedID, &temp_int1);
+			PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
 		}
 
-		VkMod(sc, &sc->sdataID, &sc->combinedID, &fftDim_half);
+		PfMod(sc, &sc->sdataID, &sc->combinedID, &fftDim_half);
 
 		if (sc->stridedSharedLayout) {
-			VkMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+			PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
 			temp_int.data.i = 2 * fftDim_half.data.i;
-			VkDiv(sc, &sc->tempInt, &sc->combinedID, &temp_int);
-			VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+			PfDiv(sc, &sc->tempInt, &sc->combinedID, &temp_int);
+			PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
 		}
 		else {
 			temp_int.data.i = 2 * fftDim_half.data.i;
-			VkDiv(sc, &sc->tempInt, &sc->combinedID, &temp_int);
-			VkMul(sc, &sc->tempInt, &sc->tempInt, &sc->sharedStride, 0);
-			VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+			PfDiv(sc, &sc->tempInt, &sc->combinedID, &temp_int);
+			PfMul(sc, &sc->tempInt, &sc->tempInt, &sc->sharedStride, 0);
+			PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
 		}
 
 		appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
 
-		VkMod(sc, &sc->sdataID, &sc->combinedID, &fftDim_half);
-		VkSub(sc, &sc->sdataID, &fftDim, &sc->sdataID);
+		PfMod(sc, &sc->sdataID, &sc->combinedID, &fftDim_half);
+		PfSub(sc, &sc->sdataID, &fftDim, &sc->sdataID);
 
-		VkIf_eq_start(sc, &sc->sdataID, &fftDim);
-		VkSetToZero(sc, &sc->sdataID);
-		VkIf_end(sc);
+		PfIf_eq_start(sc, &sc->sdataID, &fftDim);
+		PfSetToZero(sc, &sc->sdataID);
+		PfIf_end(sc);
 
 		if (sc->stridedSharedLayout) {
-			VkMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+			PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
 
-			VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+			PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
 		}
 		else {
-			VkAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+			PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
 		}
 
 		appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 
-		VkDiv(sc, &sc->tempInt, &sc->combinedID, &fftDim_half);
+		PfDiv(sc, &sc->tempInt, &sc->combinedID, &fftDim_half);
 		temp_int.data.i = 2;
-		VkMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+		PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
 		temp_int.data.i = 0;
-		VkIf_eq_start(sc, &sc->tempInt, &temp_int);
+		PfIf_eq_start(sc, &sc->tempInt, &temp_int);
 
-		VkAdd_x(sc, &sc->regIDs[i], &sc->temp, &sc->w);
-		VkSub_y(sc, &sc->regIDs[i], &sc->temp, &sc->w);
-		VkIf_else(sc);
-		VkAdd_y(sc, &sc->temp, &sc->temp, &sc->w);
-		VkSub_x(sc, &sc->temp, &sc->w, &sc->temp);
-		VkMov_x_y(sc, &sc->regIDs[i], &sc->temp);
-		VkMov_y_x(sc, &sc->regIDs[i], &sc->temp);
-		VkIf_end(sc);
+		PfAdd_x(sc, &sc->regIDs[i], &sc->temp, &sc->w);
+		PfSub_y(sc, &sc->regIDs[i], &sc->temp, &sc->w);
+		PfIf_else(sc);
+		PfAdd_y(sc, &sc->temp, &sc->temp, &sc->w);
+		PfSub_x(sc, &sc->temp, &sc->w, &sc->temp);
+		PfMov_x_y(sc, &sc->regIDs[i], &sc->temp);
+		PfMov_y_x(sc, &sc->regIDs[i], &sc->temp);
+		PfIf_end(sc);
 		temp_double.data.d = 0.5l;
-		VkMul(sc, &sc->regIDs[i], &sc->regIDs[i], &temp_double, 0);
+		PfMul(sc, &sc->regIDs[i], &sc->regIDs[i], &temp_double, 0);
 
 		temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
 		temp_int1.data.i = mult.data.i * fftDim_half.data.i * batching_localSize.data.i;
 		if (temp_int.data.i > temp_int1.data.i) {
 			//check that we only read fftDim * local batch data
 			//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
-			VkIf_end(sc);
+			PfIf_end(sc);
 		}
 	}
 	if (sc->useDisableThreads) {
-		VkIf_end(sc);
+		PfIf_end(sc);
 	}
 	sc->writeFromRegisters = 1;
 

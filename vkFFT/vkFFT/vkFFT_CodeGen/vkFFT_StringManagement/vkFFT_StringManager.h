@@ -22,7 +22,7 @@
 #ifndef VKFFT_STRINGMANAGER_H
 #define VKFFT_STRINGMANAGER_H
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
-static inline void VkAppendLine(VkFFTSpecializationConstantsLayout* sc) {
+static inline void PfAppendLine(VkFFTSpecializationConstantsLayout* sc) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	//appends code line stored in tempStr to generated code
 	if (sc->tempLen < 0) sc->res = VKFFT_ERROR_INSUFFICIENT_TEMP_BUFFER;

@@ -203,8 +203,8 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 		axis->specializationConstants.kernelBlockNum = 0;
 	}
 	axis->numBindings = 2;
-	axis->specializationConstants.numBuffersBound[0] = axis->specializationConstants.inputBufferBlockNum;
-	axis->specializationConstants.numBuffersBound[1] = axis->specializationConstants.outputBufferBlockNum;
+	axis->specializationConstants.numBuffersBound[0] = (int)axis->specializationConstants.inputBufferBlockNum;
+	axis->specializationConstants.numBuffersBound[1] = (int)axis->specializationConstants.outputBufferBlockNum;
 	axis->specializationConstants.numBuffersBound[2] = 0;
 	axis->specializationConstants.numBuffersBound[3] = 0;
 #if(VKFFT_BACKEND==0)
@@ -213,15 +213,15 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 #endif
 	axis->specializationConstants.convolutionBindingID = -1;
 	if ((axis_id == (app->configuration.FFTdim-1)) && (axis_upload_id == 0) && (app->configuration.performConvolution)) {
-		axis->specializationConstants.convolutionBindingID = axis->numBindings;
-		axis->specializationConstants.numBuffersBound[axis->numBindings] = axis->specializationConstants.kernelBlockNum;
+		axis->specializationConstants.convolutionBindingID = (int)axis->numBindings;
+		axis->specializationConstants.numBuffersBound[axis->numBindings] = (int)axis->specializationConstants.kernelBlockNum;
 #if(VKFFT_BACKEND==0)
 		descriptorPoolSize.descriptorCount += (uint32_t)axis->specializationConstants.kernelBlockNum;
 #endif
 		axis->numBindings++;
 	}
 	if (app->configuration.useLUT == 1) {
-		axis->specializationConstants.LUTBindingID = axis->numBindings;
+		axis->specializationConstants.LUTBindingID = (int)axis->numBindings;
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = 1;
 #if(VKFFT_BACKEND==0)
 		descriptorPoolSize.descriptorCount++;
@@ -229,7 +229,7 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 		axis->numBindings++;
 	}
 	if (axis->specializationConstants.raderUintLUT) {
-		axis->specializationConstants.RaderUintLUTBindingID = axis->numBindings;
+		axis->specializationConstants.RaderUintLUTBindingID = (int)axis->numBindings;
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = 1;
 #if(VKFFT_BACKEND==0)
 		descriptorPoolSize.descriptorCount++;
@@ -241,7 +241,7 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 			axis->bufferBluesteinFFT = &app->bufferBluesteinIFFT[axis_id];
 		else
 			axis->bufferBluesteinFFT = &app->bufferBluesteinFFT[axis_id];
-		axis->specializationConstants.BluesteinConvolutionBindingID = axis->numBindings;
+		axis->specializationConstants.BluesteinConvolutionBindingID = (int)axis->numBindings;
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = 1;
 #if(VKFFT_BACKEND==0)
 		descriptorPoolSize.descriptorCount++;
@@ -250,7 +250,7 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 	}
 	if ((app->useBluesteinFFT[axis_id]) && (axis_upload_id == (FFTPlan->numAxisUploads[axis_id] - 1))) {
 		axis->bufferBluestein = &app->bufferBluestein[axis_id];
-		axis->specializationConstants.BluesteinMultiplicationBindingID = axis->numBindings;
+		axis->specializationConstants.BluesteinMultiplicationBindingID = (int)axis->numBindings;
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = 1;
 #if(VKFFT_BACKEND==0)
 		descriptorPoolSize.descriptorCount++;
@@ -525,8 +525,8 @@ static inline VkFFTResult VkFFTConfigureDescriptorsR2CMultiUploadDecomposition(V
 		axis->specializationConstants.kernelBlockNum = 0;
 	}
 	axis->numBindings = 2;
-	axis->specializationConstants.numBuffersBound[0] = axis->specializationConstants.inputBufferBlockNum;
-	axis->specializationConstants.numBuffersBound[1] = axis->specializationConstants.outputBufferBlockNum;
+	axis->specializationConstants.numBuffersBound[0] = (int)axis->specializationConstants.inputBufferBlockNum;
+	axis->specializationConstants.numBuffersBound[1] = (int)axis->specializationConstants.outputBufferBlockNum;
 	axis->specializationConstants.numBuffersBound[2] = 0;
 	axis->specializationConstants.numBuffersBound[3] = 0;
 
@@ -535,7 +535,7 @@ static inline VkFFTResult VkFFTConfigureDescriptorsR2CMultiUploadDecomposition(V
 	descriptorPoolSize.descriptorCount = (uint32_t)(axis->specializationConstants.numBuffersBound[0] + axis->specializationConstants.numBuffersBound[1]);
 #endif
 	if ((axis_id == (app->configuration.FFTdim-1)) && (axis_upload_id == 0) && (app->configuration.performConvolution)) {
-		axis->specializationConstants.numBuffersBound[axis->numBindings] = axis->specializationConstants.kernelBlockNum;
+		axis->specializationConstants.numBuffersBound[axis->numBindings] = (int)axis->specializationConstants.kernelBlockNum;
 #if(VKFFT_BACKEND==0)
 		descriptorPoolSize.descriptorCount += (uint32_t)axis->specializationConstants.kernelBlockNum;
 #endif

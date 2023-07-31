@@ -29,10 +29,10 @@ static inline void appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLayout* s
 	if (sc->res != VKFFT_SUCCESS) return;
 	
 	if (sc->useRaderMult) {
-		sc->sharedMemSize -= sc->additionalRaderSharedSize.data.i * sc->complexSize;
-		sc->sharedMemSizePow2 -= sc->additionalRaderSharedSize.data.i * sc->complexSize;
+		sc->sharedMemSize -= (int)(sc->additionalRaderSharedSize.data.i * sc->complexSize);
+		sc->sharedMemSizePow2 -= (int)(sc->additionalRaderSharedSize.data.i * sc->complexSize);
 	}
-	VkContainer maxSequenceSharedMemory;
+	PfContainer maxSequenceSharedMemory;
 	maxSequenceSharedMemory.type = 31;
 	maxSequenceSharedMemory.data.i = sc->sharedMemSize / sc->complexSize;
 	//maxSequenceSharedMemoryPow2 = sc->sharedMemSizePow2 / sc->complexSize;
@@ -49,7 +49,7 @@ static inline void appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLayout* s
 		sc->sharedStrideBankConflictFirstStages.data.i = ((sc->fftDim.data.i > sc->numSharedBanks / 2) && ((sc->fftDim.data.i & (sc->fftDim.data.i - 1)) == 0)) ? (sc->fftDim.data.i / sc->registerBoost + additionalR2Cshared) * (sc->numSharedBanks / 2 + 1) / (sc->numSharedBanks / 2) : sc->fftDim.data.i / sc->registerBoost + additionalR2Cshared;
 		sc->sharedStrideReadWriteConflict.type = 31;
 		sc->sharedStrideReadWriteConflict.data.i = ((sc->numSharedBanks / 2 <= sc->localSize[1].data.i)) ? sc->fftDim.data.i / sc->registerBoost + additionalR2Cshared + 1 : sc->fftDim.data.i / sc->registerBoost + additionalR2Cshared + (sc->numSharedBanks / 2) / sc->localSize[1].data.i;
-		if (sc->sharedStrideReadWriteConflict.data.i < (sc->fftDim.data.i / sc->registerBoost + additionalR2Cshared)) sc->sharedStrideReadWriteConflict.data.i = sc->fftDim.data.i / sc->registerBoost + additionalR2Cshared;
+		if ((uint64_t)sc->sharedStrideReadWriteConflict.data.i < (sc->fftDim.data.i / sc->registerBoost + additionalR2Cshared)) sc->sharedStrideReadWriteConflict.data.i = sc->fftDim.data.i / sc->registerBoost + additionalR2Cshared;
 		if (sc->useRaderFFT) {
 			uint64_t max_stride = sc->fftDim.data.i / sc->registerBoost + additionalR2Cshared;
 			uint64_t max_shift = 0;
@@ -93,7 +93,7 @@ static inline void appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLayout* s
 		//sc->maxSharedStride += mergeR2C;
 		//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", sc->maxSharedStride, sc->sharedStrideBankConflictFirstStages, sc->sharedStrideReadWriteConflict, sc->localSize[1], sc->fftDim);
 		sc->sharedStride.type = 31;
-		VkMov(sc, &sc->sharedStride, &sc->sharedStrideReadWriteConflict);
+		PfMov(sc, &sc->sharedStride, &sc->sharedStrideReadWriteConflict);
 
 
 		sc->usedSharedMemory.data.i = sc->complexSize * sc->localSize[1].data.i * sc->maxSharedStride.data.i;
@@ -104,27 +104,27 @@ static inline void appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLayout* s
 			}
 			sc->usedSharedMemory.data.i += sc->additionalRaderSharedSize.data.i * sc->complexSize;
 		}
-		VkContainer* vecType;
-		VkGetTypeFromCode(sc, sc->vecTypeCode, &vecType);
+		PfContainer* vecType;
+		PfGetTypeFromCode(sc, sc->vecTypeCode, &vecType);
 #if(VKFFT_BACKEND==0)
 		sc->tempLen = sprintf(sc->tempStr, "shared %s sdata[%" PRIu64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", vecType->data.s, sc->usedSharedMemory.data.i / sc->complexSize);
-		VkAppendLine(sc);
+		PfAppendLine(sc);
 		
 #elif(VKFFT_BACKEND==1)
 		//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[%" PRIu64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
 		sc->tempLen = sprintf(sc->tempStr, "%s* sdata = (%s*)shared;\n\n", vecType->data.s, vecType->data.s);
-		VkAppendLine(sc);
+		PfAppendLine(sc);
 		
 		//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", sharedDefinitions, vecType);
 #elif(VKFFT_BACKEND==2)
 		//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[%" PRIu64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
 		sc->tempLen = sprintf(sc->tempStr, "%s* sdata = (%s*)shared;\n\n", vecType->data.s, vecType->data.s);
-		VkAppendLine(sc);
+		PfAppendLine(sc);
 		
 		//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", sharedDefinitions, vecType);
 #elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
 		sc->tempLen = sprintf(sc->tempStr, "__local %s sdata[%" PRIu64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", vecType->data.s, sc->usedSharedMemory.data.i / sc->complexSize);
-		VkAppendLine(sc);
+		PfAppendLine(sc);
 		
 #endif
 		break;
@@ -135,11 +135,11 @@ static inline void appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLayout* s
 		sc->sharedStrideReadWriteConflict.type = 31;
 		sc->sharedStrideReadWriteConflict.data.i = ((sc->axisSwapped) && ((sc->localSize[0].data.i % 4) == 0)) ? sc->localSize[0].data.i + shift : sc->localSize[0].data.i;
 		sc->maxSharedStride.type = 31;
-		sc->maxSharedStride.data.i = ((maxSequenceSharedMemory.data.i < sc->sharedStrideReadWriteConflict.data.i * (sc->fftDim.data.i / sc->registerBoost + additionalR2Cshared))) ? sc->localSize[0].data.i : sc->sharedStrideReadWriteConflict.data.i;
+		sc->maxSharedStride.data.i = ((maxSequenceSharedMemory.data.i < sc->sharedStrideReadWriteConflict.data.i * (sc->fftDim.data.i / sc->registerBoost + (int64_t)additionalR2Cshared))) ? sc->localSize[0].data.i : sc->sharedStrideReadWriteConflict.data.i;
 		sc->sharedStrideReadWriteConflict.data.i = (sc->maxSharedStride.data.i == sc->localSize[0].data.i) ? sc->localSize[0].data.i : sc->sharedStrideReadWriteConflict.data.i;
 		
 		sc->sharedStride.type = 31;
-		VkMov(sc, &sc->sharedStride, &sc->sharedStrideReadWriteConflict);
+		PfMov(sc, &sc->sharedStride, &sc->sharedStrideReadWriteConflict);
 		
 		sc->usedSharedMemory.type = 31;
 		sc->usedSharedMemory.data.i = sc->complexSize * sc->maxSharedStride.data.i * (sc->fftDim.data.i / sc->registerBoost + additionalR2Cshared);
@@ -150,35 +150,35 @@ static inline void appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLayout* s
 			}
 			sc->usedSharedMemory.data.i += sc->additionalRaderSharedSize.data.i * sc->complexSize;
 		}
-		VkContainer* vecType;
-		VkGetTypeFromCode(sc, sc->vecTypeCode, &vecType);
+		PfContainer* vecType;
+		PfGetTypeFromCode(sc, sc->vecTypeCode, &vecType);
 #if(VKFFT_BACKEND==0)
 		sc->tempLen = sprintf(sc->tempStr, "shared %s sdata[%" PRIu64 "];\n\n", vecType->data.s, sc->usedSharedMemory.data.i / sc->complexSize);
-		VkAppendLine(sc);
+		PfAppendLine(sc);
 		
 #elif(VKFFT_BACKEND==1)
 		//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[%" PRIu64 "];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
 		sc->tempLen = sprintf(sc->tempStr, "%s* sdata = (%s*)shared;\n\n", vecType->data.s, vecType->data.s);
-		VkAppendLine(sc);
+		PfAppendLine(sc);
 		
 		//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[];\n\n", sharedDefinitions, vecType);
 #elif(VKFFT_BACKEND==2)
 		//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[%" PRIu64 "];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
 		sc->tempLen = sprintf(sc->tempStr, "%s* sdata = (%s*)shared;\n\n", vecType->data.s, vecType->data.s);
-		VkAppendLine(sc);
+		PfAppendLine(sc);
 		
 		//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[];\n\n", sharedDefinitions, vecType);
 #elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
 		sc->tempLen = sprintf(sc->tempStr, "__local %s sdata[%" PRIu64 "];\n\n", vecType->data.s, sc->usedSharedMemory.data.i / sc->complexSize);
-		VkAppendLine(sc);
+		PfAppendLine(sc);
 		
 #endif
 		break;
 	}
 			}
 	if (sc->useRaderMult) {
-		sc->sharedMemSize += sc->additionalRaderSharedSize.data.i * sc->complexSize;
-		sc->sharedMemSizePow2 += sc->additionalRaderSharedSize.data.i * sc->complexSize;
+		sc->sharedMemSize += (int)(sc->additionalRaderSharedSize.data.i * sc->complexSize);
+		sc->sharedMemSizePow2 += (int)(sc->additionalRaderSharedSize.data.i * sc->complexSize);
 	}
 	return;
 }

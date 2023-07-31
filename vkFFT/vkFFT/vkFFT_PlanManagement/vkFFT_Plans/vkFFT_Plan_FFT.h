@@ -49,9 +49,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 	axis->specializationConstants.sourceFFTSize.type = 31;
 	axis->specializationConstants.sourceFFTSize.data.i = app->configuration.size[axis_id];
-	axis->specializationConstants.axis_id = axis_id;
-	axis->specializationConstants.axis_upload_id = axis_upload_id;
-    axis->specializationConstants.numFFTdims = app->configuration.FFTdim;
+	axis->specializationConstants.axis_id = (int)axis_id;
+	axis->specializationConstants.axis_upload_id = (int)axis_upload_id;
+    axis->specializationConstants.numFFTdims = (int)app->configuration.FFTdim;
 	if ((app->configuration.FFTdim == 1) && (FFTPlan->actualFFTSizePerAxis[axis_id][1] == 1) && ((app->configuration.numberBatches > 1) || (app->actualNumBatches > 1)) && (!app->configuration.performConvolution) && (app->configuration.coordinateFeatures == 1)) {
 		if (app->configuration.numberBatches > 1) {
 			app->actualNumBatches = app->configuration.numberBatches;
@@ -60,28 +60,28 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		FFTPlan->actualFFTSizePerAxis[axis_id][1] = app->actualNumBatches;
 	}
 	axis->specializationConstants.numBatches.type = 31;
-	axis->specializationConstants.numBatches.data.i = app->configuration.numberBatches;
-	axis->specializationConstants.warpSize = app->configuration.warpSize;
-	axis->specializationConstants.numSharedBanks = app->configuration.numSharedBanks;
-	axis->specializationConstants.useUint64 = app->configuration.useUint64;
+	axis->specializationConstants.numBatches.data.i = (int64_t)app->configuration.numberBatches;
+	axis->specializationConstants.warpSize = (int)app->configuration.warpSize;
+	axis->specializationConstants.numSharedBanks = (int)app->configuration.numSharedBanks;
+	axis->specializationConstants.useUint64 = (int)app->configuration.useUint64;
 #if(VKFFT_BACKEND==2)
 	axis->specializationConstants.useStrict32BitAddress = app->configuration.useStrict32BitAddress;
 #endif
-	axis->specializationConstants.disableSetLocale = app->configuration.disableSetLocale;
+	axis->specializationConstants.disableSetLocale = (int)app->configuration.disableSetLocale;
 
-	axis->specializationConstants.numAxisUploads = FFTPlan->numAxisUploads[axis_id];
-	axis->specializationConstants.fixMinRaderPrimeMult = app->configuration.fixMinRaderPrimeMult;
-	axis->specializationConstants.fixMaxRaderPrimeMult = app->configuration.fixMaxRaderPrimeMult;
-	axis->specializationConstants.fixMinRaderPrimeFFT = app->configuration.fixMinRaderPrimeFFT;
-	axis->specializationConstants.fixMaxRaderPrimeFFT = app->configuration.fixMaxRaderPrimeFFT;
+	axis->specializationConstants.numAxisUploads = (int)FFTPlan->numAxisUploads[axis_id];
+	axis->specializationConstants.fixMinRaderPrimeMult = (int)app->configuration.fixMinRaderPrimeMult;
+	axis->specializationConstants.fixMaxRaderPrimeMult = (int)app->configuration.fixMaxRaderPrimeMult;
+	axis->specializationConstants.fixMinRaderPrimeFFT = (int)app->configuration.fixMinRaderPrimeFFT;
+	axis->specializationConstants.fixMaxRaderPrimeFFT = (int)app->configuration.fixMaxRaderPrimeFFT;
 
-	axis->specializationConstants.raderUintLUT = (axis->specializationConstants.useRader) ? app->configuration.useRaderUintLUT : 0;
+	axis->specializationConstants.raderUintLUT = (axis->specializationConstants.useRader) ? (int)app->configuration.useRaderUintLUT : 0;
 	axis->specializationConstants.inline_rader_g_pow = (axis->specializationConstants.raderUintLUT) ? 2 : 1;
 	axis->specializationConstants.inline_rader_kernel = (app->configuration.useLUT == 1) ? 0 : 1;
 	axis->specializationConstants.supportAxis = 0;
-	axis->specializationConstants.symmetricKernel = app->configuration.symmetricKernel;
-	axis->specializationConstants.conjugateConvolution = app->configuration.conjugateConvolution;
-	axis->specializationConstants.crossPowerSpectrumNormalization = app->configuration.crossPowerSpectrumNormalization;
+	axis->specializationConstants.symmetricKernel = (int)app->configuration.symmetricKernel;
+	axis->specializationConstants.conjugateConvolution = (int)app->configuration.conjugateConvolution;
+	axis->specializationConstants.crossPowerSpectrumNormalization = (int)app->configuration.crossPowerSpectrumNormalization;
 
 	axis->specializationConstants.maxCodeLength = app->configuration.maxCodeLength;
 	axis->specializationConstants.maxTempLength = app->configuration.maxTempLength;
@@ -143,37 +143,37 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	}
 
 	if (app->configuration.performDCT == 3) {
-		axis->specializationConstants.actualInverse = inverse;
-		axis->specializationConstants.inverse = !inverse;
+		axis->specializationConstants.actualInverse = (int)inverse;
+		axis->specializationConstants.inverse = (int)!inverse;
 	}
 	else {
 		if (app->configuration.performDCT == 4) {
-			axis->specializationConstants.actualInverse = inverse;
+			axis->specializationConstants.actualInverse = (int)inverse;
 			axis->specializationConstants.inverse = 1;
 		}
 		else {
-			axis->specializationConstants.actualInverse = inverse;
-			axis->specializationConstants.inverse = inverse;
+			axis->specializationConstants.actualInverse = (int)inverse;
+			axis->specializationConstants.inverse = (int)inverse;
 		}
 	}
 	if (app->useBluesteinFFT[axis_id]) {
-		axis->specializationConstants.actualInverse = inverse;
-		axis->specializationConstants.inverse = reverseBluesteinMultiUpload;
+		axis->specializationConstants.actualInverse = (int)inverse;
+		axis->specializationConstants.inverse = (int)reverseBluesteinMultiUpload;
 		if (app->configuration.performDCT == 3) {
-			axis->specializationConstants.inverseBluestein = !inverse;
+			axis->specializationConstants.inverseBluestein = (int)!inverse;
 		}
 		else {
 			if (app->configuration.performDCT == 4) {
 				axis->specializationConstants.inverseBluestein = 1;
 			}
 			else {
-				axis->specializationConstants.inverseBluestein = inverse;
+				axis->specializationConstants.inverseBluestein = (int)inverse;
 			}
 		}
 	}
-	axis->specializationConstants.reverseBluesteinMultiUpload = reverseBluesteinMultiUpload;
+	axis->specializationConstants.reverseBluesteinMultiUpload = (int)reverseBluesteinMultiUpload;
 
-	axis->specializationConstants.reorderFourStep = ((FFTPlan->numAxisUploads[axis_id] > 1) && (!app->useBluesteinFFT[axis_id])) ? app->configuration.reorderFourStep : 0;
+	axis->specializationConstants.reorderFourStep = ((FFTPlan->numAxisUploads[axis_id] > 1) && (!app->useBluesteinFFT[axis_id])) ? (int)app->configuration.reorderFourStep : 0;
 
 	if ((axis_id == 0) && ((FFTPlan->numAxisUploads[axis_id] == 1) || ((axis_upload_id == 0) && (!axis->specializationConstants.reorderFourStep)))) {
 		maxSequenceLengthSharedMemory *= axis->specializationConstants.registerBoost;
@@ -186,13 +186,13 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axis->specializationConstants.maxSingleSizeStrided.type = 31;
 	axis->specializationConstants.maxSingleSizeStrided.data.i = maxSingleSizeStrided;
 
-	axis->specializationConstants.performR2C = FFTPlan->actualPerformR2CPerAxis[axis_id];
-	axis->specializationConstants.performR2CmultiUpload = FFTPlan->multiUploadR2C;
+	axis->specializationConstants.performR2C = (int)FFTPlan->actualPerformR2CPerAxis[axis_id];
+	axis->specializationConstants.performR2CmultiUpload = (int)FFTPlan->multiUploadR2C;
 	if (app->configuration.performDCT == 3) {
 		axis->specializationConstants.performDCT = 2;
 	}
 	else {
-		axis->specializationConstants.performDCT = app->configuration.performDCT;
+		axis->specializationConstants.performDCT = (int)app->configuration.performDCT;
 	}
 	if ((axis->specializationConstants.performR2CmultiUpload) && (app->configuration.size[0] % 2 != 0)) return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
 	uint64_t additionalR2Cshared = 0;
@@ -200,7 +200,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		additionalR2Cshared = ((axis->specializationConstants.fftDim.data.i % 2) == 0) ? 2 : 1;
 		if ((axis->specializationConstants.performDCT == 2) || ((axis->specializationConstants.performDCT == 4) && ((axis->specializationConstants.fftDim.data.i % 2) != 0))) additionalR2Cshared = 1;
 	}
-	axis->specializationConstants.mergeSequencesR2C = (((axis->specializationConstants.fftDim.data.i + additionalR2Cshared) <= maxSequenceLengthSharedMemory) && (FFTPlan->actualFFTSizePerAxis[axis_id][1] > 1) && ((FFTPlan->actualPerformR2CPerAxis[axis_id]) || (((app->configuration.performDCT == 3) || (app->configuration.performDCT == 2) || (app->configuration.performDCT == 1) || ((app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) != 0))) && (axis_id == 0)))) ? (1 - app->configuration.disableMergeSequencesR2C) : 0;
+	axis->specializationConstants.mergeSequencesR2C = (((axis->specializationConstants.fftDim.data.i + additionalR2Cshared) <= maxSequenceLengthSharedMemory) && (FFTPlan->actualFFTSizePerAxis[axis_id][1] > 1) && ((FFTPlan->actualPerformR2CPerAxis[axis_id]) || (((app->configuration.performDCT == 3) || (app->configuration.performDCT == 2) || (app->configuration.performDCT == 1) || ((app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) != 0))) && (axis_id == 0)))) ? (1 - (int)app->configuration.disableMergeSequencesR2C) : 0;
 	//uint64_t passID = FFTPlan->numAxisUploads[axis_id] - 1 - axis_upload_id;
 	axis->specializationConstants.fft_dim_full.type = 31;
 	axis->specializationConstants.fft_dim_full.data.i = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
@@ -294,7 +294,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 	//configure strides
 
-	VkContainer* axisStride = axis->specializationConstants.inputStride;
+	PfContainer* axisStride = axis->specializationConstants.inputStride;
 	uint64_t* usedStride = app->configuration.bufferStride;
 	if ((!inverse) && (axis_id == app->firstAxis) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (app->configuration.isInputFormatted)) usedStride = app->configuration.inputBufferStride;
 	if ((inverse) && (axis_id == app->lastAxis) && ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((app->useBluesteinFFT[axis_id] && (reverseBluesteinMultiUpload == 0)) || (!app->useBluesteinFFT[axis_id])) && (!app->configuration.performConvolution)) && (app->configuration.isInputFormatted) && (!app->configuration.inverseReturnToInputBuffer)) usedStride = app->configuration.inputBufferStride;
@@ -489,91 +489,91 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		axis->specializationConstants.localSize[0].data.i = axis->axisBlock[0];
 		axis->specializationConstants.localSize[1].data.i = axis->axisBlock[1];
 		axis->specializationConstants.localSize[2].data.i = axis->axisBlock[2];
-		axis->specializationConstants.numSubgroups = (uint64_t)ceil(axis->axisBlock[0] * axis->axisBlock[1] * axis->axisBlock[2] / (double)app->configuration.warpSize);
+		axis->specializationConstants.numSubgroups = (int)ceil(axis->axisBlock[0] * axis->axisBlock[1] * axis->axisBlock[2] / (double)app->configuration.warpSize);
 		//specializationInfo.pData = &axis->specializationConstants;
 		//uint64_t registerBoost = (FFTPlan->numAxisUploads[axis_id] > 1) ? app->configuration.registerBoost4Step : app->configuration.registerBoost;
 
-		axis->specializationConstants.numCoordinates = (app->configuration.matrixConvolution > 1) ? 1 : app->configuration.coordinateFeatures;
-		axis->specializationConstants.matrixConvolution = app->configuration.matrixConvolution;
+		axis->specializationConstants.numCoordinates = (app->configuration.matrixConvolution > 1) ? 1 : (int)app->configuration.coordinateFeatures;
+		axis->specializationConstants.matrixConvolution = (int)app->configuration.matrixConvolution;
 		axis->specializationConstants.coordinate.type = 31;
 		axis->specializationConstants.coordinate.data.i = 0;
 		axis->specializationConstants.batchID.type = 31;
 		axis->specializationConstants.batchID.data.i = 0;
 		axis->specializationConstants.numKernels.type = 31;
-		axis->specializationConstants.numKernels.data.i = app->configuration.numberKernels;
-		axis->specializationConstants.sharedMemSize = app->configuration.sharedMemorySize;
-		axis->specializationConstants.sharedMemSizePow2 = app->configuration.sharedMemorySizePow2;
-		axis->specializationConstants.normalize = (reverseBluesteinMultiUpload) ? 1 : app->configuration.normalize;
+		axis->specializationConstants.numKernels.data.i = (int)app->configuration.numberKernels;
+		axis->specializationConstants.sharedMemSize = (int)app->configuration.sharedMemorySize;
+		axis->specializationConstants.sharedMemSizePow2 = (int)app->configuration.sharedMemorySizePow2;
+		axis->specializationConstants.normalize = (reverseBluesteinMultiUpload) ? 1 : (int)app->configuration.normalize;
         for (uint64_t i = 0; i < VKFFT_MAX_FFT_DIMENSIONS; i++) {
             axis->specializationConstants.size[i].type = 31;
-            axis->specializationConstants.size[i].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][i];
+            axis->specializationConstants.size[i].data.i = (int64_t)FFTPlan->actualFFTSizePerAxis[axis_id][i];
         }
 		
 		for (uint64_t i = 0; i < VKFFT_MAX_FFT_DIMENSIONS; i++) {
-			axis->specializationConstants.frequencyZeropadding = app->configuration.frequencyZeroPadding;
-			axis->specializationConstants.performZeropaddingFull[i] = app->configuration.performZeropadding[i]; // don't read if input is zeropadded (0 - off, 1 - on)
+			axis->specializationConstants.frequencyZeropadding = (int)app->configuration.frequencyZeroPadding;
+			axis->specializationConstants.performZeropaddingFull[i] = (int)app->configuration.performZeropadding[i]; // don't read if input is zeropadded (0 - off, 1 - on)
 			axis->specializationConstants.fft_zeropad_left_full[i].type = 31;
-			axis->specializationConstants.fft_zeropad_left_full[i].data.i = app->configuration.fft_zeropad_left[i];
+			axis->specializationConstants.fft_zeropad_left_full[i].data.i = (int64_t)app->configuration.fft_zeropad_left[i];
 			axis->specializationConstants.fft_zeropad_right_full[i].type = 31;
-			axis->specializationConstants.fft_zeropad_right_full[i].data.i = app->configuration.fft_zeropad_right[i];
+			axis->specializationConstants.fft_zeropad_right_full[i].data.i = (int64_t)app->configuration.fft_zeropad_right[i];
 		}
 		if (axis->specializationConstants.useBluesteinFFT && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((reverseBluesteinMultiUpload == 0) || (FFTPlan->numAxisUploads[axis_id] == 1))) {
 			axis->specializationConstants.zeropadBluestein[0] = 1;
 			axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].type = 31;
-			axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i = app->configuration.size[axis_id];
+			axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i = (int64_t)app->configuration.size[axis_id];
 			if ((FFTPlan->multiUploadR2C) && (axis_id == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i /= 2;
 			if (app->configuration.performDCT == 1) axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i = 2 * axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i - 2;
 			if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i /= 2;
 			axis->specializationConstants.fft_zeropad_Bluestein_right_read[axis_id].type = 31;
-			axis->specializationConstants.fft_zeropad_Bluestein_right_read[axis_id].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
+			axis->specializationConstants.fft_zeropad_Bluestein_right_read[axis_id].data.i = (int64_t)FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 		}
 		if (axis->specializationConstants.useBluesteinFFT && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1))) {
 			axis->specializationConstants.zeropadBluestein[1] = 1;
 			axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].type = 31;
-			axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i = app->configuration.size[axis_id];
+			axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i = (int64_t)app->configuration.size[axis_id];
 			if ((FFTPlan->multiUploadR2C) && (axis_id == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i /= 2;
 			if (app->configuration.performDCT == 1) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i = 2 * axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i - 2;
 			if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i /= 2;
 			axis->specializationConstants.fft_zeropad_Bluestein_right_write[axis_id].type = 31;
-			axis->specializationConstants.fft_zeropad_Bluestein_right_write[axis_id].data.i = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
+			axis->specializationConstants.fft_zeropad_Bluestein_right_write[axis_id].data.i = (int64_t)FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 		}
 		uint64_t zeropad_r2c_multiupload_scale = ((axis_id == 0) && (FFTPlan->multiUploadR2C)) ? 2 : 1;
 		if ((inverse)) {
 			if ((app->configuration.frequencyZeroPadding) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload != 1)) {
-				axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
+				axis->specializationConstants.zeropad[0] = (int)app->configuration.performZeropadding[axis_id];
 				axis->specializationConstants.fft_zeropad_left_read[axis_id].type = 31;
-				axis->specializationConstants.fft_zeropad_left_read[axis_id].data.i = app->configuration.fft_zeropad_left[axis_id] / zeropad_r2c_multiupload_scale;
+				axis->specializationConstants.fft_zeropad_left_read[axis_id].data.i = (int64_t)app->configuration.fft_zeropad_left[axis_id] / zeropad_r2c_multiupload_scale;
 				axis->specializationConstants.fft_zeropad_right_read[axis_id].type = 31;
-				axis->specializationConstants.fft_zeropad_right_read[axis_id].data.i = app->configuration.fft_zeropad_right[axis_id] / zeropad_r2c_multiupload_scale;
+				axis->specializationConstants.fft_zeropad_right_read[axis_id].data.i = (int64_t)app->configuration.fft_zeropad_right[axis_id] / zeropad_r2c_multiupload_scale;
 			}
 			else
 				axis->specializationConstants.zeropad[0] = 0;
 			if ((!app->configuration.frequencyZeroPadding) && (((axis_upload_id == 0) && (!((axis->specializationConstants.useBluesteinFFT) || (app->configuration.performConvolution)))) || ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1)) || (app->configuration.performConvolution)))))) {
-				axis->specializationConstants.zeropad[1] = app->configuration.performZeropadding[axis_id];
+				axis->specializationConstants.zeropad[1] = (int)app->configuration.performZeropadding[axis_id];
 				axis->specializationConstants.fft_zeropad_left_write[axis_id].type = 31;
-				axis->specializationConstants.fft_zeropad_left_write[axis_id].data.i = app->configuration.fft_zeropad_left[axis_id] / zeropad_r2c_multiupload_scale;
+				axis->specializationConstants.fft_zeropad_left_write[axis_id].data.i = (int64_t)app->configuration.fft_zeropad_left[axis_id] / zeropad_r2c_multiupload_scale;
 				axis->specializationConstants.fft_zeropad_right_write[axis_id].type = 31;
-				axis->specializationConstants.fft_zeropad_right_write[axis_id].data.i = app->configuration.fft_zeropad_right[axis_id] / zeropad_r2c_multiupload_scale;
+				axis->specializationConstants.fft_zeropad_right_write[axis_id].data.i = (int64_t)app->configuration.fft_zeropad_right[axis_id] / zeropad_r2c_multiupload_scale;
 			}
 			else
 				axis->specializationConstants.zeropad[1] = 0;
 		}
 		else {
 			if ((!app->configuration.frequencyZeroPadding) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload != 1)) {
-				axis->specializationConstants.zeropad[0] = app->configuration.performZeropadding[axis_id];
+				axis->specializationConstants.zeropad[0] = (int)app->configuration.performZeropadding[axis_id];
 				axis->specializationConstants.fft_zeropad_left_read[axis_id].type = 31;
-				axis->specializationConstants.fft_zeropad_left_read[axis_id].data.i = app->configuration.fft_zeropad_left[axis_id] / zeropad_r2c_multiupload_scale;
+				axis->specializationConstants.fft_zeropad_left_read[axis_id].data.i = (int64_t)app->configuration.fft_zeropad_left[axis_id] / zeropad_r2c_multiupload_scale;
 				axis->specializationConstants.fft_zeropad_right_read[axis_id].type = 31;
-				axis->specializationConstants.fft_zeropad_right_read[axis_id].data.i = app->configuration.fft_zeropad_right[axis_id] / zeropad_r2c_multiupload_scale;
+				axis->specializationConstants.fft_zeropad_right_read[axis_id].data.i = (int64_t)app->configuration.fft_zeropad_right[axis_id] / zeropad_r2c_multiupload_scale;
 			}
 			else
 				axis->specializationConstants.zeropad[0] = 0;
 			if (((app->configuration.frequencyZeroPadding) && (((axis_upload_id == 0) && (!axis->specializationConstants.useBluesteinFFT)) || ((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (axis->specializationConstants.useBluesteinFFT && ((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1)))))) || (((!app->configuration.frequencyZeroPadding) && (app->configuration.FFTdim - 1 == axis_id) && (axis_upload_id == 0) && (FFTPlan->numAxisUploads[axis_id] == 1) && (app->configuration.performConvolution)))) {
-				axis->specializationConstants.zeropad[1] = app->configuration.performZeropadding[axis_id];
+				axis->specializationConstants.zeropad[1] = (int)app->configuration.performZeropadding[axis_id];
 				axis->specializationConstants.fft_zeropad_left_write[axis_id].type = 31;
-				axis->specializationConstants.fft_zeropad_left_write[axis_id].data.i = app->configuration.fft_zeropad_left[axis_id] / zeropad_r2c_multiupload_scale;
+				axis->specializationConstants.fft_zeropad_left_write[axis_id].data.i = (int64_t)app->configuration.fft_zeropad_left[axis_id] / zeropad_r2c_multiupload_scale;
 				axis->specializationConstants.fft_zeropad_right_write[axis_id].type = 31;
-				axis->specializationConstants.fft_zeropad_right_write[axis_id].data.i = app->configuration.fft_zeropad_right[axis_id] / zeropad_r2c_multiupload_scale;
+				axis->specializationConstants.fft_zeropad_right_write[axis_id].data.i = (int64_t)app->configuration.fft_zeropad_right[axis_id] / zeropad_r2c_multiupload_scale;
 			}
 			else
 				axis->specializationConstants.zeropad[1] = 0;
@@ -678,7 +678,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				axis->pushConstants.structSize *= sizeof(uint64_t);
 			else
 				axis->pushConstants.structSize *= sizeof(uint32_t);
-			axis->specializationConstants.pushConstantsStructSize = axis->pushConstants.structSize;
+			axis->specializationConstants.pushConstantsStructSize = (int)axis->pushConstants.structSize;
 		}
 		//uint64_t LUT = app->configuration.useLUT;
 		uint64_t type = 0;
@@ -794,7 +794,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 #else
 		sprintf(axis->VkFFTFunctionName, "VkFFT_main");
 #endif
-		resFFT = VkShaderGen_FFT(&axis->specializationConstants, type);
+		resFFT = shaderGen_FFT(&axis->specializationConstants, (int)type);
 		if (resFFT != VKFFT_SUCCESS) {
 			deleteVkFFT(app);
 			return resFFT;

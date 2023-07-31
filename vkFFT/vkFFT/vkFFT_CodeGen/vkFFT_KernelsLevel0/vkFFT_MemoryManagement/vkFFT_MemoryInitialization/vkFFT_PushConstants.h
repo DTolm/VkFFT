@@ -25,13 +25,13 @@
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
 
-static inline void appendPushConstant(VkFFTSpecializationConstantsLayout* sc, VkContainer* var) {
+static inline void appendPushConstant(VkFFTSpecializationConstantsLayout* sc, PfContainer* var) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if (var->type > 100) {
-		VkContainer* varType;
-		VkGetTypeFromCode(sc, var->type, &varType);
+		PfContainer* varType;
+		PfGetTypeFromCode(sc, var->type, &varType);
 		sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", varType->data.s, var->data.s);
-		VkAppendLine(sc);
+		PfAppendLine(sc);
 	}
 	else {
 		sc->res = VKFFT_ERROR_MATH_FAILED;
@@ -44,19 +44,19 @@ static inline void appendPushConstants(VkFFTSpecializationConstantsLayout* sc) {
 		return;
 #if(VKFFT_BACKEND==0)
 	sc->tempLen = sprintf(sc->tempStr, "layout(push_constant) uniform PushConsts\n{\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	
 #elif(VKFFT_BACKEND==1)
 	sc->tempLen = sprintf(sc->tempStr, "	typedef struct {\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	
 #elif(VKFFT_BACKEND==2)
 	sc->tempLen = sprintf(sc->tempStr, "	typedef struct {\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	
 #elif(VKFFT_BACKEND==3)
 	sc->tempLen = sprintf(sc->tempStr, "	typedef struct {\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	
 #endif
 	char tempCopyStr[60];
@@ -92,23 +92,23 @@ static inline void appendPushConstants(VkFFTSpecializationConstantsLayout* sc) {
 	}
 #if(VKFFT_BACKEND==0)
 	sc->tempLen = sprintf(sc->tempStr, "} consts;\n\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	
 #elif(VKFFT_BACKEND==1)
 	sc->tempLen = sprintf(sc->tempStr, "	}PushConsts;\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, "	__constant__ PushConsts consts;\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 #elif(VKFFT_BACKEND==2)
 	sc->tempLen = sprintf(sc->tempStr, "	}PushConsts;\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	
 	sc->tempLen = sprintf(sc->tempStr, "	__constant__ PushConsts consts;\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	
 #elif(VKFFT_BACKEND==3)
 	sc->tempLen = sprintf(sc->tempStr, "	}PushConsts;\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	
 #endif
 	return;

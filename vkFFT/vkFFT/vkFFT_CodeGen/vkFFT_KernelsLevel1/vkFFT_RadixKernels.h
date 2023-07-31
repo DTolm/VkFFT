@@ -27,14 +27,14 @@
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel0/vkFFT_MemoryManagement/vkFFT_MemoryTransfers/vkFFT_Transfers.h"
 
-static inline void inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc, int64_t radix, int64_t stageSize, int64_t stageSizeSum, long double stageAngle, VkContainer* regID) {
+static inline void inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc, int64_t radix, int64_t stageSize, int64_t stageSizeSum, long double stageAngle, PfContainer* regID) {
 	if (sc->res != VKFFT_SUCCESS) return;
 
-	VkContainer temp_complex;
+	PfContainer temp_complex;
 	temp_complex.type = 33;
-	VkContainer temp_double;
+	PfContainer temp_double;
 	temp_double.type = 32;
-	VkContainer temp_int;
+	PfContainer temp_int;
 	temp_int.type = 31;
 	//sprintf(temp, "loc_0");
 
@@ -43,7 +43,7 @@ static inline void inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);		
+			PfMov(sc, &sc->w, &temp_complex);		
 		}
 		else {
 			if (sc->LUT) {
@@ -54,24 +54,24 @@ static inline void inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc
 					appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->LUTId);
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 				}
 			}
 			else {
-				VkSinCos(sc, &sc->w, &sc->angle);
+				PfSinCos(sc, &sc->w, &sc->angle);
 			}
 		}
-		VkMul(sc, &sc->temp, &regID[1], &sc->w, 0);
+		PfMul(sc, &sc->temp, &regID[1], &sc->w, 0);
 		
-		VkSub(sc, &regID[1], &regID[0], &sc->temp);
+		PfSub(sc, &regID[1], &regID[0], &sc->temp);
 		
-		VkAdd(sc, &regID[0], &regID[0], &sc->temp);
+		PfAdd(sc, &regID[0], &regID[0], &sc->temp);
 		
 		break;
 	}
 	case 3: {
 
-		VkContainer tf[2];
+		PfContainer tf[2];
 		for (int64_t i = 0; i < 2; i++){
 			tf[i].type = 32;
 		}
@@ -82,7 +82,7 @@ static inline void inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);		
+			PfMov(sc, &sc->w, &temp_complex);		
 		}
 		else {
 			if (sc->LUT) {
@@ -93,71 +93,71 @@ static inline void inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc
 					appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->LUTId);
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 				}
 			}
 			else { 
 				temp_double.data.d = 4.0 / 3.0;
-				VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-				VkSinCos(sc, &sc->w, &sc->tempFloat);
+				PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+				PfSinCos(sc, &sc->w, &sc->tempFloat);
 			}
 		}
-		VkMul(sc, &sc->locID[2], &regID[2], &sc->w, 0);
+		PfMul(sc, &sc->locID[2], &regID[2], &sc->w, 0);
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);		
+			PfMov(sc, &sc->w, &temp_complex);		
 		}
 		else {
 			if (sc->LUT) {
 				if (sc->useCoalescedLUTUploadToSM) {
 					temp_int.data.i = stageSize;
-					VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 					appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 				}
 				else {
 					temp_double.data.d = 4.0 / 3.0;
 					temp_int.data.i = stageSize;
-					VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+					PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 					appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 					
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
 				temp_double.data.d = 2.0 / 3.0;
-				VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-				VkSinCos(sc, &sc->w, &sc->tempFloat);
+				PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+				PfSinCos(sc, &sc->w, &sc->tempFloat);
 			}
 		}
-		VkMul(sc, &sc->locID[1], &regID[1], &sc->w, 0);
+		PfMul(sc, &sc->locID[1], &regID[1], &sc->w, 0);
 		
-		VkAdd(sc, &regID[1], &sc->locID[1], &sc->locID[2]);
+		PfAdd(sc, &regID[1], &sc->locID[1], &sc->locID[2]);
 		
-		VkSub(sc, &regID[2], &sc->locID[1], &sc->locID[2]);
+		PfSub(sc, &regID[2], &sc->locID[1], &sc->locID[2]);
 		
-		VkAdd(sc, &sc->locID[0], &regID[0], &regID[1]);
+		PfAdd(sc, &sc->locID[0], &regID[0], &regID[1]);
 		
-		VkFMA(sc, &sc->locID[1], &regID[1], &tf[0], &regID[0]);
+		PfFMA(sc, &sc->locID[1], &regID[1], &tf[0], &regID[0]);
 		
-		VkMul(sc, &sc->locID[2], &regID[2], &tf[1], 0);
+		PfMul(sc, &sc->locID[2], &regID[2], &tf[1], 0);
 		
-		VkMov(sc, &regID[0], &sc->locID[0]);
+		PfMov(sc, &regID[0], &sc->locID[0]);
 		
 		if (stageAngle < 0)
 		{
-			VkShuffleComplex(sc, &regID[1], &sc->locID[1], &sc->locID[2], 0);
+			PfShuffleComplex(sc, &regID[1], &sc->locID[1], &sc->locID[2], 0);
 			
-			VkShuffleComplexInv(sc, &regID[2], &sc->locID[1], &sc->locID[2], 0);
+			PfShuffleComplexInv(sc, &regID[2], &sc->locID[1], &sc->locID[2], 0);
 			
 		}
 		else {
-			VkShuffleComplexInv(sc, &regID[1], &sc->locID[1], &sc->locID[2], 0);
+			PfShuffleComplexInv(sc, &regID[1], &sc->locID[1], &sc->locID[2], 0);
 			
-			VkShuffleComplex(sc, &regID[2], &sc->locID[1], &sc->locID[2], 0);
+			PfShuffleComplex(sc, &regID[2], &sc->locID[1], &sc->locID[2], 0);
 			
 		}
 
@@ -169,13 +169,13 @@ static inline void inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc
 		else
 			&sc->tempLen = sprintf(&sc->tempStr, "void radix4(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, %s angle%s) {\n", vecType, vecType, vecType, vecType, floatType, convolutionInverse);
 		*/
-		//VkAppendLine(sc, "	{\n");
+		//PfAppendLine(sc, "	{\n");
 		//&sc->tempLen = sprintf(&sc->tempStr, "	%s %s;\n", vecType, &sc->temp);
 		//		
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
@@ -189,25 +189,25 @@ static inline void inlineRadixKernelVkFFT(VkFFTSpecializationConstantsLayout* sc
 										
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
-				VkSinCos(sc, &sc->w, &sc->angle);
+				PfSinCos(sc, &sc->w, &sc->angle);
 			}
 		}
-		VkMul(sc, &sc->temp, &regID[2], &sc->w, 0);
+		PfMul(sc, &sc->temp, &regID[2], &sc->w, 0);
 		
-		VkSub(sc, &regID[2], &regID[0], &sc->temp);
+		PfSub(sc, &regID[2], &regID[0], &sc->temp);
 		
-		VkAdd(sc, &regID[0], &regID[0], &sc->temp);
+		PfAdd(sc, &regID[0], &regID[0], &sc->temp);
 		
-		VkMul(sc, &sc->temp, &regID[3], &sc->w, 0);
+		PfMul(sc, &sc->temp, &regID[3], &sc->w, 0);
 		
-		VkSub(sc, &regID[3], &regID[1], &sc->temp);
+		PfSub(sc, &regID[3], &regID[1], &sc->temp);
 		
-		VkAdd(sc, &regID[1], &regID[1], &sc->temp);
+		PfAdd(sc, &regID[1], &regID[1], &sc->temp);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp.x=temp%s.x*w.x-temp%s.y*w.y;\n\
@@ -222,39 +222,39 @@ temp%s = temp%s + temp;\n\n\
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
 			if (sc->LUT) {
 				if (sc->useCoalescedLUTUploadToSM) {
 					temp_int.data.i = stageSize;
-					VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 					appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 				}
 				else {
 					temp_int.data.i = stageSize;
-					VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+					PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 					appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 					
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
 				temp_double.data.d = 0.5;
-				VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-				VkSinCos(sc, &sc->w, &sc->tempFloat);
+				PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+				PfSinCos(sc, &sc->w, &sc->tempFloat);
 				
 			}
 		}
-		VkMul(sc, &sc->temp, &regID[1], &sc->w, 0);
+		PfMul(sc, &sc->temp, &regID[1], &sc->w, 0);
 		
-		VkSub(sc, &regID[1], &regID[0], &sc->temp);
+		PfSub(sc, &regID[1], &regID[0], &sc->temp);
 		
-		VkAdd(sc, &regID[0], &regID[0], &sc->temp);
+		PfAdd(sc, &regID[0], &regID[0], &sc->temp);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp.x = temp%s.x * w.x - temp%s.y * w.y;\n\
@@ -262,39 +262,39 @@ temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
 temp%s = temp%s - temp;\n\
 temp%s = temp%s + temp;\n\n", &regID[1], &regID[1], &regID[1], &regID[1], &regID[1], &regID[0], &regID[0], &regID[0]);*/
 		if (stageAngle < 0) {
-			VkMov_x(sc, &sc->temp, &sc->w);
+			PfMov_x(sc, &sc->temp, &sc->w);
 			
-			VkMov_x_y(sc, &sc->w, &sc->w);
-			VkMov_y_Neg_x(sc, &sc->w, &sc->temp);
+			PfMov_x_y(sc, &sc->w, &sc->w);
+			PfMov_y_Neg_x(sc, &sc->w, &sc->temp);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
 		}
 		else {
-			VkMov_x(sc, &sc->temp, &sc->w);
+			PfMov_x(sc, &sc->temp, &sc->w);
 			
-			VkMov_x_Neg_y(sc, &sc->w, &sc->w);
-			VkMov_y_x(sc, &sc->w, &sc->temp);
+			PfMov_x_Neg_y(sc, &sc->w, &sc->w);
+			PfMov_y_x(sc, &sc->w, &sc->temp);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(-w.y, w.x);\n\n", vecType);
 		}
-		VkMul(sc, &sc->temp, &regID[3], &sc->w, 0);
+		PfMul(sc, &sc->temp, &regID[3], &sc->w, 0);
 		
-		VkSub(sc, &regID[3], &regID[2], &sc->temp);
+		PfSub(sc, &regID[3], &regID[2], &sc->temp);
 		
-		VkAdd(sc, &regID[2], &regID[2], &sc->temp);
+		PfAdd(sc, &regID[2], &regID[2], &sc->temp);
 		
-		//VkMov(sc, &sc->temp, &regID[1]);
+		//PfMov(sc, &sc->temp, &regID[1]);
 		//
 
 		uint64_t permute2[4] = { 0,2,1,3 };
-		VkPermute(sc, permute2, 4, 1, regID, &sc->temp);
+		PfPermute(sc, permute2, 4, 1, regID, &sc->temp);
 		
 
-		/*VkMov(sc, &regID[1], &regID[2]);
+		/*PfMov(sc, &regID[1], &regID[2]);
 		
-		VkMov(sc, &regID[2], &sc->temp);
+		PfMov(sc, &regID[2], &sc->temp);
 		*/
-		/*VkAppendLine(sc, "	}\n");
+		/*PfAppendLine(sc, "	}\n");
 		&sc->tempLen = sprintf(&sc->tempStr, "\
 temp.x = temp%s.x * w.x - temp%s.y * w.y;\n\
 temp.y = temp%s.y * w.x + temp%s.x * w.y;\n\
@@ -313,7 +313,7 @@ temp%s = temp;\n\
 		else {
 			&sc->tempLen = sprintf(&sc->tempStr, "void radix5(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, inout %s temp_4, %s angle) {\n", vecType, vecType, vecType, vecType, vecType, floatType);
 		}*/
-		VkContainer tf[5];
+		PfContainer tf[5];
 		for (int64_t i = 0; i < 5; i++){
 			tf[i].type = 32;
 		}
@@ -336,7 +336,7 @@ temp%s = temp;\n\
 			if (stageSize == 1) {
 				temp_complex.data.c[0] = 1;
 				temp_complex.data.c[1] = 0;
-				VkMov(sc, &sc->w, &temp_complex);	
+				PfMov(sc, &sc->w, &temp_complex);	
 				
 			}
 			else {
@@ -351,58 +351,58 @@ temp%s = temp;\n\
 														
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 					
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 				else {
 					if (sc->LUT) {
 						if (sc->useCoalescedLUTUploadToSM) {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+							PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 							appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 						}
 						else {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+							PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 							appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 							
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 					
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 			}
-			VkMul(sc, &sc->locID[i], &regID[i], &sc->w, 0);
+			PfMul(sc, &sc->locID[i], &regID[i], &sc->w, 0);
 			
 			/*&sc->tempLen = sprintf(&sc->tempStr, "\
 loc_%" PRIu64 ".x = temp%s.x * w.x - temp%s.y * w.y;\n\
 loc_%" PRIu64 ".y = temp%s.y * w.x + temp%s.x * w.y;\n", i, &regID[i], &regID[i], i, &regID[i], &regID[i]);*/
 		}
-		VkAdd(sc, &regID[1], &sc->locID[1], &sc->locID[4]);
+		PfAdd(sc, &regID[1], &sc->locID[1], &sc->locID[4]);
 		
-		VkAdd(sc, &regID[2], &sc->locID[2], &sc->locID[3]);
+		PfAdd(sc, &regID[2], &sc->locID[2], &sc->locID[3]);
 		
-		VkSub(sc, &regID[3], &sc->locID[2], &sc->locID[3]);
+		PfSub(sc, &regID[3], &sc->locID[2], &sc->locID[3]);
 		
-		VkSub(sc, &regID[4], &sc->locID[1], &sc->locID[4]);
+		PfSub(sc, &regID[4], &sc->locID[1], &sc->locID[4]);
 		
-		VkSub(sc, &sc->locID[3], &regID[1], &regID[2]);
+		PfSub(sc, &sc->locID[3], &regID[1], &regID[2]);
 		
-		VkAdd(sc, &sc->locID[4], &regID[3], &regID[4]);
+		PfAdd(sc, &sc->locID[4], &regID[3], &regID[4]);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp%s = loc_1 + loc_4;\n\
@@ -411,21 +411,21 @@ temp%s = loc_2 - loc_3;\n\
 temp%s = loc_1 - loc_4;\n\
 loc_3 = temp%s - temp%s;\n\
 loc_4 = temp%s + temp%s;\n", &regID[1], &regID[2], &regID[3], &regID[4], &regID[1], &regID[2], &regID[3], &regID[4]);*/
-		VkAdd(sc, &sc->locID[0], &regID[0], &regID[1]);
+		PfAdd(sc, &sc->locID[0], &regID[0], &regID[1]);
 		
-		VkAdd(sc, &sc->locID[0], &sc->locID[0], &regID[2]);
+		PfAdd(sc, &sc->locID[0], &sc->locID[0], &regID[2]);
 		
-		VkFMA(sc, &sc->locID[1], &regID[1], &tf[0], &regID[0]);
+		PfFMA(sc, &sc->locID[1], &regID[1], &tf[0], &regID[0]);
 		
-		VkFMA(sc, &sc->locID[2], &regID[2], &tf[0], &regID[0]);
+		PfFMA(sc, &sc->locID[2], &regID[2], &tf[0], &regID[0]);
 		
-		VkMul(sc, &regID[3], &regID[3], &tf[1], 0);
+		PfMul(sc, &regID[3], &regID[3], &tf[1], 0);
 		
-		VkMul(sc, &regID[4], &regID[4], &tf[2], 0);
+		PfMul(sc, &regID[4], &regID[4], &tf[2], 0);
 		
-		VkMul(sc, &sc->locID[3], &sc->locID[3], &tf[3], 0);
+		PfMul(sc, &sc->locID[3], &sc->locID[3], &tf[3], 0);
 		
-		VkMul(sc, &sc->locID[4], &sc->locID[4], &tf[4], 0);
+		PfMul(sc, &sc->locID[4], &sc->locID[4], &tf[4], 0);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 loc_0 = temp%s + temp%s + temp%s;\n\
@@ -435,15 +435,15 @@ temp%s *= 1.538841768587626701285145288018455;\n\
 temp%s *= -0.363271264002680442947733378740309;\n\
 loc_3 *= -0.809016994374947424102293417182819;\n\
 loc_4 *= -0.587785252292473129168705954639073;\n", &regID[0], &regID[1], &regID[2], &regID[0], &regID[1], &regID[0], &regID[2], &regID[3], &regID[4]);*/
-		VkSub(sc, &sc->locID[1], &sc->locID[1], &sc->locID[3]);
+		PfSub(sc, &sc->locID[1], &sc->locID[1], &sc->locID[3]);
 		
-		VkAdd(sc, &sc->locID[2], &sc->locID[2], &sc->locID[3]);
+		PfAdd(sc, &sc->locID[2], &sc->locID[2], &sc->locID[3]);
 		
-		VkAdd(sc, &sc->locID[3], &regID[3], &sc->locID[4]);
+		PfAdd(sc, &sc->locID[3], &regID[3], &sc->locID[4]);
 		
-		VkAdd(sc, &sc->locID[4], &sc->locID[4], &regID[4]);
+		PfAdd(sc, &sc->locID[4], &sc->locID[4], &regID[4]);
 		
-		VkMov(sc, &regID[0], &sc->locID[0]);
+		PfMov(sc, &regID[0], &sc->locID[0]);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 loc_1 -= loc_3;\n\
@@ -454,13 +454,13 @@ temp%s = loc_0;\n", &regID[3], &regID[4], &regID[0]);*/
 
 		if (stageAngle < 0)
 		{
-			VkShuffleComplex(sc, &regID[1], &sc->locID[1], &sc->locID[4], 0);
+			PfShuffleComplex(sc, &regID[1], &sc->locID[1], &sc->locID[4], 0);
 			
-			VkShuffleComplex(sc, &regID[2], &sc->locID[2], &sc->locID[3], 0);
+			PfShuffleComplex(sc, &regID[2], &sc->locID[2], &sc->locID[3], 0);
 			
-			VkShuffleComplexInv(sc, &regID[3], &sc->locID[2], &sc->locID[3], 0);
+			PfShuffleComplexInv(sc, &regID[3], &sc->locID[2], &sc->locID[3], 0);
 			
-			VkShuffleComplexInv(sc, &regID[4], &sc->locID[1], &sc->locID[4], 0);
+			PfShuffleComplexInv(sc, &regID[4], &sc->locID[1], &sc->locID[4], 0);
 			
 			/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp%s.x = loc_1.x - loc_4.y; \n\
@@ -473,13 +473,13 @@ temp%s.x = loc_1.x + loc_4.y; \n\
 temp%s.y = loc_1.y - loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &regID[3], &regID[3], &regID[4], &regID[4]);*/
 		}
 		else {
-			VkShuffleComplexInv(sc, &regID[1], &sc->locID[1], &sc->locID[4], 0);
+			PfShuffleComplexInv(sc, &regID[1], &sc->locID[1], &sc->locID[4], 0);
 			
-			VkShuffleComplexInv(sc, &regID[2], &sc->locID[2], &sc->locID[3], 0);
+			PfShuffleComplexInv(sc, &regID[2], &sc->locID[2], &sc->locID[3], 0);
 			
-			VkShuffleComplex(sc, &regID[3], &sc->locID[2], &sc->locID[3], 0);
+			PfShuffleComplex(sc, &regID[3], &sc->locID[2], &sc->locID[3], 0);
 			
-			VkShuffleComplex(sc, &regID[4], &sc->locID[1], &sc->locID[4], 0);
+			PfShuffleComplex(sc, &regID[4], &sc->locID[1], &sc->locID[4], 0);
 			
 			/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp%s.x = loc_1.x + loc_4.y; \n\
@@ -492,15 +492,15 @@ temp%s.x = loc_1.x - loc_4.y; \n\
 temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &regID[3], &regID[3], &regID[4], &regID[4]);*/
 		}
 
-		//VkAppendLine(sc, "	}\n");
+		//PfAppendLine(sc, "	}\n");
 		break;
 	}
 	case 6: {
-		VkContainer tf[2];
+		PfContainer tf[2];
 		for (int64_t i = 0; i < 2; i++){
 			tf[i].type = 32;
 		}
-		//VkAppendLine(sc, "	{\n");
+		//PfAppendLine(sc, "	{\n");
 		
 
 		tf[0].data.d = -0.5;
@@ -509,7 +509,7 @@ temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &
 			if (stageSize == 1) {
 				temp_complex.data.c[0] = 1;
 				temp_complex.data.c[1] = 0;
-				VkMov(sc, &sc->w, &temp_complex);	
+				PfMov(sc, &sc->w, &temp_complex);	
 				
 			}
 			else {
@@ -524,138 +524,138 @@ temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &
 														
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 					
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 				else {
 					if (sc->LUT) {
 						if (sc->useCoalescedLUTUploadToSM) {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+							PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 							appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 						}
 						else {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+							PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 							appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 							
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 					
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 			}
-			VkMul(sc, &regID[i], &regID[i], &sc->w, &sc->temp);
+			PfMul(sc, &regID[i], &regID[i], &sc->w, &sc->temp);
 			
 		}
 		//important
-		//VkMov(sc, &regID[1], &sc->locID[1]);
+		//PfMov(sc, &regID[1], &sc->locID[1]);
 		//
 
 		//uint64_t P = 3;
 		uint64_t Q = 2;
 		for (uint64_t i = 0; i < Q; i++) {
-			VkMov(sc, &sc->locID[0], &regID[i]);
+			PfMov(sc, &sc->locID[0], &regID[i]);
 			
-			VkMov(sc, &sc->locID[1], &regID[i + Q]);
+			PfMov(sc, &sc->locID[1], &regID[i + Q]);
 			
-			VkMov(sc, &sc->locID[2], &regID[i + 2 * Q]);
-			
-
-			VkAdd(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2]);
-			
-			VkSub(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2]);
+			PfMov(sc, &sc->locID[2], &regID[i + 2 * Q]);
 			
 
-			VkAdd(sc, &sc->locID[0], &regID[i], &regID[i + Q]);
+			PfAdd(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2]);
 			
-			VkFMA(sc, &sc->locID[1], &regID[i + Q], &tf[0], &regID[i]);
+			PfSub(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2]);
 			
-			VkMul(sc, &sc->locID[2], &regID[i + 2 * Q], &tf[1], 0);
+
+			PfAdd(sc, &sc->locID[0], &regID[i], &regID[i + Q]);
 			
-			VkMov(sc, &regID[i], &sc->locID[0]);
+			PfFMA(sc, &sc->locID[1], &regID[i + Q], &tf[0], &regID[i]);
+			
+			PfMul(sc, &sc->locID[2], &regID[i + 2 * Q], &tf[1], 0);
+			
+			PfMov(sc, &regID[i], &sc->locID[0]);
 			
 			if (stageAngle < 0)
 			{
-				VkShuffleComplex(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplex(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2], 0);
 				
-				VkShuffleComplexInv(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplexInv(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2], 0);
 				
 			}
 			else {
-				VkShuffleComplexInv(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplexInv(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2], 0);
 				
-				VkShuffleComplex(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplex(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2], 0);
 				
 			}
 		}
 
-		VkMov(sc, &sc->temp, &regID[1]);
+		PfMov(sc, &sc->temp, &regID[1]);
 		
-		VkSub(sc, &regID[1], &regID[0], &sc->temp);
+		PfSub(sc, &regID[1], &regID[0], &sc->temp);
 		
-		VkAdd(sc, &regID[0], &regID[0], &sc->temp);
+		PfAdd(sc, &regID[0], &regID[0], &sc->temp);
 		
 		if (stageAngle < 0) {
 			temp_complex.data.c[0] =  -0.5;
 			temp_complex.data.c[1] = 0.8660254037844386467637231707529;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
 			temp_complex.data.c[0] =  -0.5;
 			temp_complex.data.c[1] = -0.8660254037844386467637231707529;
-			VkMov(sc, &sc->w, &temp_complex);
+			PfMov(sc, &sc->w, &temp_complex);
 			
 		}
 
-		VkMul(sc, &sc->temp, &regID[3], &sc->w, 0);
+		PfMul(sc, &sc->temp, &regID[3], &sc->w, 0);
 		
-		VkSub(sc, &regID[3], &regID[2], &sc->temp);
+		PfSub(sc, &regID[3], &regID[2], &sc->temp);
 		
-		VkAdd(sc, &regID[2], &regID[2], &sc->temp);
-		
-
-		VkConjugate(sc, &sc->w, &sc->w);
+		PfAdd(sc, &regID[2], &regID[2], &sc->temp);
 		
 
-		VkMul(sc, &sc->temp, &regID[5], &sc->w, 0);
+		PfConjugate(sc, &sc->w, &sc->w);
 		
-		VkSub(sc, &regID[5], &regID[4], &sc->temp);
+
+		PfMul(sc, &sc->temp, &regID[5], &sc->w, 0);
 		
-		VkAdd(sc, &regID[4], &regID[4], &sc->temp);
+		PfSub(sc, &regID[5], &regID[4], &sc->temp);
+		
+		PfAdd(sc, &regID[4], &regID[4], &sc->temp);
 		
 
 		uint64_t permute2[6] = { 0,3,4,1,2,5 };
-		VkPermute(sc, permute2, 6, 1, regID, &sc->temp);
+		PfPermute(sc, permute2, 6, 1, regID, &sc->temp);
 		
 
-		/*VkMov(sc, &sc->temp, &regID[1]);
+		/*PfMov(sc, &sc->temp, &regID[1]);
 		
-		VkMov(sc, &regID[1], &regID[3]);
+		PfMov(sc, &regID[1], &regID[3]);
 		
-		VkMov(sc, &regID[3], &sc->temp);
+		PfMov(sc, &regID[3], &sc->temp);
 		
 
-		VkMov(sc, &sc->temp, &regID[2]);
+		PfMov(sc, &sc->temp, &regID[2]);
 		
-		VkMov(sc, &regID[2], &regID[4]);
+		PfMov(sc, &regID[2], &regID[4]);
 		
-		VkMov(sc, &regID[4], &sc->temp);
+		PfMov(sc, &regID[4], &sc->temp);
 		*/
 		break;
 	}
@@ -666,11 +666,11 @@ temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &
 		else {
 			&sc->tempLen = sprintf(&sc->tempStr, "void radix5(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, inout %s temp_4, %s angle) {\n", vecType, vecType, vecType, vecType, vecType, floatType);
 		}*/
-		VkContainer tf[8];
+		PfContainer tf[8];
 		for (int64_t i = 0; i < 8; i++){
 			tf[i].type = 32;
 		}
-		//VkAppendLine(sc, "	{\n");
+		//PfAppendLine(sc, "	{\n");
 		tf[0].data.d = -1.16666666666666651863693004997913;
 		tf[1].data.d = 0.79015646852540022404554065360571;
 		tf[2].data.d = 0.05585426728964774240049351305970;
@@ -697,7 +697,7 @@ temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &
 			if (stageSize == 1) {
 				temp_complex.data.c[0] = 1;
 				temp_complex.data.c[1] = 0;
-				VkMov(sc, &sc->w, &temp_complex);	
+				PfMov(sc, &sc->w, &temp_complex);	
 				
 			}
 			else {
@@ -712,60 +712,60 @@ temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &
 														
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 					
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 				else {
 					if (sc->LUT) {
 						if (sc->useCoalescedLUTUploadToSM) {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+							PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 							appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 						}
 						else {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+							PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 							appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 							
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 					
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 			}
-			VkMul(sc, &sc->locID[i], &regID[i], &sc->w, 0);
+			PfMul(sc, &sc->locID[i], &regID[i], &sc->w, 0);
 			
 			/*&sc->tempLen = sprintf(&sc->tempStr, "\
 loc_%" PRIu64 ".x = temp%s.x * w.x - temp%s.y * w.y;\n\
 loc_%" PRIu64 ".y = temp%s.y * w.x + temp%s.x * w.y;\n", i, &regID[i], &regID[i], i, &regID[i], &regID[i]);*/
 		}
-		VkMov(sc, &sc->locID[0], &regID[0]);
+		PfMov(sc, &sc->locID[0], &regID[0]);
 		
-		VkAdd(sc, &regID[0], &sc->locID[1], &sc->locID[6]);
+		PfAdd(sc, &regID[0], &sc->locID[1], &sc->locID[6]);
 		
-		VkSub(sc, &regID[1], &sc->locID[1], &sc->locID[6]);
+		PfSub(sc, &regID[1], &sc->locID[1], &sc->locID[6]);
 		
-		VkAdd(sc, &regID[2], &sc->locID[2], &sc->locID[5]);
+		PfAdd(sc, &regID[2], &sc->locID[2], &sc->locID[5]);
 		
-		VkSub(sc, &regID[3], &sc->locID[2], &sc->locID[5]);
+		PfSub(sc, &regID[3], &sc->locID[2], &sc->locID[5]);
 		
-		VkAdd(sc, &regID[4], &sc->locID[4], &sc->locID[3]);
+		PfAdd(sc, &regID[4], &sc->locID[4], &sc->locID[3]);
 		
-		VkSub(sc, &regID[5], &sc->locID[4], &sc->locID[3]);
+		PfSub(sc, &regID[5], &sc->locID[4], &sc->locID[3]);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 loc_0 = temp%s;\n\
@@ -775,56 +775,56 @@ temp%s = loc_2 + loc_5;\n\
 temp%s = loc_2 - loc_5;\n\
 temp%s = loc_4 + loc_3;\n\
 temp%s = loc_4 - loc_3;\n", &regID[0], &regID[0], &regID[1], &regID[2], &regID[3], &regID[4], &regID[5]);*/
-		VkAdd(sc, &sc->locID[5], &regID[1], &regID[3]);
+		PfAdd(sc, &sc->locID[5], &regID[1], &regID[3]);
 		
-		VkAdd(sc, &sc->locID[5], &sc->locID[5], &regID[5]);
+		PfAdd(sc, &sc->locID[5], &sc->locID[5], &regID[5]);
 		
-		VkAdd(sc, &sc->locID[1], &regID[0], &regID[2]);
+		PfAdd(sc, &sc->locID[1], &regID[0], &regID[2]);
 		
-		VkAdd(sc, &sc->locID[1], &sc->locID[1], &regID[4]);
+		PfAdd(sc, &sc->locID[1], &sc->locID[1], &regID[4]);
 		
-		VkAdd(sc, &sc->locID[0], &sc->locID[0], &sc->locID[1]);
+		PfAdd(sc, &sc->locID[0], &sc->locID[0], &sc->locID[1]);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 loc_5 = temp%s + temp%s + temp%s;\n\
 loc_1 = temp%s + temp%s + temp%s;\n\
 loc_0 += loc_1;\n", &regID[1], &regID[3], &regID[5], &regID[0], &regID[2], &regID[4]);*/
-		VkSub(sc, &sc->locID[2], &regID[0], &regID[4]);
+		PfSub(sc, &sc->locID[2], &regID[0], &regID[4]);
 		
-		VkSub(sc, &sc->locID[3], &regID[4], &regID[2]);
+		PfSub(sc, &sc->locID[3], &regID[4], &regID[2]);
 		
-		VkSub(sc, &sc->locID[4], &regID[2], &regID[0]);
+		PfSub(sc, &sc->locID[4], &regID[2], &regID[0]);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 loc_2 = temp%s - temp%s;\n\
 loc_3 = temp%s - temp%s;\n\
 loc_4 = temp%s - temp%s;\n", &regID[0], &regID[4], &regID[4], &regID[2], &regID[2], &regID[0]);*/
-		VkSub(sc, &regID[0], &regID[1], &regID[5]);
+		PfSub(sc, &regID[0], &regID[1], &regID[5]);
 		
-		VkSub(sc, &regID[2], &regID[5], &regID[3]);
+		PfSub(sc, &regID[2], &regID[5], &regID[3]);
 		
-		VkSub(sc, &regID[4], &regID[3], &regID[1]);
+		PfSub(sc, &regID[4], &regID[3], &regID[1]);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp%s = temp%s - temp%s;\n\
 temp%s = temp%s - temp%s;\n\
 temp%s = temp%s - temp%s;\n", &regID[0], &regID[1], &regID[5], &regID[2], &regID[5], &regID[3], &regID[4], &regID[3], &regID[1]);*/
 
-		VkMul(sc, &sc->locID[1], &sc->locID[1], &tf[0], 0);
+		PfMul(sc, &sc->locID[1], &sc->locID[1], &tf[0], 0);
 		
-		VkMul(sc, &sc->locID[2], &sc->locID[2], &tf[1], 0);
+		PfMul(sc, &sc->locID[2], &sc->locID[2], &tf[1], 0);
 		
-		VkMul(sc, &sc->locID[3], &sc->locID[3], &tf[2], 0);
+		PfMul(sc, &sc->locID[3], &sc->locID[3], &tf[2], 0);
 		
-		VkMul(sc, &sc->locID[4], &sc->locID[4], &tf[3], 0);
+		PfMul(sc, &sc->locID[4], &sc->locID[4], &tf[3], 0);
 		
-		VkMul(sc, &sc->locID[5], &sc->locID[5], &tf[4], 0);
+		PfMul(sc, &sc->locID[5], &sc->locID[5], &tf[4], 0);
 		
-		VkMul(sc, &regID[0], &regID[0], &tf[5], 0);
+		PfMul(sc, &regID[0], &regID[0], &tf[5], 0);
 		
-		VkMul(sc, &regID[2], &regID[2], &tf[6], 0);
+		PfMul(sc, &regID[2], &regID[2], &tf[6], 0);
 		
-		VkMul(sc, &regID[4], &regID[4], &tf[7], 0);
+		PfMul(sc, &regID[4], &regID[4], &tf[7], 0);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 loc_1 *= -1.16666666666666651863693004997913;\n\
@@ -836,42 +836,42 @@ temp%s *= 0.34087293062393136944265847887436;\n\
 temp%s *= -0.53396936033772524066165487965918;\n\
 temp%s *= 0.87484229096165666561546458979137;\n", &regID[0], &regID[2], &regID[4]);*/
 
-		VkSub(sc, &regID[5], &regID[4], &regID[2]);
+		PfSub(sc, &regID[5], &regID[4], &regID[2]);
 		
-		VkAddInv(sc, &regID[6], &regID[4], &regID[0]);
+		PfAddInv(sc, &regID[6], &regID[4], &regID[0]);
 		
-		VkAdd(sc, &regID[4], &regID[0], &regID[2]);
+		PfAdd(sc, &regID[4], &regID[0], &regID[2]);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp%s = temp%s - temp%s;\n\
 temp%s = - temp%s - temp%s;\n\
 temp%s = temp%s + temp%s;\n", &regID[5], &regID[4], &regID[2], &regID[6], &regID[4], &regID[0], &regID[4], &regID[0], &regID[2]);*/
-		VkAdd(sc, &regID[0], &sc->locID[0], &sc->locID[1]);
+		PfAdd(sc, &regID[0], &sc->locID[0], &sc->locID[1]);
 		
-		VkAdd(sc, &regID[1], &sc->locID[2], &sc->locID[3]);
+		PfAdd(sc, &regID[1], &sc->locID[2], &sc->locID[3]);
 		
-		VkSub(sc, &regID[2], &sc->locID[4], &sc->locID[3]);
+		PfSub(sc, &regID[2], &sc->locID[4], &sc->locID[3]);
 		
-		VkAddInv(sc, &regID[3], &sc->locID[2], &sc->locID[4]);
+		PfAddInv(sc, &regID[3], &sc->locID[2], &sc->locID[4]);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp%s = loc_0 + loc_1;\n\
 temp%s = loc_2 + loc_3;\n\
 temp%s = loc_4 - loc_3;\n\
 temp%s = - loc_2 - loc_4;\n", &regID[0], &regID[1], &regID[2], &regID[3]);*/
-		VkAdd(sc, &sc->locID[1], &regID[0], &regID[1]);
+		PfAdd(sc, &sc->locID[1], &regID[0], &regID[1]);
 		
-		VkAdd(sc, &sc->locID[2], &regID[0], &regID[2]);
+		PfAdd(sc, &sc->locID[2], &regID[0], &regID[2]);
 		
-		VkAdd(sc, &sc->locID[3], &regID[0], &regID[3]);
+		PfAdd(sc, &sc->locID[3], &regID[0], &regID[3]);
 		
-		VkAdd(sc, &sc->locID[4], &regID[4], &sc->locID[5]);
+		PfAdd(sc, &sc->locID[4], &regID[4], &sc->locID[5]);
 		
-		VkAdd(sc, &sc->locID[6], &regID[6], &sc->locID[5]);
+		PfAdd(sc, &sc->locID[6], &regID[6], &sc->locID[5]);
 		
-		VkAdd(sc, &sc->locID[5], &sc->locID[5], &regID[5]);
+		PfAdd(sc, &sc->locID[5], &sc->locID[5], &regID[5]);
 		
-		VkMov(sc, &regID[0], &sc->locID[0]);
+		PfMov(sc, &regID[0], &sc->locID[0]);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 loc_1 = temp%s + temp%s;\n\
@@ -881,17 +881,17 @@ loc_4 = temp%s + loc_5;\n\
 loc_6 = temp%s + loc_5;\n\
 loc_5 += temp%s;\n\
 temp%s = loc_0;\n", &regID[0], &regID[1], &regID[0], &regID[2], &regID[0], &regID[3], &regID[4], &regID[6], &regID[5], &regID[0]);*/
-		VkShuffleComplexInv(sc, &regID[1], &sc->locID[1], &sc->locID[4], 0);
+		PfShuffleComplexInv(sc, &regID[1], &sc->locID[1], &sc->locID[4], 0);
 		
-		VkShuffleComplexInv(sc, &regID[2], &sc->locID[3], &sc->locID[6], 0);
+		PfShuffleComplexInv(sc, &regID[2], &sc->locID[3], &sc->locID[6], 0);
 		
-		VkShuffleComplex(sc, &regID[3], &sc->locID[2], &sc->locID[5], 0);
+		PfShuffleComplex(sc, &regID[3], &sc->locID[2], &sc->locID[5], 0);
 		
-		VkShuffleComplexInv(sc, &regID[4], &sc->locID[2], &sc->locID[5], 0);
+		PfShuffleComplexInv(sc, &regID[4], &sc->locID[2], &sc->locID[5], 0);
 		
-		VkShuffleComplex(sc, &regID[5], &sc->locID[3], &sc->locID[6], 0);
+		PfShuffleComplex(sc, &regID[5], &sc->locID[3], &sc->locID[6], 0);
 		
-		VkShuffleComplex(sc, &regID[6], &sc->locID[1], &sc->locID[4], 0);
+		PfShuffleComplex(sc, &regID[6], &sc->locID[1], &sc->locID[4], 0);
 		
 
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
@@ -907,7 +907,7 @@ temp%s.x = loc_3.x - loc_6.y; \n\
 temp%s.y = loc_3.y + loc_6.x; \n\
 temp%s.x = loc_1.x - loc_4.y; \n\
 temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &regID[3], &regID[3], &regID[4], &regID[4], &regID[5], &regID[5], &regID[6], &regID[6]);
-		VkAppendLine(sc, "	}\n");*/
+		PfAppendLine(sc, "	}\n");*/
 		/*for (uint64_t i = 0; i < 7; i++) {
 			free(&sc->locID[i]);
 		}*/
@@ -919,7 +919,7 @@ temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &
 		else
 			&sc->tempLen = sprintf(&sc->tempStr, "void radix8(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, inout %s temp_4, inout %s temp_5, inout %s temp_6, inout %s temp_7, %s angle%s) {\n", vecType, vecType, vecType, vecType, vecType, vecType, vecType, vecType, floatType, convolutionInverse);
 		*/
-		//VkAppendLine(sc, "	{\n");
+		//PfAppendLine(sc, "	{\n");
 		/*&sc->tempLen = sprintf(&sc->tempStr, "	%s %s;\n", vecType, &sc->temp);
 		
 			&sc->tempLen = sprintf(&sc->tempStr, "	%s %s;\n", vecType, iw);
@@ -927,7 +927,7 @@ temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
@@ -941,20 +941,20 @@ temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &
 										
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
-				VkSinCos(sc, &sc->w, &sc->angle);
+				PfSinCos(sc, &sc->w, &sc->angle);
 			}
 		}
 		for (uint64_t i = 0; i < 4; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 4], &sc->w, 0);
+			PfMul(sc, &sc->temp, &regID[i + 4], &sc->w, 0);
 			
-			VkSub(sc, &regID[i + 4], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 4], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 			/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp.x=temp%s.x*w.x-temp%s.y*w.y;\n\
@@ -965,39 +965,39 @@ temp%s = temp%s + temp;\n\n", &regID[i + 4], &regID[i + 4], &regID[i + 4], &regI
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
 			if (sc->LUT) {
 				if (sc->useCoalescedLUTUploadToSM) {
 					temp_int.data.i = stageSize;
-					VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 					appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 				}
 				else {
 					temp_int.data.i = stageSize;
-					VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+					PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 					appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 					
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
 				temp_double.data.d = 0.5;
-				VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-				VkSinCos(sc, &sc->w, &sc->tempFloat);
+				PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+				PfSinCos(sc, &sc->w, &sc->tempFloat);
 			}
 		}
 		for (uint64_t i = 0; i < 2; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 2], &sc->w, 0);
+			PfMul(sc, &sc->temp, &regID[i + 2], &sc->w, 0);
 			
-			VkSub(sc, &regID[i + 2], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 2], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 			/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp.x=temp%s.x*w.x-temp%s.y*w.y;\n\
@@ -1007,25 +1007,25 @@ temp%s = temp%s + temp;\n\n", &regID[i + 2], &regID[i + 2], &regID[i + 2], &regI
 		}
 		if (stageAngle < 0) {
 			
-			VkMov_x_y(sc, &sc->iw, &sc->w);
-			VkMov_y_Neg_x(sc, &sc->iw, &sc->w);
+			PfMov_x_y(sc, &sc->iw, &sc->w);
+			PfMov_y_Neg_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
 		}
 		else {
 			
-			VkMov_x_Neg_y(sc, &sc->iw, &sc->w);
-			VkMov_y_x(sc, &sc->iw, &sc->w);
+			PfMov_x_Neg_y(sc, &sc->iw, &sc->w);
+			PfMov_y_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
 		}
 
 		for (uint64_t i = 4; i < 6; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 2], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 2], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 			/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp.x = temp%s.x * iw.x - temp%s.y * iw.y;\n\
@@ -1036,38 +1036,38 @@ temp%s = temp%s + temp;\n\n", &regID[i + 2], &regID[i + 2], &regID[i + 2], &regI
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
 			if (sc->LUT) {
 				if (sc->useCoalescedLUTUploadToSM) {
 					temp_int.data.i = 2 * stageSize;
-					VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 					appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 				}
 				else {
 					temp_int.data.i = 2 * stageSize;
-					VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+					PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 					appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 					
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
 				temp_double.data.d = 0.25;
-				VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-				VkSinCos(sc, &sc->w, &sc->tempFloat);
+				PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+				PfSinCos(sc, &sc->w, &sc->tempFloat);
 			}
 		}
-		VkMul(sc, &sc->temp, &regID[1], &sc->w, 0);
+		PfMul(sc, &sc->temp, &regID[1], &sc->w, 0);
 		
-		VkSub(sc, &regID[1], &regID[0], &sc->temp);
+		PfSub(sc, &regID[1], &regID[0], &sc->temp);
 		
-		VkAdd(sc, &regID[0], &regID[0], &sc->temp);
+		PfAdd(sc, &regID[0], &regID[0], &sc->temp);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp.x=temp%s.x*w.x-temp%s.y*w.y;\n\
@@ -1076,23 +1076,23 @@ temp%s = temp%s - temp;\n\
 temp%s = temp%s + temp;\n\n", &regID[1], &regID[1], &regID[1], &regID[1], &regID[1], &regID[0], &regID[0], &regID[0]);*/
 		if (stageAngle < 0) {
 			
-			VkMov_x_y(sc, &sc->iw, &sc->w);
-			VkMov_y_Neg_x(sc, &sc->iw, &sc->w);
+			PfMov_x_y(sc, &sc->iw, &sc->w);
+			PfMov_y_Neg_x(sc, &sc->iw, &sc->w);
 			
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->iw, &sc->w);
-			VkMov_y_x(sc, &sc->iw, &sc->w);
+			PfMov_x_Neg_y(sc, &sc->iw, &sc->w);
+			PfMov_y_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
 		}
-		VkMul(sc, &sc->temp, &regID[3], &sc->iw, 0);
+		PfMul(sc, &sc->temp, &regID[3], &sc->iw, 0);
 		
-		VkSub(sc, &regID[3], &regID[2], &sc->temp);
+		PfSub(sc, &regID[3], &regID[2], &sc->temp);
 		
-		VkAdd(sc, &regID[2], &regID[2], &sc->temp);
+		PfAdd(sc, &regID[2], &regID[2], &sc->temp);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp.x = temp%s.x * iw.x - temp%s.y * iw.y;\n\
@@ -1102,19 +1102,19 @@ temp%s = temp%s + temp;\n\n", &regID[3], &regID[3], &regID[3], &regID[3], &regID
 		if (stageAngle < 0) {
 			temp_complex.data.c[0] = 0.70710678118654752440084436210485;
 			temp_complex.data.c[1] = -0.70710678118654752440084436210485;
-			VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+			PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 		
 		}
 		else {
 			temp_complex.data.c[0] = 0.70710678118654752440084436210485;
 			temp_complex.data.c[1] = 0.70710678118654752440084436210485;
-			VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+			PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 		}
-		VkMul(sc, &sc->temp, &regID[5], &sc->iw, 0);
+		PfMul(sc, &sc->temp, &regID[5], &sc->iw, 0);
 		
-		VkSub(sc, &regID[5], &regID[4], &sc->temp);
+		PfSub(sc, &regID[5], &regID[4], &sc->temp);
 		
-		VkAdd(sc, &regID[4], &regID[4], &sc->temp);
+		PfAdd(sc, &regID[4], &regID[4], &sc->temp);
 		
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp.x = temp%s.x * iw.x - temp%s.y * iw.y;\n\
@@ -1122,40 +1122,40 @@ temp.y = temp%s.y * iw.x + temp%s.x * iw.y;\n\
 temp%s = temp%s - temp;\n\
 temp%s = temp%s + temp;\n\n", &regID[5], &regID[5], &regID[5], &regID[5], &regID[5], &regID[4], &regID[4], &regID[4]);*/
 		if (stageAngle < 0) {
-			VkMov_x_y(sc, &sc->w, &sc->iw);
-			VkMov_y_Neg_x(sc, &sc->w, &sc->iw);
+			PfMov_x_y(sc, &sc->w, &sc->iw);
+			PfMov_y_Neg_x(sc, &sc->w, &sc->iw);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(iw.y, -iw.x);\n\n", vecType);
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->w, &sc->iw);
-			VkMov_y_x(sc, &sc->w, &sc->iw);
+			PfMov_x_Neg_y(sc, &sc->w, &sc->iw);
+			PfMov_y_x(sc, &sc->w, &sc->iw);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(-iw.y, iw.x);\n\n", vecType);
 		}
-		VkMul(sc, &sc->temp, &regID[7], &sc->w, 0);
+		PfMul(sc, &sc->temp, &regID[7], &sc->w, 0);
 		
-		VkSub(sc, &regID[7], &regID[6], &sc->temp);
+		PfSub(sc, &regID[7], &regID[6], &sc->temp);
 		
-		VkAdd(sc, &regID[6], &regID[6], &sc->temp);
+		PfAdd(sc, &regID[6], &regID[6], &sc->temp);
 		
 
 		uint64_t permute2[8] = { 0,4,2,6,1,5,3,7 };
-		VkPermute(sc, permute2, 8, 1, regID, &sc->temp);
+		PfPermute(sc, permute2, 8, 1, regID, &sc->temp);
 		
 		/*
 		
-		VkMov(sc, &sc->temp, &regID[1]);
+		PfMov(sc, &sc->temp, &regID[1]);
 		
-		VkMov(sc, &regID[1], &regID[4]);
+		PfMov(sc, &regID[1], &regID[4]);
 		
-		VkMov(sc, &regID[4], &sc->temp);
+		PfMov(sc, &regID[4], &sc->temp);
 		
-		VkMov(sc, &sc->temp, &regID[3]);
+		PfMov(sc, &sc->temp, &regID[3]);
 		
-		VkMov(sc, &regID[3], &regID[6]);
+		PfMov(sc, &regID[3], &regID[6]);
 		
-		VkMov(sc, &regID[6], &sc->temp);
+		PfMov(sc, &regID[6], &sc->temp);
 		*/
 		/*&sc->tempLen = sprintf(&sc->tempStr, "\
 temp.x = temp%s.x * w.x - temp%s.y * w.y;\n\
@@ -1169,13 +1169,13 @@ temp = temp%s;\n\
 temp%s = temp%s;\n\
 temp%s = temp;\n\
 }\n\n", &regID[7], &regID[7], &regID[7], &regID[7], &regID[7], &regID[6], &regID[6], &regID[6], &regID[1], &regID[1], &regID[4], &regID[4], &regID[3], &regID[3], &regID[6], &regID[6]);
-			//VkAppendLine(sc, "	}\n");*/
+			//PfAppendLine(sc, "	}\n");*/
 
 		break;
 	}
 	case 9: {
-		VkContainer tf[2];
-		//VkAppendLine(sc, "	{\n");
+		PfContainer tf[2];
+		//PfAppendLine(sc, "	{\n");
 		for (int64_t i = 0; i < 2; i++){
 			tf[i].type = 32;
 		}
@@ -1186,7 +1186,7 @@ temp%s = temp;\n\
 			if (stageSize == 1) {
 				temp_complex.data.c[0] = 1;
 				temp_complex.data.c[1] = 0;
-				VkMov(sc, &sc->w, &temp_complex);	
+				PfMov(sc, &sc->w, &temp_complex);	
 				
 			}
 			else {
@@ -1201,82 +1201,82 @@ temp%s = temp;\n\
 														
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 					
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 				else {
 					if (sc->LUT) {
 						if (sc->useCoalescedLUTUploadToSM) {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+							PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 							appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 						}
 						else {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+							PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 							appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 							
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 					
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 			}
-			VkMul(sc, &regID[i], &regID[i], &sc->w, &sc->temp);
+			PfMul(sc, &regID[i], &regID[i], &sc->w, &sc->temp);
 			
 		}
 		//important
-		//VkMov(sc, &regID[1], &sc->locID[1]);
+		//PfMov(sc, &regID[1], &sc->locID[1]);
 		//
-		//VkMov(sc, &regID[2], &sc->locID[2]);
+		//PfMov(sc, &regID[2], &sc->locID[2]);
 		//
 		uint64_t P = 3;
 		uint64_t Q = 3;
 		for (uint64_t i = 0; i < Q; i++) {
-			VkMov(sc, &sc->locID[0], &regID[i]);
+			PfMov(sc, &sc->locID[0], &regID[i]);
 			
-			VkMov(sc, &sc->locID[1], &regID[i + Q]);
+			PfMov(sc, &sc->locID[1], &regID[i + Q]);
 			
-			VkMov(sc, &sc->locID[2], &regID[i + 2 * Q]);
+			PfMov(sc, &sc->locID[2], &regID[i + 2 * Q]);
 			
-			VkAdd(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2]);
+			PfAdd(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2]);
 			
-			VkSub(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2]);
+			PfSub(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2]);
 			
 
-			VkAdd(sc, &sc->locID[0], &regID[i], &regID[i + Q]);
+			PfAdd(sc, &sc->locID[0], &regID[i], &regID[i + Q]);
 			
-			VkFMA(sc, &sc->locID[1], &regID[i + Q], &tf[0], &regID[i]);
+			PfFMA(sc, &sc->locID[1], &regID[i + Q], &tf[0], &regID[i]);
 			
-			VkMul(sc, &sc->locID[2], &regID[i + 2 * Q], &tf[1], 0);
+			PfMul(sc, &sc->locID[2], &regID[i + 2 * Q], &tf[1], 0);
 			
-			VkMov(sc, &regID[i], &sc->locID[0]);
+			PfMov(sc, &regID[i], &sc->locID[0]);
 			
 			if (stageAngle < 0)
 			{
-				VkShuffleComplex(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplex(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2], 0);
 				
-				VkShuffleComplexInv(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplexInv(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2], 0);
 				
 			}
 			else {
-				VkShuffleComplexInv(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplexInv(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2], 0);
 				
-				VkShuffleComplex(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplex(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2], 0);
 				
 			}
 		}
@@ -1287,92 +1287,92 @@ temp%s = temp;\n\
 				if (stageAngle < 0) {
 					temp_complex.data.c[0] = cos(2 * i * sc->double_PI / radix);
 					temp_complex.data.c[1] = -sin(2 * i * sc->double_PI / radix);
-					VkMov(sc, &sc->w, &temp_complex);	
+					PfMov(sc, &sc->w, &temp_complex);	
 					
 				}
 				else {
 					temp_complex.data.c[0] = cos(2 * i * sc->double_PI / radix);
 					temp_complex.data.c[1] = sin(2 * i * sc->double_PI / radix);
-					VkMov(sc, &sc->w, &temp_complex);	
+					PfMov(sc, &sc->w, &temp_complex);	
 					
 				}
-				VkMul(sc, &sc->locID[1], &regID[Q * i + 1], &sc->w, &sc->temp);
+				PfMul(sc, &sc->locID[1], &regID[Q * i + 1], &sc->w, &sc->temp);
 				
 				if (stageAngle < 0) {
 					temp_complex.data.c[0] = cos(4 * i * sc->double_PI / radix);
 					temp_complex.data.c[1] = -sin(4 * i * sc->double_PI / radix);
-					VkMov(sc, &sc->w, &temp_complex);	
+					PfMov(sc, &sc->w, &temp_complex);	
 					
 				}
 				else {
 					temp_complex.data.c[0] = cos(4 * i * sc->double_PI / radix);
 					temp_complex.data.c[1] = sin(4 * i * sc->double_PI / radix);
-					VkMov(sc, &sc->w, &temp_complex);	
+					PfMov(sc, &sc->w, &temp_complex);	
 					
 				}
-				VkMul(sc, &sc->locID[2], &regID[Q * i + 2], &sc->w, &sc->temp);
+				PfMul(sc, &sc->locID[2], &regID[Q * i + 2], &sc->w, &sc->temp);
 				
 			}
 			else {
-				VkMov(sc, &sc->locID[1], &regID[1]);
+				PfMov(sc, &sc->locID[1], &regID[1]);
 				
-				VkMov(sc, &sc->locID[2], &regID[2]);
+				PfMov(sc, &sc->locID[2], &regID[2]);
 				
 			}
 
-			VkAdd(sc, &regID[Q * i + 1], &sc->locID[1], &sc->locID[2]);
+			PfAdd(sc, &regID[Q * i + 1], &sc->locID[1], &sc->locID[2]);
 			
-			VkSub(sc, &regID[Q * i + 2], &sc->locID[1], &sc->locID[2]);
+			PfSub(sc, &regID[Q * i + 2], &sc->locID[1], &sc->locID[2]);
 			
 
-			VkAdd(sc, &sc->locID[0], &regID[Q * i], &regID[Q * i + 1]);
+			PfAdd(sc, &sc->locID[0], &regID[Q * i], &regID[Q * i + 1]);
 			
-			VkFMA(sc, &sc->locID[1], &regID[Q * i + 1], &tf[0], &regID[Q * i]);
+			PfFMA(sc, &sc->locID[1], &regID[Q * i + 1], &tf[0], &regID[Q * i]);
 			
-			VkMul(sc, &sc->locID[2], &regID[Q * i + 2], &tf[1], 0);
+			PfMul(sc, &sc->locID[2], &regID[Q * i + 2], &tf[1], 0);
 			
-			VkMov(sc, &regID[Q * i], &sc->locID[0]);
+			PfMov(sc, &regID[Q * i], &sc->locID[0]);
 			
 			if (stageAngle < 0)
 			{
-				VkShuffleComplex(sc, &regID[Q * i + 1], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplex(sc, &regID[Q * i + 1], &sc->locID[1], &sc->locID[2], 0);
 				
-				VkShuffleComplexInv(sc, &regID[Q * i + 2], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplexInv(sc, &regID[Q * i + 2], &sc->locID[1], &sc->locID[2], 0);
 				
 			}
 			else {
-				VkShuffleComplexInv(sc, &regID[Q * i + 1], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplexInv(sc, &regID[Q * i + 1], &sc->locID[1], &sc->locID[2], 0);
 				
-				VkShuffleComplex(sc, &regID[Q * i + 2], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplex(sc, &regID[Q * i + 2], &sc->locID[1], &sc->locID[2], 0);
 				
 			}
 		}
 
 		uint64_t permute2[9] = { 0,3,6,1,4,7,2,5,8 };
-		VkPermute(sc, permute2, 9, 1, regID, &sc->temp);
+		PfPermute(sc, permute2, 9, 1, regID, &sc->temp);
 		
 
-		/*VkMov(sc, &sc->temp, &regID[1]);
+		/*PfMov(sc, &sc->temp, &regID[1]);
 		
-		VkMov(sc, &regID[1], &regID[3]);
+		PfMov(sc, &regID[1], &regID[3]);
 		
-		VkMov(sc, &regID[3], &sc->temp);
+		PfMov(sc, &regID[3], &sc->temp);
 		
 
-		VkMov(sc, &sc->temp, &regID[2]);
+		PfMov(sc, &sc->temp, &regID[2]);
 		
-		VkMov(sc, &regID[2], &regID[4]);
+		PfMov(sc, &regID[2], &regID[4]);
 		
-		VkMov(sc, &regID[4], &sc->temp);
+		PfMov(sc, &regID[4], &sc->temp);
 		*/
 		break;
 	}
 	case 10: {
-		VkContainer tf[5];
+		PfContainer tf[5];
 		for (int64_t i = 0; i < 5; i++){
 			tf[i].type = 32;
 		}
-		//VkAppendLine(sc, "	{\n");
+		//PfAppendLine(sc, "	{\n");
 		
 		tf[0].data.d = -0.5;
 		tf[1].data.d = 1.538841768587626701285145288018455;
@@ -1383,7 +1383,7 @@ temp%s = temp;\n\
 			if (stageSize == 1) {
 				temp_complex.data.c[0] = 1;
 				temp_complex.data.c[1] = 0;
-				VkMov(sc, &sc->w, &temp_complex);	
+				PfMov(sc, &sc->w, &temp_complex);	
 				
 			}
 			else {
@@ -1398,122 +1398,122 @@ temp%s = temp;\n\
 														
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 					
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 				else {
 					if (sc->LUT) {
 						if (sc->useCoalescedLUTUploadToSM) {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+							PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 							appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 						}
 						else {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+							PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 							appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 							
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 					
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 			}
-			VkMul(sc, &regID[i], &regID[i], &sc->w, &sc->temp);
+			PfMul(sc, &regID[i], &regID[i], &sc->w, &sc->temp);
 			
 		}
 		//important
-		//VkMov(sc, &regID[1], &sc->locID[1]);
+		//PfMov(sc, &regID[1], &sc->locID[1]);
 		//
 
 		uint64_t P = 5;
 		uint64_t Q = 2;
 		for (uint64_t i = 0; i < Q; i++) {
-			VkMov(sc, &sc->locID[0], &regID[i]);
+			PfMov(sc, &sc->locID[0], &regID[i]);
 			
-			VkMov(sc, &sc->locID[1], &regID[i + Q]);
+			PfMov(sc, &sc->locID[1], &regID[i + Q]);
 			
-			VkMov(sc, &sc->locID[2], &regID[i + 2 * Q]);
+			PfMov(sc, &sc->locID[2], &regID[i + 2 * Q]);
 			
-			VkMov(sc, &sc->locID[3], &regID[i + 3 * Q]);
+			PfMov(sc, &sc->locID[3], &regID[i + 3 * Q]);
 			
-			VkMov(sc, &sc->locID[4], &regID[i + 4 * Q]);
-			
-
-			VkAdd(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4]);
-			
-			VkAdd(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[3]);
-			
-			VkSub(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[3]);
-			
-			VkSub(sc, &regID[i + 4 * Q], &sc->locID[1], &sc->locID[4]);
-			
-			VkSub(sc, &sc->locID[3], &regID[i + Q], &regID[i + 2 * Q]);
-			
-			VkAdd(sc, &sc->locID[4], &regID[i + 3 * Q], &regID[i + 4 * Q]);
+			PfMov(sc, &sc->locID[4], &regID[i + 4 * Q]);
 			
 
-			VkAdd(sc, &sc->locID[0], &regID[i], &regID[i + Q]);
+			PfAdd(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4]);
 			
-			VkAdd(sc, &sc->locID[0], &sc->locID[0], &regID[i + 2 * Q]);
+			PfAdd(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[3]);
 			
-			VkFMA(sc, &sc->locID[1], &regID[i + Q], &tf[0], &regID[i]);
+			PfSub(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[3]);
 			
-			VkFMA(sc, &sc->locID[2], &regID[i + 2 * Q], &tf[0], &regID[i]);
+			PfSub(sc, &regID[i + 4 * Q], &sc->locID[1], &sc->locID[4]);
 			
-			VkMul(sc, &regID[i + 3 * Q], &regID[i + 3 * Q], &tf[1], 0);
+			PfSub(sc, &sc->locID[3], &regID[i + Q], &regID[i + 2 * Q]);
 			
-			VkMul(sc, &regID[i + 4 * Q], &regID[i + 4 * Q], &tf[2], 0);
-			
-			VkMul(sc, &sc->locID[3], &sc->locID[3], &tf[3], 0);
-			
-			VkMul(sc, &sc->locID[4], &sc->locID[4], &tf[4], 0);
+			PfAdd(sc, &sc->locID[4], &regID[i + 3 * Q], &regID[i + 4 * Q]);
 			
 
-			VkSub(sc, &sc->locID[1], &sc->locID[1], &sc->locID[3]);
+			PfAdd(sc, &sc->locID[0], &regID[i], &regID[i + Q]);
 			
-			VkAdd(sc, &sc->locID[2], &sc->locID[2], &sc->locID[3]);
+			PfAdd(sc, &sc->locID[0], &sc->locID[0], &regID[i + 2 * Q]);
 			
-			VkAdd(sc, &sc->locID[3], &regID[i + 3 * Q], &sc->locID[4]);
+			PfFMA(sc, &sc->locID[1], &regID[i + Q], &tf[0], &regID[i]);
 			
-			VkAdd(sc, &sc->locID[4], &sc->locID[4], &regID[i + 4 * Q]);
+			PfFMA(sc, &sc->locID[2], &regID[i + 2 * Q], &tf[0], &regID[i]);
 			
-			VkMov(sc, &regID[i], &sc->locID[0]);
+			PfMul(sc, &regID[i + 3 * Q], &regID[i + 3 * Q], &tf[1], 0);
+			
+			PfMul(sc, &regID[i + 4 * Q], &regID[i + 4 * Q], &tf[2], 0);
+			
+			PfMul(sc, &sc->locID[3], &sc->locID[3], &tf[3], 0);
+			
+			PfMul(sc, &sc->locID[4], &sc->locID[4], &tf[4], 0);
+			
+
+			PfSub(sc, &sc->locID[1], &sc->locID[1], &sc->locID[3]);
+			
+			PfAdd(sc, &sc->locID[2], &sc->locID[2], &sc->locID[3]);
+			
+			PfAdd(sc, &sc->locID[3], &regID[i + 3 * Q], &sc->locID[4]);
+			
+			PfAdd(sc, &sc->locID[4], &sc->locID[4], &regID[i + 4 * Q]);
+			
+			PfMov(sc, &regID[i], &sc->locID[0]);
 			
 
 			if (stageAngle < 0)
 			{
-				VkShuffleComplex(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4], 0);
+				PfShuffleComplex(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4], 0);
 				
-				VkShuffleComplex(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[3], 0);
+				PfShuffleComplex(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[3], 0);
 				
-				VkShuffleComplexInv(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[3], 0);
+				PfShuffleComplexInv(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[3], 0);
 				
-				VkShuffleComplexInv(sc, &regID[i + 4 * Q], &sc->locID[1], &sc->locID[4], 0);
+				PfShuffleComplexInv(sc, &regID[i + 4 * Q], &sc->locID[1], &sc->locID[4], 0);
 				
 			}
 			else {
-				VkShuffleComplexInv(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4], 0);
+				PfShuffleComplexInv(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4], 0);
 				
-				VkShuffleComplexInv(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[3], 0);
+				PfShuffleComplexInv(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[3], 0);
 				
-				VkShuffleComplex(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[3], 0);
+				PfShuffleComplex(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[3], 0);
 				
-				VkShuffleComplex(sc, &regID[i + 4 * Q], &sc->locID[1], &sc->locID[4], 0);
+				PfShuffleComplex(sc, &regID[i + 4 * Q], &sc->locID[1], &sc->locID[4], 0);
 				
 			}
 
@@ -1525,34 +1525,34 @@ temp%s = temp;\n\
 				if (stageAngle < 0) {
 					temp_complex.data.c[0] = cos(2 * i * sc->double_PI / radix);
 					temp_complex.data.c[1] = -sin(2 * i * sc->double_PI / radix);
-					VkMov(sc, &sc->w, &temp_complex);	
+					PfMov(sc, &sc->w, &temp_complex);	
 					
 				}
 				else {
 					temp_complex.data.c[0] = cos(2 * i * sc->double_PI / radix);
 					temp_complex.data.c[1] = sin(2 * i * sc->double_PI / radix);
-					VkMov(sc, &sc->w, &temp_complex);	
+					PfMov(sc, &sc->w, &temp_complex);	
 					
 				}
-				VkMul(sc, &sc->temp, &regID[Q * i + 1], &sc->w, 0);
+				PfMul(sc, &sc->temp, &regID[Q * i + 1], &sc->w, 0);
 			}
 			else {
-				VkMov(sc, &sc->temp, &regID[Q * i + 1]);
+				PfMov(sc, &sc->temp, &regID[Q * i + 1]);
 				
 			}
-			VkSub(sc, &regID[Q * i + 1], &regID[Q * i], &sc->temp);
+			PfSub(sc, &regID[Q * i + 1], &regID[Q * i], &sc->temp);
 			
-			VkAdd(sc, &regID[Q * i], &regID[Q * i], &sc->temp);
+			PfAdd(sc, &regID[Q * i], &regID[Q * i], &sc->temp);
 			
 		}
 
 		uint64_t permute2[10] = { 0, 2, 4, 6, 8, 1, 3, 5, 7, 9 };
-		VkPermute(sc, permute2, 10, 1, regID, &sc->temp);
+		PfPermute(sc, permute2, 10, 1, regID, &sc->temp);
 		break;
 	}
 	case 11: {
-		VkContainer tf_x[20];
-		VkContainer tf_y[20];
+		PfContainer tf_x[20];
+		PfContainer tf_y[20];
 		for (int64_t i = 0; i < 20; i++){
 			tf_x[i].type = 32;
 			tf_y[i].type = 32;
@@ -1596,7 +1596,7 @@ temp%s = temp;\n\
 			if (stageSize == 1) {
 				temp_complex.data.c[0] = 1;
 				temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 				
 			}
 			else {
@@ -1611,103 +1611,103 @@ temp%s = temp;\n\
 														
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 					
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 				else {
 					if (sc->LUT) {
 						if (sc->useCoalescedLUTUploadToSM) {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+							PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 							appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 						}
 						else {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+							PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 							appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 							
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 							
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 			}
-			VkMul(sc, &sc->locID[i], &regID[i], &sc->w, 0);
+			PfMul(sc, &sc->locID[i], &regID[i], &sc->w, 0);
 			
 		}
-		VkMov(sc, &sc->locID[0], &regID[0]);
+		PfMov(sc, &sc->locID[0], &regID[0]);
 		
 		uint64_t permute[11] = { 0,1,2,4,8,5,10,9,7,3,6 };
-		VkPermute(sc, permute, 11, 0, 0, &sc->w);
+		PfPermute(sc, permute, 11, 0, 0, &sc->w);
 		
 		for (uint64_t i = 0; i < 5; i++) {
-			VkSub_x(sc, &regID[i + 6], &sc->locID[i + 1], &sc->locID[i + 6]);
+			PfSub_x(sc, &regID[i + 6], &sc->locID[i + 1], &sc->locID[i + 6]);
 			
-			VkAdd_x(sc, &regID[i + 1], &sc->locID[i + 1], &sc->locID[i + 6]);
+			PfAdd_x(sc, &regID[i + 1], &sc->locID[i + 1], &sc->locID[i + 6]);
 			
-			VkAdd_y(sc, &regID[i + 6], &sc->locID[i + 1], &sc->locID[i + 6]);
+			PfAdd_y(sc, &regID[i + 6], &sc->locID[i + 1], &sc->locID[i + 6]);
 			
-			VkSub_y(sc, &regID[i + 1], &sc->locID[i + 1], &sc->locID[i + 6]);
+			PfSub_y(sc, &regID[i + 1], &sc->locID[i + 1], &sc->locID[i + 6]);
 			
 		}
 		for (uint64_t i = 0; i < 5; i++) {
-			VkAdd_x(sc, &regID[0], &regID[0], &regID[i + 1]);
+			PfAdd_x(sc, &regID[0], &regID[0], &regID[i + 1]);
 			
-			VkAdd_y(sc, &regID[0], &regID[0], &regID[i + 6]);
+			PfAdd_y(sc, &regID[0], &regID[0], &regID[i + 6]);
 			
 		}
 		for (uint64_t i = 1; i < 6; i++) {
-			VkMov(sc, &sc->locID[i], &sc->locID[0]);
+			PfMov(sc, &sc->locID[i], &sc->locID[0]);
 			
 			
 		}
 		for (uint64_t i = 6; i < 11; i++) {
-			VkSetToZero(sc, &sc->locID[i]);
+			PfSetToZero(sc, &sc->locID[i]);
 		}
 		for (uint64_t i = 0; i < 5; i++) {
 			for (uint64_t j = 0; j < 5; j++) {
 				uint64_t id = ((10 - i) + j) % 10;
-				VkFMA3_const_w(sc, &sc->locID[j + 1], &sc->locID[j + 6], &regID[i + 1], &tf_x[id], &tf_y[id], &regID[i + 6], &sc->w);
+				PfFMA3_const_w(sc, &sc->locID[j + 1], &sc->locID[j + 6], &regID[i + 1], &tf_x[id], &tf_y[id], &regID[i + 6], &sc->w);
 				
 			}
 		}
 		for (uint64_t i = 1; i < 6; i++) {
-			VkSub_x(sc, &regID[i], &sc->locID[i], &sc->locID[i + 5]);
+			PfSub_x(sc, &regID[i], &sc->locID[i], &sc->locID[i + 5]);
 			
-			VkAdd_y(sc, &regID[i], &sc->locID[i], &sc->locID[i + 5]);
+			PfAdd_y(sc, &regID[i], &sc->locID[i], &sc->locID[i + 5]);
 			
 		}
 		for (uint64_t i = 1; i < 6; i++) {
-			VkAdd_x(sc, &regID[i + 5], &sc->locID[i], &sc->locID[i + 5]);
+			PfAdd_x(sc, &regID[i + 5], &sc->locID[i], &sc->locID[i + 5]);
 			
-			VkSub_y(sc, &regID[i + 5], &sc->locID[i], &sc->locID[i + 5]);
+			PfSub_y(sc, &regID[i + 5], &sc->locID[i], &sc->locID[i + 5]);
 			
 		}
 
 		uint64_t permute2[11] = { 0,1,10,3,9,7,2,4,8,5,6 };
-		VkPermute(sc, permute2, 11, 1, regID, &sc->w);
+		PfPermute(sc, permute2, 11, 1, regID, &sc->w);
 		break;
 	}
 	case 12: {
-		VkContainer tf[2];
+		PfContainer tf[2];
 		for (int64_t i = 0; i < 2; i++){
 			tf[i].type = 32;
 		}
-		//VkAppendLine(sc, "	{\n");
+		//PfAppendLine(sc, "	{\n");
 		
 		tf[0].data.d = -0.5;
 		tf[1].data.d = -0.8660254037844386467637231707529;
@@ -1715,7 +1715,7 @@ temp%s = temp;\n\
 			if (stageSize == 1) {
 				temp_complex.data.c[0] = 1;
 				temp_complex.data.c[1] = 0;
-				VkMov(sc, &sc->w, &temp_complex);	
+				PfMov(sc, &sc->w, &temp_complex);	
 
 			}
 			else {
@@ -1730,82 +1730,82 @@ temp%s = temp;\n\
 														
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 							
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 				else {
 					if (sc->LUT) {
 						if (sc->useCoalescedLUTUploadToSM) {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+							PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 							appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 						}
 						else {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+							PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 							appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 							
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 							
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 			}
-			VkMul(sc, &regID[i], &regID[i], &sc->w, &sc->temp);
+			PfMul(sc, &regID[i], &regID[i], &sc->w, &sc->temp);
 			
 		}
 		//important
-		//VkMov(sc, &regID[1], &sc->locID[1]);
+		//PfMov(sc, &regID[1], &sc->locID[1]);
 		//
-		//VkMov(sc, &regID[2], &sc->locID[2]);
+		//PfMov(sc, &regID[2], &sc->locID[2]);
 		//
 		uint64_t P = 3;
 		uint64_t Q = 4;
 		for (uint64_t i = 0; i < Q; i++) {
-			VkMov(sc, &sc->locID[0], &regID[i]);
+			PfMov(sc, &sc->locID[0], &regID[i]);
 			
-			VkMov(sc, &sc->locID[1], &regID[i + Q]);
+			PfMov(sc, &sc->locID[1], &regID[i + Q]);
 			
-			VkMov(sc, &sc->locID[2], &regID[i + 2 * Q]);
+			PfMov(sc, &sc->locID[2], &regID[i + 2 * Q]);
 			
-			VkAdd(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2]);
+			PfAdd(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2]);
 			
-			VkSub(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2]);
+			PfSub(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2]);
 			
 
-			VkAdd(sc, &sc->locID[0], &regID[i], &regID[i + Q]);
+			PfAdd(sc, &sc->locID[0], &regID[i], &regID[i + Q]);
 			
-			VkFMA(sc, &sc->locID[1], &regID[i + Q], &tf[0], &regID[i]);
+			PfFMA(sc, &sc->locID[1], &regID[i + Q], &tf[0], &regID[i]);
 			
-			VkMul(sc, &sc->locID[2], &regID[i + 2 * Q], &tf[1], 0);
+			PfMul(sc, &sc->locID[2], &regID[i + 2 * Q], &tf[1], 0);
 			
-			VkMov(sc, &regID[i], &sc->locID[0]);
+			PfMov(sc, &regID[i], &sc->locID[0]);
 			
 			if (stageAngle < 0)
 			{
-				VkShuffleComplex(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplex(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2], 0);
 				
-				VkShuffleComplexInv(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplexInv(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2], 0);
 				
 			}
 			else {
-				VkShuffleComplexInv(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplexInv(sc, &regID[i + Q], &sc->locID[1], &sc->locID[2], 0);
 				
-				VkShuffleComplex(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplex(sc, &regID[i + 2 * Q], &sc->locID[1], &sc->locID[2], 0);
 				
 			}
 		}
@@ -1817,67 +1817,67 @@ temp%s = temp;\n\
 					if (stageAngle < 0) {
 						temp_complex.data.c[0] = cos(2 * i * j * sc->double_PI / radix);
 						temp_complex.data.c[1] = -sin(2 * i * j * sc->double_PI / radix);
-						VkMov(sc, &sc->w, &temp_complex);	
+						PfMov(sc, &sc->w, &temp_complex);	
 						
 					}
 					else {
 						temp_complex.data.c[0] = cos(2 * i * j * sc->double_PI / radix);
 						temp_complex.data.c[1] = sin(2 * i * j * sc->double_PI / radix);
-						VkMov(sc, &sc->w, &temp_complex);	
+						PfMov(sc, &sc->w, &temp_complex);	
 						
 					}
-					VkMul(sc, &regID[Q * i + j], &regID[Q * i + j], &sc->w, &sc->temp);
+					PfMul(sc, &regID[Q * i + j], &regID[Q * i + j], &sc->w, &sc->temp);
 					
 				}
 			}
-			VkMov(sc, &sc->temp, &regID[Q * i + 2]);
+			PfMov(sc, &sc->temp, &regID[Q * i + 2]);
 			
-			VkSub(sc, &regID[Q * i + 2], &regID[Q * i], &regID[Q * i + 2]);
+			PfSub(sc, &regID[Q * i + 2], &regID[Q * i], &regID[Q * i + 2]);
 			
-			VkAdd(sc, &regID[Q * i], &regID[Q * i], &sc->temp);
-			
-
-			VkMov(sc, &sc->temp, &regID[Q * i + 3]);
-			
-			VkSub(sc, &regID[Q * i + 3], &regID[Q * i + 1], &regID[Q * i + 3]);
-			
-			VkAdd(sc, &regID[Q * i + 1], &regID[Q * i + 1], &sc->temp);
+			PfAdd(sc, &regID[Q * i], &regID[Q * i], &sc->temp);
 			
 
-			VkMov(sc, &sc->temp, &regID[Q * i + 1]);
+			PfMov(sc, &sc->temp, &regID[Q * i + 3]);
 			
-			VkSub(sc, &regID[Q * i + 1], &regID[Q * i], &regID[Q * i + 1]);
+			PfSub(sc, &regID[Q * i + 3], &regID[Q * i + 1], &regID[Q * i + 3]);
 			
-			VkAdd(sc, &regID[Q * i], &regID[Q * i], &sc->temp);
+			PfAdd(sc, &regID[Q * i + 1], &regID[Q * i + 1], &sc->temp);
+			
+
+			PfMov(sc, &sc->temp, &regID[Q * i + 1]);
+			
+			PfSub(sc, &regID[Q * i + 1], &regID[Q * i], &regID[Q * i + 1]);
+			
+			PfAdd(sc, &regID[Q * i], &regID[Q * i], &sc->temp);
 			
 
 			if (stageAngle < 0) {
-				VkMov_x_y(sc, &sc->temp, &regID[Q * i + 3]);
-				VkMov_y_Neg_x(sc, &sc->temp, &regID[Q * i + 3]);
+				PfMov_x_y(sc, &sc->temp, &regID[Q * i + 3]);
+				PfMov_y_Neg_x(sc, &sc->temp, &regID[Q * i + 3]);
 				
 			}
 			else {
-				VkMov_x_Neg_y(sc, &sc->temp, &regID[Q * i + 3]);
-				VkMov_y_x(sc, &sc->temp, &regID[Q * i + 3]);
+				PfMov_x_Neg_y(sc, &sc->temp, &regID[Q * i + 3]);
+				PfMov_y_x(sc, &sc->temp, &regID[Q * i + 3]);
 				
 			}
-			VkSub(sc, &regID[Q * i + 3], &regID[Q * i + 2], &sc->temp);
+			PfSub(sc, &regID[Q * i + 3], &regID[Q * i + 2], &sc->temp);
 			
-			VkAdd(sc, &regID[Q * i + 2], &regID[Q * i + 2], &sc->temp);
+			PfAdd(sc, &regID[Q * i + 2], &regID[Q * i + 2], &sc->temp);
 			
 		}
 
 		uint64_t permute2[12] = { 0,4,8,2,6,10,1,5,9,3,7,11 };
-		VkPermute(sc, permute2, 12, 1, regID, &sc->temp);
+		PfPermute(sc, permute2, 12, 1, regID, &sc->temp);
 		
 		break;
 	}
 	case 13: {
-		VkContainer tf_x[20];
+		PfContainer tf_x[20];
 		for (int64_t i = 0; i < 20; i++){
 			tf_x[i].type = 32;
 		}
-		VkContainer tf_y[20];
+		PfContainer tf_y[20];
 		for (int64_t i = 0; i < 20; i++){
 			tf_y[i].type = 32;
 		}
@@ -1926,7 +1926,7 @@ temp%s = temp;\n\
 			if (stageSize == 1) {
 				temp_complex.data.c[0] = 1;
 				temp_complex.data.c[1] = 0;
-				VkMov(sc, &sc->w, &temp_complex);	
+				PfMov(sc, &sc->w, &temp_complex);	
 				
 			}
 			else {
@@ -1941,103 +1941,103 @@ temp%s = temp;\n\
 														
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 							
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 				else {
 					if (sc->LUT) {
 						if (sc->useCoalescedLUTUploadToSM) {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+							PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 							appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 						}
 						else {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+							PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 							appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 							
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 							
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 			}
-			VkMul(sc, &sc->locID[i], &regID[i], &sc->w, 0);
+			PfMul(sc, &sc->locID[i], &regID[i], &sc->w, 0);
 			
 		}
-		VkMov(sc, &sc->locID[0], &regID[0]);
+		PfMov(sc, &sc->locID[0], &regID[0]);
 		
 		uint64_t permute[13] = { 0, 1, 2, 4, 8, 3, 6, 12, 11, 9, 5, 10, 7 };
-		VkPermute(sc, permute, 13, 0, 0, &sc->w);
+		PfPermute(sc, permute, 13, 0, 0, &sc->w);
 		
 		for (uint64_t i = 0; i < 6; i++) {
-			VkSub_x(sc, &regID[i + 7], &sc->locID[i + 1], &sc->locID[i + 7]);
+			PfSub_x(sc, &regID[i + 7], &sc->locID[i + 1], &sc->locID[i + 7]);
 			
-			VkAdd_x(sc, &regID[i + 1], &sc->locID[i + 1], &sc->locID[i + 7]);
+			PfAdd_x(sc, &regID[i + 1], &sc->locID[i + 1], &sc->locID[i + 7]);
 			
-			VkAdd_y(sc, &regID[i + 7], &sc->locID[i + 1], &sc->locID[i + 7]);
+			PfAdd_y(sc, &regID[i + 7], &sc->locID[i + 1], &sc->locID[i + 7]);
 			
-			VkSub_y(sc, &regID[i + 1], &sc->locID[i + 1], &sc->locID[i + 7]);
+			PfSub_y(sc, &regID[i + 1], &sc->locID[i + 1], &sc->locID[i + 7]);
 			
 		}
 		for (uint64_t i = 0; i < 6; i++) {
-			VkAdd_x(sc, &regID[0], &regID[0], &regID[i + 1]);
+			PfAdd_x(sc, &regID[0], &regID[0], &regID[i + 1]);
 			
-			VkAdd_y(sc, &regID[0], &regID[0], &regID[i + 7]);
+			PfAdd_y(sc, &regID[0], &regID[0], &regID[i + 7]);
 			
 		}
 		for (uint64_t i = 1; i < 7; i++) {
-			VkMov(sc, &sc->locID[i], &sc->locID[0]);
+			PfMov(sc, &sc->locID[i], &sc->locID[0]);
 			
 		}
 		for (uint64_t i = 7; i < 13; i++) {
-			VkSetToZero(sc, &sc->locID[i]);
+			PfSetToZero(sc, &sc->locID[i]);
 		}
 		for (uint64_t i = 0; i < 6; i++) {
 			for (uint64_t j = 0; j < 6; j++) {
 				uint64_t id = ((12 - i) + j) % 12;
-				VkFMA3_const_w(sc, &sc->locID[j + 1], &sc->locID[j + 7], &regID[i + 1], &tf_x[id], &tf_y[id], &regID[i + 7], &sc->w);
+				PfFMA3_const_w(sc, &sc->locID[j + 1], &sc->locID[j + 7], &regID[i + 1], &tf_x[id], &tf_y[id], &regID[i + 7], &sc->w);
 				
 			}
 		}
 		for (uint64_t i = 1; i < 7; i++) {
-			VkSub_x(sc, &regID[i], &sc->locID[i], &sc->locID[i + 6]);
+			PfSub_x(sc, &regID[i], &sc->locID[i], &sc->locID[i + 6]);
 			
-			VkAdd_y(sc, &regID[i], &sc->locID[i], &sc->locID[i + 6]);
+			PfAdd_y(sc, &regID[i], &sc->locID[i], &sc->locID[i + 6]);
 			
 		}
 		for (uint64_t i = 1; i < 7; i++) {
-			VkAdd_x(sc, &regID[i + 6], &sc->locID[i], &sc->locID[i + 6]);
+			PfAdd_x(sc, &regID[i + 6], &sc->locID[i], &sc->locID[i + 6]);
 			
-			VkSub_y(sc, &regID[i + 6], &sc->locID[i], &sc->locID[i + 6]);
+			PfSub_y(sc, &regID[i + 6], &sc->locID[i], &sc->locID[i + 6]);
 			
 		}
 
 		uint64_t permute2[13] = { 0,1,12,9,11,4,8,2,10,5,3,6,7 };
-		VkPermute(sc, permute2, 13, 1, regID, &sc->w);
+		PfPermute(sc, permute2, 13, 1, regID, &sc->w);
 		//
 		break;
 	}
 	case 14: {
-		VkContainer tf[8];
+		PfContainer tf[8];
 		for (int64_t i = 0; i < 8; i++){
 			tf[i].type = 32;
 		}
-		//VkAppendLine(sc, "	{\n");
+		//PfAppendLine(sc, "	{\n");
 		
 		tf[0].data.d = -1.16666666666666651863693004997913;
 		tf[1].data.d = 0.79015646852540022404554065360571;
@@ -2059,7 +2059,7 @@ temp%s = temp;\n\
 			if (stageSize == 1) {
 				temp_complex.data.c[0] = 1;
 				temp_complex.data.c[1] = 0;
-				VkMov(sc, &sc->w, &temp_complex);	
+				PfMov(sc, &sc->w, &temp_complex);	
 				
 			}
 			else {
@@ -2074,160 +2074,160 @@ temp%s = temp;\n\
 														
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 							
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 				else {
 					if (sc->LUT) {
 						if (sc->useCoalescedLUTUploadToSM) {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+							PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 							appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 						}
 						else {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+							PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 							appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 							
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 							
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 			}
-			VkMul(sc, &regID[i], &regID[i], &sc->w, &sc->temp);
+			PfMul(sc, &regID[i], &regID[i], &sc->w, &sc->temp);
 			
 		}
 		//important
-		//VkMov(sc, &regID[1], &sc->locID[1]);
+		//PfMov(sc, &regID[1], &sc->locID[1]);
 		//
 
 		uint64_t P = 7;
 		uint64_t Q = 2;
 		for (uint64_t i = 0; i < Q; i++) {
-			VkMov(sc, &sc->locID[0], &regID[i]);
+			PfMov(sc, &sc->locID[0], &regID[i]);
 			
-			VkMov(sc, &sc->locID[1], &regID[i + Q]);
+			PfMov(sc, &sc->locID[1], &regID[i + Q]);
 			
-			VkMov(sc, &sc->locID[2], &regID[i + 2 * Q]);
+			PfMov(sc, &sc->locID[2], &regID[i + 2 * Q]);
 			
-			VkMov(sc, &sc->locID[3], &regID[i + 3 * Q]);
+			PfMov(sc, &sc->locID[3], &regID[i + 3 * Q]);
 			
-			VkMov(sc, &sc->locID[4], &regID[i + 4 * Q]);
+			PfMov(sc, &sc->locID[4], &regID[i + 4 * Q]);
 			
-			VkMov(sc, &sc->locID[5], &regID[i + 5 * Q]);
+			PfMov(sc, &sc->locID[5], &regID[i + 5 * Q]);
 			
-			VkMov(sc, &sc->locID[6], &regID[i + 6 * Q]);
-			
-
-			VkAdd(sc, &regID[i], &sc->locID[1], &sc->locID[6]);
-			
-			VkSub(sc, &regID[i + Q], &sc->locID[1], &sc->locID[6]);
-			
-			VkAdd(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[5]);
-			
-			VkSub(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[5]);
-			
-			VkAdd(sc, &regID[i + 4 * Q], &sc->locID[4], &sc->locID[3]);
-			
-			VkSub(sc, &regID[i + 5 * Q], &sc->locID[4], &sc->locID[3]);
+			PfMov(sc, &sc->locID[6], &regID[i + 6 * Q]);
 			
 
-			VkAdd(sc, &sc->locID[5], &regID[i + Q], &regID[i + 3 * Q]);
+			PfAdd(sc, &regID[i], &sc->locID[1], &sc->locID[6]);
 			
-			VkAdd(sc, &sc->locID[5], &sc->locID[5], &regID[i + 5 * Q]);
+			PfSub(sc, &regID[i + Q], &sc->locID[1], &sc->locID[6]);
 			
-			VkAdd(sc, &sc->locID[1], &regID[i], &regID[i + 2 * Q]);
+			PfAdd(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[5]);
 			
-			VkAdd(sc, &sc->locID[1], &sc->locID[1], &regID[i + 4 * Q]);
+			PfSub(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[5]);
 			
-			VkAdd(sc, &sc->locID[0], &sc->locID[0], &sc->locID[1]);
+			PfAdd(sc, &regID[i + 4 * Q], &sc->locID[4], &sc->locID[3]);
 			
-
-			VkSub(sc, &sc->locID[2], &regID[i], &regID[i + 4 * Q]);
-			
-			VkSub(sc, &sc->locID[3], &regID[i + 4 * Q], &regID[i + 2 * Q]);
-			
-			VkSub(sc, &sc->locID[4], &regID[i + 2 * Q], &regID[i]);
+			PfSub(sc, &regID[i + 5 * Q], &sc->locID[4], &sc->locID[3]);
 			
 
-			VkSub(sc, &regID[i], &regID[i + Q], &regID[i + 5 * Q]);
+			PfAdd(sc, &sc->locID[5], &regID[i + Q], &regID[i + 3 * Q]);
 			
-			VkSub(sc, &regID[i + 2 * Q], &regID[i + 5 * Q], &regID[i + 3 * Q]);
+			PfAdd(sc, &sc->locID[5], &sc->locID[5], &regID[i + 5 * Q]);
 			
-			VkSub(sc, &regID[i + 4 * Q], &regID[i + 3 * Q], &regID[i + Q]);
+			PfAdd(sc, &sc->locID[1], &regID[i], &regID[i + 2 * Q]);
 			
-
-			VkMul(sc, &sc->locID[1], &sc->locID[1], &tf[0], 0);
+			PfAdd(sc, &sc->locID[1], &sc->locID[1], &regID[i + 4 * Q]);
 			
-			VkMul(sc, &sc->locID[2], &sc->locID[2], &tf[1], 0);
-			
-			VkMul(sc, &sc->locID[3], &sc->locID[3], &tf[2], 0);
-			
-			VkMul(sc, &sc->locID[4], &sc->locID[4], &tf[3], 0);
-			
-			VkMul(sc, &sc->locID[5], &sc->locID[5], &tf[4], 0);
-			
-			VkMul(sc, &regID[i], &regID[i], &tf[5], 0);
-			
-			VkMul(sc, &regID[i + 2 * Q], &regID[i + 2 * Q], &tf[6], 0);
-			
-			VkMul(sc, &regID[i + 4 * Q], &regID[i + 4 * Q], &tf[7], 0);
+			PfAdd(sc, &sc->locID[0], &sc->locID[0], &sc->locID[1]);
 			
 
-			VkSub(sc, &regID[i + 5 * Q], &regID[i + 4 * Q], &regID[i + 2 * Q]);
+			PfSub(sc, &sc->locID[2], &regID[i], &regID[i + 4 * Q]);
 			
-			VkAddInv(sc, &regID[i + 6 * Q], &regID[i + 4 * Q], &regID[i]);
+			PfSub(sc, &sc->locID[3], &regID[i + 4 * Q], &regID[i + 2 * Q]);
 			
-			VkAdd(sc, &regID[i + 4 * Q], &regID[i], &regID[i + 2 * Q]);
+			PfSub(sc, &sc->locID[4], &regID[i + 2 * Q], &regID[i]);
 			
-			VkAdd(sc, &regID[i], &sc->locID[0], &sc->locID[1]);
+
+			PfSub(sc, &regID[i], &regID[i + Q], &regID[i + 5 * Q]);
 			
-			VkAdd(sc, &regID[i + Q], &sc->locID[2], &sc->locID[3]);
+			PfSub(sc, &regID[i + 2 * Q], &regID[i + 5 * Q], &regID[i + 3 * Q]);
 			
-			VkSub(sc, &regID[i + 2 * Q], &sc->locID[4], &sc->locID[3]);
+			PfSub(sc, &regID[i + 4 * Q], &regID[i + 3 * Q], &regID[i + Q]);
 			
-			VkAddInv(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[4]);
+
+			PfMul(sc, &sc->locID[1], &sc->locID[1], &tf[0], 0);
 			
-			VkAdd(sc, &sc->locID[1], &regID[i], &regID[i + Q]);
+			PfMul(sc, &sc->locID[2], &sc->locID[2], &tf[1], 0);
 			
-			VkAdd(sc, &sc->locID[2], &regID[i], &regID[i + 2 * Q]);
+			PfMul(sc, &sc->locID[3], &sc->locID[3], &tf[2], 0);
 			
-			VkAdd(sc, &sc->locID[3], &regID[i], &regID[i + 3 * Q]);
+			PfMul(sc, &sc->locID[4], &sc->locID[4], &tf[3], 0);
 			
-			VkAdd(sc, &sc->locID[4], &regID[i + 4 * Q], &sc->locID[5]);
+			PfMul(sc, &sc->locID[5], &sc->locID[5], &tf[4], 0);
 			
-			VkAdd(sc, &sc->locID[6], &regID[i + 6 * Q], &sc->locID[5]);
+			PfMul(sc, &regID[i], &regID[i], &tf[5], 0);
 			
-			VkAdd(sc, &sc->locID[5], &sc->locID[5], &regID[i + 5 * Q]);
+			PfMul(sc, &regID[i + 2 * Q], &regID[i + 2 * Q], &tf[6], 0);
 			
-			VkMov(sc, &regID[i], &sc->locID[0]);
+			PfMul(sc, &regID[i + 4 * Q], &regID[i + 4 * Q], &tf[7], 0);
 			
-			VkShuffleComplexInv(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4], 0);
+
+			PfSub(sc, &regID[i + 5 * Q], &regID[i + 4 * Q], &regID[i + 2 * Q]);
 			
-			VkShuffleComplexInv(sc, &regID[i + 2 * Q], &sc->locID[3], &sc->locID[6], 0);
+			PfAddInv(sc, &regID[i + 6 * Q], &regID[i + 4 * Q], &regID[i]);
 			
-			VkShuffleComplex(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[5], 0);
+			PfAdd(sc, &regID[i + 4 * Q], &regID[i], &regID[i + 2 * Q]);
 			
-			VkShuffleComplexInv(sc, &regID[i + 4 * Q], &sc->locID[2], &sc->locID[5], 0);
+			PfAdd(sc, &regID[i], &sc->locID[0], &sc->locID[1]);
 			
-			VkShuffleComplex(sc, &regID[i + 5 * Q], &sc->locID[3], &sc->locID[6], 0);
+			PfAdd(sc, &regID[i + Q], &sc->locID[2], &sc->locID[3]);
 			
-			VkShuffleComplex(sc, &regID[i + 6 * Q], &sc->locID[1], &sc->locID[4], 0);
+			PfSub(sc, &regID[i + 2 * Q], &sc->locID[4], &sc->locID[3]);
+			
+			PfAddInv(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[4]);
+			
+			PfAdd(sc, &sc->locID[1], &regID[i], &regID[i + Q]);
+			
+			PfAdd(sc, &sc->locID[2], &regID[i], &regID[i + 2 * Q]);
+			
+			PfAdd(sc, &sc->locID[3], &regID[i], &regID[i + 3 * Q]);
+			
+			PfAdd(sc, &sc->locID[4], &regID[i + 4 * Q], &sc->locID[5]);
+			
+			PfAdd(sc, &sc->locID[6], &regID[i + 6 * Q], &sc->locID[5]);
+			
+			PfAdd(sc, &sc->locID[5], &sc->locID[5], &regID[i + 5 * Q]);
+			
+			PfMov(sc, &regID[i], &sc->locID[0]);
+			
+			PfShuffleComplexInv(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4], 0);
+			
+			PfShuffleComplexInv(sc, &regID[i + 2 * Q], &sc->locID[3], &sc->locID[6], 0);
+			
+			PfShuffleComplex(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[5], 0);
+			
+			PfShuffleComplexInv(sc, &regID[i + 4 * Q], &sc->locID[2], &sc->locID[5], 0);
+			
+			PfShuffleComplex(sc, &regID[i + 5 * Q], &sc->locID[3], &sc->locID[6], 0);
+			
+			PfShuffleComplex(sc, &regID[i + 6 * Q], &sc->locID[1], &sc->locID[4], 0);
 			
 
 		}
@@ -2238,39 +2238,39 @@ temp%s = temp;\n\
 				if (stageAngle < 0) {
 					temp_complex.data.c[0] = cos(2 * i * sc->double_PI / radix);
 					temp_complex.data.c[1] = -sin(2 * i * sc->double_PI / radix);
-					VkMov(sc, &sc->w, &temp_complex);	
+					PfMov(sc, &sc->w, &temp_complex);	
 					
 				}
 				else {
 					temp_complex.data.c[0] = cos(2 * i * sc->double_PI / radix);
 					temp_complex.data.c[1] = sin(2 * i * sc->double_PI / radix);
-					VkMov(sc, &sc->w, &temp_complex);	
+					PfMov(sc, &sc->w, &temp_complex);	
 					
 				}
-				VkMul(sc, &sc->temp, &regID[Q * i + 1], &sc->w, 0);
+				PfMul(sc, &sc->temp, &regID[Q * i + 1], &sc->w, 0);
 				
 			}
 			else {
-				VkMov(sc, &sc->temp, &regID[Q * i + 1]);
+				PfMov(sc, &sc->temp, &regID[Q * i + 1]);
 				
 			}
-			VkSub(sc, &regID[Q * i + 1], &regID[Q * i], &sc->temp);
+			PfSub(sc, &regID[Q * i + 1], &regID[Q * i], &sc->temp);
 			
-			VkAdd(sc, &regID[Q * i], &regID[Q * i], &sc->temp);
+			PfAdd(sc, &regID[Q * i], &regID[Q * i], &sc->temp);
 			
 		}
 
 		uint64_t permute2[14] = { 0,2,4,6,8,10,12,1,3,5,7,9,11,13 };
-		VkPermute(sc, permute2, 14, 1, regID, &sc->temp);
+		PfPermute(sc, permute2, 14, 1, regID, &sc->temp);
 		
 		break;
 	}
 	case 15: {
-		VkContainer tf[5];
+		PfContainer tf[5];
 		for (int64_t i = 0; i < 5; i++){
 			tf[i].type = 32;
 		}
-		//VkAppendLine(sc, "	{\n");
+		//PfAppendLine(sc, "	{\n");
 		
 		tf[0].data.d = -0.5;
 		tf[1].data.d = 1.538841768587626701285145288018455;
@@ -2278,11 +2278,11 @@ temp%s = temp;\n\
 		tf[3].data.d = -0.809016994374947424102293417182819;
 		tf[4].data.d = -0.587785252292473129168705954639073;
 
-		VkContainer tf2[2];
+		PfContainer tf2[2];
 		for (int64_t i = 0; i < 2; i++){
 			tf2[i].type = 32;
 		}
-		//VkAppendLine(sc, "	{\n");
+		//PfAppendLine(sc, "	{\n");
 		
 
 		tf2[0].data.d = -0.5;
@@ -2292,7 +2292,7 @@ temp%s = temp;\n\
 			if (stageSize == 1) {
 				temp_complex.data.c[0] = 1;
 				temp_complex.data.c[1] = 0;
-				VkMov(sc, &sc->w, &temp_complex);	
+				PfMov(sc, &sc->w, &temp_complex);	
 				
 			}
 			else {
@@ -2307,122 +2307,122 @@ temp%s = temp;\n\
 														
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 							
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 				else {
 					if (sc->LUT) {
 						if (sc->useCoalescedLUTUploadToSM) {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+							PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 							appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 						}
 						else {
 							temp_int.data.i = (radix - 1 - i) * stageSize;
-							VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+							PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 							appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 							
 						}
 						if (stageAngle < 0) {
-							VkConjugate(sc, &sc->w, &sc->w);
+							PfConjugate(sc, &sc->w, &sc->w);
 							
 						}
 					}
 					else {
 						temp_double.data.d = 2.0 * i / radix;
-						VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-						VkSinCos(sc, &sc->w, &sc->tempFloat);
+						PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+						PfSinCos(sc, &sc->w, &sc->tempFloat);
 					}
 				}
 			}
-			VkMul(sc, &regID[i], &regID[i], &sc->w, &sc->temp);
+			PfMul(sc, &regID[i], &regID[i], &sc->w, &sc->temp);
 			
 		}
 		//important
-		//VkMov(sc, &regID[1], &sc->locID[1]);
+		//PfMov(sc, &regID[1], &sc->locID[1]);
 		//
 
 		uint64_t P = 5;
 		uint64_t Q = 3;
 		for (uint64_t i = 0; i < Q; i++) {
-			VkMov(sc, &sc->locID[0], &regID[i]);
+			PfMov(sc, &sc->locID[0], &regID[i]);
 			
-			VkMov(sc, &sc->locID[1], &regID[i + Q]);
+			PfMov(sc, &sc->locID[1], &regID[i + Q]);
 			
-			VkMov(sc, &sc->locID[2], &regID[i + 2 * Q]);
+			PfMov(sc, &sc->locID[2], &regID[i + 2 * Q]);
 			
-			VkMov(sc, &sc->locID[3], &regID[i + 3 * Q]);
+			PfMov(sc, &sc->locID[3], &regID[i + 3 * Q]);
 			
-			VkMov(sc, &sc->locID[4], &regID[i + 4 * Q]);
-			
-
-			VkAdd(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4]);
-			
-			VkAdd(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[3]);
-			
-			VkSub(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[3]);
-			
-			VkSub(sc, &regID[i + 4 * Q], &sc->locID[1], &sc->locID[4]);
-			
-			VkSub(sc, &sc->locID[3], &regID[i + Q], &regID[i + 2 * Q]);
-			
-			VkAdd(sc, &sc->locID[4], &regID[i + 3 * Q], &regID[i + 4 * Q]);
+			PfMov(sc, &sc->locID[4], &regID[i + 4 * Q]);
 			
 
-			VkAdd(sc, &sc->locID[0], &regID[i], &regID[i + Q]);
+			PfAdd(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4]);
 			
-			VkAdd(sc, &sc->locID[0], &sc->locID[0], &regID[i + 2 * Q]);
+			PfAdd(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[3]);
 			
-			VkFMA(sc, &sc->locID[1], &regID[i + Q], &tf[0], &regID[i]);
+			PfSub(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[3]);
 			
-			VkFMA(sc, &sc->locID[2], &regID[i + 2 * Q], &tf[0], &regID[i]);
+			PfSub(sc, &regID[i + 4 * Q], &sc->locID[1], &sc->locID[4]);
 			
-			VkMul(sc, &regID[i + 3 * Q], &regID[i + 3 * Q], &tf[1], 0);
+			PfSub(sc, &sc->locID[3], &regID[i + Q], &regID[i + 2 * Q]);
 			
-			VkMul(sc, &regID[i + 4 * Q], &regID[i + 4 * Q], &tf[2], 0);
-			
-			VkMul(sc, &sc->locID[3], &sc->locID[3], &tf[3], 0);
-			
-			VkMul(sc, &sc->locID[4], &sc->locID[4], &tf[4], 0);
+			PfAdd(sc, &sc->locID[4], &regID[i + 3 * Q], &regID[i + 4 * Q]);
 			
 
-			VkSub(sc, &sc->locID[1], &sc->locID[1], &sc->locID[3]);
+			PfAdd(sc, &sc->locID[0], &regID[i], &regID[i + Q]);
 			
-			VkAdd(sc, &sc->locID[2], &sc->locID[2], &sc->locID[3]);
+			PfAdd(sc, &sc->locID[0], &sc->locID[0], &regID[i + 2 * Q]);
 			
-			VkAdd(sc, &sc->locID[3], &regID[i + 3 * Q], &sc->locID[4]);
+			PfFMA(sc, &sc->locID[1], &regID[i + Q], &tf[0], &regID[i]);
 			
-			VkAdd(sc, &sc->locID[4], &sc->locID[4], &regID[i + 4 * Q]);
+			PfFMA(sc, &sc->locID[2], &regID[i + 2 * Q], &tf[0], &regID[i]);
 			
-			VkMov(sc, &regID[i], &sc->locID[0]);
+			PfMul(sc, &regID[i + 3 * Q], &regID[i + 3 * Q], &tf[1], 0);
+			
+			PfMul(sc, &regID[i + 4 * Q], &regID[i + 4 * Q], &tf[2], 0);
+			
+			PfMul(sc, &sc->locID[3], &sc->locID[3], &tf[3], 0);
+			
+			PfMul(sc, &sc->locID[4], &sc->locID[4], &tf[4], 0);
+			
+
+			PfSub(sc, &sc->locID[1], &sc->locID[1], &sc->locID[3]);
+			
+			PfAdd(sc, &sc->locID[2], &sc->locID[2], &sc->locID[3]);
+			
+			PfAdd(sc, &sc->locID[3], &regID[i + 3 * Q], &sc->locID[4]);
+			
+			PfAdd(sc, &sc->locID[4], &sc->locID[4], &regID[i + 4 * Q]);
+			
+			PfMov(sc, &regID[i], &sc->locID[0]);
 			
 
 			if (stageAngle < 0)
 			{
-				VkShuffleComplex(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4], 0);
+				PfShuffleComplex(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4], 0);
 				
-				VkShuffleComplex(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[3], 0);
+				PfShuffleComplex(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[3], 0);
 				
-				VkShuffleComplexInv(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[3], 0);
+				PfShuffleComplexInv(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[3], 0);
 				
-				VkShuffleComplexInv(sc, &regID[i + 4 * Q], &sc->locID[1], &sc->locID[4], 0);
+				PfShuffleComplexInv(sc, &regID[i + 4 * Q], &sc->locID[1], &sc->locID[4], 0);
 				
 			}
 			else {
-				VkShuffleComplexInv(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4], 0);
+				PfShuffleComplexInv(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4], 0);
 				
-				VkShuffleComplexInv(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[3], 0);
+				PfShuffleComplexInv(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[3], 0);
 				
-				VkShuffleComplex(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[3], 0);
+				PfShuffleComplex(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[3], 0);
 				
-				VkShuffleComplex(sc, &regID[i + 4 * Q], &sc->locID[1], &sc->locID[4], 0);
+				PfShuffleComplex(sc, &regID[i + 4 * Q], &sc->locID[1], &sc->locID[4], 0);
 				
 			}
 
@@ -2434,69 +2434,69 @@ temp%s = temp;\n\
 				if (stageAngle < 0) {
 					temp_complex.data.c[0] = cos(2 * i * sc->double_PI / radix);
 					temp_complex.data.c[1] = -sin(2 * i * sc->double_PI / radix);
-					VkMov(sc, &sc->w, &temp_complex);	
+					PfMov(sc, &sc->w, &temp_complex);	
 					
 				}
 				else {
 					temp_complex.data.c[0] = cos(2 * i * sc->double_PI / radix);
 					temp_complex.data.c[1] = sin(2 * i * sc->double_PI / radix);
-					VkMov(sc, &sc->w, &temp_complex);	
+					PfMov(sc, &sc->w, &temp_complex);	
 					
 				}
-				VkMul(sc, &sc->locID[1], &regID[Q * i + 1], &sc->w, &sc->temp);
+				PfMul(sc, &sc->locID[1], &regID[Q * i + 1], &sc->w, &sc->temp);
 				
 				if (stageAngle < 0) {
 					temp_complex.data.c[0] = cos(4 * i * sc->double_PI / radix);
 					temp_complex.data.c[1] = -sin(4 * i * sc->double_PI / radix);
-					VkMov(sc, &sc->w, &temp_complex);	
+					PfMov(sc, &sc->w, &temp_complex);	
 					
 				}
 				else {
 					temp_complex.data.c[0] = cos(4 * i * sc->double_PI / radix);
 					temp_complex.data.c[1] = sin(4 * i * sc->double_PI / radix);
-					VkMov(sc, &sc->w, &temp_complex);	
+					PfMov(sc, &sc->w, &temp_complex);	
 					
 				}
-				VkMul(sc, &sc->locID[2], &regID[Q * i + 2], &sc->w, &sc->temp);
+				PfMul(sc, &sc->locID[2], &regID[Q * i + 2], &sc->w, &sc->temp);
 				
 			}
 			else {
-				VkMov(sc, &sc->locID[1], &regID[1]);
+				PfMov(sc, &sc->locID[1], &regID[1]);
 				
-				VkMov(sc, &sc->locID[2], &regID[2]);
+				PfMov(sc, &sc->locID[2], &regID[2]);
 				
 			}
 
-			VkAdd(sc, &regID[Q * i + 1], &sc->locID[1], &sc->locID[2]);
+			PfAdd(sc, &regID[Q * i + 1], &sc->locID[1], &sc->locID[2]);
 			
-			VkSub(sc, &regID[Q * i + 2], &sc->locID[1], &sc->locID[2]);
+			PfSub(sc, &regID[Q * i + 2], &sc->locID[1], &sc->locID[2]);
 			
 
-			VkAdd(sc, &sc->locID[0], &regID[Q * i], &regID[Q * i + 1]);
+			PfAdd(sc, &sc->locID[0], &regID[Q * i], &regID[Q * i + 1]);
 			
-			VkFMA(sc, &sc->locID[1], &regID[Q * i + 1], &tf2[0], &regID[Q * i]);
+			PfFMA(sc, &sc->locID[1], &regID[Q * i + 1], &tf2[0], &regID[Q * i]);
 			
-			VkMul(sc, &sc->locID[2], &regID[Q * i + 2], &tf2[1], 0);
+			PfMul(sc, &sc->locID[2], &regID[Q * i + 2], &tf2[1], 0);
 			
-			VkMov(sc, &regID[Q * i], &sc->locID[0]);
+			PfMov(sc, &regID[Q * i], &sc->locID[0]);
 			
 			if (stageAngle < 0)
 			{
-				VkShuffleComplex(sc, &regID[Q * i + 1], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplex(sc, &regID[Q * i + 1], &sc->locID[1], &sc->locID[2], 0);
 				
-				VkShuffleComplexInv(sc, &regID[Q * i + 2], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplexInv(sc, &regID[Q * i + 2], &sc->locID[1], &sc->locID[2], 0);
 				
 			}
 			else {
-				VkShuffleComplexInv(sc, &regID[Q * i + 1], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplexInv(sc, &regID[Q * i + 1], &sc->locID[1], &sc->locID[2], 0);
 				
-				VkShuffleComplex(sc, &regID[Q * i + 2], &sc->locID[1], &sc->locID[2], 0);
+				PfShuffleComplex(sc, &regID[Q * i + 2], &sc->locID[1], &sc->locID[2], 0);
 				
 			}
 		}
 
 		uint64_t permute2[15] = { 0, 3, 6, 9, 12, 1, 4, 7, 10, 13, 2, 5, 8, 11, 14 };
-		VkPermute(sc, permute2, 15, 1, regID, &sc->temp);
+		PfPermute(sc, permute2, 15, 1, regID, &sc->temp);
 		
 		break;
 	}
@@ -2505,7 +2505,7 @@ temp%s = temp;\n\
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
@@ -2519,236 +2519,236 @@ temp%s = temp;\n\
 										
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
-				VkSinCos(sc, &sc->w, &sc->angle);
+				PfSinCos(sc, &sc->w, &sc->angle);
 			}
 		}
 		for (uint64_t i = 0; i < 8; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 8], &sc->w, 0);
+			PfMul(sc, &sc->temp, &regID[i + 8], &sc->w, 0);
 			
-			VkSub(sc, &regID[i + 8], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 8], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
 			if (sc->LUT) {
 				if (sc->useCoalescedLUTUploadToSM) {
 					temp_int.data.i = stageSize;
-					VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 					appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 				}
 				else {
 					temp_int.data.i = stageSize;
-					VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+					PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 					appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 					
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
 				temp_double.data.d = 0.5;
-				VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-				VkSinCos(sc, &sc->w, &sc->tempFloat);
+				PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+				PfSinCos(sc, &sc->w, &sc->tempFloat);
 			}
 		}
 		for (uint64_t i = 0; i < 4; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 4], &sc->w, 0);
+			PfMul(sc, &sc->temp, &regID[i + 4], &sc->w, 0);
 			
-			VkSub(sc, &regID[i + 4], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 4], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
-			VkMov_x_y(sc, &sc->iw, &sc->w);
-			VkMov_y_Neg_x(sc, &sc->iw, &sc->w);
+			PfMov_x_y(sc, &sc->iw, &sc->w);
+			PfMov_y_Neg_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->iw, &sc->w);
-			VkMov_y_x(sc, &sc->iw, &sc->w);
+			PfMov_x_Neg_y(sc, &sc->iw, &sc->w);
+			PfMov_y_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
 		}
 
 		for (uint64_t i = 8; i < 12; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 4], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 4], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 4], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 4], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
 			if (sc->LUT) {
 				if (sc->useCoalescedLUTUploadToSM) {
 					temp_int.data.i = 2 * stageSize;
-					VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 					appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 				}
 				else {
 					temp_int.data.i = 2 * stageSize;
-					VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+					PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 					appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 					
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
 				temp_double.data.d = 0.25;
-				VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-				VkSinCos(sc, &sc->w, &sc->tempFloat);
+				PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+				PfSinCos(sc, &sc->w, &sc->tempFloat);
 			}
 		}
 		for (uint64_t i = 0; i < 2; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 2], &sc->w, 0);
+			PfMul(sc, &sc->temp, &regID[i + 2], &sc->w, 0);
 			
-			VkSub(sc, &regID[i + 2], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 2], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
-			VkMov_x_y(sc, &sc->iw, &sc->w);
-			VkMov_y_Neg_x(sc, &sc->iw, &sc->w);
+			PfMov_x_y(sc, &sc->iw, &sc->w);
+			PfMov_y_Neg_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->iw, &sc->w);
-			VkMov_y_x(sc, &sc->iw, &sc->w);
+			PfMov_x_Neg_y(sc, &sc->iw, &sc->w);
+			PfMov_y_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
 		}
 		for (uint64_t i = 4; i < 6; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 2], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 2], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
 			temp_complex.data.c[0] = 0.70710678118654752440084436210485;
 			temp_complex.data.c[1] = -0.70710678118654752440084436210485;
-			VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+			PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 
 		}
 		else {
 			temp_complex.data.c[0] = 0.70710678118654752440084436210485;
 			temp_complex.data.c[1] = 0.70710678118654752440084436210485;
-			VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+			PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 		}
 		for (uint64_t i = 8; i < 10; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 2], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 2], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
-			VkMov_x_y(sc, &sc->w, &sc->iw);
-			VkMov_y_Neg_x(sc, &sc->w, &sc->iw);
+			PfMov_x_y(sc, &sc->w, &sc->iw);
+			PfMov_y_Neg_x(sc, &sc->w, &sc->iw);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(iw.y, -iw.x);\n\n", vecType);
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->w, &sc->iw);
-			VkMov_y_x(sc, &sc->w, &sc->iw);
+			PfMov_x_Neg_y(sc, &sc->w, &sc->iw);
+			PfMov_y_x(sc, &sc->w, &sc->iw);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(-iw.y, iw.x);\n\n", vecType);
 		}
 		for (uint64_t i = 12; i < 14; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 2], &sc->w, 0);
+			PfMul(sc, &sc->temp, &regID[i + 2], &sc->w, 0);
 			
-			VkSub(sc, &regID[i + 2], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 2], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
 			if (sc->LUT) {
 				if (sc->useCoalescedLUTUploadToSM) {
 					temp_int.data.i = 3 * stageSize;
-					VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 					appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 				}
 				else {
 					temp_int.data.i = 3 * stageSize;
-					VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+					PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 					appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 					
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
 				temp_double.data.d = 0.125;
-				VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-				VkSinCos(sc, &sc->w, &sc->tempFloat);
+				PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+				PfSinCos(sc, &sc->w, &sc->tempFloat);
 			}
 		}
 
 		for (uint64_t i = 0; i < 1; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 1], &sc->w, 0);
+			PfMul(sc, &sc->temp, &regID[i + 1], &sc->w, 0);
 			
-			VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
-			VkMov_x_y(sc, &sc->iw, &sc->w);
-			VkMov_y_Neg_x(sc, &sc->iw, &sc->w);
+			PfMov_x_y(sc, &sc->iw, &sc->w);
+			PfMov_y_Neg_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->iw, &sc->w);
-			VkMov_y_x(sc, &sc->iw, &sc->w);
+			PfMov_x_Neg_y(sc, &sc->iw, &sc->w);
+			PfMov_y_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
 		}
 		for (uint64_t i = 2; i < 3; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 
@@ -2756,42 +2756,42 @@ temp%s = temp;\n\
 		if (stageAngle < 0) {
 			temp_complex.data.c[0] = 0.70710678118654752440084436210485;
 			temp_complex.data.c[1] = -0.70710678118654752440084436210485;
-			VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+			PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 
 		}
 		else {
 			temp_complex.data.c[0] = 0.70710678118654752440084436210485;
 			temp_complex.data.c[1] = 0.70710678118654752440084436210485;
-			VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+			PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 		}
 		for (uint64_t i = 4; i < 5; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
-			VkMov_x_y(sc, &sc->temp, &sc->iw);
-			VkMov_y_Neg_x(sc, &sc->temp, &sc->iw);
+			PfMov_x_y(sc, &sc->temp, &sc->iw);
+			PfMov_y_Neg_x(sc, &sc->temp, &sc->iw);
 			
-			VkMov(sc, &sc->iw, &sc->temp);
+			PfMov(sc, &sc->iw, &sc->temp);
 			
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->temp, &sc->iw);
-			VkMov_y_x(sc, &sc->temp, &sc->iw);
+			PfMov_x_Neg_y(sc, &sc->temp, &sc->iw);
+			PfMov_y_x(sc, &sc->temp, &sc->iw);
 			
-			VkMov(sc, &sc->iw, &sc->temp);
+			PfMov(sc, &sc->iw, &sc->temp);
 			
 		}
 		for (uint64_t i = 6; i < 7; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 
@@ -2800,89 +2800,89 @@ temp%s = temp;\n\
 			if (stageAngle < 0) {
 				temp_complex.data.c[0] = cos((2 * j + 1) * sc->double_PI / 8);
 				temp_complex.data.c[1] = -sin((2 * j + 1) * sc->double_PI / 8);
-				VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+				PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 			}
 			else {
 				temp_complex.data.c[0] = cos((2 * j + 1) * sc->double_PI / 8);
 				temp_complex.data.c[1] = sin((2 * j + 1) * sc->double_PI / 8);
-				VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+				PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 			}
 			for (uint64_t i = 8 + 4 * j; i < 9 + 4 * j; i++) {
-				VkMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
+				PfMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
 				
-				VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+				PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 				
-				VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+				PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 				
 			}
 			if (stageAngle < 0) {
-				VkMov_x_y(sc, &sc->temp, &sc->iw);
-				VkMov_y_Neg_x(sc, &sc->temp, &sc->iw);
+				PfMov_x_y(sc, &sc->temp, &sc->iw);
+				PfMov_y_Neg_x(sc, &sc->temp, &sc->iw);
 				
-				VkMov(sc, &sc->iw, &sc->temp);
+				PfMov(sc, &sc->iw, &sc->temp);
 				
 			}
 			else {
-				VkMov_x_Neg_y(sc, &sc->temp, &sc->iw);
-				VkMov_y_x(sc, &sc->temp, &sc->iw);
+				PfMov_x_Neg_y(sc, &sc->temp, &sc->iw);
+				PfMov_y_x(sc, &sc->temp, &sc->iw);
 				
-				VkMov(sc, &sc->iw, &sc->temp);
+				PfMov(sc, &sc->iw, &sc->temp);
 				
 			}
 			for (uint64_t i = 10 + 4 * j; i < 11 + 4 * j; i++) {
-				VkMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
+				PfMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
 				
-				VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+				PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 				
-				VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+				PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 				
 			}
 		}
 
 		uint64_t permute2[16] = { 0,8,4,12,2,10,6,14,1,9,5,13,3,11,7,15 };
-		VkPermute(sc, permute2, 16, 1, regID, &sc->temp);
+		PfPermute(sc, permute2, 16, 1, regID, &sc->temp);
 		
 
-		/*VkMov(sc, &sc->temp, &regID[1]);
+		/*PfMov(sc, &sc->temp, &regID[1]);
 		
-		VkMov(sc, &regID[1], &regID[8]);
+		PfMov(sc, &regID[1], &regID[8]);
 		
-		VkMov(sc, &regID[8], &sc->temp);
-		
-
-		VkMov(sc, &sc->temp, &regID[2]);
-		
-		VkMov(sc, &regID[2], &regID[4]);
-		
-		VkMov(sc, &regID[4], &sc->temp);
+		PfMov(sc, &regID[8], &sc->temp);
 		
 
-		VkMov(sc, &sc->temp, &regID[3]);
+		PfMov(sc, &sc->temp, &regID[2]);
 		
-		VkMov(sc, &regID[3], &regID[12]);
+		PfMov(sc, &regID[2], &regID[4]);
 		
-		VkMov(sc, &regID[12], &sc->temp);
-		
-
-		VkMov(sc, &sc->temp, &regID[5]);
-		
-		VkMov(sc, &regID[5], &regID[10]);
-		
-		VkMov(sc, &regID[10], &sc->temp);
+		PfMov(sc, &regID[4], &sc->temp);
 		
 
-		VkMov(sc, &sc->temp, &regID[7]);
+		PfMov(sc, &sc->temp, &regID[3]);
 		
-		VkMov(sc, &regID[7], &regID[14]);
+		PfMov(sc, &regID[3], &regID[12]);
 		
-		VkMov(sc, &regID[14], &sc->temp);
+		PfMov(sc, &regID[12], &sc->temp);
 		
 
-		VkMov(sc, &sc->temp, &regID[11]);
+		PfMov(sc, &sc->temp, &regID[5]);
 		
-		VkMov(sc, &regID[11], &regID[13]);
+		PfMov(sc, &regID[5], &regID[10]);
 		
-		VkMov(sc, &regID[13], &sc->temp);
+		PfMov(sc, &regID[10], &sc->temp);
+		
+
+		PfMov(sc, &sc->temp, &regID[7]);
+		
+		PfMov(sc, &regID[7], &regID[14]);
+		
+		PfMov(sc, &regID[14], &sc->temp);
+		
+
+		PfMov(sc, &sc->temp, &regID[11]);
+		
+		PfMov(sc, &regID[11], &regID[13]);
+		
+		PfMov(sc, &regID[13], &sc->temp);
 		*/
 		break;
 	}
@@ -2891,7 +2891,7 @@ temp%s = temp;\n\
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
@@ -2905,233 +2905,233 @@ temp%s = temp;\n\
 										
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
-				VkSinCos(sc, &sc->w, &sc->angle);
+				PfSinCos(sc, &sc->w, &sc->angle);
 			}
 		}
 		for (uint64_t i = 0; i < 16; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 16], &sc->w, 0);
+			PfMul(sc, &sc->temp, &regID[i + 16], &sc->w, 0);
 			
-			VkSub(sc, &regID[i + 16], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 16], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
 			if (sc->LUT) {
 				if (sc->useCoalescedLUTUploadToSM) {
 					temp_int.data.i = stageSize;
-					VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 					appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 				}
 				else {
 					temp_int.data.i = stageSize;
-					VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+					PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 					appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
 				temp_double.data.d = 0.5;
-				VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-				VkSinCos(sc, &sc->w, &sc->tempFloat);
+				PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+				PfSinCos(sc, &sc->w, &sc->tempFloat);
 			}
 		}
 		for (uint64_t i = 0; i < 8; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 8], &sc->w, 0);
+			PfMul(sc, &sc->temp, &regID[i + 8], &sc->w, 0);
 			
-			VkSub(sc, &regID[i + 8], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 8], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
-			VkMov_x_y(sc, &sc->iw, &sc->w);
-			VkMov_y_Neg_x(sc, &sc->iw, &sc->w);
+			PfMov_x_y(sc, &sc->iw, &sc->w);
+			PfMov_y_Neg_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->iw, &sc->w);
-			VkMov_y_x(sc, &sc->iw, &sc->w);
+			PfMov_x_Neg_y(sc, &sc->iw, &sc->w);
+			PfMov_y_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
 		}
 
 		for (uint64_t i = 16; i < 24; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 8], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 8], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 8], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 8], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
 			if (sc->LUT) {
 				if (sc->useCoalescedLUTUploadToSM) {
 					temp_int.data.i = 2 * stageSize;
-					VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 					appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 				}
 				else {
 					temp_int.data.i = 2 * stageSize;
-					VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+					PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 					appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
 				temp_double.data.d = 0.25;
-				VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-				VkSinCos(sc, &sc->w, &sc->tempFloat);
+				PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+				PfSinCos(sc, &sc->w, &sc->tempFloat);
 			}
 		}
 		for (uint64_t i = 0; i < 4; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 4], &sc->w, 0);
+			PfMul(sc, &sc->temp, &regID[i + 4], &sc->w, 0);
 			
-			VkSub(sc, &regID[i + 4], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 4], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
-			VkMov_x_y(sc, &sc->iw, &sc->w);
-			VkMov_y_Neg_x(sc, &sc->iw, &sc->w);
+			PfMov_x_y(sc, &sc->iw, &sc->w);
+			PfMov_y_Neg_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->iw, &sc->w);
-			VkMov_y_x(sc, &sc->iw, &sc->w);
+			PfMov_x_Neg_y(sc, &sc->iw, &sc->w);
+			PfMov_y_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
 		}
 		for (uint64_t i = 8; i < 12; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 4], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 4], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 4], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 4], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
 			temp_complex.data.c[0] = 0.70710678118654752440084436210485;
 			temp_complex.data.c[1] = -0.70710678118654752440084436210485;
-			VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+			PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 
 		}
 		else {
 			temp_complex.data.c[0] = 0.70710678118654752440084436210485;
 			temp_complex.data.c[1] = 0.70710678118654752440084436210485;
-			VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+			PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 		}
 		for (uint64_t i = 16; i < 20; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 4], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 4], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 4], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 4], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
-			VkMov_x_y(sc, &sc->w, &sc->iw);
-			VkMov_y_Neg_x(sc, &sc->w, &sc->iw);
+			PfMov_x_y(sc, &sc->w, &sc->iw);
+			PfMov_y_Neg_x(sc, &sc->w, &sc->iw);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(iw.y, -iw.x);\n\n", vecType);
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->w, &sc->iw);
-			VkMov_y_x(sc, &sc->w, &sc->iw);
+			PfMov_x_Neg_y(sc, &sc->w, &sc->iw);
+			PfMov_y_x(sc, &sc->w, &sc->iw);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(-iw.y, iw.x);\n\n", vecType);
 		}
 		for (uint64_t i = 24; i < 28; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 4], &sc->w, 0);
+			PfMul(sc, &sc->temp, &regID[i + 4], &sc->w, 0);
 			
-			VkSub(sc, &regID[i + 4], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 4], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
 			if (sc->LUT) {
 				if (sc->useCoalescedLUTUploadToSM) {
 					temp_int.data.i = 3 * stageSize;
-					VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 					appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 				}
 				else {
 					temp_int.data.i = 3 * stageSize;
-					VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+					PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 					appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 					
 				}
 			}
 			else {
 				temp_double.data.d = 0.125;
-				VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-				VkSinCos(sc, &sc->w, &sc->tempFloat);
+				PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+				PfSinCos(sc, &sc->w, &sc->tempFloat);
 			}
 		}
 
 		for (uint64_t i = 0; i < 2; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 2], &sc->w, 0);
+			PfMul(sc, &sc->temp, &regID[i + 2], &sc->w, 0);
 			
-			VkSub(sc, &regID[i + 2], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 2], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
-			VkMov_x_y(sc, &sc->iw, &sc->w);
-			VkMov_y_Neg_x(sc, &sc->iw, &sc->w);
+			PfMov_x_y(sc, &sc->iw, &sc->w);
+			PfMov_y_Neg_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->iw, &sc->w);
-			VkMov_y_x(sc, &sc->iw, &sc->w);
+			PfMov_x_Neg_y(sc, &sc->iw, &sc->w);
+			PfMov_y_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
 		}
 		for (uint64_t i = 4; i < 6; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 2], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 2], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 
@@ -3139,42 +3139,42 @@ temp%s = temp;\n\
 		if (stageAngle < 0) {
 			temp_complex.data.c[0] = 0.70710678118654752440084436210485;
 			temp_complex.data.c[1] = -0.70710678118654752440084436210485;
-			VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+			PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 
 		}
 		else {
 			temp_complex.data.c[0] = 0.70710678118654752440084436210485;
 			temp_complex.data.c[1] = 0.70710678118654752440084436210485;
-			VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+			PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 		}
 		for (uint64_t i = 8; i < 10; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 2], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 2], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
-			VkMov_x_y(sc, &sc->temp, &sc->iw);
-			VkMov_y_Neg_x(sc, &sc->temp, &sc->iw);
+			PfMov_x_y(sc, &sc->temp, &sc->iw);
+			PfMov_y_Neg_x(sc, &sc->temp, &sc->iw);
 			
-			VkMov(sc, &sc->iw, &sc->temp);
+			PfMov(sc, &sc->iw, &sc->temp);
 			
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->temp, &sc->iw);
-			VkMov_y_x(sc, &sc->temp, &sc->iw);
+			PfMov_x_Neg_y(sc, &sc->temp, &sc->iw);
+			PfMov_y_x(sc, &sc->temp, &sc->iw);
 			
-			VkMov(sc, &sc->iw, &sc->temp);
+			PfMov(sc, &sc->iw, &sc->temp);
 			
 		}
 		for (uint64_t i = 12; i < 14; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 2], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 2], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 
@@ -3183,40 +3183,40 @@ temp%s = temp;\n\
 			if (stageAngle < 0) {
 				temp_complex.data.c[0] = cos((2 * j + 1) * sc->double_PI / 8);
 				temp_complex.data.c[1] = -sin((2 * j + 1) * sc->double_PI / 8);
-				VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+				PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 			}
 			else {
 				temp_complex.data.c[0] = cos((2 * j + 1) * sc->double_PI / 8);
 				temp_complex.data.c[1] = sin((2 * j + 1) * sc->double_PI / 8);
-				VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+				PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 			}
 			for (uint64_t i = 16 + 8 * j; i < 18 + 8 * j; i++) {
-				VkMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
+				PfMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
 				
-				VkSub(sc, &regID[i + 2], &regID[i], &sc->temp);
+				PfSub(sc, &regID[i + 2], &regID[i], &sc->temp);
 				
-				VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+				PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 				
 			}
 			if (stageAngle < 0) {
-				VkMov_x_y(sc, &sc->temp, &sc->iw);
-				VkMov_y_Neg_x(sc, &sc->temp, &sc->iw);
+				PfMov_x_y(sc, &sc->temp, &sc->iw);
+				PfMov_y_Neg_x(sc, &sc->temp, &sc->iw);
 			
-				VkMov(sc, &sc->iw, &sc->temp);
+				PfMov(sc, &sc->iw, &sc->temp);
 			}
 			else {
-				VkMov_x_Neg_y(sc, &sc->temp, &sc->iw);
-				VkMov_y_x(sc, &sc->temp, &sc->iw);
+				PfMov_x_Neg_y(sc, &sc->temp, &sc->iw);
+				PfMov_y_x(sc, &sc->temp, &sc->iw);
 			
-				VkMov(sc, &sc->iw, &sc->temp);
+				PfMov(sc, &sc->iw, &sc->temp);
 				
 			}
 			for (uint64_t i = 20 + 8 * j; i < 22 + 8 * j; i++) {
-				VkMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
+				PfMul(sc, &sc->temp, &regID[i + 2], &sc->iw, 0);
 				
-				VkSub(sc, &regID[i + 2], &regID[i], &sc->temp);
+				PfSub(sc, &regID[i + 2], &regID[i], &sc->temp);
 				
-				VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+				PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 				
 			}
 		}
@@ -3224,59 +3224,59 @@ temp%s = temp;\n\
 		if (stageSize == 1) {
 			temp_complex.data.c[0] = 1;
 			temp_complex.data.c[1] = 0;
-			VkMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 			
 		}
 		else {
 			if (sc->LUT) {
 				if (sc->useCoalescedLUTUploadToSM) {
 					temp_int.data.i = 4 * stageSize;
-					VkAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
+					PfAdd(sc, &sc->sdataID, &sc->stageInvocationID, &temp_int);
 					appendSharedToRegisters(sc, &sc->w, &sc->sdataID);
 				}
 				else {
 					temp_int.data.i = 4 * stageSize;
-					VkAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
+					PfAdd(sc, &sc->inoutID, &sc->LUTId, &temp_int);
 					appendGlobalToRegisters(sc, &sc->w, &sc->LUTStruct, &sc->inoutID);
 				}
 				if (stageAngle < 0) {
-					VkConjugate(sc, &sc->w, &sc->w);
+					PfConjugate(sc, &sc->w, &sc->w);
 				}
 			}
 			else {
 				temp_double.data.d = 0.0625;
-				VkMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
-				VkSinCos(sc, &sc->w, &sc->tempFloat);
+				PfMul(sc, &sc->tempFloat, &sc->angle, &temp_double, 0);
+				PfSinCos(sc, &sc->w, &sc->tempFloat);
 			}
 		}
 
 		for (uint64_t i = 0; i < 1; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 1], &sc->w, 0);
+			PfMul(sc, &sc->temp, &regID[i + 1], &sc->w, 0);
 			
-			VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
-			VkMov_x_y(sc, &sc->iw, &sc->w);
-			VkMov_y_Neg_x(sc, &sc->iw, &sc->w);
+			PfMov_x_y(sc, &sc->iw, &sc->w);
+			PfMov_y_Neg_x(sc, &sc->iw, &sc->w);
 			
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	w = %s(w.y, -w.x);\n\n", vecType);
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->iw, &sc->w);
-			VkMov_y_x(sc, &sc->iw, &sc->w);
+			PfMov_x_Neg_y(sc, &sc->iw, &sc->w);
+			PfMov_y_x(sc, &sc->iw, &sc->w);
 			
 			//&sc->tempLen = sprintf(&sc->tempStr, "	iw = %s(-w.y, w.x);\n\n", vecType);
 		}
 		for (uint64_t i = 2; i < 3; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 
@@ -3284,43 +3284,43 @@ temp%s = temp;\n\
 		if (stageAngle < 0) {
 			temp_complex.data.c[0] = 0.70710678118654752440084436210485;
 			temp_complex.data.c[1] = -0.70710678118654752440084436210485;
-			VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+			PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 
 		}
 		else {
 			temp_complex.data.c[0] = 0.70710678118654752440084436210485;
 			temp_complex.data.c[1] = 0.70710678118654752440084436210485;
-			VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+			PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 		}
 		for (uint64_t i = 4; i < 5; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 		if (stageAngle < 0) {
-			VkMov_x_y(sc, &sc->temp, &sc->iw);
-			VkMov_y_Neg_x(sc, &sc->temp, &sc->iw);
+			PfMov_x_y(sc, &sc->temp, &sc->iw);
+			PfMov_y_Neg_x(sc, &sc->temp, &sc->iw);
 			
-			VkMov(sc, &sc->iw, &sc->temp);
+			PfMov(sc, &sc->iw, &sc->temp);
 			
 		}
 		else {
-			VkMov_x_Neg_y(sc, &sc->temp, &sc->iw);
-			VkMov_y_x(sc, &sc->temp, &sc->iw);
+			PfMov_x_Neg_y(sc, &sc->temp, &sc->iw);
+			PfMov_y_x(sc, &sc->temp, &sc->iw);
 			
 			
-			VkMov(sc, &sc->iw, &sc->temp);
+			PfMov(sc, &sc->iw, &sc->temp);
 			
 		}
 		for (uint64_t i = 6; i < 7; i++) {
-			VkMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
+			PfMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
 			
-			VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+			PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 			
-			VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+			PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 			
 		}
 
@@ -3329,41 +3329,41 @@ temp%s = temp;\n\
 			if (stageAngle < 0) {
 				temp_complex.data.c[0] = cos((2 * j + 1) * sc->double_PI / 8);
 				temp_complex.data.c[1] = -sin((2 * j + 1) * sc->double_PI / 8);
-				VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+				PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 			}
 			else {
 				temp_complex.data.c[0] = cos((2 * j + 1) * sc->double_PI / 8);
 				temp_complex.data.c[1] = sin((2 * j + 1) * sc->double_PI / 8);
-				VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+				PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 			}
 			for (uint64_t i = 8 + 4 * j; i < 9 + 4 * j; i++) {
-				VkMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
+				PfMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
 				
-				VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+				PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 				
-				VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+				PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 				
 			}
 			if (stageAngle < 0) {
-				VkMov_x_y(sc, &sc->temp, &sc->iw);
-				VkMov_y_Neg_x(sc, &sc->temp, &sc->iw);
+				PfMov_x_y(sc, &sc->temp, &sc->iw);
+				PfMov_y_Neg_x(sc, &sc->temp, &sc->iw);
 				
-				VkMov(sc, &sc->iw, &sc->temp);
+				PfMov(sc, &sc->iw, &sc->temp);
 				
 			}
 			else {
-				VkMov_x_Neg_y(sc, &sc->temp, &sc->iw);
-				VkMov_y_x(sc, &sc->temp, &sc->iw);
+				PfMov_x_Neg_y(sc, &sc->temp, &sc->iw);
+				PfMov_y_x(sc, &sc->temp, &sc->iw);
 				
-				VkMov(sc, &sc->iw, &sc->temp);
+				PfMov(sc, &sc->iw, &sc->temp);
 				
 			}
 			for (uint64_t i = 10 + 4 * j; i < 11 + 4 * j; i++) {
-				VkMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
+				PfMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
 				
-				VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+				PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 				
-				VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+				PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 				
 			}
 		}
@@ -3373,144 +3373,144 @@ temp%s = temp;\n\
 				if (stageAngle < 0) {
 					temp_complex.data.c[0] = cos((7 - 2 * j) * sc->double_PI / 16);
 					temp_complex.data.c[1] = -sin((7 - 2 * j) * sc->double_PI / 16);
-					VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+					PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 				}
 				else {
 					temp_complex.data.c[0] = cos((7 - 2 * j) * sc->double_PI / 16);
 					temp_complex.data.c[1] = sin((7 - 2 * j) * sc->double_PI / 16);
-					VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+					PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 				}
 			}
 			else {
 				if (stageAngle < 0) {
 					temp_complex.data.c[0] = cos((2 * j + 1) * sc->double_PI / 16);
 					temp_complex.data.c[1] = -sin((2 * j + 1) * sc->double_PI / 16);
-					VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+					PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 				}
 				else {
 					temp_complex.data.c[0] = cos((2 * j + 1) * sc->double_PI / 16);
 					temp_complex.data.c[1] = sin((2 * j + 1) * sc->double_PI / 16);
-					VkMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
+					PfMul(sc, &sc->iw, &sc->w, &temp_complex, 0);
 				}
 			}
 			for (uint64_t i = 16 + 4 * j; i < 17 + 4 * j; i++) {
-				VkMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
+				PfMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
 				
-				VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+				PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 				
-				VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+				PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 				
 			}
 			if (stageAngle < 0) {
-				VkMov_x_y(sc, &sc->temp, &sc->iw);
-				VkMov_y_Neg_x(sc, &sc->temp, &sc->iw);
+				PfMov_x_y(sc, &sc->temp, &sc->iw);
+				PfMov_y_Neg_x(sc, &sc->temp, &sc->iw);
 				
-				VkMov(sc, &sc->iw, &sc->temp);
+				PfMov(sc, &sc->iw, &sc->temp);
 				
 			}
 			else {
-				VkMov_x_Neg_y(sc, &sc->temp, &sc->iw);
-				VkMov_y_x(sc, &sc->temp, &sc->iw);
+				PfMov_x_Neg_y(sc, &sc->temp, &sc->iw);
+				PfMov_y_x(sc, &sc->temp, &sc->iw);
 				
-				VkMov(sc, &sc->iw, &sc->temp);
+				PfMov(sc, &sc->iw, &sc->temp);
 				
 			}
 			for (uint64_t i = 18 + 4 * j; i < 19 + 4 * j; i++) {
-				VkMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
+				PfMul(sc, &sc->temp, &regID[i + 1], &sc->iw, 0);
 				
-				VkSub(sc, &regID[i + 1], &regID[i], &sc->temp);
+				PfSub(sc, &regID[i + 1], &regID[i], &sc->temp);
 				
-				VkAdd(sc, &regID[i], &regID[i], &sc->temp);
+				PfAdd(sc, &regID[i], &regID[i], &sc->temp);
 				
 			}
 		}
 
 		uint64_t permute2[32] = { 0,16,8,24,4,20,12,28,2,18,10,26,6,22,14,30,1,17,9,25,5,21,13,29,3,19,11,27,7,23,15,31 };
-		VkPermute(sc, permute2, 32, 1, regID, &sc->temp);
+		PfPermute(sc, permute2, 32, 1, regID, &sc->temp);
 		
 
-		/*VkMov(sc, &sc->temp, &regID[1]);
+		/*PfMov(sc, &sc->temp, &regID[1]);
 		
-		VkMov(sc, &regID[1], &regID[16]);
+		PfMov(sc, &regID[1], &regID[16]);
 		
-		VkMov(sc, &regID[16], &sc->temp);
-		
-
-		VkMov(sc, &sc->temp, &regID[2]);
-		
-		VkMov(sc, &regID[2], &regID[8]);
-		
-		VkMov(sc, &regID[8], &sc->temp);
+		PfMov(sc, &regID[16], &sc->temp);
 		
 
-		VkMov(sc, &sc->temp, &regID[3]);
+		PfMov(sc, &sc->temp, &regID[2]);
 		
-		VkMov(sc, &regID[3], &regID[24]);
+		PfMov(sc, &regID[2], &regID[8]);
 		
-		VkMov(sc, &regID[24], &sc->temp);
-		
-
-		VkMov(sc, &sc->temp, &regID[5]);
-		
-		VkMov(sc, &regID[5], &regID[20]);
-		
-		VkMov(sc, &regID[20], &sc->temp);
+		PfMov(sc, &regID[8], &sc->temp);
 		
 
-		VkMov(sc, &sc->temp, &regID[6]);
+		PfMov(sc, &sc->temp, &regID[3]);
 		
-		VkMov(sc, &regID[6], &regID[12]);
+		PfMov(sc, &regID[3], &regID[24]);
 		
-		VkMov(sc, &regID[12], &sc->temp);
-		
-
-		VkMov(sc, &sc->temp, &regID[7]);
-		
-		VkMov(sc, &regID[7], &regID[28]);
-		
-		VkMov(sc, &regID[28], &sc->temp);
+		PfMov(sc, &regID[24], &sc->temp);
 		
 
-		VkMov(sc, &sc->temp, &regID[9]);
+		PfMov(sc, &sc->temp, &regID[5]);
 		
-		VkMov(sc, &regID[9], &regID[18]);
+		PfMov(sc, &regID[5], &regID[20]);
 		
-		VkMov(sc, &regID[18], &sc->temp);
-		
-
-		VkMov(sc, &sc->temp, &regID[11]);
-		
-		VkMov(sc, &regID[11], &regID[26]);
-		
-		VkMov(sc, &regID[26], &sc->temp);
+		PfMov(sc, &regID[20], &sc->temp);
 		
 
-		VkMov(sc, &sc->temp, &regID[13]);
+		PfMov(sc, &sc->temp, &regID[6]);
 		
-		VkMov(sc, &regID[13], &regID[22]);
+		PfMov(sc, &regID[6], &regID[12]);
 		
-		VkMov(sc, &regID[22], &sc->temp);
-		
-
-		VkMov(sc, &sc->temp, &regID[15]);
-		
-		VkMov(sc, &regID[15], &regID[30]);
-		
-		VkMov(sc, &regID[30], &sc->temp);
+		PfMov(sc, &regID[12], &sc->temp);
 		
 
-		VkMov(sc, &sc->temp, &regID[19]);
+		PfMov(sc, &sc->temp, &regID[7]);
 		
-		VkMov(sc, &regID[19], &regID[25]);
+		PfMov(sc, &regID[7], &regID[28]);
 		
-		VkMov(sc, &regID[25], &sc->temp);
+		PfMov(sc, &regID[28], &sc->temp);
 		
 
-		VkMov(sc, &sc->temp, &regID[23]);
+		PfMov(sc, &sc->temp, &regID[9]);
 		
-		VkMov(sc, &regID[23], &regID[29]);
+		PfMov(sc, &regID[9], &regID[18]);
 		
-		VkMov(sc, &regID[29], &sc->temp);
+		PfMov(sc, &regID[18], &sc->temp);
+		
+
+		PfMov(sc, &sc->temp, &regID[11]);
+		
+		PfMov(sc, &regID[11], &regID[26]);
+		
+		PfMov(sc, &regID[26], &sc->temp);
+		
+
+		PfMov(sc, &sc->temp, &regID[13]);
+		
+		PfMov(sc, &regID[13], &regID[22]);
+		
+		PfMov(sc, &regID[22], &sc->temp);
+		
+
+		PfMov(sc, &sc->temp, &regID[15]);
+		
+		PfMov(sc, &regID[15], &regID[30]);
+		
+		PfMov(sc, &regID[30], &sc->temp);
+		
+
+		PfMov(sc, &sc->temp, &regID[19]);
+		
+		PfMov(sc, &regID[19], &regID[25]);
+		
+		PfMov(sc, &regID[25], &sc->temp);
+		
+
+		PfMov(sc, &sc->temp, &regID[23]);
+		
+		PfMov(sc, &regID[23], &regID[29]);
+		
+		PfMov(sc, &regID[29], &sc->temp);
 		*/
 
 		break;

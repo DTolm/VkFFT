@@ -45,11 +45,11 @@
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel0/vkFFT_KernelUtils.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel0/vkFFT_KernelStartEnd.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
-static inline VkFFTResult VkShaderGen_FFT(VkFFTSpecializationConstantsLayout* sc, int type) {
+static inline VkFFTResult shaderGen_FFT(VkFFTSpecializationConstantsLayout* sc, int type) {
 	
-	VkContainer temp_int = VKFFT_ZERO_INIT;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	VkContainer temp_int1 = VKFFT_ZERO_INIT;
+	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	appendVersion(sc);
 	appendExtensions(sc);
@@ -98,11 +98,11 @@ static inline VkFFTResult VkShaderGen_FFT(VkFFTSpecializationConstantsLayout* sc
 
 	appendRegisterInitialization(sc, type);
 	
-	VkContainer stageSize;
+	PfContainer stageSize;
 	stageSize.type = 31;
-	VkContainer stageSizeSum;
+	PfContainer stageSizeSum;
 	stageSizeSum.type = 31;
-	VkContainer stageAngle;
+	PfContainer stageAngle;
 	stageAngle.type = 32;
 	
 	int64_t max_coordinate = 0;
@@ -258,9 +258,9 @@ static inline VkFFTResult VkShaderGen_FFT(VkFFTSpecializationConstantsLayout* sc
 				stageSizeSum.data.i = 0;
 				stageAngle.data.d = sc->double_PI;
 				sc->inverse = 1;
-				for (uint64_t i = 0; i < sc->numStages; i++) {
+				for (uint64_t i = 0; i < (uint64_t)sc->numStages; i++) {
 					temp_int.data.i = sc->stageRadix[i];
-					appendRadixStage(sc, &stageSize, &stageSizeSum, &stageAngle, &temp_int, i, locType);
+					appendRadixStage(sc, &stageSize, &stageSizeSum, &stageAngle, &temp_int, (int)i, locType);
 					if (i > 0) {
 						switch (sc->stageRadix[i]) {
 						case 2:

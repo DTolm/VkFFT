@@ -100,7 +100,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 			}
 			dimMult *= axis->specializationConstants.stageRadix[i];
 		}
-		axis->specializationConstants.maxStageSumLUT = maxStageSum;
+		axis->specializationConstants.maxStageSumLUT = (int)maxStageSum;
 
 		dimMult = 1;
 		for (uint64_t k = 0; k < axis->specializationConstants.numRaderPrimes; k++) {
@@ -164,7 +164,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 					}
 					dimMult *= axis->specializationConstants.raderContainer[k].stageRadix[i];
 				}
-				axis->specializationConstants.maxStageSumLUT = maxStageSum;
+				axis->specializationConstants.maxStageSumLUT = (int)maxStageSum;
 				dimMult = 1;
 			}
 		}
@@ -231,7 +231,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 					}
 					dimMult *= axis->specializationConstants.raderContainer[k].stageRadix[i];
 				}
-				axis->specializationConstants.maxStageSumLUT = maxStageSum;
+				axis->specializationConstants.maxStageSumLUT = (int)maxStageSum;
 				dimMult = 1;
 			}
 		}
@@ -400,8 +400,8 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 				}
 			}
 			if ((axis->specializationConstants.axis_upload_id > 0) && (app->configuration.useLUT_4step == 1)) {
-				for (uint64_t i = 0; i < axis->specializationConstants.stageStartSize.data.i; i++) {
-					for (uint64_t j = 0; j < axis->specializationConstants.fftDim.data.i; j++) {
+				for (uint64_t i = 0; i < (uint64_t)axis->specializationConstants.stageStartSize.data.i; i++) {
+					for (uint64_t j = 0; j < (uint64_t)axis->specializationConstants.fftDim.data.i; j++) {
 						long double angle = 2 * double_PI * ((i * j) / (long double)(axis->specializationConstants.stageStartSize.data.i * axis->specializationConstants.fftDim.data.i));
 						tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize.data.i)] = (double)cos(angle);
 						tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize.data.i) + 1] = (double)sin(angle);
@@ -740,8 +740,8 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 			}
 
 			if ((axis->specializationConstants.axis_upload_id > 0) && (app->configuration.useLUT_4step == 1)) {
-				for (uint64_t i = 0; i < axis->specializationConstants.stageStartSize.data.i; i++) {
-					for (uint64_t j = 0; j < axis->specializationConstants.fftDim.data.i; j++) {
+				for (uint64_t i = 0; i < (uint64_t)axis->specializationConstants.stageStartSize.data.i; i++) {
+					for (uint64_t j = 0; j < (uint64_t)axis->specializationConstants.fftDim.data.i; j++) {
 						double angle = 2 * double_PI * ((i * j) / (double)(axis->specializationConstants.stageStartSize.data.i * axis->specializationConstants.fftDim.data.i));
 						tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize.data.i)] = (float)cos(angle);
 						tempLUT[maxStageSum * 2 + 2 * (i + j * axis->specializationConstants.stageStartSize.data.i) + 1] = (float)sin(angle);
@@ -953,7 +953,7 @@ static inline VkFFTResult VkFFT_AllocateRaderUintLUT(VkFFTApplication* app, VkFF
 			uint64_t current_offset = 0;
 			for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
 				if (axis->specializationConstants.raderContainer[i].prime > 0) {
-					axis->specializationConstants.raderContainer[i].raderUintLUToffset = current_offset;
+					axis->specializationConstants.raderContainer[i].raderUintLUToffset = (int)current_offset;
 					uint64_t g_pow = 1;
 					tempRaderUintLUT[current_offset] = 1;
 					current_offset++;
@@ -1052,7 +1052,7 @@ static inline VkFFTResult VkFFT_AllocateRaderUintLUT(VkFFTApplication* app, VkFF
 			uint64_t current_offset = 0;
 			for (uint64_t i = 0; i < axis->specializationConstants.numRaderPrimes; i++) {
 				if (axis->specializationConstants.raderContainer[i].prime > 0) {
-					axis->specializationConstants.raderContainer[i].raderUintLUToffset = current_offset;
+					axis->specializationConstants.raderContainer[i].raderUintLUToffset = (int)current_offset;
 					uint64_t g_pow = 1;
 					current_offset += axis->specializationConstants.raderContainer[i].prime;
 				}

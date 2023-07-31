@@ -24,121 +24,121 @@
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 
-static inline void appendSharedToRegisters(VkFFTSpecializationConstantsLayout* sc, VkContainer* out, VkContainer* sdataID)
+static inline void appendSharedToRegisters(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* sdataID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "\
 %s = sdata[%s];\n", out->data.s, sdataID->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendSharedToRegisters_x_x(VkFFTSpecializationConstantsLayout* sc, VkContainer* out, VkContainer* sdataID)
+static inline void appendSharedToRegisters_x_x(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* sdataID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "\
 %s.x = sdata[%s].x;\n", out->data.s, sdataID->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendSharedToRegisters_x_y(VkFFTSpecializationConstantsLayout* sc, VkContainer* out, VkContainer* sdataID)
+static inline void appendSharedToRegisters_x_y(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* sdataID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "\
 %s.x = sdata[%s].y;\n", out->data.s, sdataID->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendSharedToRegisters_y_x(VkFFTSpecializationConstantsLayout* sc, VkContainer* out, VkContainer* sdataID)
+static inline void appendSharedToRegisters_y_x(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* sdataID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "\
 %s.y = sdata[%s].x;\n", out->data.s, sdataID->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendSharedToRegisters_y_y(VkFFTSpecializationConstantsLayout* sc, VkContainer* out, VkContainer* sdataID)
+static inline void appendSharedToRegisters_y_y(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* sdataID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "\
 %s.y = sdata[%s].y;\n", out->data.s, sdataID->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
 
-static inline void appendRegistersToShared(VkFFTSpecializationConstantsLayout* sc, VkContainer* sdataID, VkContainer* out)
+static inline void appendRegistersToShared(VkFFTSpecializationConstantsLayout* sc, PfContainer* sdataID, PfContainer* out)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "\
 sdata[%s] = %s;\n", sdataID->data.s, out->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendRegistersToShared_x_x(VkFFTSpecializationConstantsLayout* sc, VkContainer* sdataID, VkContainer* out)
+static inline void appendRegistersToShared_x_x(VkFFTSpecializationConstantsLayout* sc, PfContainer* sdataID, PfContainer* out)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "\
 sdata[%s].x = %s.x;\n", sdataID->data.s, out->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendRegistersToShared_x_y(VkFFTSpecializationConstantsLayout* sc, VkContainer* sdataID, VkContainer* out)
+static inline void appendRegistersToShared_x_y(VkFFTSpecializationConstantsLayout* sc, PfContainer* sdataID, PfContainer* out)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "\
 sdata[%s].x = %s.y;\n", sdataID->data.s, out->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendRegistersToShared_y_y(VkFFTSpecializationConstantsLayout* sc, VkContainer* sdataID, VkContainer* out)
+static inline void appendRegistersToShared_y_y(VkFFTSpecializationConstantsLayout* sc, PfContainer* sdataID, PfContainer* out)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "\
 sdata[%s].y = %s.y;\n", sdataID->data.s, out->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendRegistersToShared_y_x(VkFFTSpecializationConstantsLayout* sc, VkContainer* sdataID, VkContainer* out)
+static inline void appendRegistersToShared_y_x(VkFFTSpecializationConstantsLayout* sc, PfContainer* sdataID, PfContainer* out)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "\
 sdata[%s].y = %s.x;\n", sdataID->data.s, out->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
 
-static inline void appendConstantToRegisters(VkFFTSpecializationConstantsLayout* sc, VkContainer* out, VkContainer* constantBufferName, VkContainer* inoutID)
+static inline void appendConstantToRegisters(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* constantBufferName, PfContainer* inoutID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "\
 %s = %s[%s];\n", out->data.s, constantBufferName->data.s, inoutID->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendConstantToRegisters_x(VkFFTSpecializationConstantsLayout* sc, VkContainer* out, VkContainer* constantBufferName, VkContainer* inoutID)
+static inline void appendConstantToRegisters_x(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* constantBufferName, PfContainer* inoutID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "\
 %s.x = %s[%s];\n", out->data.s, constantBufferName->data.s, inoutID->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendConstantToRegisters_y(VkFFTSpecializationConstantsLayout* sc, VkContainer* out, VkContainer* constantBufferName, VkContainer* inoutID)
+static inline void appendConstantToRegisters_y(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* constantBufferName, PfContainer* inoutID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "\
 %s.y = %s[%s];\n", out->data.s, constantBufferName->data.s, inoutID->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
 
-static inline void appendGlobalToRegisters(VkFFTSpecializationConstantsLayout* sc, VkContainer* out, VkContainer* bufferName, VkContainer* inoutID)
+static inline void appendGlobalToRegisters(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* bufferName, PfContainer* inoutID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "%s", out->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, " = ");
-	VkAppendLine(sc);
-	VkAppendConversionStart(sc, out, bufferName);
+	PfAppendLine(sc);
+	PfAppendConversionStart(sc, out, bufferName);
 	if ((!(strcmp(bufferName->data.s, sc->inputsStruct.data.s))) && (sc->inputBufferBlockNum != 1)) {
 		sc->tempLen = sprintf(sc->tempStr, "inputBlocks[%s / %" PRIu64 "].%s[%s %% %" PRIu64 "]", inoutID->data.s, sc->inputBufferBlockSize, bufferName->data.s, inoutID->data.s, sc->inputBufferBlockSize);
 	}
@@ -151,23 +151,23 @@ static inline void appendGlobalToRegisters(VkFFTSpecializationConstantsLayout* s
 	else {
 		sc->tempLen = sprintf(sc->tempStr, "%s[%s]", bufferName->data.s, inoutID->data.s);
 	}
-	VkAppendLine(sc);
-	VkAppendConversionEnd(sc, out, bufferName);
+	PfAppendLine(sc);
+	PfAppendConversionEnd(sc, out, bufferName);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendGlobalToRegisters_x(VkFFTSpecializationConstantsLayout* sc, VkContainer* out, VkContainer* bufferName, VkContainer* inoutID)
+static inline void appendGlobalToRegisters_x(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* bufferName, PfContainer* inoutID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer* floatType;
-	VkGetTypeFromCode(sc, out->type - 1, &floatType);
+	PfContainer* floatType;
+	PfGetTypeFromCode(sc, out->type - 1, &floatType);
 
 	sc->tempLen = sprintf(sc->tempStr, "%s.x", out->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, " = ");
-	VkAppendLine(sc);
-	VkAppendConversionStart(sc, floatType, bufferName);
+	PfAppendLine(sc);
+	PfAppendConversionStart(sc, floatType, bufferName);
 	if ((!(strcmp(bufferName->data.s, sc->inputsStruct.data.s))) && (sc->inputBufferBlockNum != 1)) {
 		sc->tempLen = sprintf(sc->tempStr, "inputBlocks[%s / %" PRIu64 "].%s[%s %% %" PRIu64 "]", inoutID->data.s, sc->inputBufferBlockSize, bufferName->data.s, inoutID->data.s, sc->inputBufferBlockSize);
 	}
@@ -180,23 +180,23 @@ static inline void appendGlobalToRegisters_x(VkFFTSpecializationConstantsLayout*
 	else {
 		sc->tempLen = sprintf(sc->tempStr, "%s[%s]", bufferName->data.s, inoutID->data.s);
 	}
-	VkAppendLine(sc);
-	VkAppendConversionEnd(sc, floatType, bufferName);
+	PfAppendLine(sc);
+	PfAppendConversionEnd(sc, floatType, bufferName);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendGlobalToRegisters_y(VkFFTSpecializationConstantsLayout* sc, VkContainer* out, VkContainer* bufferName, VkContainer* inoutID)
+static inline void appendGlobalToRegisters_y(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* bufferName, PfContainer* inoutID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer* floatType;
-	VkGetTypeFromCode(sc, out->type - 1, &floatType);
+	PfContainer* floatType;
+	PfGetTypeFromCode(sc, out->type - 1, &floatType);
 
 	sc->tempLen = sprintf(sc->tempStr, "%s.y", out->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, " = ");
-	VkAppendLine(sc);
-	VkAppendConversionStart(sc, floatType, bufferName);
+	PfAppendLine(sc);
+	PfAppendConversionStart(sc, floatType, bufferName);
 	if ((!(strcmp(bufferName->data.s, sc->inputsStruct.data.s))) && (sc->inputBufferBlockNum != 1)) {
 		sc->tempLen = sprintf(sc->tempStr, "inputBlocks[%s / %" PRIu64 "].%s[%s %% %" PRIu64 "]", inoutID->data.s, sc->inputBufferBlockSize, bufferName->data.s, inoutID->data.s, sc->inputBufferBlockSize);
 	}
@@ -209,14 +209,14 @@ static inline void appendGlobalToRegisters_y(VkFFTSpecializationConstantsLayout*
 	else {
 		sc->tempLen = sprintf(sc->tempStr, "%s[%s]", bufferName->data.s, inoutID->data.s);
 	}
-	VkAppendLine(sc);
-	VkAppendConversionEnd(sc, floatType, bufferName);
+	PfAppendLine(sc);
+	PfAppendConversionEnd(sc, floatType, bufferName);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
 
-static inline void appendRegistersToGlobal(VkFFTSpecializationConstantsLayout* sc, VkContainer* bufferName, VkContainer* inoutID, VkContainer* in)
+static inline void appendRegistersToGlobal(VkFFTSpecializationConstantsLayout* sc, PfContainer* bufferName, PfContainer* inoutID, PfContainer* in)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if ((!(strcmp(bufferName->data.s, sc->inputsStruct.data.s))) && (sc->inputBufferBlockNum != 1)) {
@@ -231,22 +231,22 @@ static inline void appendRegistersToGlobal(VkFFTSpecializationConstantsLayout* s
 	else {
 		sc->tempLen = sprintf(sc->tempStr, "%s[%s]", bufferName->data.s, inoutID->data.s);
 	}
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, " = ");
-	VkAppendLine(sc);
-	VkAppendConversionStart(sc, bufferName, in);
+	PfAppendLine(sc);
+	PfAppendConversionStart(sc, bufferName, in);
 	sc->tempLen = sprintf(sc->tempStr, "%s", in->data.s);
-	VkAppendLine(sc);
-	VkAppendConversionEnd(sc, bufferName, in);
+	PfAppendLine(sc);
+	PfAppendConversionEnd(sc, bufferName, in);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendRegistersToGlobal_x(VkFFTSpecializationConstantsLayout* sc, VkContainer* bufferName, VkContainer* inoutID, VkContainer* in)
+static inline void appendRegistersToGlobal_x(VkFFTSpecializationConstantsLayout* sc, PfContainer* bufferName, PfContainer* inoutID, PfContainer* in)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer* floatType;
-	VkGetTypeFromCode(sc, in->type - 1, &floatType);
+	PfContainer* floatType;
+	PfGetTypeFromCode(sc, in->type - 1, &floatType);
 	
 	if ((!(strcmp(bufferName->data.s, sc->inputsStruct.data.s))) && (sc->inputBufferBlockNum != 1)) {
 		sc->tempLen = sprintf(sc->tempStr, "inputBlocks[%s / %" PRIu64 "].%s[%s %% %" PRIu64 "]", inoutID->data.s, sc->inputBufferBlockSize, bufferName->data.s, inoutID->data.s, sc->inputBufferBlockSize);
@@ -260,22 +260,22 @@ static inline void appendRegistersToGlobal_x(VkFFTSpecializationConstantsLayout*
 	else {
 		sc->tempLen = sprintf(sc->tempStr, "%s[%s]", bufferName->data.s, inoutID->data.s);
 	}
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, " = ");
-	VkAppendLine(sc);
-	VkAppendConversionStart(sc, bufferName, floatType);
+	PfAppendLine(sc);
+	PfAppendConversionStart(sc, bufferName, floatType);
 	sc->tempLen = sprintf(sc->tempStr, "%s.x", in->data.s);
-	VkAppendLine(sc);
-	VkAppendConversionEnd(sc, bufferName, floatType);
+	PfAppendLine(sc);
+	PfAppendConversionEnd(sc, bufferName, floatType);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendRegistersToGlobal_y(VkFFTSpecializationConstantsLayout* sc, VkContainer* bufferName, VkContainer* inoutID, VkContainer* in)
+static inline void appendRegistersToGlobal_y(VkFFTSpecializationConstantsLayout* sc, PfContainer* bufferName, PfContainer* inoutID, PfContainer* in)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	VkContainer* floatType;
-	VkGetTypeFromCode(sc, in->type - 1, &floatType);
+	PfContainer* floatType;
+	PfGetTypeFromCode(sc, in->type - 1, &floatType);
 
 	if ((!(strcmp(bufferName->data.s, sc->inputsStruct.data.s))) && (sc->inputBufferBlockNum != 1)) {
 		sc->tempLen = sprintf(sc->tempStr, "inputBlocks[%s / %" PRIu64 "].%s[%s %% %" PRIu64 "]", inoutID->data.s, sc->inputBufferBlockSize, bufferName->data.s, inoutID->data.s, sc->inputBufferBlockSize);
@@ -289,26 +289,26 @@ static inline void appendRegistersToGlobal_y(VkFFTSpecializationConstantsLayout*
 	else {
 		sc->tempLen = sprintf(sc->tempStr, "%s[%s]", bufferName->data.s, inoutID->data.s);
 	}
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, " = ");
-	VkAppendLine(sc);
-	VkAppendConversionStart(sc, bufferName, floatType);
+	PfAppendLine(sc);
+	PfAppendConversionStart(sc, bufferName, floatType);
 	sc->tempLen = sprintf(sc->tempStr, "%s.y", in->data.s);
-	VkAppendLine(sc);
-	VkAppendConversionEnd(sc, bufferName, floatType);
+	PfAppendLine(sc);
+	PfAppendConversionEnd(sc, bufferName, floatType);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
 
-static inline void appendGlobalToShared(VkFFTSpecializationConstantsLayout* sc, VkContainer* sdataID, VkContainer* bufferName, VkContainer* inoutID)
+static inline void appendGlobalToShared(VkFFTSpecializationConstantsLayout* sc, PfContainer* sdataID, PfContainer* bufferName, PfContainer* inoutID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	sc->tempLen = sprintf(sc->tempStr, "sdata[%s]", sdataID->data.s);
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, " = ");
-	VkAppendLine(sc);
-	VkAppendConversionStart(sc, &sc->sdataStruct, bufferName);
+	PfAppendLine(sc);
+	PfAppendConversionStart(sc, &sc->sdataStruct, bufferName);
 	if ((!(strcmp(bufferName->data.s, sc->inputsStruct.data.s))) && (sc->inputBufferBlockNum != 1)) {
 		sc->tempLen = sprintf(sc->tempStr, "inputBlocks[%s / %" PRIu64 "].%s[%s %% %" PRIu64 "]", inoutID->data.s, sc->inputBufferBlockSize, bufferName->data.s, inoutID->data.s, sc->inputBufferBlockSize);
 	}
@@ -321,13 +321,13 @@ static inline void appendGlobalToShared(VkFFTSpecializationConstantsLayout* sc, 
 	else {
 		sc->tempLen = sprintf(sc->tempStr, "%s[%s]", bufferName->data.s, inoutID->data.s);
 	}
-	VkAppendLine(sc);
-	VkAppendConversionEnd(sc, &sc->sdataStruct, bufferName);
+	PfAppendLine(sc);
+	PfAppendConversionEnd(sc, &sc->sdataStruct, bufferName);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
-static inline void appendSharedToGlobal(VkFFTSpecializationConstantsLayout* sc, VkContainer* bufferName, VkContainer* inoutID, VkContainer* sdataID)
+static inline void appendSharedToGlobal(VkFFTSpecializationConstantsLayout* sc, PfContainer* bufferName, PfContainer* inoutID, PfContainer* sdataID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if ((!(strcmp(bufferName->data.s, sc->inputsStruct.data.s))) && (sc->inputBufferBlockNum != 1)) {
@@ -342,44 +342,44 @@ static inline void appendSharedToGlobal(VkFFTSpecializationConstantsLayout* sc, 
 	else {
 		sc->tempLen = sprintf(sc->tempStr, "%s[%s]", bufferName->data.s, inoutID->data.s);
 	}
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, " = ");
-	VkAppendLine(sc);
-	VkAppendConversionStart(sc, bufferName, &sc->sdataStruct);
+	PfAppendLine(sc);
+	PfAppendConversionStart(sc, bufferName, &sc->sdataStruct);
 	sc->tempLen = sprintf(sc->tempStr, "sdata[%s]", sdataID->data.s);
-	VkAppendLine(sc);
-	VkAppendConversionEnd(sc, bufferName, &sc->sdataStruct);
+	PfAppendLine(sc);
+	PfAppendConversionEnd(sc, bufferName, &sc->sdataStruct);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
-	VkAppendLine(sc);
+	PfAppendLine(sc);
 	return;
 }
 static inline void appendSetSMToZero(VkFFTSpecializationConstantsLayout* sc) {
 	VkFFTResult res = VKFFT_SUCCESS;
 
-	VkContainer temp_int = VKFFT_ZERO_INIT;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 
-	VkContainer temp_int1 = VKFFT_ZERO_INIT;
+	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 
-	VkContainer used_registers = VKFFT_ZERO_INIT;
+	PfContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
 	temp_int.data.i = sc->localSize[0].data.i * sc->localSize[1].data.i;
 	temp_int1.data.i = sc->usedSharedMemory.data.i / sc->complexSize;
-	VkDivCeil(sc, &used_registers, &temp_int1, &temp_int);
+	PfDivCeil(sc, &used_registers, &temp_int1, &temp_int);
 	for (int64_t i = 0; i < used_registers.data.i; i++) {
 		if (sc->localSize[1].data.i == 1) {
 			temp_int.data.i = (i)*sc->localSize[0].data.i;
 
-			VkAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
+			PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
 		}
 		else {
-			VkMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
+			PfMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
 
 			temp_int.data.i = (i)*sc->localSize[0].data.i * sc->localSize[1].data.i;
 
-			VkAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
-			VkAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
+			PfAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
+			PfAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
 		}
 
 		temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
@@ -387,17 +387,17 @@ static inline void appendSetSMToZero(VkFFTSpecializationConstantsLayout* sc) {
 		if (temp_int.data.i > temp_int1.data.i) {
 			//check that we only read fftDim * local batch data
 			//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
-			VkIf_lt_start(sc, &sc->combinedID, &temp_int1);
+			PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
 		}
 	
-		VkSetToZeroShared(sc, &sc->combinedID);
+		PfSetToZeroShared(sc, &sc->combinedID);
 
 		temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
 		temp_int1.data.i = sc->usedSharedMemory.data.i / sc->complexSize;
 		if (temp_int.data.i > temp_int1.data.i) {
 			//check that we only read fftDim * local batch data
 			//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
-			VkIf_end(sc);
+			PfIf_end(sc);
 		}
 	}
 

@@ -444,7 +444,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		deleteVkFFT(app);
 		return VKFFT_ERROR_FAILED_TO_GET_FUNCTION;
 	}
-	if (axis->specializationConstants.usedSharedMemory.data.i > app->configuration.sharedMemorySizeStatic) {
+	if ((uint64_t)axis->specializationConstants.usedSharedMemory.data.i > app->configuration.sharedMemorySizeStatic) {
 		result2 = cuFuncSetAttribute(axis->VkFFTKernel, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, (int)axis->specializationConstants.usedSharedMemory.data.i);
 		if (result2 != CUDA_SUCCESS) {
 			printf("cuFuncSetAttribute error: %d\n", result2);
@@ -601,7 +601,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		deleteVkFFT(app);
 		return VKFFT_ERROR_FAILED_TO_GET_FUNCTION;
 	}
-	if (axis->specializationConstants.usedSharedMemory.data.i > app->configuration.sharedMemorySizeStatic) {
+	if ((uint64_t)axis->specializationConstants.usedSharedMemory.data.i > app->configuration.sharedMemorySizeStatic) {
 		result2 = hipFuncSetAttribute(axis->VkFFTKernel, hipFuncAttributeMaxDynamicSharedMemorySize, (int)axis->specializationConstants.usedSharedMemory.data.i);
 		//result2 = hipFuncSetCacheConfig(axis->VkFFTKernel, hipFuncCachePreferShared);
 		if (result2 != hipSuccess) {

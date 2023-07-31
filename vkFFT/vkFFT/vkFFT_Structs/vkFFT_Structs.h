@@ -67,21 +67,21 @@
 #endif
 
 //unified VkFFT container
-typedef union VkData {
+typedef union PfData {
 	int64_t i;
 	long double d;
 	long double c[2];
 
 	char* s;
-} VkData;
-typedef struct VkContainer VkContainer;
-struct VkContainer{
+} PfData;
+typedef struct PfContainer PfContainer;
+struct PfContainer{
 	int type; // 0 - uninitialized
 			  // 1 - int, 2 - float, 3 - complex float; 
 			  // + X0: 0 - half, 1 - float, 2 - double, 3 - long double - precision identifiers (only for strings now, all number values are in max long double precision for simplicity)
 			  // 100 + X - variable name, containing same type as in X
 			  
-	VkData data; // memory of the container
+	PfData data; // memory of the container
 	int size; //  bytes allcoated in data.s
 };
 
@@ -195,7 +195,7 @@ typedef struct {
 	uint64_t useUint64;// use 64-bit addressing mode in generated kernels
 	uint64_t omitDimension[VKFFT_MAX_FFT_DIMENSIONS];//disable FFT for this dimension (0 - FFT enabled, 1 - FFT disabled). Default 0. Doesn't work for R2C dimension 0 for now. Doesn't work with convolutions.
 	uint64_t performBandwidthBoost;//try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise 
-	uint64_t groupedBatch[VKFFT_MAX_FFT_DIMENSIONS];
+	uint64_t groupedBatch[VKFFT_MAX_FFT_DIMENSIONS];// try to force this many FFTs to be perfromed by one threadblock for each dimension
 
 	uint64_t doublePrecision; //perform calculations in double precision (0 - off, 1 - on).
 	uint64_t halfPrecision; //perform calculations in half precision (0 - off, 1 - on)
@@ -686,9 +686,9 @@ struct VkFFTRaderContainer {
 	int64_t RaderKernelOffsetLUT;
 	int64_t RaderRadixOffsetLUT;
 	int64_t RaderRadixOffsetLUTiFFT;
-	VkContainer g_powConstantStruct;
-	VkContainer r_rader_kernelConstantStruct;
-	VkContainer i_rader_kernelConstantStruct;
+	PfContainer g_powConstantStruct;
+	PfContainer r_rader_kernelConstantStruct;
+	PfContainer i_rader_kernelConstantStruct;
 	void* raderFFTkernel;
 
 	struct VkFFTRaderContainer* container;
@@ -698,11 +698,11 @@ typedef struct {
 	VkFFTResult res;
 	long double double_PI; 
     int numFFTdims;
-	VkContainer size[VKFFT_MAX_FFT_DIMENSIONS];
-	VkContainer localSize[3];
+	PfContainer size[VKFFT_MAX_FFT_DIMENSIONS];
+	PfContainer localSize[3];
 	int numSubgroups;
-	VkContainer sourceFFTSize;
-	VkContainer fftDim;
+	PfContainer sourceFFTSize;
+	PfContainer fftDim;
 	int precision;
 	int inverse;
 	int actualInverse;
@@ -728,8 +728,8 @@ typedef struct {
 	int BluesteinConvolutionStep;
 	int BluesteinPreMultiplication;
 	int BluesteinPostMultiplication;
-	VkContainer startDCT3LUT;
-	VkContainer startDCT4LUT;
+	PfContainer startDCT3LUT;
+	PfContainer startDCT4LUT;
 	int performR2C;
 	int performR2CmultiUpload;
 	int performDCT;
@@ -738,28 +738,28 @@ typedef struct {
 	int performZeropaddingFull[VKFFT_MAX_FFT_DIMENSIONS]; // don't do read/write if full sequence is omitted
 	int performZeropaddingInput[VKFFT_MAX_FFT_DIMENSIONS]; // don't read if input is zeropadded (0 - off, 1 - on)
 	int performZeropaddingOutput[VKFFT_MAX_FFT_DIMENSIONS]; // don't write if output is zeropadded (0 - off, 1 - on)
-	VkContainer fft_zeropad_left_full[VKFFT_MAX_FFT_DIMENSIONS];
-	VkContainer fft_zeropad_left_read[VKFFT_MAX_FFT_DIMENSIONS];
-	VkContainer fft_zeropad_left_write[VKFFT_MAX_FFT_DIMENSIONS];
-	VkContainer fft_zeropad_right_full[VKFFT_MAX_FFT_DIMENSIONS];
-	VkContainer fft_zeropad_right_read[VKFFT_MAX_FFT_DIMENSIONS];
-	VkContainer fft_zeropad_right_write[VKFFT_MAX_FFT_DIMENSIONS];
-	VkContainer fft_zeropad_Bluestein_left_read[VKFFT_MAX_FFT_DIMENSIONS];
-	VkContainer fft_zeropad_Bluestein_left_write[VKFFT_MAX_FFT_DIMENSIONS];
-	VkContainer fft_zeropad_Bluestein_right_read[VKFFT_MAX_FFT_DIMENSIONS];
-	VkContainer fft_zeropad_Bluestein_right_write[VKFFT_MAX_FFT_DIMENSIONS];
-	VkContainer inputStride[VKFFT_MAX_FFT_DIMENSIONS+2];
-	VkContainer outputStride[VKFFT_MAX_FFT_DIMENSIONS+2];
-	VkContainer fft_dim_full;
-	VkContainer stageStartSize;
-	VkContainer firstStageStartSize;
-	VkContainer fft_dim_x;
-	VkContainer dispatchZactualFFTSize;
+	PfContainer fft_zeropad_left_full[VKFFT_MAX_FFT_DIMENSIONS];
+	PfContainer fft_zeropad_left_read[VKFFT_MAX_FFT_DIMENSIONS];
+	PfContainer fft_zeropad_left_write[VKFFT_MAX_FFT_DIMENSIONS];
+	PfContainer fft_zeropad_right_full[VKFFT_MAX_FFT_DIMENSIONS];
+	PfContainer fft_zeropad_right_read[VKFFT_MAX_FFT_DIMENSIONS];
+	PfContainer fft_zeropad_right_write[VKFFT_MAX_FFT_DIMENSIONS];
+	PfContainer fft_zeropad_Bluestein_left_read[VKFFT_MAX_FFT_DIMENSIONS];
+	PfContainer fft_zeropad_Bluestein_left_write[VKFFT_MAX_FFT_DIMENSIONS];
+	PfContainer fft_zeropad_Bluestein_right_read[VKFFT_MAX_FFT_DIMENSIONS];
+	PfContainer fft_zeropad_Bluestein_right_write[VKFFT_MAX_FFT_DIMENSIONS];
+	PfContainer inputStride[VKFFT_MAX_FFT_DIMENSIONS+2];
+	PfContainer outputStride[VKFFT_MAX_FFT_DIMENSIONS+2];
+	PfContainer fft_dim_full;
+	PfContainer stageStartSize;
+	PfContainer firstStageStartSize;
+	PfContainer fft_dim_x;
+	PfContainer dispatchZactualFFTSize;
 	int numStages;
 	int stageRadix[33];
-	VkContainer inputOffset;
-	VkContainer kernelOffset;
-	VkContainer outputOffset;
+	PfContainer inputOffset;
+	PfContainer kernelOffset;
+	PfContainer outputOffset;
 	int reorderFourStep;
 	int pushConstantsStructSize;
 	int performWorkGroupShift[VKFFT_MAX_FFT_DIMENSIONS];
@@ -774,11 +774,11 @@ typedef struct {
 	uint64_t kernelBlockSize;
 	int numCoordinates;
 	int matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
-	VkContainer numBatches;
-	VkContainer numKernels;
+	PfContainer numBatches;
+	PfContainer numKernels;
 	int conjugateConvolution;
 	int crossPowerSpectrumNormalization;
-	VkContainer usedSharedMemory;
+	PfContainer usedSharedMemory;
 	int sharedMemSize;
 	int sharedMemSizePow2;
 	int normalize;
@@ -797,14 +797,14 @@ typedef struct {
 	int warpSize;
 	int numSharedBanks;
 	int resolveBankConflictFirstStages;
-	VkContainer sharedStrideBankConflictFirstStages;
-	VkContainer sharedStrideReadWriteConflict;
+	PfContainer sharedStrideBankConflictFirstStages;
+	PfContainer sharedStrideReadWriteConflict;
 
-	VkContainer sharedStrideRaderFFT;
-	VkContainer sharedShiftRaderFFT;
+	PfContainer sharedStrideRaderFFT;
+	PfContainer sharedShiftRaderFFT;
 
-	VkContainer maxSharedStride;
-	VkContainer maxSingleSizeStrided;
+	PfContainer maxSharedStride;
+	PfContainer maxSingleSizeStrided;
 	int axisSwapped;
 	int stridedSharedLayout;
 	int mergeSequencesR2C;
@@ -823,9 +823,9 @@ typedef struct {
 	int RaderUintLUTBindingID;
 
 	int useRaderMult;
-	VkContainer additionalRaderSharedSize;
-	VkContainer RaderKernelOffsetShared[33];
-	VkContainer RaderKernelOffsetLUT[33];
+	PfContainer additionalRaderSharedSize;
+	PfContainer RaderKernelOffsetShared[33];
+	PfContainer RaderKernelOffsetLUT[33];
 	int rader_generator[33];
 	int fixMinRaderPrimeMult;//start Rader algorithm for primes from this number
 	int fixMaxRaderPrimeMult;//switch from Rader to Bluestein algorithm for primes from this number
@@ -848,87 +848,87 @@ typedef struct {
 #endif
 	int disableSetLocale;
 
-	VkContainer* regIDs;
-	VkContainer* regIDs_copy; //only for convolutions
-	VkContainer* temp_conv; //only for convolutions
-	VkContainer* disableThreadsStart;
-	VkContainer* disableThreadsEnd;
-	VkContainer sdataID;
-	VkContainer inoutID;
-	VkContainer inoutID_x;
-	VkContainer inoutID_y;
-	VkContainer combinedID;
-	VkContainer LUTId;
-	VkContainer raderIDx;
-	VkContainer raderIDx2;
-	VkContainer gl_LocalInvocationID_x;
-	VkContainer gl_LocalInvocationID_y;
-	VkContainer gl_LocalInvocationID_z;
-	VkContainer gl_GlobalInvocationID_x;
-	VkContainer gl_GlobalInvocationID_y;
-	VkContainer gl_GlobalInvocationID_z;
-	VkContainer gl_SubgroupInvocationID;
-	VkContainer gl_SubgroupID;
-	VkContainer tshuffle;
-	VkContainer sharedStride;
-	VkContainer gl_WorkGroupSize_x;
-	VkContainer gl_WorkGroupSize_y;
-	VkContainer gl_WorkGroupSize_z;
+	PfContainer* regIDs;
+	PfContainer* regIDs_copy; //only for convolutions
+	PfContainer* temp_conv; //only for convolutions
+	PfContainer* disableThreadsStart;
+	PfContainer* disableThreadsEnd;
+	PfContainer sdataID;
+	PfContainer inoutID;
+	PfContainer inoutID_x;
+	PfContainer inoutID_y;
+	PfContainer combinedID;
+	PfContainer LUTId;
+	PfContainer raderIDx;
+	PfContainer raderIDx2;
+	PfContainer gl_LocalInvocationID_x;
+	PfContainer gl_LocalInvocationID_y;
+	PfContainer gl_LocalInvocationID_z;
+	PfContainer gl_GlobalInvocationID_x;
+	PfContainer gl_GlobalInvocationID_y;
+	PfContainer gl_GlobalInvocationID_z;
+	PfContainer gl_SubgroupInvocationID;
+	PfContainer gl_SubgroupID;
+	PfContainer tshuffle;
+	PfContainer sharedStride;
+	PfContainer gl_WorkGroupSize_x;
+	PfContainer gl_WorkGroupSize_y;
+	PfContainer gl_WorkGroupSize_z;
 
-	VkContainer halfDef;
-	VkContainer floatDef;
-	VkContainer doubleDef;
+	PfContainer halfDef;
+	PfContainer floatDef;
+	PfContainer doubleDef;
 
-	VkContainer half2Def;
-	VkContainer float2Def;
-	VkContainer double2Def;
+	PfContainer half2Def;
+	PfContainer float2Def;
+	PfContainer double2Def;
 
-	VkContainer halfLiteral;
-	VkContainer floatLiteral;
-	VkContainer doubleLiteral;
+	PfContainer halfLiteral;
+	PfContainer floatLiteral;
+	PfContainer doubleLiteral;
 
-	VkContainer intDef;
-	VkContainer uintDef;
+	PfContainer intDef;
+	PfContainer uintDef;
 
-	VkContainer int64Def;
-	VkContainer uint64Def;
+	PfContainer int64Def;
+	PfContainer uint64Def;
 
-	VkContainer constDef;
+	PfContainer constDef;
 
-	VkContainer functionDef;
+	PfContainer functionDef;
 
-	VkContainer gl_WorkGroupID_x;
-	VkContainer gl_WorkGroupID_y;
-	VkContainer gl_WorkGroupID_z;
+	PfContainer gl_WorkGroupID_x;
+	PfContainer gl_WorkGroupID_y;
+	PfContainer gl_WorkGroupID_z;
 
-	VkContainer workGroupShiftX;
-	VkContainer workGroupShiftY;
-	VkContainer workGroupShiftZ;
+	PfContainer workGroupShiftX;
+	PfContainer workGroupShiftY;
+	PfContainer workGroupShiftZ;
 
-	VkContainer shiftX;
-	VkContainer shiftY;
-	VkContainer shiftZ;
+	PfContainer shiftX;
+	PfContainer shiftY;
+	PfContainer shiftZ;
 
 	int useDisableThreads;
-	VkContainer disableThreads;
+	PfContainer disableThreads;
 
-	VkContainer tempReg;
+	PfContainer tempReg;
 	
-	VkContainer coordinate;
-	VkContainer batchID;
-	VkContainer stageInvocationID;
-	VkContainer blockInvocationID;
-	VkContainer temp;
-	VkContainer temp2;
-	VkContainer tempInt;
-	VkContainer tempInt2;
-	VkContainer tempFloat;
-	VkContainer w;
-	VkContainer iw;
-	VkContainer angle;
-	VkContainer mult;
-	VkContainer x0[33];
-	VkContainer locID[33];
+	PfContainer coordinate;
+	PfContainer batchID;
+	PfContainer stageInvocationID;
+	PfContainer blockInvocationID;
+	PfContainer temp;
+	PfContainer temp2;
+	PfContainer tempInt;
+	PfContainer tempInt2;
+	PfContainer tempFloat;
+	PfContainer w;
+	PfContainer iw;
+	PfContainer angle;
+	PfContainer mult;
+	PfContainer x0[33];
+	PfContainer locID[33];
 	char* code0;
 	char* tempStr;
 	int64_t tempLen;
@@ -938,7 +938,7 @@ typedef struct {
 	int64_t maxTempLength;
 
 	int dataTypeSize;
-	VkContainer LFending;
+	PfContainer LFending;
 	int complexDataType;
 
 	// 0 - float, 1 - double, 2 - half
@@ -960,19 +960,19 @@ typedef struct {
 	int outputMemoryCode;
 	//int inputType;
 	//int outputType;
-	VkContainer inputsStruct;
-	VkContainer outputsStruct;
-	VkContainer kernelStruct;
-	VkContainer sdataStruct;
-	VkContainer LUTStruct;
-	VkContainer BluesteinStruct;
-	VkContainer BluesteinConvolutionKernelStruct;
-	VkContainer g_powStruct;
+	PfContainer inputsStruct;
+	PfContainer outputsStruct;
+	PfContainer kernelStruct;
+	PfContainer sdataStruct;
+	PfContainer LUTStruct;
+	PfContainer BluesteinStruct;
+	PfContainer BluesteinConvolutionKernelStruct;
+	PfContainer g_powStruct;
 
-	//VkContainer cosDef;
-	//VkContainer sinDef;
+	//PfContainer cosDef;
+	//PfContainer sinDef;
 
-	VkContainer oldLocale;
+	PfContainer oldLocale;
 
 	int64_t id;
 } VkFFTSpecializationConstantsLayout;

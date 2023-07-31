@@ -28,32 +28,32 @@
 static inline VkFFTResult initMemoryParametersAPI(VkFFTApplication* app, VkFFTSpecializationConstantsLayout* sc) {
 	VkFFTResult res = VKFFT_SUCCESS;
 
-	VkAllocateContainerFlexible(sc, &sc->halfLiteral, 50);
+	PfAllocateContainerFlexible(sc, &sc->halfLiteral, 50);
 	sc->halfLiteral.type = 100;	
-	VkAllocateContainerFlexible(sc, &sc->floatLiteral, 50);
+	PfAllocateContainerFlexible(sc, &sc->floatLiteral, 50);
 	sc->floatLiteral.type = 110;	
-	VkAllocateContainerFlexible(sc, &sc->doubleLiteral, 50);
+	PfAllocateContainerFlexible(sc, &sc->doubleLiteral, 50);
 	sc->doubleLiteral.type = 120;
-	VkAllocateContainerFlexible(sc, &sc->halfDef, 50);
+	PfAllocateContainerFlexible(sc, &sc->halfDef, 50);
 	sc->halfDef.type = 100;
-	VkAllocateContainerFlexible(sc, &sc->floatDef, 50);
+	PfAllocateContainerFlexible(sc, &sc->floatDef, 50);
 	sc->floatDef.type = 110;
-	VkAllocateContainerFlexible(sc, &sc->doubleDef, 50);
+	PfAllocateContainerFlexible(sc, &sc->doubleDef, 50);
 	sc->doubleDef.type = 120;
-	VkAllocateContainerFlexible(sc, &sc->half2Def, 50);
+	PfAllocateContainerFlexible(sc, &sc->half2Def, 50);
 	sc->half2Def.type = 100;
-	VkAllocateContainerFlexible(sc, &sc->float2Def, 50);
+	PfAllocateContainerFlexible(sc, &sc->float2Def, 50);
 	sc->float2Def.type = 110;
-	VkAllocateContainerFlexible(sc, &sc->double2Def, 50);
+	PfAllocateContainerFlexible(sc, &sc->double2Def, 50);
 	sc->double2Def.type = 120;
 
-	VkAllocateContainerFlexible(sc, &sc->uintDef, 50);
+	PfAllocateContainerFlexible(sc, &sc->uintDef, 50);
 	sc->uintDef.type = 100;
-	VkAllocateContainerFlexible(sc, &sc->intDef, 50);
+	PfAllocateContainerFlexible(sc, &sc->intDef, 50);
 	sc->intDef.type = 110;
-	VkAllocateContainerFlexible(sc, &sc->uint64Def, 50);
+	PfAllocateContainerFlexible(sc, &sc->uint64Def, 50);
 	sc->uint64Def.type = 120;
-	VkAllocateContainerFlexible(sc, &sc->int64Def, 50);
+	PfAllocateContainerFlexible(sc, &sc->int64Def, 50);
 	sc->int64Def.type = 130;
 
 #if(VKFFT_BACKEND==0)
@@ -226,117 +226,117 @@ static inline VkFFTResult initParametersAPI(VkFFTApplication* app, VkFFTSpeciali
 	if (!sc->tempStr) return VKFFT_ERROR_MALLOC_FAILED;
 	sc->tempLen = 0;
 	sc->currentLen = 0;
-	VkAllocateContainerFlexible(sc, &sc->inputsStruct, 50);
+	PfAllocateContainerFlexible(sc, &sc->inputsStruct, 50);
 	sc->inputsStruct.type = 200 + sc->inputMemoryCode;
-	VkAllocateContainerFlexible(sc, &sc->outputsStruct, 50);
+	PfAllocateContainerFlexible(sc, &sc->outputsStruct, 50);
 	sc->outputsStruct.type = 200 + sc->outputMemoryCode;
 
-	VkAllocateContainerFlexible(sc, &sc->sdataStruct, 50);
+	PfAllocateContainerFlexible(sc, &sc->sdataStruct, 50);
 	sc->sdataStruct.type = 200 + sc->vecTypeCode;
 	sprintf(sc->sdataStruct.data.s, "sdata");
 
-	VkAllocateContainerFlexible(sc, &sc->LUTStruct, 50);
+	PfAllocateContainerFlexible(sc, &sc->LUTStruct, 50);
 	sc->LUTStruct.type = 200 + sc->vecTypeCode;
 	sprintf(sc->LUTStruct.data.s, "twiddleLUT");
 
-	VkAllocateContainerFlexible(sc, &sc->BluesteinStruct, 50);
+	PfAllocateContainerFlexible(sc, &sc->BluesteinStruct, 50);
 	sc->BluesteinStruct.type = 200 + sc->vecTypeCode;
 	sprintf(sc->BluesteinStruct.data.s, "BluesteinMultiplication");
 
-	VkAllocateContainerFlexible(sc, &sc->BluesteinConvolutionKernelStruct, 50);
+	PfAllocateContainerFlexible(sc, &sc->BluesteinConvolutionKernelStruct, 50);
 	sc->BluesteinConvolutionKernelStruct.type = 200 + sc->vecTypeCode;
 	sprintf(sc->BluesteinConvolutionKernelStruct.data.s, "BluesteinConvolutionKernel");
 	
-	VkAllocateContainerFlexible(sc, &sc->kernelStruct, 50);
+	PfAllocateContainerFlexible(sc, &sc->kernelStruct, 50);
 	sc->kernelStruct.type = 200 + sc->vecTypeCode;
 	sprintf(sc->kernelStruct.data.s, "kernel_obj");
 
 	for (int i = 0; i < sc->numRaderPrimes; i++) {
 		if (sc->raderContainer[i].prime > 0) {
 			if (sc->inline_rader_g_pow == 1) {
-				VkAllocateContainerFlexible(sc, &sc->raderContainer[i].g_powConstantStruct, 50);
+				PfAllocateContainerFlexible(sc, &sc->raderContainer[i].g_powConstantStruct, 50);
 				sc->BluesteinConvolutionKernelStruct.type = 201;
 				sprintf(sc->raderContainer[i].g_powConstantStruct.data.s, "g_pow_%d", sc->raderContainer[i].prime);
 			}
 			if (sc->inline_rader_kernel) {
-				VkAllocateContainerFlexible(sc, &sc->raderContainer[i].r_rader_kernelConstantStruct, 50);
+				PfAllocateContainerFlexible(sc, &sc->raderContainer[i].r_rader_kernelConstantStruct, 50);
 				sc->BluesteinConvolutionKernelStruct.type = 200 + sc->floatTypeCode;
 				sprintf(sc->raderContainer[i].r_rader_kernelConstantStruct.data.s, "r_rader_kernel_%d", sc->raderContainer[i].prime);
 
-				VkAllocateContainerFlexible(sc, &sc->raderContainer[i].i_rader_kernelConstantStruct, 50);
+				PfAllocateContainerFlexible(sc, &sc->raderContainer[i].i_rader_kernelConstantStruct, 50);
 				sc->BluesteinConvolutionKernelStruct.type = 200 + sc->floatTypeCode;
 				sprintf(sc->raderContainer[i].i_rader_kernelConstantStruct.data.s, "i_rader_kernel_%d", sc->raderContainer[i].prime);
 			}
 		}
 	}
 	if (sc->inline_rader_g_pow == 2) {
-		VkAllocateContainerFlexible(sc, &sc->g_powStruct, 50);
+		PfAllocateContainerFlexible(sc, &sc->g_powStruct, 50);
 		sc->g_powStruct.type = 201;
 		sprintf(sc->g_powStruct.data.s, "g_pow");
 	}
-	VkAllocateContainerFlexible(sc, &sc->gl_LocalInvocationID_x, 50);
+	PfAllocateContainerFlexible(sc, &sc->gl_LocalInvocationID_x, 50);
 	sc->gl_LocalInvocationID_x.type = 101;
-	VkAllocateContainerFlexible(sc, &sc->gl_LocalInvocationID_y, 50);
+	PfAllocateContainerFlexible(sc, &sc->gl_LocalInvocationID_y, 50);
 	sc->gl_LocalInvocationID_y.type = 101;
-	VkAllocateContainerFlexible(sc, &sc->gl_LocalInvocationID_z, 50);
+	PfAllocateContainerFlexible(sc, &sc->gl_LocalInvocationID_z, 50);
 	sc->gl_LocalInvocationID_z.type = 101;
-	VkAllocateContainerFlexible(sc, &sc->gl_GlobalInvocationID_x, 50);
+	PfAllocateContainerFlexible(sc, &sc->gl_GlobalInvocationID_x, 50);
 	sc->gl_GlobalInvocationID_x.type = 101;
-	VkAllocateContainerFlexible(sc, &sc->gl_GlobalInvocationID_y, 50);
+	PfAllocateContainerFlexible(sc, &sc->gl_GlobalInvocationID_y, 50);
 	sc->gl_GlobalInvocationID_y.type = 101;
-	VkAllocateContainerFlexible(sc, &sc->gl_GlobalInvocationID_z, 50);
+	PfAllocateContainerFlexible(sc, &sc->gl_GlobalInvocationID_z, 50);
 	sc->gl_GlobalInvocationID_z.type = 101;
-	VkAllocateContainerFlexible(sc, &sc->gl_WorkGroupSize_x, 50);
+	PfAllocateContainerFlexible(sc, &sc->gl_WorkGroupSize_x, 50);
 	sc->gl_WorkGroupSize_x.type = 101;
-	VkAllocateContainerFlexible(sc, &sc->gl_WorkGroupSize_y, 50);
+	PfAllocateContainerFlexible(sc, &sc->gl_WorkGroupSize_y, 50);
 	sc->gl_WorkGroupSize_y.type = 101;
-	VkAllocateContainerFlexible(sc, &sc->gl_WorkGroupSize_z, 50);
+	PfAllocateContainerFlexible(sc, &sc->gl_WorkGroupSize_z, 50);
 	sc->gl_WorkGroupSize_z.type = 101;
-	VkAllocateContainerFlexible(sc, &sc->gl_WorkGroupID_x, 50);
+	PfAllocateContainerFlexible(sc, &sc->gl_WorkGroupID_x, 50);
 	sc->gl_WorkGroupID_x.type = 101;
-	VkAllocateContainerFlexible(sc, &sc->gl_WorkGroupID_y, 50);
+	PfAllocateContainerFlexible(sc, &sc->gl_WorkGroupID_y, 50);
 	sc->gl_WorkGroupID_y.type = 101;
-	VkAllocateContainerFlexible(sc, &sc->gl_WorkGroupID_z, 50);
+	PfAllocateContainerFlexible(sc, &sc->gl_WorkGroupID_z, 50);
 	sc->gl_WorkGroupID_z.type = 101;
 
-	//VkAllocateContainerFlexible(sc, &sc->cosDef, 50);
+	//PfAllocateContainerFlexible(sc, &sc->cosDef, 50);
 	//sc->cosDef.type = 100;
-	//VkAllocateContainerFlexible(sc, &sc->sinDef, 50);
+	//PfAllocateContainerFlexible(sc, &sc->sinDef, 50);
 	//sc->sinDef.type = 100;
 
-	VkAllocateContainerFlexible(sc, &sc->constDef, 50);
+	PfAllocateContainerFlexible(sc, &sc->constDef, 50);
 	sc->constDef.type = 100;
 
-	VkAllocateContainerFlexible(sc, &sc->functionDef, 50);
+	PfAllocateContainerFlexible(sc, &sc->functionDef, 50);
 	sc->functionDef.type = 100;
 
 	if (sc->performWorkGroupShift[0]) {
-		VkAllocateContainerFlexible(sc, &sc->workGroupShiftX, 50);
+		PfAllocateContainerFlexible(sc, &sc->workGroupShiftX, 50);
 		sc->workGroupShiftX.type = 100 + sc->uintTypeCode;
 		sprintf(sc->workGroupShiftX.data.s, "workGroupShiftX");
 	}
 	if (sc->performWorkGroupShift[1]) {
-		VkAllocateContainerFlexible(sc, &sc->workGroupShiftY, 50);
+		PfAllocateContainerFlexible(sc, &sc->workGroupShiftY, 50);
 		sc->workGroupShiftY.type = 100 + sc->uintTypeCode;
 		sprintf(sc->workGroupShiftY.data.s, "workGroupShiftY");
 	}
 	if (sc->performWorkGroupShift[2]) {
-		VkAllocateContainerFlexible(sc, &sc->workGroupShiftZ, 50);
+		PfAllocateContainerFlexible(sc, &sc->workGroupShiftZ, 50);
 		sc->workGroupShiftZ.type = 100 + sc->uintTypeCode;
 		sprintf(sc->workGroupShiftZ.data.s, "workGroupShiftZ");
 	}
 	if (sc->performPostCompilationInputOffset) {
-		VkAllocateContainerFlexible(sc, &sc->inputOffset, 50);
+		PfAllocateContainerFlexible(sc, &sc->inputOffset, 50);
 		sc->inputOffset.type = 100 + sc->uintTypeCode;
 		sprintf(sc->inputOffset.data.s, "inputOffset");
 	}
 	if (sc->performPostCompilationOutputOffset) {
-		VkAllocateContainerFlexible(sc, &sc->outputOffset, 50);
+		PfAllocateContainerFlexible(sc, &sc->outputOffset, 50);
 		sc->outputOffset.type = 100 + sc->uintTypeCode;
 		sprintf(sc->outputOffset.data.s, "outputOffset");
 	}
 	if (sc->performPostCompilationKernelOffset) {
-		VkAllocateContainerFlexible(sc, &sc->kernelOffset, 50);
+		PfAllocateContainerFlexible(sc, &sc->kernelOffset, 50);
 		sc->kernelOffset.type = 100 + sc->uintTypeCode;
 		sprintf(sc->kernelOffset.data.s, "kernelOffset");
 	}
@@ -501,19 +501,19 @@ static inline VkFFTResult initParametersAPI(VkFFTApplication* app, VkFFTSpeciali
 static inline VkFFTResult freeMemoryParametersAPI(VkFFTApplication* app, VkFFTSpecializationConstantsLayout* sc) {
 	VkFFTResult res = VKFFT_SUCCESS;
 
-	VkDeallocateContainer(sc, &sc->halfLiteral);
-	VkDeallocateContainer(sc, &sc->floatLiteral);
-	VkDeallocateContainer(sc, &sc->doubleLiteral);
-	VkDeallocateContainer(sc, &sc->halfDef);
-	VkDeallocateContainer(sc, &sc->floatDef);
-	VkDeallocateContainer(sc, &sc->doubleDef);
-	VkDeallocateContainer(sc, &sc->half2Def);
-	VkDeallocateContainer(sc, &sc->float2Def);
-	VkDeallocateContainer(sc, &sc->double2Def);
-	VkDeallocateContainer(sc, &sc->intDef);
-	VkDeallocateContainer(sc, &sc->uintDef);
-	VkDeallocateContainer(sc, &sc->int64Def);
-	VkDeallocateContainer(sc, &sc->uint64Def);
+	PfDeallocateContainer(sc, &sc->halfLiteral);
+	PfDeallocateContainer(sc, &sc->floatLiteral);
+	PfDeallocateContainer(sc, &sc->doubleLiteral);
+	PfDeallocateContainer(sc, &sc->halfDef);
+	PfDeallocateContainer(sc, &sc->floatDef);
+	PfDeallocateContainer(sc, &sc->doubleDef);
+	PfDeallocateContainer(sc, &sc->half2Def);
+	PfDeallocateContainer(sc, &sc->float2Def);
+	PfDeallocateContainer(sc, &sc->double2Def);
+	PfDeallocateContainer(sc, &sc->intDef);
+	PfDeallocateContainer(sc, &sc->uintDef);
+	PfDeallocateContainer(sc, &sc->int64Def);
+	PfDeallocateContainer(sc, &sc->uint64Def);
 	return res;
 }
 
@@ -521,63 +521,63 @@ static inline VkFFTResult freeParametersAPI(VkFFTApplication* app, VkFFTSpeciali
 	VkFFTResult res = VKFFT_SUCCESS;
 	free(sc->tempStr);
 	sc->tempStr = 0;
-	VkDeallocateContainer(sc, &sc->inputsStruct);
-	VkDeallocateContainer(sc, &sc->outputsStruct);
-	VkDeallocateContainer(sc, &sc->sdataStruct);
-	VkDeallocateContainer(sc, &sc->LUTStruct);
-	VkDeallocateContainer(sc, &sc->BluesteinStruct);
-	VkDeallocateContainer(sc, &sc->BluesteinConvolutionKernelStruct);
-	VkDeallocateContainer(sc, &sc->kernelStruct);
+	PfDeallocateContainer(sc, &sc->inputsStruct);
+	PfDeallocateContainer(sc, &sc->outputsStruct);
+	PfDeallocateContainer(sc, &sc->sdataStruct);
+	PfDeallocateContainer(sc, &sc->LUTStruct);
+	PfDeallocateContainer(sc, &sc->BluesteinStruct);
+	PfDeallocateContainer(sc, &sc->BluesteinConvolutionKernelStruct);
+	PfDeallocateContainer(sc, &sc->kernelStruct);
 	for (int i = 0; i < sc->numRaderPrimes; i++) {
 		if (sc->raderContainer[i].prime > 0) {
 			if (sc->inline_rader_g_pow == 1) {
-				VkDeallocateContainer(sc, &sc->raderContainer[i].g_powConstantStruct);
+				PfDeallocateContainer(sc, &sc->raderContainer[i].g_powConstantStruct);
 			}
 			if (sc->inline_rader_kernel) {
-				VkDeallocateContainer(sc, &sc->raderContainer[i].r_rader_kernelConstantStruct);
-				VkDeallocateContainer(sc, &sc->raderContainer[i].i_rader_kernelConstantStruct);
+				PfDeallocateContainer(sc, &sc->raderContainer[i].r_rader_kernelConstantStruct);
+				PfDeallocateContainer(sc, &sc->raderContainer[i].i_rader_kernelConstantStruct);
 			}
 		}
 	}
 	if (sc->inline_rader_g_pow == 2) {
-		VkDeallocateContainer(sc, &sc->g_powStruct);
+		PfDeallocateContainer(sc, &sc->g_powStruct);
 	}
 
-	VkDeallocateContainer(sc, &sc->gl_LocalInvocationID_x);
-	VkDeallocateContainer(sc, &sc->gl_LocalInvocationID_y);
-	VkDeallocateContainer(sc, &sc->gl_LocalInvocationID_z);
-	VkDeallocateContainer(sc, &sc->gl_GlobalInvocationID_x);
-	VkDeallocateContainer(sc, &sc->gl_GlobalInvocationID_y);
-	VkDeallocateContainer(sc, &sc->gl_GlobalInvocationID_z);
-	VkDeallocateContainer(sc, &sc->gl_WorkGroupSize_x);
-	VkDeallocateContainer(sc, &sc->gl_WorkGroupSize_y);
-	VkDeallocateContainer(sc, &sc->gl_WorkGroupSize_z);
-	VkDeallocateContainer(sc, &sc->gl_WorkGroupID_x);
-	VkDeallocateContainer(sc, &sc->gl_WorkGroupID_y);
-	VkDeallocateContainer(sc, &sc->gl_WorkGroupID_z);
-	//VkDeallocateContainer(sc, &sc->cosDef);
-	//VkDeallocateContainer(sc, &sc->sinDef);
+	PfDeallocateContainer(sc, &sc->gl_LocalInvocationID_x);
+	PfDeallocateContainer(sc, &sc->gl_LocalInvocationID_y);
+	PfDeallocateContainer(sc, &sc->gl_LocalInvocationID_z);
+	PfDeallocateContainer(sc, &sc->gl_GlobalInvocationID_x);
+	PfDeallocateContainer(sc, &sc->gl_GlobalInvocationID_y);
+	PfDeallocateContainer(sc, &sc->gl_GlobalInvocationID_z);
+	PfDeallocateContainer(sc, &sc->gl_WorkGroupSize_x);
+	PfDeallocateContainer(sc, &sc->gl_WorkGroupSize_y);
+	PfDeallocateContainer(sc, &sc->gl_WorkGroupSize_z);
+	PfDeallocateContainer(sc, &sc->gl_WorkGroupID_x);
+	PfDeallocateContainer(sc, &sc->gl_WorkGroupID_y);
+	PfDeallocateContainer(sc, &sc->gl_WorkGroupID_z);
+	//PfDeallocateContainer(sc, &sc->cosDef);
+	//PfDeallocateContainer(sc, &sc->sinDef);
 
-	VkDeallocateContainer(sc, &sc->constDef);
-	VkDeallocateContainer(sc, &sc->functionDef);
+	PfDeallocateContainer(sc, &sc->constDef);
+	PfDeallocateContainer(sc, &sc->functionDef);
 
 	if (sc->performWorkGroupShift[0]) {
-		VkDeallocateContainer(sc, &sc->workGroupShiftX);
+		PfDeallocateContainer(sc, &sc->workGroupShiftX);
 	}
 	if (sc->performWorkGroupShift[1]) {
-		VkDeallocateContainer(sc, &sc->workGroupShiftY);
+		PfDeallocateContainer(sc, &sc->workGroupShiftY);
 	}
 	if (sc->performWorkGroupShift[2]) {
-		VkDeallocateContainer(sc, &sc->workGroupShiftZ);
+		PfDeallocateContainer(sc, &sc->workGroupShiftZ);
 	}
 	if (sc->performPostCompilationInputOffset) {
-		VkDeallocateContainer(sc, &sc->inputOffset);
+		PfDeallocateContainer(sc, &sc->inputOffset);
 	}
 	if (sc->performPostCompilationOutputOffset) {
-		VkDeallocateContainer(sc, &sc->outputOffset);
+		PfDeallocateContainer(sc, &sc->outputOffset);
 	}
 	if (sc->performPostCompilationKernelOffset) {
-		VkDeallocateContainer(sc, &sc->kernelOffset);
+		PfDeallocateContainer(sc, &sc->kernelOffset);
 	}
 	return res;
 }

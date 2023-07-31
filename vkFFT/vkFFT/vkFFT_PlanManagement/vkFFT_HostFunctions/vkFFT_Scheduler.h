@@ -23,12 +23,12 @@
 #define VKFFT_SCHEDULER_H
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 
-static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int fft_length, int extraSharedMemoryForPow2, int max_rhs, int useRader, int* loc_multipliers, int* registers_per_thread_per_radix, int* registers_per_thread, int* min_registers_per_thread, int* isGoodSequence) {
+static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int fft_length, int extraSharedMemoryForPow2, uint64_t max_rhs, int useRader, int* loc_multipliers, int* registers_per_thread_per_radix, int* registers_per_thread, int* min_registers_per_thread, int* isGoodSequence) {
 	for (int i = 0; i < 33; i++) {
 		registers_per_thread_per_radix[i] = 0;
 	}
 	registers_per_thread[0] = 0;
-	min_registers_per_thread[0] = 1e7;
+	min_registers_per_thread[0] = 10000000;
 
 	if (loc_multipliers[2] > 0) {
 		if (loc_multipliers[3] > 0) {
@@ -906,9 +906,9 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int 
 						}
 						else {
 							int max_loc_multipliers_pow2 = 0;
-							int active_threads_y = max_rhs / 64; //estimate workbalance across CU (assume we have 64 CU)
+							uint64_t active_threads_y = max_rhs / 64; //estimate workbalance across CU (assume we have 64 CU)
 							if (active_threads_y == 0) active_threads_y = 1;
-							int testMinStages = 1e7;
+							int testMinStages = 10000000;
 							int maxRadixMinStages = 1;
 							int fixMaxCheckRadix2 = 3;
 #if(VKFFT_BACKEND==1)
@@ -922,7 +922,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int 
 								}
 							}
 							for (int i = maxRadixMinStages; i >= 1; i--) {
-								int active_threads_x = (active_threads_y * fft_length) / ((int)pow(2, i));
+								uint64_t active_threads_x = (active_threads_y * fft_length) / ((int)pow(2, i));
 								if (active_threads_x >= 128) {
 									max_loc_multipliers_pow2 = i;
 									i = 1;
@@ -1386,7 +1386,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThreadOptimizeShared(int fft_lengt
 		registers_per_thread_per_radix[i] = 0;
 	}
 	registers_per_thread[0] = 0;
-	min_registers_per_thread[0] = 1e7;
+	min_registers_per_thread[0] = 10000000;
 
 	for (int i = 1; i < numStages; i++) {
 		fft_length_copy = fft_length;
@@ -1448,13 +1448,13 @@ static inline VkFFTResult VkFFTConstructRaderTree(VkFFTApplication* app, VkFFTRa
 	uint64_t locTempSequence = tempSequence[0];
 	uint64_t tempSequence_copy = tempSequence[0];
 	uint64_t limit = ((tempSequence[0] + 1) > app->configuration.fixMaxRaderPrimeFFT) ? app->configuration.fixMaxRaderPrimeFFT : (tempSequence[0] + 1);
-	for (int i = app->configuration.fixMinRaderPrimeMult; i < limit; i++) {
+	for (int i = (int)app->configuration.fixMinRaderPrimeMult; i < limit; i++) {
 		if (locTempSequence % i == 0) {
 			numRaderPrimes[0]++;
 			while (locTempSequence % i == 0) locTempSequence /= i;
 		}
 	}
-	for (int i = app->configuration.fixMinRaderPrimeMult; i < app->configuration.fixMaxRaderPrimeMult; i++) {
+	for (int i = (int)app->configuration.fixMinRaderPrimeMult; i < app->configuration.fixMaxRaderPrimeMult; i++) {
 		if (locTempSequence % i == 0) {
 			numRaderPrimes[0]++;
 			while (locTempSequence % i == 0) locTempSequence /= i;
@@ -1466,7 +1466,7 @@ static inline VkFFTResult VkFFTConstructRaderTree(VkFFTApplication* app, VkFFTRa
 	VkFFTRaderContainer* raderContainer = raderContainer_input[0];
 	uint64_t tempSequence_temp = 1;
 	limit = ((tempSequence[0] + 1) > app->configuration.fixMaxRaderPrimeFFT) ? app->configuration.fixMaxRaderPrimeFFT : (tempSequence[0] + 1);
-	for (int i = app->configuration.fixMinRaderPrimeMult; i < limit; i++) {
+	for (int i = (int)app->configuration.fixMinRaderPrimeMult; i < limit; i++) {
 		if (tempSequence[0] % i == 0) {
 			if (i < app->configuration.fixMinRaderPrimeFFT) {
 				tempSequence_temp *= i;
@@ -1506,7 +1506,7 @@ static inline VkFFTResult VkFFTConstructRaderTree(VkFFTApplication* app, VkFFTRa
 		}
 	}
 	tempSequence[0] *= tempSequence_temp;
-	for (int i = app->configuration.fixMinRaderPrimeMult; i < app->configuration.fixMaxRaderPrimeMult; i++) {
+	for (int i = (int)app->configuration.fixMinRaderPrimeMult; i < app->configuration.fixMaxRaderPrimeMult; i++) {
 		if (tempSequence[0] % i == 0) {
 			tempSequence[0] /= i;
 			for (int j = 0; j < numRaderPrimes[0]; j++) {
@@ -1551,7 +1551,7 @@ static inline VkFFTResult VkFFTConstructRaderTree(VkFFTApplication* app, VkFFTRa
 		else {//FFT
 			locTempSequence = raderContainer[i].prime - 1;
 			raderContainer[i].containerFFTDim = raderContainer[i].prime - 1;
-			raderContainer[i].containerFFTNum = fft_radix_part * tempSequence_copy / raderContainer[i].prime;
+			raderContainer[i].containerFFTNum = fft_radix_part * (int)tempSequence_copy / raderContainer[i].prime;
 			int stageID = 0;
 			for (int j = 2; j < app->configuration.fixMinRaderPrimeMult; j++) {
 				if (locTempSequence % j == 0) {
@@ -1570,7 +1570,7 @@ static inline VkFFTResult VkFFTConstructRaderTree(VkFFTApplication* app, VkFFTRa
 				//res = VkFFTGetRegistersPerThread(raderContainer[i].prime - 1, 0, 0, 1, raderContainer[i].loc_multipliers, raderContainer[i].registers_per_thread_per_radix, &raderContainer[i].registers_per_thread, &raderContainer[i].min_registers_per_thread, &isGoodSequence);
 			if (res != VKFFT_SUCCESS) return res;
 			if (locTempSequence != 1) {
-				res = VkFFTConstructRaderTree(app, &raderContainer[i].container, &locTempSequence, &raderContainer[i].numSubPrimes, fft_radix_part * tempSequence_copy / raderContainer[i].prime);
+				res = VkFFTConstructRaderTree(app, &raderContainer[i].container, &locTempSequence, &raderContainer[i].numSubPrimes, fft_radix_part * (int)tempSequence_copy / raderContainer[i].prime);
 				if (res != VKFFT_SUCCESS) return res;
 				for (int j = 0; j < raderContainer[i].numSubPrimes; j++) {
 					for (int t = 0; t < raderContainer[i].container[j].multiplier; t++) {
@@ -1622,7 +1622,7 @@ static inline VkFFTResult VkFFTOptimizeRaderFFTRegisters(VkFFTRaderContainer* ra
 				if (raderContainer[i].registers_per_thread_per_radix[j] != 0) {
 					double scaling = (raderContainer[i].containerFFTDim > raderContainer[i].registers_per_thread_per_radix[j]) ? ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[j]) : 1.0 / floor(raderContainer[i].registers_per_thread_per_radix[j] / (double)raderContainer[i].containerFFTDim);
 					while (((int)ceil(fftDim / (double)min_registers_per_thread[0])) < (raderContainer[i].containerFFTNum * scaling)) {
-						raderContainer[i].registers_per_thread_per_radix[j] += j;
+						raderContainer[i].registers_per_thread_per_radix[j] += (int)j;
 						scaling = (raderContainer[i].containerFFTDim > raderContainer[i].registers_per_thread_per_radix[j]) ? ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[j]) : 1.0 / floor(raderContainer[i].registers_per_thread_per_radix[j] / (double)raderContainer[i].containerFFTDim);
 					}
 					if (raderContainer[i].registers_per_thread_per_radix[j] > raderContainer[i].registers_per_thread) raderContainer[i].registers_per_thread = raderContainer[i].registers_per_thread_per_radix[j];
@@ -1637,12 +1637,12 @@ static inline VkFFTResult VkFFTOptimizeRaderFFTRegisters(VkFFTRaderContainer* ra
 			for (int64_t j = 2; j < 33; j++) {
 				if (raderContainer[i].registers_per_thread_per_radix[j] > 0) {
 					while ((raderContainer[i].registers_per_thread_per_radix[j] + j) <= registers_per_thread[0] + 1) {// fix
-						raderContainer[i].registers_per_thread_per_radix[j] += j;
+						raderContainer[i].registers_per_thread_per_radix[j] += (int)j;
 					}
 				}
 			}
 			raderContainer[i].registers_per_thread = 0;
-			raderContainer[i].min_registers_per_thread = 1e7;
+			raderContainer[i].min_registers_per_thread = 10000000;
 			for (int64_t j = 2; j < 33; j++) {
 				if (raderContainer[i].registers_per_thread_per_radix[j] > 0) {
 					if (raderContainer[i].registers_per_thread_per_radix[j] < raderContainer[i].min_registers_per_thread) {
@@ -1946,17 +1946,17 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		else
 			complexSize = (2 * sizeof(float));
 
-	int usedSharedMemory = ((app->configuration.size[axis_id] & (app->configuration.size[axis_id] - 1)) == 0) ? app->configuration.sharedMemorySizePow2 : app->configuration.sharedMemorySize;
+	int usedSharedMemory = ((app->configuration.size[axis_id] & (app->configuration.size[axis_id] - 1)) == 0) ? (int)app->configuration.sharedMemorySizePow2 : (int)app->configuration.sharedMemorySize;
 	int maxSequenceLengthSharedMemory = usedSharedMemory / complexSize;
 	int maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
 
 	int nonStridedAxisId = (app->configuration.considerAllAxesStrided) ? -1 : 0;
-	int max_rhs = 1;
+	uint64_t max_rhs = 1;
 	for (int i = 0; i < app->configuration.FFTdim; i++) {
 		FFTPlan->actualFFTSizePerAxis[axis_id][i] = app->configuration.size[i];
 		if ((FFTPlan->actualFFTSizePerAxis[axis_id][i] > 0)) max_rhs *= FFTPlan->actualFFTSizePerAxis[axis_id][i];
 	}
-	for (int i = app->configuration.FFTdim; i < VKFFT_MAX_FFT_DIMENSIONS; i++) {
+	for (int i = (int)app->configuration.FFTdim; i < VKFFT_MAX_FFT_DIMENSIONS; i++) {
 		FFTPlan->actualFFTSizePerAxis[axis_id][i] = 1;
 	}
 	if (app->configuration.numberBatches > app->actualNumBatches)
@@ -1984,7 +1984,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	}
 	if (axis_id != nonStridedAxisId) {
 		if (app->configuration.performBandwidthBoost > 0)
-			axes->specializationConstants.performBandwidthBoost = app->configuration.performBandwidthBoost;
+			axes->specializationConstants.performBandwidthBoost = (int)app->configuration.performBandwidthBoost;
 	}
 	//initial Stockham + Rader check
 	int multipliers[33];
@@ -2011,10 +2011,10 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			rader_primes[i] = 0;
 		}
 		uint64_t tempSequence_temp = 1;
-		int maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / (app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
+		int maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / ((int)app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
 		int limit_max_rader_prime = ((axis_id == nonStridedAxisId) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] <= maxSequenceLengthSharedMemory)) ? maxSequenceLengthSharedMemory : maxSequenceLengthSharedMemoryStrided_temp;
-		if (limit_max_rader_prime > app->configuration.fixMaxRaderPrimeFFT) limit_max_rader_prime = app->configuration.fixMaxRaderPrimeFFT;
-		for (int i = app->configuration.fixMinRaderPrimeMult; i < limit_max_rader_prime; i++) {
+		if (limit_max_rader_prime > app->configuration.fixMaxRaderPrimeFFT) limit_max_rader_prime = (int)app->configuration.fixMaxRaderPrimeFFT;
+		for (int i = (int)app->configuration.fixMinRaderPrimeMult; i < limit_max_rader_prime; i++) {
 			if (tempSequence % i == 0) {
 				if (i < app->configuration.fixMinRaderPrimeFFT) {
 					tempSequence_temp *= i;
@@ -2032,7 +2032,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				}
 				if (tempSequence2 != 1) {
 					maxSequenceLengthSharedMemory = (usedSharedMemory - (i - 1) * complexSize) / complexSize;
-					maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? (usedSharedMemory - (i - 1) * complexSize) / (app->configuration.coalescedMemory) : (usedSharedMemory - (i - 1) * complexSize) / complexSize;
+					maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? (usedSharedMemory - (i - 1) * complexSize) / ((int)app->configuration.coalescedMemory) : (usedSharedMemory - (i - 1) * complexSize) / complexSize;
 					limit_max_rader_prime = ((axis_id == nonStridedAxisId) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] <= maxSequenceLengthSharedMemory)) ? maxSequenceLengthSharedMemory : maxSequenceLengthSharedMemoryStrided_temp;
 					tempSequence_temp *= i;
 					tempSequence /= i;
@@ -2059,10 +2059,10 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			}
 		}
 		tempSequence *= tempSequence_temp;
-		int maxRaderPrimeFromThreadNumCoalesced = (app->configuration.maxThreadsNum / (app->configuration.coalescedMemory / complexSize)) * 2 - 1;
+		int maxRaderPrimeFromThreadNumCoalesced = (int)(app->configuration.maxThreadsNum / (app->configuration.coalescedMemory / complexSize)) * 2 - 1;
 		if (maxRaderPrimeFromThreadNumCoalesced < app->configuration.fixMaxRaderPrimeMult) app->configuration.fixMaxRaderPrimeMult = maxRaderPrimeFromThreadNumCoalesced;
 
-		for (int i = app->configuration.fixMinRaderPrimeMult; i < app->configuration.fixMaxRaderPrimeMult; i++) {
+		for (int i = (int)app->configuration.fixMinRaderPrimeMult; i < app->configuration.fixMaxRaderPrimeMult; i++) {
 			if (tempSequence % i == 0) {
 				tempSequence /= i;
 				for (int j = 0; j < 20; j++) {
@@ -2109,7 +2109,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		tempSequence = 2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1;
 		int FFTSizeSelected = 0;
 		if (((app->configuration.useCustomBluesteinPaddingPattern > 0) || (app->configuration.autoCustomBluesteinPaddingPattern)) && (!app->configuration.fixMaxRadixBluestein)) {
-			int arr_limit = (app->configuration.useCustomBluesteinPaddingPattern) ? app->configuration.useCustomBluesteinPaddingPattern : app->configuration.autoCustomBluesteinPaddingPattern;
+			int arr_limit = (app->configuration.useCustomBluesteinPaddingPattern) ? (int)app->configuration.useCustomBluesteinPaddingPattern : (int)app->configuration.autoCustomBluesteinPaddingPattern;
 			for (int i = 0; i < arr_limit; i++) {
 				if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] >= app->configuration.primeSizes[i]) {
 					if (i != (arr_limit - 1)) {
@@ -2131,7 +2131,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		}
 		if (app->configuration.fixMaxRadixBluestein > 0) {
 			while (!FFTSizeSelected) {
-				int testSequence = tempSequence;
+				int testSequence = (int)tempSequence;
 				for (int i = 0; i < 33; i++) {
 					multipliers[i] = 0;
 				}
@@ -2152,7 +2152,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemory) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemory))))  tempSequence = (int)pow(2, (int)ceil(log2(tempSequence)));
 				}
 				else {
-					int maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / (app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
+					int maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / ((int)app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
 					if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemoryStrided_temp) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemoryStrided_temp))))  tempSequence = (int)pow(2, (int)ceil(log2(tempSequence)));
 				}
 				uint64_t testSequence = tempSequence;
@@ -2170,9 +2170,9 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				else {
 					int registers_per_thread_per_radix[33];
 					int registers_per_thread = 0;
-					int min_registers_per_thread = 1e7;
+					int min_registers_per_thread = 10000000;
 					int isGoodSequence = 0;
-					res = VkFFTGetRegistersPerThread(app, tempSequence, 0, max_rhs / tempSequence, axes->specializationConstants.useRader, multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
+					res = VkFFTGetRegistersPerThread(app, (int)tempSequence, 0, max_rhs / tempSequence, axes->specializationConstants.useRader, multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
 					if (res != VKFFT_SUCCESS) return res;
 					if (isGoodSequence) FFTSizeSelected = 1;
 					else tempSequence++;
@@ -2188,7 +2188,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			tempSequence = 2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1;
 			FFTSizeSelected = 0;
 			if (((app->configuration.useCustomBluesteinPaddingPattern > 0) || (app->configuration.autoCustomBluesteinPaddingPattern)) && (!app->configuration.fixMaxRadixBluestein)) {
-				int arr_limit = (app->configuration.useCustomBluesteinPaddingPattern) ? app->configuration.useCustomBluesteinPaddingPattern : app->configuration.autoCustomBluesteinPaddingPattern;
+				int arr_limit = (app->configuration.useCustomBluesteinPaddingPattern) ? (int)app->configuration.useCustomBluesteinPaddingPattern : (int)app->configuration.autoCustomBluesteinPaddingPattern;
 				for (int i = 0; i < arr_limit; i++) {
 					if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] >= app->configuration.primeSizes[i]) {
 						if (i != (arr_limit - 1)) {
@@ -2229,7 +2229,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 						if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemory) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemory))))  tempSequence = (int)pow(2, (int)ceil(log2(tempSequence)));
 					}
 					else {
-						int maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / (app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
+						int maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / ((int)app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
 						if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemoryStrided_temp) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemoryStrided_temp))))  tempSequence = (int)pow(2, (int)ceil(log2(tempSequence)));
 					}
 					uint64_t testSequence = tempSequence;
@@ -2247,9 +2247,9 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					else {
 						int registers_per_thread_per_radix[33];
 						int registers_per_thread = 0;
-						int min_registers_per_thread = 1e7;
+						int min_registers_per_thread = 10000000;
 						int isGoodSequence = 0;
-						res = VkFFTGetRegistersPerThread(app, tempSequence, 0, max_rhs / tempSequence, axes->specializationConstants.useRader, multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
+						res = VkFFTGetRegistersPerThread(app, (int)tempSequence, 0, max_rhs / tempSequence, axes->specializationConstants.useRader, multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
 						if (res != VKFFT_SUCCESS) return res;
 						if (isGoodSequence) FFTSizeSelected = 1;
 						else tempSequence++;
@@ -2262,13 +2262,13 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		if (app->configuration.forceBluesteinSequenceSize) FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.forceBluesteinSequenceSize;
 
 		if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] & (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1)) == 0) {
-			usedSharedMemory = app->configuration.sharedMemorySizePow2;
+			usedSharedMemory = (int)app->configuration.sharedMemorySizePow2;
 			maxSequenceLengthSharedMemory = usedSharedMemory / complexSize;
 			maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
 		}
 	}
 	int isPowOf2 = (pow(2, (int)log2(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id])) == FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]) ? 1 : 0;
-	int locNumBatches = (app->configuration.numberBatches > app->actualNumBatches) ? app->configuration.numberBatches : app->actualNumBatches;
+	int locNumBatches = (app->configuration.numberBatches > app->actualNumBatches) ? (int)app->configuration.numberBatches : (int)app->actualNumBatches;
 	//return VKFFT_ERROR_UNSUPPORTED_RADIX;
 	int registerBoost = 1;
 	for (int i = 1; i <= app->configuration.registerBoost; i++) {
@@ -2276,7 +2276,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			registerBoost = i;
 	}
 	if ((axis_id == nonStridedAxisId) && (!app->configuration.performConvolution)) maxSingleSizeNonStrided *= registerBoost;
-	int maxSequenceLengthSharedMemoryStrided = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / (app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
+	int maxSequenceLengthSharedMemoryStrided = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / ((int)app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
 	int maxSingleSizeStrided = (!app->configuration.performConvolution) ? maxSequenceLengthSharedMemoryStrided * registerBoost : maxSequenceLengthSharedMemoryStrided;
 	int numPasses = 1;
 	int numPassesHalfBandwidth = 1;
@@ -2301,7 +2301,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	for (int i = registerBoost; i <= app->configuration.registerBoost; i++) {
 		if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] % (i * i) == 0) {
 			registerBoost = i;
-			i = app->configuration.registerBoost + 1;
+			i = (int)app->configuration.registerBoost + 1;
 			canBoost = 1;
 		}
 	}
@@ -2313,7 +2313,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	maxSingleSizeStrided = maxSequenceLengthSharedMemoryStrided * registerBoost;
 	int maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
 	if ((axes->specializationConstants.performBandwidthBoost)) {
-		maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / axes->specializationConstants.performBandwidthBoost > complexSize) ? usedSharedMemory / (app->configuration.coalescedMemory / axes->specializationConstants.performBandwidthBoost) : usedSharedMemory / complexSize;
+		maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / axes->specializationConstants.performBandwidthBoost > complexSize) ? usedSharedMemory / ((int)app->configuration.coalescedMemory / axes->specializationConstants.performBandwidthBoost) : usedSharedMemory / complexSize;
 		temp = (axis_id == nonStridedAxisId) ? (int)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeNonStrided) : (int)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
 		//temp = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / maxSingleSizeNonStrided;
 		if (temp > 1) {//more passes than two
@@ -2391,7 +2391,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				locAxisSplit[1] = 64;
 			}
 			if (locAxisSplit[1] > locAxisSplit[0]) {
-				int swap = locAxisSplit[0];
+				int swap = (int)locAxisSplit[0];
 				locAxisSplit[0] = locAxisSplit[1];
 				locAxisSplit[1] = swap;
 			}
@@ -2527,7 +2527,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				}
 			}
 			if (locAxisSplit[2] > locAxisSplit[1]) {
-				int swap = locAxisSplit[1];
+				int swap = (int)locAxisSplit[1];
 				locAxisSplit[1] = locAxisSplit[2];
 				locAxisSplit[2] = swap;
 			}
@@ -2625,21 +2625,21 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	if (((app->configuration.reorderFourStep) && (!app->useBluesteinFFT[axis_id]))) {
 		for (int i = 0; i < numPasses; i++) {
 			if ((locAxisSplit[0] % 2 != 0) && (locAxisSplit[i] % 2 == 0)) {
-				int swap = locAxisSplit[0];
+				int swap = (int)locAxisSplit[0];
 				locAxisSplit[0] = locAxisSplit[i];
 				locAxisSplit[i] = swap;
 			}
 		}
 		for (int i = 0; i < numPasses; i++) {
 			if ((locAxisSplit[0] % 4 != 0) && (locAxisSplit[i] % 4 == 0)) {
-				int swap = locAxisSplit[0];
+				int swap = (int)locAxisSplit[0];
 				locAxisSplit[0] = locAxisSplit[i];
 				locAxisSplit[i] = swap;
 			}
 		}
 		for (int i = 0; i < numPasses; i++) {
 			if ((locAxisSplit[0] % 8 != 0) && (locAxisSplit[i] % 8 == 0)) {
-				int swap = locAxisSplit[0];
+				int swap = (int)locAxisSplit[0];
 				locAxisSplit[0] = locAxisSplit[i];
 				locAxisSplit[i] = swap;
 			}
@@ -2669,7 +2669,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		axes[k].specializationConstants.useRaderMult = 0;
 		axes[k].specializationConstants.useRaderFFT = 0;
 		if (tempSequence != 1) {
-			res = VkFFTConstructRaderTree(app, &axes[k].specializationConstants.raderContainer, &tempSequence, &axes[k].specializationConstants.numRaderPrimes, locAxisSplit[k] / tempSequence);
+			res = VkFFTConstructRaderTree(app, &axes[k].specializationConstants.raderContainer, &tempSequence, &axes[k].specializationConstants.numRaderPrimes, (int)(locAxisSplit[k] / tempSequence));
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		
@@ -2694,15 +2694,15 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 
 		int registers_per_thread_per_radix[33];
 		int registers_per_thread = 0;
-		int min_registers_per_thread = 1e7;
+		int min_registers_per_thread = 10000000;
 		int isGoodSequence = 0;
 		int extraSharedMemoryForPow2 = ((app->configuration.sharedMemorySizePow2 < app->configuration.sharedMemorySize) || ((locAxisSplit[k] < maxSingleSizeNonStrided) && ((axis_id == nonStridedAxisId))) || ((locAxisSplit[k] < maxSingleSizeStrided) && ((axis_id != nonStridedAxisId)))) ? 1 : 0;
 
-		res = VkFFTGetRegistersPerThread(app, locAxisSplit[k], extraSharedMemoryForPow2, max_rhs / locAxisSplit[k], axes[k].specializationConstants.numRaderPrimes, loc_multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
+		res = VkFFTGetRegistersPerThread(app, (int)locAxisSplit[k], extraSharedMemoryForPow2, max_rhs / locAxisSplit[k], axes[k].specializationConstants.numRaderPrimes, loc_multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
 		if (res != VKFFT_SUCCESS) return res;
 		//first optimizer pass
 		if (axes[k].specializationConstants.numRaderPrimes) {
-			res = VkFFTOptimizeRaderFFTRegisters(axes[k].specializationConstants.raderContainer, axes[k].specializationConstants.numRaderPrimes, locAxisSplit[k], &min_registers_per_thread, &registers_per_thread, registers_per_thread_per_radix);
+			res = VkFFTOptimizeRaderFFTRegisters(axes[k].specializationConstants.raderContainer, axes[k].specializationConstants.numRaderPrimes, (int)locAxisSplit[k], &min_registers_per_thread, &registers_per_thread, registers_per_thread_per_radix);
 			if (res != VKFFT_SUCCESS) return res;
 		}
 
@@ -2713,7 +2713,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			}
 			min_registers_per_thread *= 2;
 		}
-		int maxBatchCoalesced = ((axis_id == 0) && (((k == 0) && ((!app->configuration.reorderFourStep) || (app->useBluesteinFFT[axis_id]))) || (numPasses == 1))) ? 1 : app->configuration.coalescedMemory / complexSize;
+		int maxBatchCoalesced = ((axis_id == 0) && (((k == 0) && ((!app->configuration.reorderFourStep) || (app->useBluesteinFFT[axis_id]))) || (numPasses == 1))) ? 1 : (int)(app->configuration.coalescedMemory / complexSize);
 		int estimate_rader_threadnum = 0;
 		int scale_registers_rader = 0;
 		int rader_min_registers = min_registers_per_thread;
@@ -2728,7 +2728,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					}
 
 					int local_estimate_rader_threadnum = (int)ceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)active_rader) * ((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2) * maxBatchCoalesced;
-					if ((maxBatchCoalesced * locAxisSplit[k] / ((rader_min_registers / 2 + scale_registers_rader) * 2 * registerBoost)) > local_estimate_rader_threadnum) local_estimate_rader_threadnum = (maxBatchCoalesced * locAxisSplit[k] / ((rader_min_registers / 2 + scale_registers_rader) * 2 * registerBoost));
+					if ((maxBatchCoalesced * locAxisSplit[k] / ((rader_min_registers / 2 + scale_registers_rader) * 2 * registerBoost)) > local_estimate_rader_threadnum) local_estimate_rader_threadnum = (maxBatchCoalesced * (int)locAxisSplit[k] / ((rader_min_registers / 2 + scale_registers_rader) * 2 * registerBoost));
 					if ((local_estimate_rader_threadnum > app->configuration.maxThreadsNum) || ((((locAxisSplit[k] / min_registers_per_thread) > 256) || (local_estimate_rader_threadnum > 256)) && (((rader_min_registers / 2 + scale_registers_rader) * 2) <= 4))) {
 						scale_registers_rader++;
 						i = -1;
@@ -2759,7 +2759,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					}
 				}
 			}
-			int new_min_registers = 1e7;
+			int new_min_registers = 10000000;
 			for (int i = 2; i < 33; i++) {
 				if ((registers_per_thread_per_radix[i] > 0) && (registers_per_thread_per_radix[i] < new_min_registers)) new_min_registers = registers_per_thread_per_radix[i];
 				if (registers_per_thread_per_radix[i] > registers_per_thread) {
@@ -2782,14 +2782,14 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		{
 			int scaleRegistersNum = 1;
 			if ((axis_id == 0) && (k == 0) && (maxBatchCoalesced > 1)) {
-				maxBatchCoalesced = app->configuration.maxThreadsNum * (min_registers_per_thread * registerBoost) / locAxisSplit[k];
+				maxBatchCoalesced = (int)(app->configuration.maxThreadsNum * (min_registers_per_thread * registerBoost) / locAxisSplit[k]);
 				if (maxBatchCoalesced < 1) maxBatchCoalesced = 1;
 			}
 			if (((int)ceil(maxBatchCoalesced * locAxisSplit[k] / (double)(min_registers_per_thread * registerBoost * scaleRegistersNum))) > app->configuration.maxThreadsNum) {
 				for (int i = 2; i < locAxisSplit[k]; i++) {
 					if ((((int)ceil(maxBatchCoalesced * locAxisSplit[k] / (double)(min_registers_per_thread * registerBoost * i))) <= app->configuration.maxThreadsNum)) {
 						scaleRegistersNum = i;
-						i = locAxisSplit[k];
+						i = (int)locAxisSplit[k];
 					}
 				}
 			}
@@ -2800,7 +2800,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					registers_per_thread_per_radix[i] *= scaleRegistersNum;
 				}
 			}
-			int new_min_registers = 1e7;
+			int new_min_registers = 10000000;
 			for (int i = 2; i < 33; i++) {
 				if ((registers_per_thread_per_radix[i] > 0) && (registers_per_thread_per_radix[i] < new_min_registers)) new_min_registers = registers_per_thread_per_radix[i];
 			}
@@ -2829,7 +2829,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			if (min_registers_per_thread > registers_per_thread) {
 				temp = min_registers_per_thread;
 				min_registers_per_thread = registers_per_thread;
-				registers_per_thread = temp;
+				registers_per_thread = (int)temp;
 			}
 			for (int i = 2; i < 33; i++) {
 				if (registers_per_thread_per_radix[i] > registers_per_thread) {
@@ -2870,7 +2870,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		}
 		//second optimizer pass
 		if (axes[k].specializationConstants.numRaderPrimes) {
-			res = VkFFTOptimizeRaderFFTRegisters(axes[k].specializationConstants.raderContainer, axes[k].specializationConstants.numRaderPrimes, locAxisSplit[k], &min_registers_per_thread, &registers_per_thread, registers_per_thread_per_radix);
+			res = VkFFTOptimizeRaderFFTRegisters(axes[k].specializationConstants.raderContainer, axes[k].specializationConstants.numRaderPrimes, (int)locAxisSplit[k], &min_registers_per_thread, &registers_per_thread, registers_per_thread_per_radix);
 			if (res != VKFFT_SUCCESS) return res;
 		}
 
@@ -2935,7 +2935,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 
 		//final check up on all registers, increase if bigger
 		registers_per_thread = 0;
-		min_registers_per_thread = 1e7;
+		min_registers_per_thread = 10000000;
 		if (axes[k].specializationConstants.useRaderMult) {
 			registers_per_thread = axes[k].specializationConstants.raderRegisters;
 			min_registers_per_thread = axes[k].specializationConstants.rader_min_registers;

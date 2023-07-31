@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.11)
-project(Vulkan_FFT)
+project(VkFFT_TestSuite)
 set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
 include(FetchContent)
@@ -25,7 +25,7 @@ if (MSVC)
 	add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 endif()
 if(build_VkFFT_FFTW_precision)
-	add_executable(${PROJECT_NAME} Vulkan_FFT.cpp
+	add_executable(${PROJECT_NAME} VkFFT_TestSuite.cpp
 		benchmark_scripts/vkFFT_scripts/src/utils_VkFFT.cpp
 		benchmark_scripts/vkFFT_scripts/src/user_benchmark_VkFFT.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_0_benchmark_VkFFT_single.cpp
@@ -55,7 +55,7 @@ if(build_VkFFT_FFTW_precision)
 		benchmark_scripts/vkFFT_scripts/src/sample_1001_benchmark_VkFFT_double_2_4096.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_1003_benchmark_VkFFT_single_3d_2_512.cpp)
 else()		
-	add_executable(${PROJECT_NAME} Vulkan_FFT.cpp
+	add_executable(${PROJECT_NAME} VkFFT_TestSuite.cpp
 		benchmark_scripts/vkFFT_scripts/src/utils_VkFFT.cpp
 		benchmark_scripts/vkFFT_scripts/src/user_benchmark_VkFFT.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_0_benchmark_VkFFT_single.cpp
@@ -86,7 +86,7 @@ elseif(${VKFFT_BACKEND} EQUAL 1)
 	enable_language(CUDA)
 if (MSVC)
 else()
-		set_source_files_properties(Vulkan_FFT.cpp PROPERTIES LANGUAGE CUDA)
+		set_source_files_properties(VkFFT_TestSuite.cpp PROPERTIES LANGUAGE CUDA)
 endif()
 	set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 60 70 75 80 86)
 	target_compile_options(${PROJECT_NAME} PUBLIC "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:

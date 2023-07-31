@@ -31,11 +31,11 @@ static inline void appendConstantsVkFFT(VkFFTSpecializationConstantsLayout* sc) 
 	//
 	//appendConstant(sc, floatType, "loc_SQRT1_2", "0.70710678118654752440084436210485", LFending);
 	//
-	VkContainer* uintType;
-	VkGetTypeFromCode(sc, sc->uintTypeCode, &uintType);
+	PfContainer* uintType;
+	PfGetTypeFromCode(sc, sc->uintTypeCode, &uintType);
 
-	VkContainer* floatType;
-	VkGetTypeFromCode(sc, sc->floatTypeCode, &floatType);
+	PfContainer* floatType;
+	PfGetTypeFromCode(sc, sc->floatTypeCode, &floatType);
 	if (sc->useRader) {
 		for (int i = 0; i < sc->numRaderPrimes; i++) {
 			if (sc->raderContainer[i].prime > 0) {
@@ -43,39 +43,39 @@ static inline void appendConstantsVkFFT(VkFFTSpecializationConstantsLayout* sc) 
 					int64_t g_pow = 1;
 #if((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
 					sc->tempLen = sprintf(sc->tempStr, "__constant %s %s[%d]= {1", uintType->data.s, sc->raderContainer[i].g_powConstantStruct.data.s, sc->raderContainer[i].prime);
-					VkAppendLine(sc);
+					PfAppendLine(sc);
 					
 #elif(VKFFT_BACKEND==5)
 					sc->tempLen = sprintf(sc->tempStr, "constant %s %s[%d]= {1", uintType->data.s, sc->raderContainer[i].g_powConstantStruct.data.s, sc->raderContainer[i].prime);
-					VkAppendLine(sc);
+					PfAppendLine(sc);
 					
 #else
 					sc->tempLen = sprintf(sc->tempStr, "const %s %s[%d]= {1", uintType->data.s, sc->raderContainer[i].g_powConstantStruct.data.s, sc->raderContainer[i].prime);
-					VkAppendLine(sc);
+					PfAppendLine(sc);
 					
 #endif
 					for (int t = 0; t < sc->raderContainer[i].prime - 1; t++) {
 						g_pow = (g_pow * sc->raderContainer[i].generator) % sc->raderContainer[i].prime;
 						sc->tempLen = sprintf(sc->tempStr, ", %" PRIi64 "", g_pow);
-						VkAppendLine(sc);
+						PfAppendLine(sc);
 						
 					}
 					sc->tempLen = sprintf(sc->tempStr, "};\n");
-					VkAppendLine(sc);
+					PfAppendLine(sc);
 					
 				}
 				if (sc->inline_rader_kernel) {
 #if((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
 					sc->tempLen = sprintf(sc->tempStr, "__constant %s %s[%d]= {", floatType->data.s, sc->raderContainer[i].r_rader_kernelConstantStruct.data.s, sc->raderContainer[i].prime - 1);
-					VkAppendLine(sc);
+					PfAppendLine(sc);
 					
 #elif(VKFFT_BACKEND==5)
 					sc->tempLen = sprintf(sc->tempStr, "constant %s %s[%d]= {", floatType->data.s, sc->raderContainer[i].r_rader_kernelConstantStruct.data.s, sc->raderContainer[i].prime - 1);
-					VkAppendLine(sc);
+					PfAppendLine(sc);
 					
 #else
 					sc->tempLen = sprintf(sc->tempStr, "const %s %s[%d]= {", floatType->data.s, sc->raderContainer[i].r_rader_kernelConstantStruct.data.s, sc->raderContainer[i].prime - 1);
-					VkAppendLine(sc);
+					PfAppendLine(sc);
 					
 #endif
 					if (sc->raderContainer[i].type == 0) {
@@ -83,24 +83,24 @@ static inline void appendConstantsVkFFT(VkFFTSpecializationConstantsLayout* sc) 
 							if (((sc->floatTypeCode % 100) / 10) == 2) {
 								double* raderFFTKernel = (double*)sc->raderContainer[i].raderFFTkernel;
 								sc->tempLen = sprintf(sc->tempStr, "%.17e", raderFFTKernel[2 * j] / (sc->raderContainer[i].prime - 1));
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								sc->tempLen = sprintf(sc->tempStr, "%s ", sc->doubleLiteral.data.s);
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 							}
 							if (((sc->floatTypeCode % 100) / 10) == 1) {
 								float* raderFFTKernel = (float*)sc->raderContainer[i].raderFFTkernel;
 								sc->tempLen = sprintf(sc->tempStr, "%.8e", raderFFTKernel[2 * j] / (sc->raderContainer[i].prime - 1));
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								sc->tempLen = sprintf(sc->tempStr, "%s ", sc->floatLiteral.data.s);
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 							}
 							if (j < (sc->raderContainer[i].prime - 2)) {
 								sc->tempLen = sprintf(sc->tempStr, ", ");
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 							}
 							else {
 								sc->tempLen = sprintf(sc->tempStr, "};\n");
-								VkAppendLine(sc);								
+								PfAppendLine(sc);								
 							}
 						}
 					}
@@ -113,40 +113,40 @@ static inline void appendConstantsVkFFT(VkFFTSpecializationConstantsLayout* sc) 
 							if (((sc->floatTypeCode % 100) / 10) == 2) {
 								double* raderFFTKernel = (double*)sc->raderContainer[i].raderFFTkernel;
 								sc->tempLen = sprintf(sc->tempStr, "%.17e", (double)cos(2.0 * g_pow * sc->double_PI / sc->raderContainer[i].prime));
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								sc->tempLen = sprintf(sc->tempStr, "%s ", sc->doubleLiteral.data.s);
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 							}
 							if (((sc->floatTypeCode % 100) / 10) == 1) {
 								float* raderFFTKernel = (float*)sc->raderContainer[i].raderFFTkernel;
 								sc->tempLen = sprintf(sc->tempStr, "%.8e", (float)cos(2.0 * g_pow * sc->double_PI / sc->raderContainer[i].prime));
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								sc->tempLen = sprintf(sc->tempStr, "%s ", sc->floatLiteral.data.s);
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 							}
 							if (j < (sc->raderContainer[i].prime - 2)) {
 								sc->tempLen = sprintf(sc->tempStr, ", ");
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								
 							}
 							else {
 								sc->tempLen = sprintf(sc->tempStr, "};\n");
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								
 							}
 						}
 					}
 #if((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
 					sc->tempLen = sprintf(sc->tempStr, "__constant %s %s[%d]= {", floatType->data.s, sc->raderContainer[i].i_rader_kernelConstantStruct.data.s, sc->raderContainer[i].prime - 1);
-					VkAppendLine(sc);
+					PfAppendLine(sc);
 					
 #elif(VKFFT_BACKEND==5)
 					sc->tempLen = sprintf(sc->tempStr, "constant %s %s[%d]= {", floatType->data.s, sc->raderContainer[i].i_rader_kernelConstantStruct.data.s, sc->raderContainer[i].prime - 1);
-					VkAppendLine(sc);
+					PfAppendLine(sc);
 					
 #else
 					sc->tempLen = sprintf(sc->tempStr, "const %s %s[%d]= {", floatType->data.s, sc->raderContainer[i].i_rader_kernelConstantStruct.data.s, sc->raderContainer[i].prime - 1);
-					VkAppendLine(sc);
+					PfAppendLine(sc);
 					
 #endif
 					if (sc->raderContainer[i].type == 0) {
@@ -154,26 +154,26 @@ static inline void appendConstantsVkFFT(VkFFTSpecializationConstantsLayout* sc) 
 							if (((sc->floatTypeCode % 100) / 10) == 2) {
 								double* raderFFTKernel = (double*)sc->raderContainer[i].raderFFTkernel;
 								sc->tempLen = sprintf(sc->tempStr, "%.17e", raderFFTKernel[2 * j + 1] / (sc->raderContainer[i].prime - 1));
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								sc->tempLen = sprintf(sc->tempStr, "%s ", sc->doubleLiteral.data.s);
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 							}
 							if (((sc->floatTypeCode % 100) / 10) == 1) {
 								float* raderFFTKernel = (float*)sc->raderContainer[i].raderFFTkernel;
 								sc->tempLen = sprintf(sc->tempStr, "%.8e", raderFFTKernel[2 * j + 1] / (sc->raderContainer[i].prime - 1));
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								sc->tempLen = sprintf(sc->tempStr, "%s ", sc->floatLiteral.data.s);
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 							}
 
 							if (j < (sc->raderContainer[i].prime - 2)) {
 								sc->tempLen = sprintf(sc->tempStr, ", ");
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								
 							}
 							else {
 								sc->tempLen = sprintf(sc->tempStr, "};\n");
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								
 							}
 						}
@@ -187,25 +187,25 @@ static inline void appendConstantsVkFFT(VkFFTSpecializationConstantsLayout* sc) 
 							if (((sc->floatTypeCode % 100) / 10) == 2) {
 								double* raderFFTKernel = (double*)sc->raderContainer[i].raderFFTkernel;
 								sc->tempLen = sprintf(sc->tempStr, "%.17e", (double)(-sin(2.0 * g_pow * sc->double_PI / sc->raderContainer[i].prime)));
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								sc->tempLen = sprintf(sc->tempStr, "%s ", sc->doubleLiteral.data.s);
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 							}
 							if (((sc->floatTypeCode % 100) / 10) == 1) {
 								float* raderFFTKernel = (float*)sc->raderContainer[i].raderFFTkernel;
 								sc->tempLen = sprintf(sc->tempStr, "%.8e", (float)(-sin(2.0 * g_pow * sc->double_PI / sc->raderContainer[i].prime)));
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								sc->tempLen = sprintf(sc->tempStr, "%s ", sc->floatLiteral.data.s);
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 							}
 							if (j < (sc->raderContainer[i].prime - 2)) {
 								sc->tempLen = sprintf(sc->tempStr, ", ");
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								
 							}
 							else {
 								sc->tempLen = sprintf(sc->tempStr, "};\n");
-								VkAppendLine(sc);
+								PfAppendLine(sc);
 								
 							}
 						}
