@@ -38831,6 +38831,6 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 #include "vkFFT/vkFFT_AppManagement/vkFFT_DeleteApp.h"
 
 static inline int VkFFTGetVersion() {
-	return 10300; //X.XX.XX format
+	return 10301; //X.XX.XX format
 }
 #endif
