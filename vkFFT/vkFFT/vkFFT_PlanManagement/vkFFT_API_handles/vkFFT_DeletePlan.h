@@ -97,13 +97,13 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
 		res = zeMemFree(app->configuration.context[0], axis->bufferLUT);
 		if (res == ZE_RESULT_SUCCESS) axis->bufferLUT = 0;
 	}
-	if (axis->VkFFTModule != 0) {
-		res = zeModuleDestroy(axis->VkFFTModule);
-		if (res == ZE_RESULT_SUCCESS)axis->VkFFTModule = 0;
-	}
 	if (axis->VkFFTKernel != 0) {
 		res = zeKernelDestroy(axis->VkFFTKernel);
 		if (res == ZE_RESULT_SUCCESS)axis->VkFFTKernel = 0;
+	}
+	if (axis->VkFFTModule != 0) {
+		res = zeModuleDestroy(axis->VkFFTModule);
+		if (res == ZE_RESULT_SUCCESS)axis->VkFFTModule = 0;
 	}
 #elif(VKFFT_BACKEND==5)
 	if (axis->pushConstants.dataUintBuffer) {
