@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.11)
 project(VkFFT_TestSuite)
 set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+if (NOT DEFINED GLSLANG_GIT_TAG)
+    set(GLSLANG_GIT_TAG "origin/main")
+endif()
 include(FetchContent)
 set(VKFFT_BACKEND 0 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL, 4 - Level Zero, 5 - Metal")
 
@@ -138,7 +141,7 @@ endif()
 if(${VKFFT_BACKEND} EQUAL 0)
 	FetchContent_Declare(
 		glslang-main
-		GIT_TAG "origin/main"
+		GIT_TAG ${GLSLANG_GIT_TAG}
 		GIT_REPOSITORY https://github.com/KhronosGroup/glslang
 		SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/glslang-main
 	)
