@@ -1,10 +1,15 @@
 cmake_minimum_required(VERSION 3.11)
 project(VkFFT_TestSuite)
+
+if(NOT CMAKE_BUILD_TYPE)
 set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
-if (NOT DEFINED GLSLANG_GIT_TAG)
-    set(GLSLANG_GIT_TAG "origin/main")
 endif()
+
+if (NOT DEFINED GLSLANG_GIT_TAG)
+	set(GLSLANG_GIT_TAG "12.3.1")
+endif()
+
 include(FetchContent)
 set(VKFFT_BACKEND 0 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL, 4 - Level Zero, 5 - Metal")
 
@@ -22,6 +27,7 @@ endif()
 
 option(build_VkFFT_FFTW_precision "Build VkFFT FFTW precision comparison" OFF)
 option(VkFFT_use_FP128_Bluestein_RaderFFT "Use FP128 for Bluestein and Rader FFT kernel calculations. Currently requires FP128 FFT library, like FFTWl" OFF)
+option(VkFFT_use_FP128_double_double "Build VkFFT quad double-double" OFF)
 
 if (MSVC)
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
@@ -40,6 +46,7 @@ if(build_VkFFT_FFTW_precision)
 		benchmark_scripts/vkFFT_scripts/src/sample_6_benchmark_VkFFT_single_r2c.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_7_benchmark_VkFFT_single_Bluestein.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_8_benchmark_VkFFT_double_Bluestein.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_9_benchmark_VkFFT_quadDoubleDouble.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_10_benchmark_VkFFT_single_multipleBuffers.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_11_precision_VkFFT_single.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_12_precision_VkFFT_double.cpp
@@ -49,14 +56,17 @@ if(build_VkFFT_FFTW_precision)
 		benchmark_scripts/vkFFT_scripts/src/sample_16_precision_VkFFT_single_dct.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_17_precision_VkFFT_double_dct.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_18_precision_VkFFT_double_nonPow2.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_19_precision_VkFFT_quadDoubleDouble_nonPow2.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_50_convolution_VkFFT_single_1d_matrix.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_52_convolution_VkFFT_single_2d_batched_r2c.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_100_benchmark_VkFFT_single_nd_dct.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_101_benchmark_VkFFT_double_nd_dct.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1000_VkFFT_single_2_4096.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1000_benchmark_VkFFT_single_2_4096.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_1001_benchmark_VkFFT_double_2_4096.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1003_benchmark_VkFFT_single_3d_2_512.cpp)
+		benchmark_scripts/vkFFT_scripts/src/sample_1002_benchmark_VkFFT_half_2_4096.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1003_benchmark_VkFFT_single_3d_2_512.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1004_benchmark_VkFFT_quadDoubleDouble_2_4096.cpp)
 else()		
 	add_executable(${PROJECT_NAME} VkFFT_TestSuite.cpp
 		benchmark_scripts/vkFFT_scripts/src/utils_VkFFT.cpp
@@ -70,15 +80,18 @@ else()
 		benchmark_scripts/vkFFT_scripts/src/sample_6_benchmark_VkFFT_single_r2c.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_7_benchmark_VkFFT_single_Bluestein.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_8_benchmark_VkFFT_double_Bluestein.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_9_benchmark_VkFFT_quadDoubleDouble.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_10_benchmark_VkFFT_single_multipleBuffers.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_50_convolution_VkFFT_single_1d_matrix.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_52_convolution_VkFFT_single_2d_batched_r2c.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_100_benchmark_VkFFT_single_nd_dct.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_101_benchmark_VkFFT_double_nd_dct.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1000_VkFFT_single_2_4096.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1000_benchmark_VkFFT_single_2_4096.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_1001_benchmark_VkFFT_double_2_4096.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1003_benchmark_VkFFT_single_3d_2_512.cpp)
+		benchmark_scripts/vkFFT_scripts/src/sample_1002_benchmark_VkFFT_half_2_4096.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1003_benchmark_VkFFT_single_3d_2_512.cpp
+		benchmark_scripts/vkFFT_scripts/src/sample_1004_benchmark_VkFFT_quadDoubleDouble_2_4096.cpp)
 endif()
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_11)  
 add_definitions(-DVKFFT_BACKEND=${VKFFT_BACKEND})
@@ -138,7 +151,12 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC -DVK_API_VERSION=11)#10 - Vulk
 if(VkFFT_use_FP128_Bluestein_RaderFFT)
         target_compile_definitions(${PROJECT_NAME} PUBLIC -DVkFFT_use_FP128_Bluestein_RaderFFT)
 endif()  
+if(VkFFT_use_FP128_double_double)
+	target_compile_definitions(${PROJECT_NAME} PUBLIC -DVKFFT_USE_DOUBLEDOUBLE_FP128)
+	target_link_libraries(${PROJECT_NAME} PUBLIC quadmath)
+endif()
 if(${VKFFT_BACKEND} EQUAL 0)
+	set(ENABLE_OPT 0)
 	FetchContent_Declare(
 		glslang-main
 		GIT_TAG ${GLSLANG_GIT_TAG}
@@ -153,12 +171,12 @@ if(${VKFFT_BACKEND} EQUAL 0)
 	add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-main)
 endif()
 
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/)
 add_library(VkFFT INTERFACE)
+target_include_directories(VkFFT INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/)
 target_compile_definitions(VkFFT INTERFACE -DVKFFT_BACKEND=${VKFFT_BACKEND})
 
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/half_lib/)
 add_library(half INTERFACE)
+target_include_directories(half INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/half_lib/)
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/vkFFT_scripts/include/)
 
@@ -168,6 +186,7 @@ elseif(${VKFFT_BACKEND} EQUAL 1)
 	find_library(CUDA_NVRTC_LIB libnvrtc nvrtc HINTS "${CUDA_TOOLKIT_ROOT_DIR}/lib64" "${LIBNVRTC_LIBRARY_DIR}" "${CUDA_TOOLKIT_ROOT_DIR}/lib/x64" /usr/lib64 /usr/local/cuda/lib64)
 	add_definitions(-DCUDA_TOOLKIT_ROOT_DIR="${CUDA_TOOLKIT_ROOT_DIR}")
 	target_link_libraries(${PROJECT_NAME} PUBLIC ${CUDA_LIBRARIES} cuda ${CUDA_NVRTC_LIB} VkFFT half)
+	target_include_directories(${PROJECT_NAME} PUBLIC ${CUDA_INCLUDE_DIRS})
 elseif(${VKFFT_BACKEND} EQUAL 2)
 	target_link_libraries(${PROJECT_NAME} PUBLIC hip::host VkFFT half)
 elseif(${VKFFT_BACKEND} EQUAL 3)
@@ -197,6 +216,16 @@ if(build_VkFFT_FFTW_precision OR VkFFT_use_FP128_Bluestein_RaderFFT)
 		NO_DEFAULT_PATH
 	  )
         target_include_directories(${PROJECT_NAME} PUBLIC ${FFTW_INCLUDES})
+if(VkFFT_use_FP128_double_double)
+	find_library(
+		FFTWQ_LIB
+		NAMES "libfftw3q" "fftw3q"
+		PATHS ${FFTW3_LIB_DIR}
+		PATH_SUFFIXES "lib" "lib64"
+		NO_DEFAULT_PATH
+	  )
+	  target_link_libraries (${PROJECT_NAME} PUBLIC ${FFTWQ_LIB})
+endif()
 if(VkFFT_use_FP128_Bluestein_RaderFFT)        
 	find_library(
 		FFTWL_LIB
@@ -205,10 +234,9 @@ if(VkFFT_use_FP128_Bluestein_RaderFFT)
 		PATH_SUFFIXES "lib" "lib64"
 		NO_DEFAULT_PATH
 	  )
-	target_link_libraries (${PROJECT_NAME} PUBLIC ${FFTW_LIB} ${FFTWL_LIB})
-else()
-        target_link_libraries (${PROJECT_NAME} PUBLIC ${FFTW_LIB})
+	target_link_libraries (${PROJECT_NAME} PUBLIC ${FFTWL_LIB})
 endif()
+	target_link_libraries (${PROJECT_NAME} PUBLIC ${FFTW_LIB})
 endif()
 
 if(build_VkFFT_cuFFT_benchmark)
@@ -256,6 +284,7 @@ if(build_VkFFT_cuFFT_benchmark)
 	-gencode arch=compute_80,code=compute_80 
 	-gencode arch=compute_86,code=compute_86>")
 	target_include_directories(cuFFT_scripts PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/cuFFT_scripts/include)
+	target_include_directories(cuFFT_scripts PUBLIC ${CUDA_INCLUDE_DIRS})
 	set_target_properties(cuFFT_scripts PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 	set_target_properties(cuFFT_scripts PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 	target_link_libraries(${PROJECT_NAME} PUBLIC cuFFT_scripts)

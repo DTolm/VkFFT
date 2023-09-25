@@ -66,31 +66,36 @@
 #include "Metal/Metal.hpp"
 #endif
 
+#ifdef VKFFT_USE_QUADMATH_FP128
+#include <quadmath.h>
+#endif
 //unified VkFFT container
-typedef union PfData {
-	int64_t i;
-	long double d;
-	long double c[2];
-
-	char* s;
-} PfData;
 typedef struct PfContainer PfContainer;
+typedef union PfData PfData;
+
+typedef union PfData {
+	pfINT i; // int
+	pfLD d; // long double
+	PfContainer* c; // [2] complex
+	PfContainer* dd; // [2] double-double __ibm128
+} PfData;
 struct PfContainer{
 	int type; // 0 - uninitialized
 			  // 1 - int, 2 - float, 3 - complex float; 
-			  // + X0: 0 - half, 1 - float, 2 - double, 3 - long double - precision identifiers (only for strings now, all number values are in max long double precision for simplicity)
+			  // + X0: 0 - half, 1 - float, 2 - double, 3 - double-double, 4 - fp128 (if available): - precision identifiers (only for strings now, all number values are in max pfLD precision for simplicity)
 			  // 100 + X - variable name, containing same type as in X
 			  
-	PfData data; // memory of the container
-	int size; //  bytes allcoated in data.s
+	PfData data; // memory contents of the container
+	char* name; // name of the container
+	int size; //  bytes allcoated in name
 };
 
 typedef struct {
 	//WHDCN layout
 
 	//required parameters:
-	uint64_t FFTdim; //FFT dimensionality (1, 2 or 3)
-	uint64_t size[VKFFT_MAX_FFT_DIMENSIONS]; // WHD -system dimensions
+	pfUINT FFTdim; //FFT dimensionality (1, 2 or 3)
+	pfUINT size[VKFFT_MAX_FFT_DIMENSIONS]; // WHD -system dimensions
 
 #if(VKFFT_BACKEND==0)
 	VkPhysicalDevice* physicalDevice;//pointer to Vulkan physical device, obtained from vkEnumeratePhysicalDevices
@@ -98,17 +103,17 @@ typedef struct {
 	VkQueue* queue;//pointer to Vulkan queue, created with vkGetDeviceQueue
 	VkCommandPool* commandPool;//pointer to Vulkan command pool, created with vkCreateCommandPool
 	VkFence* fence;//pointer to Vulkan fence, created with vkCreateFence
-	uint64_t isCompilerInitialized;//specify if glslang compiler has been intialized before (0 - off, 1 - on). Default 0
+	pfUINT isCompilerInitialized;//specify if glslang compiler has been intialized before (0 - off, 1 - on). Default 0
 #elif(VKFFT_BACKEND==1)
 	CUdevice* device;//pointer to CUDA device, obtained from cuDeviceGet
 	//CUcontext* context;//pointer to CUDA context, obtained from cuDeviceGet
 	cudaStream_t* stream;//pointer to streams (can be more than 1), where to execute the kernels
-	uint64_t num_streams;//try to submit CUDA kernels in multiple streams for asynchronous execution. Default 0, set to >=1 if you pass values in the stream pointer.
+	pfUINT num_streams;//try to submit CUDA kernels in multiple streams for asynchronous execution. Default 0, set to >=1 if you pass values in the stream pointer.
 #elif(VKFFT_BACKEND==2)
 	hipDevice_t* device;//pointer to HIP device, obtained from hipDeviceGet
 	//hipCtx_t* context;//pointer to HIP context, obtained from hipDeviceGet
 	hipStream_t* stream;//pointer to streams (can be more than 1), where to execute the kernels
-	uint64_t num_streams;//try to submit HIP kernels in multiple streams for asynchronous execution. Default 0, set to >=1 if you pass values in the stream pointer.
+	pfUINT num_streams;//try to submit HIP kernels in multiple streams for asynchronous execution. Default 0, set to >=1 if you pass values in the stream pointer.
 #elif(VKFFT_BACKEND==3)
 	cl_platform_id* platform;//not required
 	cl_device_id* device;
@@ -124,20 +129,20 @@ typedef struct {
 #endif
 
 	//data parameters:
-	uint64_t userTempBuffer; //buffer allocated by app automatically if needed to reorder Four step algorithm. Setting to non zero value enables manual user allocation (0 - off, 1 - on)
+	pfUINT userTempBuffer; //buffer allocated by app automatically if needed to reorder Four step algorithm. Setting to non zero value enables manual user allocation (0 - off, 1 - on)
 
-	uint64_t bufferNum;//multiple buffer sequence storage is Vulkan only. Default 1
-	uint64_t tempBufferNum;//multiple buffer sequence storage is Vulkan only. Default 1, buffer allocated by app automatically if needed to reorder Four step algorithm. Setting to non zero value enables manual user allocation
-	uint64_t inputBufferNum;//multiple buffer sequence storage is Vulkan only. Default 1, if isInputFormatted is enabled
-	uint64_t outputBufferNum;//multiple buffer sequence storage is Vulkan only. Default 1, if isOutputFormatted is enabled
-	uint64_t kernelNum;//multiple buffer sequence storage is Vulkan only. Default 1, if performConvolution is enabled
+	pfUINT bufferNum;//multiple buffer sequence storage is Vulkan only. Default 1
+	pfUINT tempBufferNum;//multiple buffer sequence storage is Vulkan only. Default 1, buffer allocated by app automatically if needed to reorder Four step algorithm. Setting to non zero value enables manual user allocation
+	pfUINT inputBufferNum;//multiple buffer sequence storage is Vulkan only. Default 1, if isInputFormatted is enabled
+	pfUINT outputBufferNum;//multiple buffer sequence storage is Vulkan only. Default 1, if isOutputFormatted is enabled
+	pfUINT kernelNum;//multiple buffer sequence storage is Vulkan only. Default 1, if performConvolution is enabled
 
 	//sizes are obligatory in Vulkan backend, optional in others
-	uint64_t* bufferSize;//array of buffers sizes in bytes
-	uint64_t* tempBufferSize;//array of temp buffers sizes in bytes. Default set to bufferSize sum, buffer allocated by app automatically if needed to reorder Four step algorithm. Setting to non zero value enables manual user allocation
-	uint64_t* inputBufferSize;//array of input buffers sizes in bytes, if isInputFormatted is enabled
-	uint64_t* outputBufferSize;//array of output buffers sizes in bytes, if isOutputFormatted is enabled
-	uint64_t* kernelSize;//array of kernel buffers sizes in bytes, if performConvolution is enabled
+	pfUINT* bufferSize;//array of buffers sizes in bytes
+	pfUINT* tempBufferSize;//array of temp buffers sizes in bytes. Default set to bufferSize sum, buffer allocated by app automatically if needed to reorder Four step algorithm. Setting to non zero value enables manual user allocation
+	pfUINT* inputBufferSize;//array of input buffers sizes in bytes, if isInputFormatted is enabled
+	pfUINT* outputBufferSize;//array of output buffers sizes in bytes, if isOutputFormatted is enabled
+	pfUINT* kernelSize;//array of kernel buffers sizes in bytes, if performConvolution is enabled
 
 #if(VKFFT_BACKEND==0)
 	VkBuffer* buffer;//pointer to array of buffers (or one buffer) used for computations
@@ -176,130 +181,134 @@ typedef struct {
 	MTL::Buffer** outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
 	MTL::Buffer** kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
 #endif
-	uint64_t bufferOffset;//specify if VkFFT has to offset the first element position inside the buffer. In bytes. Default 0 
-	uint64_t tempBufferOffset;//specify if VkFFT has to offset the first element position inside the temp buffer. In bytes. Default 0 
-	uint64_t inputBufferOffset;//specify if VkFFT has to offset the first element position inside the input buffer. In bytes. Default 0 
-	uint64_t outputBufferOffset;//specify if VkFFT has to offset the first element position inside the output buffer. In bytes. Default 0
-	uint64_t kernelOffset;//specify if VkFFT has to offset the first element position inside the kernel. In bytes. Default 0
-	uint64_t specifyOffsetsAtLaunch;//specify if offsets will be selected with launch parameters VkFFTLaunchParams (0 - off, 1 - on). Default 0
+	pfUINT bufferOffset;//specify if VkFFT has to offset the first element position inside the buffer. In bytes. Default 0 
+	pfUINT tempBufferOffset;//specify if VkFFT has to offset the first element position inside the temp buffer. In bytes. Default 0 
+	pfUINT inputBufferOffset;//specify if VkFFT has to offset the first element position inside the input buffer. In bytes. Default 0 
+	pfUINT outputBufferOffset;//specify if VkFFT has to offset the first element position inside the output buffer. In bytes. Default 0
+	pfUINT kernelOffset;//specify if VkFFT has to offset the first element position inside the kernel. In bytes. Default 0
+	pfUINT specifyOffsetsAtLaunch;//specify if offsets will be selected with launch parameters VkFFTLaunchParams (0 - off, 1 - on). Default 0
 
 	//optional: (default 0 if not stated otherwise)
 #if(VKFFT_BACKEND==0)
 	VkPipelineCache* pipelineCache;//pointer to Vulkan pipeline cache
+	VkBuffer* stagingBuffer;//pointer to the user defined staging buffer (used internally for LUT data transfers)
+	VkDeviceMemory* stagingBufferMemory;//pointer to the user defined staging buffer memory, associated with the stagingBuffer (used internally for LUT data transfers)
 #endif
-	uint64_t coalescedMemory;//in bytes, for Nvidia and AMD is equal to 32, Intel is equal 64, scaled for half precision. Gonna work regardles, but if specified by user correctly, the performance will be higher.
-	uint64_t aimThreads;//aim at this many threads per block. Default 128
-	uint64_t numSharedBanks;//how many banks shared memory has. Default 32
-	uint64_t inverseReturnToInputBuffer;//return data to the input buffer in inverse transform (0 - off, 1 - on). isInputFormatted must be enabled
-	uint64_t numberBatches;// N - used to perform multiple batches of initial data. Default 1
-	uint64_t useUint64;// use 64-bit addressing mode in generated kernels
-	uint64_t omitDimension[VKFFT_MAX_FFT_DIMENSIONS];//disable FFT for this dimension (0 - FFT enabled, 1 - FFT disabled). Default 0. Doesn't work for R2C dimension 0 for now. Doesn't work with convolutions.
-	uint64_t performBandwidthBoost;//try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise 
-	uint64_t groupedBatch[VKFFT_MAX_FFT_DIMENSIONS];// try to force this many FFTs to be perfromed by one threadblock for each dimension
+	pfUINT coalescedMemory;//in bytes, for Nvidia and AMD is equal to 32, Intel is equal 64, scaled for half precision. Gonna work regardles, but if specified by user correctly, the performance will be higher.
+	pfUINT aimThreads;//aim at this many threads per block. Default 128
+	pfUINT numSharedBanks;//how many banks shared memory has. Default 32
+	pfUINT inverseReturnToInputBuffer;//return data to the input buffer in inverse transform (0 - off, 1 - on). isInputFormatted must be enabled
+	pfUINT numberBatches;// N - used to perform multiple batches of initial data. Default 1
+	pfUINT useUint64;// use 64-bit addressing mode in generated kernels
+	pfUINT omitDimension[VKFFT_MAX_FFT_DIMENSIONS];//disable FFT for this dimension (0 - FFT enabled, 1 - FFT disabled). Default 0. Doesn't work for R2C dimension 0 for now. Doesn't work with convolutions.
+	int performBandwidthBoost;//try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise 
+	pfUINT groupedBatch[VKFFT_MAX_FFT_DIMENSIONS];// try to force this many FFTs to be perfromed by one threadblock for each dimension
 
-	uint64_t doublePrecision; //perform calculations in double precision (0 - off, 1 - on).
-	uint64_t halfPrecision; //perform calculations in half precision (0 - off, 1 - on)
-	uint64_t halfPrecisionMemoryOnly; //use half precision only as input/output buffer. Input/Output have to be allocated as half, buffer/tempBuffer have to be allocated as float (out of place mode only). Specify isInputFormatted and isOutputFormatted to use (0 - off, 1 - on)
-	uint64_t doublePrecisionFloatMemory; //use FP64 precision for all calculations, while all memory storage is done in FP32.
+	pfUINT doublePrecision; //perform calculations in double precision (0 - off, 1 - on).
+	pfUINT quadDoubleDoublePrecision; //perform calculations in double-double quad precision (0 - off, 1 - on).
+	pfUINT halfPrecision; //perform calculations in half precision (0 - off, 1 - on)
+	pfUINT halfPrecisionMemoryOnly; //use half precision only as input/output buffer. Input/Output have to be allocated as half, buffer/tempBuffer have to be allocated as float (out of place mode only). Specify isInputFormatted and isOutputFormatted to use (0 - off, 1 - on)
+	pfUINT doublePrecisionFloatMemory; //use FP64 precision for all calculations, while all memory storage is done in FP32.
 
-	uint64_t performR2C; //perform R2C/C2R decomposition (0 - off, 1 - on)
-	uint64_t performDCT; //perform DCT transformation (X - DCT type, 1-4)
-	uint64_t disableMergeSequencesR2C; //disable merging of two real sequences to reduce calculations (0 - off, 1 - on)
-	uint64_t normalize; //normalize inverse transform (0 - off, 1 - on)
-	uint64_t disableReorderFourStep; // disables unshuffling of Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on)
-	int64_t useLUT; //switches from calculating sincos to using precomputed LUT tables (-1 - off, 0 - auto, 1 - on). Configured by initialization routine
-	int64_t useLUT_4step; //switches from calculating sincos to using precomputed LUT tables for intermediate roots of 1 in the Four-step FFT algorithm. (-1 - off, 0 - auto, 1 - on). Configured by initialization routine
-	uint64_t makeForwardPlanOnly; //generate code only for forward FFT (0 - off, 1 - on)
-	uint64_t makeInversePlanOnly; //generate code only for inverse FFT (0 - off, 1 - on)
+	pfUINT performR2C; //perform R2C/C2R decomposition (0 - off, 1 - on)
+	pfUINT performDCT; //perform DCT transformation (X - DCT type, 1-4)
+	pfUINT disableMergeSequencesR2C; //disable merging of two real sequences to reduce calculations (0 - off, 1 - on)
+	pfUINT normalize; //normalize inverse transform (0 - off, 1 - on)
+	pfUINT disableReorderFourStep; // disables unshuffling of Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on)
+	pfINT useLUT; //switches from calculating sincos to using precomputed LUT tables (-1 - off, 0 - auto, 1 - on). Configured by initialization routine
+	pfINT useLUT_4step; //switches from calculating sincos to using precomputed LUT tables for intermediate roots of 1 in the Four-step FFT algorithm. (-1 - off, 0 - auto, 1 - on). Configured by initialization routine
+	pfUINT makeForwardPlanOnly; //generate code only for forward FFT (0 - off, 1 - on)
+	pfUINT makeInversePlanOnly; //generate code only for inverse FFT (0 - off, 1 - on)
 
-	uint64_t bufferStride[VKFFT_MAX_FFT_DIMENSIONS];//buffer strides - default set to x - x*y - x*y*z values
-	uint64_t isInputFormatted; //specify if input buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
-	uint64_t isOutputFormatted; //specify if output buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
-	uint64_t inputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];//input buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
-	uint64_t outputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];//output buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
+	pfUINT bufferStride[VKFFT_MAX_FFT_DIMENSIONS];//buffer strides - default set to x - x*y - x*y*z values
+	pfUINT isInputFormatted; //specify if input buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
+	pfUINT isOutputFormatted; //specify if output buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
+	pfUINT inputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];//input buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
+	pfUINT outputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];//output buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
 
-	uint64_t considerAllAxesStrided;//will create plan for nonstrided axis similar as a strided axis - used with disableReorderFourStep to get the same layout for Bluestein kernel (0 - off, 1 - on)
-	uint64_t keepShaderCode;//will keep shader code and print all executed shaders during the plan execution in order (0 - off, 1 - on)
-	uint64_t printMemoryLayout;//will print order of buffers used in shaders (0 - off, 1 - on)
+	pfUINT considerAllAxesStrided;//will create plan for nonstrided axis similar as a strided axis - used with disableReorderFourStep to get the same layout for Bluestein kernel (0 - off, 1 - on)
+	pfUINT keepShaderCode;//will keep shader code and print all executed shaders during the plan execution in order (0 - off, 1 - on)
+	pfUINT printMemoryLayout;//will print order of buffers used in shaders (0 - off, 1 - on)
 
-	uint64_t saveApplicationToString;//will save all compiled binaries to VkFFTApplication.saveApplicationString (will be allocated by VkFFT, deallocated with deleteVkFFT call). Currently disabled in Metal backend. (0 - off, 1 - on)
+	pfUINT saveApplicationToString;//will save all compiled binaries to VkFFTApplication.saveApplicationString (will be allocated by VkFFT, deallocated with deleteVkFFT call). Currently disabled in Metal backend. (0 - off, 1 - on)
 
-	uint64_t loadApplicationFromString;//will load all binaries from loadApplicationString instead of recompiling them (must be allocated by user, must contain what saveApplicationToString call generated previously in VkFFTApplication.saveApplicationString). Currently disabled in Metal backend. (0 - off, 1 - on). Mutually exclusive with saveApplicationToString
+	pfUINT loadApplicationFromString;//will load all binaries from loadApplicationString instead of recompiling them (must be allocated by user, must contain what saveApplicationToString call generated previously in VkFFTApplication.saveApplicationString). Currently disabled in Metal backend. (0 - off, 1 - on). Mutually exclusive with saveApplicationToString
 	void* loadApplicationString;//memory binary array through which user can load VkFFT binaries, must be provided by user if loadApplicationFromString = 1. Use rb/wb flags to load/save.
 
-	uint64_t disableSetLocale;//disables all VkFFT attempts to set locale to C - user must ensure that VkFFT has C locale during the plan initialization. This option is needed for multithreading. Default 0.
+	pfUINT disableSetLocale;//disables all VkFFT attempts to set locale to C - user must ensure that VkFFT has C locale during the plan initialization. This option is needed for multithreading. Default 0.
 
 	//optional Bluestein optimizations: (default 0 if not stated otherwise)
-	uint64_t fixMaxRadixBluestein;//controls the padding of sequences in Bluestein convolution. If specified, padded sequence will be made of up to fixMaxRadixBluestein primes. Default: 2 for CUDA and Vulkan/OpenCL/HIP up to 1048576 combined dimension FFT system, 7 for Vulkan/OpenCL/HIP past after. Min = 2, Max = 13.
-	uint64_t forceBluesteinSequenceSize;// force the sequence size to pad to in Bluestein's algorithm. Must be at least 2*N-1 and decomposable with primes 2-13.
-	uint64_t useCustomBluesteinPaddingPattern;// force the sequence sizes to pad to in Bluestein's algorithm, but on a range. This number specifies the number of elements in primeSizes and in paddedSizes arrays. primeSizes - array of non-decomposable as radix scheme sizes - 17, 23, 31 etc. 
+	pfUINT fixMaxRadixBluestein;//controls the padding of sequences in Bluestein convolution. If specified, padded sequence will be made of up to fixMaxRadixBluestein primes. Default: 2 for CUDA and Vulkan/OpenCL/HIP up to 1048576 combined dimension FFT system, 7 for Vulkan/OpenCL/HIP past after. Min = 2, Max = 13.
+	pfUINT forceBluesteinSequenceSize;// force the sequence size to pad to in Bluestein's algorithm. Must be at least 2*N-1 and decomposable with primes 2-13.
+	pfUINT useCustomBluesteinPaddingPattern;// force the sequence sizes to pad to in Bluestein's algorithm, but on a range. This number specifies the number of elements in primeSizes and in paddedSizes arrays. primeSizes - array of non-decomposable as radix scheme sizes - 17, 23, 31 etc. 
 											  // paddedSizes - array of lengths to pad to. paddedSizes[i] will be the padding size for all non-decomposable sequences from primeSizes[i] to primeSizes[i+1] (will use default scheme after last one) - 42, 60, 64 for primeSizes before and 37+ will use default scheme (for example). Default is vendor and API-based specified in autoCustomBluesteinPaddingPattern.
-	uint64_t* primeSizes; // described in useCustomBluesteinPaddingPattern
-	uint64_t* paddedSizes; // described in useCustomBluesteinPaddingPattern
+	pfUINT* primeSizes; // described in useCustomBluesteinPaddingPattern
+	pfUINT* paddedSizes; // described in useCustomBluesteinPaddingPattern
 
-	uint64_t fixMinRaderPrimeMult;//start direct multiplication Rader's algorithm for radix primes from this number. This means that VkFFT will inline custom Rader kernels if sequence is divisible by these primes. Default is 17, as VkFFT has kernels for 2-13. If you make it less than 13, VkFFT will switch from these kernels to Rader.
-	uint64_t fixMaxRaderPrimeMult;//switch from Mult Rader's algorithm for radix primes from this number. Current limitation for Rader is maxThreadNum/2+1, realistically you would want to switch somewhere on 30-100 range. Default is vendor-specific (currently ~40)
+	pfUINT fixMinRaderPrimeMult;//start direct multiplication Rader's algorithm for radix primes from this number. This means that VkFFT will inline custom Rader kernels if sequence is divisible by these primes. Default is 17, as VkFFT has kernels for 2-13. If you make it less than 13, VkFFT will switch from these kernels to Rader.
+	pfUINT fixMaxRaderPrimeMult;//switch from Mult Rader's algorithm for radix primes from this number. Current limitation for Rader is maxThreadNum/2+1, realistically you would want to switch somewhere on 30-100 range. Default is vendor-specific (currently ~40)
 
-	uint64_t fixMinRaderPrimeFFT;//start FFT convolution version of Rader for radix primes from this number. Better than direct multiplication version for almost all primes (except small ones, like 17-23 on some GPUs). Must be bigger or equal to fixMinRaderPrimeMult. Deafult 29 on AMD and 17 on other GPUs. 
-	uint64_t fixMaxRaderPrimeFFT;//switch to Bluestein's algorithm for radix primes from this number. Switch may happen earlier if prime can't fit in shared memory. Default is 16384, which is bigger than most current GPU's shared memory.
+	pfUINT fixMinRaderPrimeFFT;//start FFT convolution version of Rader for radix primes from this number. Better than direct multiplication version for almost all primes (except small ones, like 17-23 on some GPUs). Must be bigger or equal to fixMinRaderPrimeMult. Deafult 29 on AMD and 17 on other GPUs. 
+	pfUINT fixMaxRaderPrimeFFT;//switch to Bluestein's algorithm for radix primes from this number. Switch may happen earlier if prime can't fit in shared memory. Default is 16384, which is bigger than most current GPU's shared memory.
 
 	//optional zero padding control parameters: (default 0 if not stated otherwise)
-	uint64_t performZeropadding[VKFFT_MAX_FFT_DIMENSIONS]; // don't read some data/perform computations if some input sequences are zeropadded for each axis (0 - off, 1 - on)
-	uint64_t fft_zeropad_left[VKFFT_MAX_FFT_DIMENSIONS];//specify start boundary of zero block in the system for each axis
-	uint64_t fft_zeropad_right[VKFFT_MAX_FFT_DIMENSIONS];//specify end boundary of zero block in the system for each axis
-	uint64_t frequencyZeroPadding; //set to 1 if zeropadding of frequency domain, default 0 - spatial zeropadding
+	pfUINT performZeropadding[VKFFT_MAX_FFT_DIMENSIONS]; // don't read some data/perform computations if some input sequences are zeropadded for each axis (0 - off, 1 - on)
+	pfUINT fft_zeropad_left[VKFFT_MAX_FFT_DIMENSIONS];//specify start boundary of zero block in the system for each axis
+	pfUINT fft_zeropad_right[VKFFT_MAX_FFT_DIMENSIONS];//specify end boundary of zero block in the system for each axis
+	pfUINT frequencyZeroPadding; //set to 1 if zeropadding of frequency domain, default 0 - spatial zeropadding
 
 	//optional convolution control parameters: (default 0 if not stated otherwise)
-	uint64_t performConvolution; //perform convolution in this application (0 - off, 1 - on). Disables reorderFourStep parameter
-	uint64_t conjugateConvolution;//0 off, 1 - conjugation of the sequence FFT is currently done on, 2 - conjugation of the convolution kernel
-	uint64_t crossPowerSpectrumNormalization;//normalize the FFT x kernel multiplication in frequency domain
-	uint64_t coordinateFeatures; // C - coordinate, or dimension of features vector. In matrix convolution - size of vector
-	uint64_t matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
-	uint64_t symmetricKernel; //specify if kernel in 2x2 or 3x3 matrix convolution is symmetric
-	uint64_t numberKernels;// N - only used in convolution step - specify how many kernels were initialized before. Expands one input to multiple (batched) output
-	uint64_t kernelConvolution;// specify if this application is used to create kernel for convolution, so it has the same properties. performConvolution has to be set to 0 for kernel creation
+	pfUINT performConvolution; //perform convolution in this application (0 - off, 1 - on). Disables reorderFourStep parameter
+	pfUINT conjugateConvolution;//0 off, 1 - conjugation of the sequence FFT is currently done on, 2 - conjugation of the convolution kernel
+	pfUINT crossPowerSpectrumNormalization;//normalize the FFT x kernel multiplication in frequency domain
+	pfUINT coordinateFeatures; // C - coordinate, or dimension of features vector. In matrix convolution - size of vector
+	pfUINT matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
+	pfUINT symmetricKernel; //specify if kernel in 2x2 or 3x3 matrix convolution is symmetric
+	pfUINT numberKernels;// N - only used in convolution step - specify how many kernels were initialized before. Expands one input to multiple (batched) output
+	pfUINT kernelConvolution;// specify if this application is used to create kernel for convolution, so it has the same properties. performConvolution has to be set to 0 for kernel creation
 
 	//register overutilization (experimental): (default 0 if not stated otherwise)
-	uint64_t registerBoost; //specify if register file size is bigger than shared memory and can be used to extend it X times (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4 to emulate 128KB of shared memory). Default 1
-	uint64_t registerBoostNonPow2; //specify if register overutilization should be used on non power of 2 sequences (0 - off, 1 - on)
-	uint64_t registerBoost4Step; //specify if register file overutilization should be used in big sequences (>2^14), same definition as registerBoost. Default 1
+	pfUINT registerBoost; //specify if register file size is bigger than shared memory and can be used to extend it X times (on Nvidia 256KB register file can be used instead of 32KB of shared memory, set this constant to 4 to emulate 128KB of shared memory). Default 1
+	pfUINT registerBoostNonPow2; //specify if register overutilization should be used on non power of 2 sequences (0 - off, 1 - on)
+	pfUINT registerBoost4Step; //specify if register file overutilization should be used in big sequences (>2^14), same definition as registerBoost. Default 1
 
 	//not used techniques:
-	uint64_t swapTo3Stage4Step; //specify at which number to switch from 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled. Must be at least 131072
-	uint64_t devicePageSize;//in KB, the size of a page on the GPU. Setting to 0 disables local buffer split in pages
-	uint64_t localPageSize;//in KB, the size to split page into if sequence spans multiple devicePageSize pages
+	pfUINT swapTo2Stage4Step; //specify at which number to switch from 1 upload to 2 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled.
+	pfUINT swapTo3Stage4Step; //specify at which number to switch from 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled. Must be at least 65536
+	pfUINT devicePageSize;//in KB, the size of a page on the GPU. Setting to 0 disables local buffer split in pages
+	pfUINT localPageSize;//in KB, the size to split page into if sequence spans multiple devicePageSize pages
 
 	//automatically filled based on device info (still can be reconfigured by user):
-	uint64_t computeCapabilityMajor; // CUDA/HIP compute capability of the device
-	uint64_t computeCapabilityMinor; // CUDA/HIP compute capability of the device
-	uint64_t maxComputeWorkGroupCount[VKFFT_MAX_FFT_DIMENSIONS]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
-	uint64_t maxComputeWorkGroupSize[VKFFT_MAX_FFT_DIMENSIONS]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
-	uint64_t maxThreadsNum; //max number of threads from VkPhysicalDeviceLimits
-	uint64_t sharedMemorySizeStatic; //available for static allocation shared memory size, in bytes
-	uint64_t sharedMemorySize; //available for allocation shared memory size, in bytes
-	uint64_t sharedMemorySizePow2; //power of 2 which is less or equal to sharedMemorySize, in bytes
-	uint64_t warpSize; //number of threads per warp/wavefront.
-	uint64_t halfThreads;//Intel fix
-	uint64_t allocateTempBuffer; //buffer allocated by app automatically if needed to reorder Four step algorithm. Parameter to check if it has been allocated
-	uint64_t reorderFourStep; // unshuffle Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on). Default 1.
-	int64_t maxCodeLength; //specify how big can be buffer used for code generation (in char). Default 4000000 chars.
-	int64_t maxTempLength; //specify how big can be buffer used for intermediate string sprintfs be (in char). Default 5000 chars. If code segfaults for some reason - try increasing this number.
-	uint64_t autoCustomBluesteinPaddingPattern; // default value for useCustomBluesteinPaddingPattern
-	uint64_t useRaderUintLUT; // allocate additional LUT to store g_pow
-	uint64_t vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 - AMD, etc.
+	pfUINT computeCapabilityMajor; // CUDA/HIP compute capability of the device
+	pfUINT computeCapabilityMinor; // CUDA/HIP compute capability of the device
+	pfUINT maxComputeWorkGroupCount[VKFFT_MAX_FFT_DIMENSIONS]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
+	pfUINT maxComputeWorkGroupSize[VKFFT_MAX_FFT_DIMENSIONS]; // maxComputeWorkGroupCount from VkPhysicalDeviceLimits
+	pfUINT maxThreadsNum; //max number of threads from VkPhysicalDeviceLimits
+	pfUINT sharedMemorySizeStatic; //available for static allocation shared memory size, in bytes
+	pfUINT sharedMemorySize; //available for allocation shared memory size, in bytes
+	pfUINT sharedMemorySizePow2; //power of 2 which is less or equal to sharedMemorySize, in bytes
+	pfUINT warpSize; //number of threads per warp/wavefront.
+	pfUINT halfThreads;//Intel fix
+	pfUINT allocateTempBuffer; //buffer allocated by app automatically if needed to reorder Four step algorithm. Parameter to check if it has been allocated
+	pfUINT reorderFourStep; // unshuffle Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on). Default 1.
+	pfINT maxCodeLength; //specify how big can be buffer used for code generation (in char). Default 4000000 chars.
+	pfINT maxTempLength; //specify how big can be buffer used for intermediate string sprintfs be (in char). Default 5000 chars. If code segfaults for some reason - try increasing this number.
+	pfUINT autoCustomBluesteinPaddingPattern; // default value for useCustomBluesteinPaddingPattern
+	pfUINT useRaderUintLUT; // allocate additional LUT to store g_pow
+	pfUINT vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 - AMD, etc.
 #if(VKFFT_BACKEND==0)
 	VkDeviceMemory tempBufferDeviceMemory;//Filled at app creation
 	VkCommandBuffer* commandBuffer;//Filled at app execution
 	VkMemoryBarrier* memory_barrier;//Filled at app creation
 #elif(VKFFT_BACKEND==1)
 	cudaEvent_t* stream_event;//Filled at app creation
-	uint64_t streamCounter;//Filled at app creation
-	uint64_t streamID;//Filled at app creation
+	pfUINT streamCounter;//Filled at app creation
+	pfUINT streamID;//Filled at app creation
 #elif(VKFFT_BACKEND==2)
 	hipEvent_t* stream_event;//Filled at app creation
-	uint64_t streamCounter;//Filled at app creation
-	uint64_t streamID;//Filled at app creation
-	int64_t  useStrict32BitAddress; // guarantee 32 bit addresses in bytes instead of number of elements. This results in fewer instructions generated. -1: Disable, 0: Infer based on size, 1: enable. Has no effect with useUint64.
+	pfUINT streamCounter;//Filled at app creation
+	pfUINT streamID;//Filled at app creation
+	pfINT  useStrict32BitAddress; // guarantee 32 bit addresses in bytes instead of number of elements. This results in fewer instructions generated. -1: Disable, 0: Infer based on size, 1: enable. Has no effect with useUint64.
 #elif(VKFFT_BACKEND==3)
 	cl_command_queue* commandQueue;
 #elif(VKFFT_BACKEND==4)
@@ -358,11 +367,11 @@ typedef struct {
 	MTL::Buffer** kernel;//pointer to array of kernel buffers (or one buffer) used for read kernel data from if performConvolution is enabled
 #endif
 	//following parameters can be specified during kernels launch, if specifyOffsetsAtLaunch parameter was enabled during the initializeVkFFT call
-	uint64_t bufferOffset;//specify if VkFFT has to offset the first element position inside the buffer. In bytes. Default 0 
-	uint64_t tempBufferOffset;//specify if VkFFT has to offset the first element position inside the temp buffer. In bytes. Default 0 
-	uint64_t inputBufferOffset;//specify if VkFFT has to offset the first element position inside the input buffer. In bytes. Default 0 
-	uint64_t outputBufferOffset;//specify if VkFFT has to offset the first element position inside the output buffer. In bytes. Default 0
-	uint64_t kernelOffset;//specify if VkFFT has to offset the first element position inside the kernel. In bytes. Default 0
+	pfUINT bufferOffset;//specify if VkFFT has to offset the first element position inside the buffer. In bytes. Default 0 
+	pfUINT tempBufferOffset;//specify if VkFFT has to offset the first element position inside the temp buffer. In bytes. Default 0 
+	pfUINT inputBufferOffset;//specify if VkFFT has to offset the first element position inside the input buffer. In bytes. Default 0 
+	pfUINT outputBufferOffset;//specify if VkFFT has to offset the first element position inside the output buffer. In bytes. Default 0
+	pfUINT kernelOffset;//specify if VkFFT has to offset the first element position inside the kernel. In bytes. Default 0
 } VkFFTLaunchParams;//parameters specified at plan execution
 typedef enum VkFFTResult {
 	VKFFT_SUCCESS = 0,
@@ -373,6 +382,7 @@ typedef enum VkFFTResult {
 	VKFFT_ERROR_NULL_TEMP_PASSED = 5,
 	VKFFT_ERROR_MATH_FAILED = 6,
     VKFFT_ERROR_FFTdim_GT_MAX_FFT_DIMENSIONS = 7,
+	VKFFT_ERROR_NONZERO_APP_INITIALIZATION = 8,
 	VKFFT_ERROR_INVALID_PHYSICAL_DEVICE = 1001,
 	VKFFT_ERROR_INVALID_DEVICE = 1002,
 	VKFFT_ERROR_INVALID_QUEUE = 1003,
@@ -398,6 +408,7 @@ typedef enum VkFFTResult {
 	VKFFT_ERROR_EMPTY_kernel = 2012,
 	VKFFT_ERROR_EMPTY_applicationString = 2013,
 	VKFFT_ERROR_EMPTY_useCustomBluesteinPaddingPattern_arrays = 2014,
+	VKFFT_ERROR_EMPTY_app = 2015,
 	VKFFT_ERROR_UNSUPPORTED_RADIX = 3001,
 	VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH = 3002,
 	VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C = 3003,
@@ -480,6 +491,8 @@ static inline const char* getVkFFTErrorString(VkFFTResult result)
 		return "VKFFT_ERROR_MATH_FAILED";
     case VKFFT_ERROR_FFTdim_GT_MAX_FFT_DIMENSIONS:
         return "VKFFT_ERROR_FFTdim_GT_MAX_FFT_DIMENSIONS";
+    case VKFFT_ERROR_NONZERO_APP_INITIALIZATION:
+    	return "VKFFT_ERROR_NONZERO_APP_INITIALIZATION";
 	case VKFFT_ERROR_INVALID_PHYSICAL_DEVICE:
 		return "VKFFT_ERROR_INVALID_PHYSICAL_DEVICE";
 	case VKFFT_ERROR_INVALID_DEVICE:
@@ -530,6 +543,8 @@ static inline const char* getVkFFTErrorString(VkFFTResult result)
 		return "VKFFT_ERROR_EMPTY_applicationString";
 	case VKFFT_ERROR_EMPTY_useCustomBluesteinPaddingPattern_arrays:
 		return "VKFFT_ERROR_EMPTY_useCustomBluesteinPaddingPattern_arrays";
+	case VKFFT_ERROR_EMPTY_app:
+		return "VKFFT_ERROR_EMPTY_app";
 	case VKFFT_ERROR_UNSUPPORTED_RADIX:
 		return "VKFFT_ERROR_UNSUPPORTED_RADIX";
 	case VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH:
@@ -683,9 +698,9 @@ struct VkFFTRaderContainer {
 	int containerFFTDim;
 	int containerFFTNum;
 	int subLogicalGroupSizeMax;//how many threads are needed per Rader transform
-	int64_t RaderKernelOffsetLUT;
-	int64_t RaderRadixOffsetLUT;
-	int64_t RaderRadixOffsetLUTiFFT;
+	pfINT RaderKernelOffsetLUT;
+	pfINT RaderRadixOffsetLUT;
+	pfINT RaderRadixOffsetLUTiFFT;
 	PfContainer g_powConstantStruct;
 	PfContainer r_rader_kernelConstantStruct;
 	PfContainer i_rader_kernelConstantStruct;
@@ -696,7 +711,7 @@ struct VkFFTRaderContainer {
 
 typedef struct {
 	VkFFTResult res;
-	long double double_PI; 
+	pfLD double_PI;
     int numFFTdims;
 	PfContainer size[VKFFT_MAX_FFT_DIMENSIONS];
 	PfContainer localSize[3];
@@ -766,12 +781,12 @@ typedef struct {
 	int performPostCompilationInputOffset;
 	int performPostCompilationOutputOffset;
 	int performPostCompilationKernelOffset;
-	uint64_t inputBufferBlockNum;
-	uint64_t inputBufferBlockSize;
-	uint64_t outputBufferBlockNum;
-	uint64_t outputBufferBlockSize;
-	uint64_t kernelBlockNum;
-	uint64_t kernelBlockSize;
+	pfUINT inputBufferBlockNum;
+	pfUINT inputBufferBlockSize;
+	pfUINT outputBufferBlockNum;
+	pfUINT outputBufferBlockSize;
+	pfUINT kernelBlockNum;
+	pfUINT kernelBlockSize;
 	int numCoordinates;
 	int matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
 	PfContainer numBatches;
@@ -844,7 +859,7 @@ typedef struct {
 	int performBufferSetUpdate;
 	int useUint64;
 #if(VKFFT_BACKEND==2)
-	int64_t  useStrict32BitAddress;
+	pfINT  useStrict32BitAddress;
 #endif
 	int disableSetLocale;
 
@@ -878,10 +893,12 @@ typedef struct {
 	PfContainer halfDef;
 	PfContainer floatDef;
 	PfContainer doubleDef;
+	PfContainer quadDef;
 
 	PfContainer half2Def;
 	PfContainer float2Def;
 	PfContainer double2Def;
+	PfContainer quad2Def;
 
 	PfContainer halfLiteral;
 	PfContainer floatLiteral;
@@ -923,6 +940,12 @@ typedef struct {
 	PfContainer tempInt;
 	PfContainer tempInt2;
 	PfContainer tempFloat;
+
+	PfContainer tempQuad;
+	PfContainer tempQuad2;
+	PfContainer tempQuad3;
+	PfContainer tempIntQuad;
+
 	PfContainer w;
 	PfContainer iw;
 	PfContainer angle;
@@ -931,11 +954,11 @@ typedef struct {
 	PfContainer locID[33];
 	char* code0;
 	char* tempStr;
-	int64_t tempLen;
-	int64_t currentLen;
-	int64_t currentTempLen;
-	int64_t maxCodeLength;
-	int64_t maxTempLength;
+	pfINT tempLen;
+	pfINT currentLen;
+	pfINT currentTempLen;
+	pfINT maxCodeLength;
+	pfINT maxTempLength;
 
 	int dataTypeSize;
 	PfContainer LFending;
@@ -974,7 +997,7 @@ typedef struct {
 
 	PfContainer oldLocale;
 
-	int64_t id;
+	pfINT id;
 } VkFFTSpecializationConstantsLayout;
 
 typedef struct {
@@ -983,28 +1006,28 @@ typedef struct {
 	MTL::Buffer* dataUintBuffer;
 #endif
 	//specify what can be in layout
-	uint64_t performWorkGroupShift[VKFFT_MAX_FFT_DIMENSIONS];
-	uint64_t workGroupShift[VKFFT_MAX_FFT_DIMENSIONS];
+	pfUINT performWorkGroupShift[VKFFT_MAX_FFT_DIMENSIONS];
+	pfUINT workGroupShift[VKFFT_MAX_FFT_DIMENSIONS];
 
-	uint64_t performPostCompilationInputOffset;
-	uint64_t inputOffset;
+	pfUINT performPostCompilationInputOffset;
+	pfUINT inputOffset;
 
-	uint64_t performPostCompilationOutputOffset;
-	uint64_t outputOffset;
+	pfUINT performPostCompilationOutputOffset;
+	pfUINT outputOffset;
 
-	uint64_t performPostCompilationKernelOffset;
-	uint64_t kernelOffset;
+	pfUINT performPostCompilationKernelOffset;
+	pfUINT kernelOffset;
 
-	uint64_t structSize;
+	pfUINT structSize;
 } VkFFTPushConstantsLayout;
 
 typedef struct {
-	uint64_t numBindings;
-	uint64_t axisBlock[4];
-	uint64_t groupedBatch;
+	pfUINT numBindings;
+	pfUINT axisBlock[4];
+	pfUINT groupedBatch;
 	VkFFTSpecializationConstantsLayout specializationConstants;
 	VkFFTPushConstantsLayout pushConstants;
-	uint64_t updatePushConstants;
+	pfUINT updatePushConstants;
 	char VkFFTFunctionName[50];
 #if(VKFFT_BACKEND==0)
 	VkBuffer* inputBuffer;
@@ -1072,21 +1095,21 @@ typedef struct {
 #endif
 
 	void* binary;
-	uint64_t binarySize;
+	pfUINT binarySize;
 
-	uint64_t bufferLUTSize;
-	uint64_t bufferRaderUintLUTSize;
-	uint64_t referenceLUT;
+	pfUINT bufferLUTSize;
+	pfUINT bufferRaderUintLUTSize;
+	pfUINT referenceLUT;
 } VkFFTAxis;
 
 typedef struct {
-	uint64_t actualFFTSizePerAxis[VKFFT_MAX_FFT_DIMENSIONS][VKFFT_MAX_FFT_DIMENSIONS];
-	uint64_t numAxisUploads[VKFFT_MAX_FFT_DIMENSIONS];
-	uint64_t axisSplit[VKFFT_MAX_FFT_DIMENSIONS][4];
+	pfUINT actualFFTSizePerAxis[VKFFT_MAX_FFT_DIMENSIONS][VKFFT_MAX_FFT_DIMENSIONS];
+	pfUINT numAxisUploads[VKFFT_MAX_FFT_DIMENSIONS];
+	pfUINT axisSplit[VKFFT_MAX_FFT_DIMENSIONS][4];
 	VkFFTAxis axes[VKFFT_MAX_FFT_DIMENSIONS][4];
 
-	uint64_t multiUploadR2C;
-	uint64_t actualPerformR2CPerAxis[VKFFT_MAX_FFT_DIMENSIONS]; // automatically specified, shows if R2C is actually performed or inside FFT or as a separate step
+	pfUINT multiUploadR2C;
+	pfUINT actualPerformR2CPerAxis[VKFFT_MAX_FFT_DIMENSIONS]; // automatically specified, shows if R2C is actually performed or inside FFT or as a separate step
 	VkFFTAxis R2Cdecomposition;
 	VkFFTAxis inverseBluesteinAxes[VKFFT_MAX_FFT_DIMENSIONS][4];
 } VkFFTPlan;
@@ -1095,11 +1118,11 @@ typedef struct {
 	VkFFTPlan* localFFTPlan;
 	VkFFTPlan* localFFTPlan_inverse; //additional inverse plan
 
-	uint64_t actualNumBatches;
-	uint64_t firstAxis;
-	uint64_t lastAxis;
+	pfUINT actualNumBatches;
+	pfUINT firstAxis;
+	pfUINT lastAxis;
 	//Bluestein buffers reused among plans
-	uint64_t useBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
+	pfUINT useBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
 #if(VKFFT_BACKEND==0)
 	VkDeviceMemory bufferRaderUintLUTDeviceMemory[VKFFT_MAX_FFT_DIMENSIONS][4];
 	VkBuffer bufferRaderUintLUT[VKFFT_MAX_FFT_DIMENSIONS][4];
@@ -1135,20 +1158,20 @@ typedef struct {
 	MTL::Buffer* bufferBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
 	MTL::Buffer* bufferBluesteinIFFT[VKFFT_MAX_FFT_DIMENSIONS];
 #endif
-	uint64_t bufferRaderUintLUTSize[VKFFT_MAX_FFT_DIMENSIONS][4];
-	uint64_t bufferBluesteinSize[VKFFT_MAX_FFT_DIMENSIONS];
+	pfUINT bufferRaderUintLUTSize[VKFFT_MAX_FFT_DIMENSIONS][4];
+	pfUINT bufferBluesteinSize[VKFFT_MAX_FFT_DIMENSIONS];
 	void* applicationBluesteinString[VKFFT_MAX_FFT_DIMENSIONS];
-	uint64_t applicationBluesteinStringSize[VKFFT_MAX_FFT_DIMENSIONS];
+	pfUINT applicationBluesteinStringSize[VKFFT_MAX_FFT_DIMENSIONS];
 
-	uint64_t numRaderFFTPrimes;
-	uint64_t rader_primes[30];
-	uint64_t rader_buffer_size[30];
+	pfUINT numRaderFFTPrimes;
+	pfUINT rader_primes[30];
+	pfUINT rader_buffer_size[30];
 	void* raderFFTkernel[30];
-	uint64_t applicationStringOffsetRader;
+	pfUINT applicationStringOffsetRader;
 
-	uint64_t currentApplicationStringPos;
+	pfUINT currentApplicationStringPos;
 
-	uint64_t applicationStringSize;//size of saveApplicationString in bytes
+	pfUINT applicationStringSize;//size of saveApplicationString in bytes
 	void* saveApplicationString;//memory array(uint32_t* for Vulkan, char* for CUDA/HIP/OpenCL) through which user can access VkFFT generated binaries. (will be allocated by VkFFT, deallocated with deleteVkFFT call)
 } VkFFTApplication;
 

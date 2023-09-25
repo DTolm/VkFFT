@@ -44,7 +44,7 @@ static inline VkFFTResult shaderGen_R2C_even_decomposition(VkFFTSpecializationCo
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 	appendVersion(sc);
 	appendExtensions(sc);
 	appendLayoutVkFFT(sc);
@@ -132,20 +132,20 @@ static inline VkFFTResult shaderGen_R2C_even_decomposition(VkFFTSpecializationCo
 	
 	if (sc->size[0].data.i % 4 == 0) {
 		if (!sc->inverse) {
-			PfMov_x_y(sc, &sc->regIDs[2], &sc->regIDs[0]);
-			PfMov_x_Neg_y(sc, &sc->regIDs[3], &sc->regIDs[0]);
-			PfAdd_x(sc, &sc->regIDs[2], &sc->regIDs[2], &sc->regIDs[0]);
-			PfAdd_x(sc, &sc->regIDs[3], &sc->regIDs[3], &sc->regIDs[0]);
+			PfMov(sc, &sc->regIDs[2].data.c[0], &sc->regIDs[0].data.c[1]);
+			PfMovNeg(sc, &sc->regIDs[3].data.c[0], &sc->regIDs[0].data.c[1]);
+			PfAdd(sc, &sc->regIDs[2].data.c[0], &sc->regIDs[2].data.c[0], &sc->regIDs[0].data.c[0]);
+			PfAdd(sc, &sc->regIDs[3].data.c[0], &sc->regIDs[3].data.c[0], &sc->regIDs[0].data.c[0]);
 		}
 		else {
-			PfSub_x(sc, &sc->regIDs[2], &sc->regIDs[0], &sc->regIDs[1]);
-			PfMov_y_x(sc, &sc->regIDs[2], &sc->regIDs[2]);
-			PfAdd_x(sc, &sc->regIDs[2], &sc->regIDs[0], &sc->regIDs[1]);			
+			PfSub(sc, &sc->regIDs[2].data.c[0], &sc->regIDs[0].data.c[0], &sc->regIDs[1].data.c[0]);
+			PfMov(sc, &sc->regIDs[2].data.c[1], &sc->regIDs[2].data.c[0]);
+			PfAdd(sc, &sc->regIDs[2].data.c[0], &sc->regIDs[0].data.c[0], &sc->regIDs[1].data.c[0]);			
 		}
 		PfConjugate(sc, &sc->w, &sc->w);
 		
 		if (sc->inverse) {
-			temp_double.data.d = 2;
+			temp_double.data.d = pfFPinit("2.0");
 			PfMul(sc, &sc->w, &sc->w, &temp_double, 0);
 		}
 
@@ -159,15 +159,15 @@ static inline VkFFTResult shaderGen_R2C_even_decomposition(VkFFTSpecializationCo
 	}
 	else {
 		if (!sc->inverse) {
-			PfMov_x_y(sc, &sc->regIDs[2], &sc->regIDs[0]);
-			PfMov_x_Neg_y(sc, &sc->regIDs[3], &sc->regIDs[0]);
-			PfAdd_x(sc, &sc->regIDs[2], &sc->regIDs[2], &sc->regIDs[0]);
-			PfAdd_x(sc, &sc->regIDs[3], &sc->regIDs[3], &sc->regIDs[0]);			
+			PfMov(sc, &sc->regIDs[2].data.c[0], &sc->regIDs[0].data.c[1]);
+			PfMovNeg(sc, &sc->regIDs[3].data.c[0], &sc->regIDs[0].data.c[1]);
+			PfAdd(sc, &sc->regIDs[2].data.c[0], &sc->regIDs[2].data.c[0], &sc->regIDs[0].data.c[0]);
+			PfAdd(sc, &sc->regIDs[3].data.c[0], &sc->regIDs[3].data.c[0], &sc->regIDs[0].data.c[0]);			
 		}
 		else {
-			PfSub_x(sc, &sc->regIDs[2], &sc->regIDs[0], &sc->regIDs[1]);
-			PfMov_y_x(sc, &sc->regIDs[2], &sc->regIDs[2]);
-			PfAdd_x(sc, &sc->regIDs[2], &sc->regIDs[0], &sc->regIDs[1]);
+			PfSub(sc, &sc->regIDs[2].data.c[0], &sc->regIDs[0].data.c[0], &sc->regIDs[1].data.c[0]);
+			PfMov(sc, &sc->regIDs[2].data.c[1], &sc->regIDs[2].data.c[0]);
+			PfAdd(sc, &sc->regIDs[2].data.c[0], &sc->regIDs[0].data.c[0], &sc->regIDs[1].data.c[0]);
 		}
 		appendRegistersToGlobal(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[2]);
 
@@ -180,7 +180,7 @@ static inline VkFFTResult shaderGen_R2C_even_decomposition(VkFFTSpecializationCo
 	PfSub(sc, &sc->regIDs[3], &sc->regIDs[0], &sc->regIDs[1]);
 
 	if (!sc->inverse) {
-		temp_double.data.d = 0.5l;
+		temp_double.data.d = pfFPinit("0.5");
 		PfMul(sc, &sc->regIDs[2], &sc->regIDs[2], &temp_double,0);
 		PfMul(sc, &sc->regIDs[3], &sc->regIDs[3], &temp_double, 0);
 
@@ -197,31 +197,31 @@ static inline VkFFTResult shaderGen_R2C_even_decomposition(VkFFTSpecializationCo
 	}
 	if (!sc->inverse) {
 		PfConjugate(sc, &sc->w, &sc->w);
-		PfMov_x(sc, &sc->regIDs[0], &sc->regIDs[3]);
-		PfMov_y(sc, &sc->regIDs[0], &sc->regIDs[2]);
+		PfMov(sc, &sc->regIDs[0].data.c[0], &sc->regIDs[3].data.c[0]);
+		PfMov(sc, &sc->regIDs[0].data.c[1], &sc->regIDs[2].data.c[1]);
 		PfMul(sc, &sc->regIDs[1], &sc->regIDs[0], &sc->w, 0);
-		PfMov_x_y(sc, &sc->regIDs[0], &sc->regIDs[1]);
-		PfMov_y_Neg_x(sc, &sc->regIDs[0], &sc->regIDs[1]);
+		PfMov(sc, &sc->regIDs[0].data.c[0], &sc->regIDs[1].data.c[1]);
+		PfMovNeg(sc, &sc->regIDs[0].data.c[1], &sc->regIDs[1].data.c[0]);
 		
-		PfSub_x(sc, &sc->regIDs[1], &sc->regIDs[2], &sc->regIDs[0]);
-		PfSub_y(sc, &sc->regIDs[1], &sc->regIDs[0], &sc->regIDs[3]);
+		PfSub(sc, &sc->regIDs[1].data.c[0], &sc->regIDs[2].data.c[0], &sc->regIDs[0].data.c[0]);
+		PfSub(sc, &sc->regIDs[1].data.c[1], &sc->regIDs[0].data.c[1], &sc->regIDs[3].data.c[1]);
 		
-		PfAdd_x(sc, &sc->regIDs[0], &sc->regIDs[2], &sc->regIDs[0]);
-		PfAdd_y(sc, &sc->regIDs[0], &sc->regIDs[0], &sc->regIDs[3]);
+		PfAdd(sc, &sc->regIDs[0].data.c[0], &sc->regIDs[2].data.c[0], &sc->regIDs[0].data.c[0]);
+		PfAdd(sc, &sc->regIDs[0].data.c[1], &sc->regIDs[0].data.c[1], &sc->regIDs[3].data.c[1]);
 		
 	}
 	else {
-		PfMov_x(sc, &sc->regIDs[0], &sc->regIDs[3]);
-		PfMov_y(sc, &sc->regIDs[0], &sc->regIDs[2]);
+		PfMov(sc, &sc->regIDs[0].data.c[0], &sc->regIDs[3].data.c[0]);
+		PfMov(sc, &sc->regIDs[0].data.c[1], &sc->regIDs[2].data.c[1]);
 		PfMul(sc, &sc->regIDs[1], &sc->regIDs[0], &sc->w, 0);
-		PfMov_x_y(sc, &sc->regIDs[0], &sc->regIDs[1]);
-		PfMov_y_x(sc, &sc->regIDs[0], &sc->regIDs[1]);
+		PfMov(sc, &sc->regIDs[0].data.c[0], &sc->regIDs[1].data.c[1]);
+		PfMov(sc, &sc->regIDs[0].data.c[1], &sc->regIDs[1].data.c[0]);
 
-		PfAdd_x(sc, &sc->regIDs[1], &sc->regIDs[2], &sc->regIDs[0]);
-		PfSub_y(sc, &sc->regIDs[1], &sc->regIDs[0], &sc->regIDs[3]);
+		PfAdd(sc, &sc->regIDs[1].data.c[0], &sc->regIDs[2].data.c[0], &sc->regIDs[0].data.c[0]);
+		PfSub(sc, &sc->regIDs[1].data.c[1], &sc->regIDs[0].data.c[1], &sc->regIDs[3].data.c[1]);
 
-		PfSub_x(sc, &sc->regIDs[0], &sc->regIDs[2], &sc->regIDs[0]);
-		PfAdd_y(sc, &sc->regIDs[0], &sc->regIDs[0], &sc->regIDs[3]);		
+		PfSub(sc, &sc->regIDs[0].data.c[0], &sc->regIDs[2].data.c[0], &sc->regIDs[0].data.c[0]);
+		PfAdd(sc, &sc->regIDs[0].data.c[1], &sc->regIDs[0].data.c[1], &sc->regIDs[3].data.c[1]);		
 	}
 	
 	appendRegistersToGlobal(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[0]);

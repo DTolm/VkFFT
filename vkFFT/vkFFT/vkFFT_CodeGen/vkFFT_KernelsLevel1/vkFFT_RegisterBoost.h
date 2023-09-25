@@ -36,7 +36,7 @@ static inline void appendBoostThreadDataReorder(VkFFTSpecializationConstantsLayo
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
@@ -59,16 +59,16 @@ static inline void appendBoostThreadDataReorder(VkFFTSpecializationConstantsLayo
 		localInvocationID = &sc->gl_LocalInvocationID_x;
 		batchingInvocationID = &sc->gl_LocalInvocationID_y;
 	}
-	int64_t logicalStoragePerThread;
+	pfINT logicalStoragePerThread;
 	if (start == 1) {
 		logicalStoragePerThread = sc->registers_per_thread_per_radix[sc->stageRadix[0]] * sc->registerBoost;// (sc->registers_per_thread % sc->stageRadix[0] == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
 	}
 	else {
 		logicalStoragePerThread = sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] * sc->registerBoost;// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
 	}
-	int64_t logicalGroupSize = sc->fftDim.data.i / logicalStoragePerThread;
+	pfINT logicalGroupSize = sc->fftDim.data.i / logicalStoragePerThread;
 	if ((sc->registerBoost > 1) && (logicalStoragePerThread != sc->min_registers_per_thread * sc->registerBoost)) {
-		for (int64_t k = 0; k < sc->registerBoost; k++) {
+		for (pfINT k = 0; k < sc->registerBoost; k++) {
 			if (k > 0) {
 				appendBarrierVkFFT(sc);
 			}
@@ -81,7 +81,7 @@ static inline void appendBoostThreadDataReorder(VkFFTSpecializationConstantsLayo
 				PfDivCeil(sc, &temp_int1, &sc->fftDim, &temp_int);
 				PfIf_lt_start(sc, localInvocationID, &temp_int1);
 
-				for (uint64_t i = 0; i < (uint64_t)logicalStoragePerThread / sc->registerBoost; i++) {
+				for (pfUINT i = 0; i < (pfUINT)logicalStoragePerThread / sc->registerBoost; i++) {
 					temp_int.data.i = i * logicalGroupSize;
 					PfAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
 					if (sc->stridedSharedLayout) {
@@ -94,7 +94,7 @@ static inline void appendBoostThreadDataReorder(VkFFTSpecializationConstantsLayo
 			}
 			else
 			{
-				for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+				for (pfUINT i = 0; i < sc->min_registers_per_thread; i++) {
 					temp_int.data.i = i * localSize.data.i;
 					PfAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
 					if (sc->stridedSharedLayout) {
@@ -119,7 +119,7 @@ static inline void appendBoostThreadDataReorder(VkFFTSpecializationConstantsLayo
 				PfDivCeil(sc, &temp_int1, &sc->fftDim, &temp_int);
 				PfIf_lt_start(sc, localInvocationID, &temp_int1);
 
-				for (uint64_t i = 0; i < (uint64_t)logicalStoragePerThread / sc->registerBoost; i++) {
+				for (pfUINT i = 0; i < (pfUINT)logicalStoragePerThread / sc->registerBoost; i++) {
 					temp_int.data.i = i * logicalGroupSize;
 					PfAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
 					if (sc->stridedSharedLayout) {
@@ -132,7 +132,7 @@ static inline void appendBoostThreadDataReorder(VkFFTSpecializationConstantsLayo
 				PfIf_end(sc);
 			}
 			else {
-				for (uint64_t i = 0; i < sc->min_registers_per_thread; i++) {
+				for (pfUINT i = 0; i < sc->min_registers_per_thread; i++) {
 					temp_int.data.i = i * localSize.data.i;
 					PfAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
 					if (sc->stridedSharedLayout) {

@@ -32,7 +32,7 @@ static inline void appendDCTI_read(VkFFTSpecializationConstantsLayout* sc, int t
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
@@ -86,7 +86,7 @@ static inline void appendDCTI_read(VkFFTSpecializationConstantsLayout* sc, int t
 		temp_int.data.i = 0;
 		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 		if (sc->stridedSharedLayout) {
 			temp_int.data.i = (i)*sc->localSize[1].data.i;
 
@@ -187,7 +187,7 @@ static inline void appendDCTII_read_III_write(VkFFTSpecializationConstantsLayout
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
@@ -242,7 +242,7 @@ static inline void appendDCTII_read_III_write(VkFFTSpecializationConstantsLayout
 		temp_int.data.i = 0;
 		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 		if (sc->axis_id > 0) {
 			temp_int.data.i = (i)*sc->localSize[1].data.i;
 
@@ -355,7 +355,7 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
@@ -416,7 +416,7 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 		temp_int.data.i = 0;
 		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 		if (sc->stridedSharedLayout) {
 			temp_int.data.i = (i)*sc->localSize[1].data.i;
 
@@ -463,7 +463,7 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 			}
 			appendGlobalToRegisters(sc, &sc->mult, &sc->LUTStruct, &sc->tempInt);
 			if ((!sc->mergeSequencesR2C) && (readWrite)) {
-				temp_double.data.d = 2.0l;
+				temp_double.data.d = pfFPinit("2.0");
 				PfMul(sc, &sc->mult, &sc->mult, &temp_double, 0);
 			}
 			if (readWrite)
@@ -471,9 +471,9 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 		}
 		else {
 			if (readWrite)
-				temp_double.data.d = -sc->double_PI / 2.0 / fftDim.data.i;
+				temp_double.data.d = -sc->double_PI / pfFPinit("2.0") / fftDim.data.i;
 			else
-				temp_double.data.d = sc->double_PI / 2.0 / fftDim.data.i;
+				temp_double.data.d = sc->double_PI / pfFPinit("2.0") / fftDim.data.i;
 			if (sc->stridedSharedLayout) {
 				PfMul(sc, &sc->tempFloat, &sc->combinedID, &temp_double, 0);
 			}
@@ -484,7 +484,7 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 
 			PfSinCos(sc, &sc->mult, &sc->tempFloat);
 			if ((!sc->mergeSequencesR2C) && (readWrite)) {
-				temp_double.data.d = 2.0l;
+				temp_double.data.d = pfFPinit("2.0");
 				PfMul(sc, &sc->mult, &sc->mult, &temp_double, 0);
 			}
 		}
@@ -542,25 +542,25 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 			if (sc->mergeSequencesR2C) {
 				appendSharedToRegisters(sc, &sc->w, &sc->inoutID);
 
-				PfAdd_x(sc, &sc->regIDs[0], &sc->temp, &sc->w);
-				PfSub_y(sc, &sc->regIDs[0], &sc->temp, &sc->w);
-				PfSub_x(sc, &sc->regIDs[1], &sc->w, &sc->temp);
-				PfAdd_y(sc, &sc->regIDs[1], &sc->temp, &sc->w);
+				PfAdd(sc, &sc->regIDs[0].data.c[0], &sc->temp.data.c[0], &sc->w.data.c[0]);
+				PfSub(sc, &sc->regIDs[0].data.c[1], &sc->temp.data.c[1], &sc->w.data.c[1]);
+				PfSub(sc, &sc->regIDs[1].data.c[0], &sc->w.data.c[0], &sc->temp.data.c[0]);
+				PfAdd(sc, &sc->regIDs[1].data.c[1], &sc->temp.data.c[1], &sc->w.data.c[1]);
 
 				PfMul(sc, &sc->temp, &sc->regIDs[0], &sc->mult, 0);
 				PfConjugate(sc, &sc->mult, &sc->mult);
 				PfMul(sc, &sc->w, &sc->regIDs[1], &sc->mult, 0);
-				PfMov_x(sc, &sc->regIDs[0], &sc->temp);
-				PfMov_y(sc, &sc->regIDs[0], &sc->w);
-				PfMov_x_Neg_y(sc, &sc->regIDs[1], &sc->temp);
-				PfMov_y_Neg_x(sc, &sc->regIDs[1], &sc->w);
+				PfMov(sc, &sc->regIDs[0].data.c[0], &sc->temp.data.c[0]);
+				PfMov(sc, &sc->regIDs[0].data.c[1], &sc->w.data.c[1]);
+				PfMovNeg(sc, &sc->regIDs[1].data.c[0], &sc->temp.data.c[1]);
+				PfMovNeg(sc, &sc->regIDs[1].data.c[1], &sc->w.data.c[0]);
 
 				appendRegistersToShared(sc, &sc->inoutID, &sc->regIDs[1]);
 				appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[0]);
 			}
 			else {
 				PfMul(sc, &sc->regIDs[0], &sc->temp, &sc->mult, 0);
-				PfMov_x_Neg_y(sc, &sc->w, &sc->regIDs[0]);
+				PfMovNeg(sc, &sc->w.data.c[0], &sc->regIDs[0].data.c[1]);
 
 				appendRegistersToShared(sc, &sc->inoutID, &sc->w);
 				appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[0]);
@@ -576,14 +576,14 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 			PfSetToZero(sc, &sc->w);
 			PfIf_end(sc);
 
-			PfMov_x_y(sc, &sc->regIDs[0], &sc->w);
-			PfMov_y_x(sc, &sc->regIDs[0], &sc->w);
+			PfMov(sc, &sc->regIDs[0].data.c[0], &sc->w.data.c[1]);
+			PfMov(sc, &sc->regIDs[0].data.c[1], &sc->w.data.c[0]);
 
-			PfSub_x(sc, &sc->regIDs[1], &sc->temp, &sc->regIDs[0]);
-			PfAdd_y(sc, &sc->regIDs[1], &sc->temp, &sc->regIDs[0]);
+			PfSub(sc, &sc->regIDs[1].data.c[0], &sc->temp.data.c[0], &sc->regIDs[0].data.c[0]);
+			PfAdd(sc, &sc->regIDs[1].data.c[1], &sc->temp.data.c[1], &sc->regIDs[0].data.c[1]);
 
-			PfAdd_x(sc, &sc->w, &sc->temp, &sc->regIDs[0]);
-			PfSub_y(sc, &sc->w, &sc->temp, &sc->regIDs[0]);
+			PfAdd(sc, &sc->w.data.c[0], &sc->temp.data.c[0], &sc->regIDs[0].data.c[0]);
+			PfSub(sc, &sc->w.data.c[1], &sc->temp.data.c[1], &sc->regIDs[0].data.c[1]);
 
 			PfMul(sc, &sc->regIDs[0], &sc->w, &sc->mult, 0);
 			PfConjugate(sc, &sc->mult, &sc->mult);
@@ -621,7 +621,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
@@ -680,7 +680,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 			temp_int.data.i = 0;
 			PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 		}
-		for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+		for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 			if (sc->axis_id > 0) {
 				temp_int.data.i = (i)*sc->localSize[1].data.i;
 
@@ -758,7 +758,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 			}
 			temp_int.data.i = 0;
 			PfIf_eq_start(sc, &sc->tempInt, &temp_int);
-			if (i < (uint64_t)used_registers.data.i / 2) {
+			if (i < (pfUINT)used_registers.data.i / 2) {
 				appendRegistersToShared_x_x(sc, &sc->sdataID, &sc->regIDs[i]);
 			}
 			else {
@@ -766,7 +766,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 			}
 #if(!((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4)||(VKFFT_BACKEND==5)))
 			PfIf_else(sc);
-			if (i < (uint64_t)used_registers.data.i / 2) {
+			if (i < (pfUINT)used_registers.data.i / 2) {
 				appendRegistersToShared_y_x(sc, &sc->sdataID, &sc->regIDs[i]);
 			}
 			else {
@@ -798,7 +798,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 			temp_int.data.i = 0;
 			PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 		}
-		for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+		for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 			if (sc->axis_id > 0) {
 				temp_int.data.i = (i)*sc->localSize[1].data.i;
 
@@ -876,7 +876,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 			}
 			temp_int.data.i = 1;
 			PfIf_eq_start(sc, &sc->tempInt, &temp_int);
-			if ((int64_t)i < used_registers.data.i / 2) {
+			if ((pfINT)i < used_registers.data.i / 2) {
 				appendRegistersToShared_y_x(sc, &sc->sdataID, &sc->regIDs[i]);
 			}
 			else {
@@ -917,7 +917,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 	else {
 		PfDivCeil(sc, &used_registers, &fftDim, &sc->localSize[0]);
 	}
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 		if (sc->stridedSharedLayout) {
 			temp_int.data.i = (i)*sc->localSize[1].data.i;
 
@@ -984,8 +984,8 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 
 		appendSharedToRegisters_x_x(sc, &sc->w, &sc->sdataID);
 		
-		PfMov_x_y(sc, &sc->regIDs[i], &sc->w);
-		PfMov_y_Neg_x(sc, &sc->regIDs[i], &sc->w);
+		PfMov(sc, &sc->regIDs[i].data.c[0], &sc->w.data.c[1]);
+		PfMovNeg(sc, &sc->regIDs[i].data.c[1], &sc->w.data.c[0]);
 		PfAdd(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->w);
 		
 		PfIf_else(sc);
@@ -1000,7 +1000,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 			PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
 		}
 		appendSharedToRegisters_y_y(sc, &sc->regIDs[i], &sc->sdataID);
-		temp_double.data.d = 2.0l;
+		temp_double.data.d = pfFPinit("2.0");
 		PfMul(sc, &sc->regIDs[i], &sc->regIDs[i], &temp_double, 0);
 		
 		PfIf_end(sc);
@@ -1029,7 +1029,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 		temp_int.data.i = 0;
 		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 		if (sc->stridedSharedLayout) {
 			temp_int.data.i = (i)*sc->localSize[1].data.i;
 
@@ -1138,7 +1138,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 		temp_int.data.i = 0;
 		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 		if (sc->stridedSharedLayout) {
 			temp_int.data.i = (i)*sc->localSize[1].data.i;
 
@@ -1237,7 +1237,7 @@ static inline void appendDCTIV_even_write(VkFFTSpecializationConstantsLayout* sc
 	PfContainer temp_int2 = VKFFT_ZERO_INIT;
 	temp_int2.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
@@ -1288,7 +1288,7 @@ static inline void appendDCTIV_even_write(VkFFTSpecializationConstantsLayout* sc
 		temp_int.data.i = 0;
 		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 		if (sc->axis_id > 0) {
 			temp_int.data.i = (i)*sc->localSize[1].data.i;
 
@@ -1335,9 +1335,9 @@ static inline void appendDCTIV_even_write(VkFFTSpecializationConstantsLayout* sc
 			PfMod(sc, &sc->sdataID, &sc->tempInt, &temp_int);
 		}
 		PfMul(sc, &sc->blockInvocationID, &sc->sdataID, &temp_int, 0);
-		temp_double.data.d = 1;
+		temp_double.data.d = pfFPinit("1.0");
 		PfSub(sc, &sc->tempFloat, &temp_double, &sc->blockInvocationID);
-		PfMul_y(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->tempFloat, 0);
+		PfMul(sc, &sc->regIDs[i].data.c[1], &sc->regIDs[i].data.c[1], &sc->tempFloat, 0);
 
 		if (sc->LUT) {
 			if (sc->axis_id > 0) {
@@ -1358,9 +1358,9 @@ static inline void appendDCTIV_even_write(VkFFTSpecializationConstantsLayout* sc
 			}
 			PfInc(sc, &sc->tempInt);
 			if (readWrite)
-				temp_double.data.d = -sc->double_PI / 8.0 / fftDim.data.i;
+				temp_double.data.d = -sc->double_PI / pfFPinit("8.0") / fftDim.data.i;
 			else
-				temp_double.data.d = sc->double_PI / 8.0 / fftDim.data.i;
+				temp_double.data.d = sc->double_PI / pfFPinit("8.0") / fftDim.data.i;
 			PfMul(sc, &sc->tempFloat, &sc->tempInt, &temp_double, 0);
 
 			PfSinCos(sc, &sc->mult, &sc->tempFloat);
@@ -1419,7 +1419,7 @@ static inline void appendDCTIV_even_write(VkFFTSpecializationConstantsLayout* sc
 		temp_int.data.i = 0;
 		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 		if (sc->axis_id > 0) {
 			temp_int.data.i = (i)*sc->localSize[1].data.i;
 
@@ -1506,7 +1506,7 @@ static inline void appendDCTIV_odd_read(VkFFTSpecializationConstantsLayout* sc, 
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
@@ -1560,7 +1560,7 @@ static inline void appendDCTIV_odd_read(VkFFTSpecializationConstantsLayout* sc, 
 		temp_int.data.i = 0;
 		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 		if (sc->stridedSharedLayout) {
 			temp_int.data.i = (i)*sc->localSize[1].data.i;
 
@@ -1659,8 +1659,8 @@ static inline void appendDCTIV_odd_read(VkFFTSpecializationConstantsLayout* sc, 
 		temp_int.data.i = fftDim.data.i * 2;
 		PfIf_lt_start(sc, &sc->inoutID, &temp_int);
 		PfIf_ge_start(sc, &sc->inoutID, &fftDim);
-		PfMov_x_Neg_x(sc, &sc->regIDs[i], &sc->regIDs[i]);
-		PfMov_y_Neg_y(sc, &sc->regIDs[i], &sc->regIDs[i]);
+		PfMovNeg(sc, &sc->regIDs[i].data.c[0], &sc->regIDs[i].data.c[0]);
+		PfMovNeg(sc, &sc->regIDs[i].data.c[1], &sc->regIDs[i].data.c[1]);
 		PfIf_end(sc);
 		PfIf_end(sc);
 
@@ -1668,8 +1668,8 @@ static inline void appendDCTIV_odd_read(VkFFTSpecializationConstantsLayout* sc, 
 		PfIf_lt_start(sc, &sc->inoutID, &temp_int);
 		temp_int.data.i = fftDim.data.i * 2;
 		PfIf_ge_start(sc, &sc->inoutID, &temp_int);
-		PfMov_x_Neg_x(sc, &sc->regIDs[i], &sc->regIDs[i]);
-		PfMov_y_Neg_y(sc, &sc->regIDs[i], &sc->regIDs[i]);
+		PfMovNeg(sc, &sc->regIDs[i].data.c[0], &sc->regIDs[i].data.c[0]);
+		PfMovNeg(sc, &sc->regIDs[i].data.c[1], &sc->regIDs[i].data.c[1]);
 		PfIf_end(sc);
 		PfIf_end(sc);
 
@@ -1691,7 +1691,7 @@ static inline void appendDCTIV_odd_read(VkFFTSpecializationConstantsLayout* sc, 
 	if (sc->useDisableThreads) {
 		PfIf_end(sc);
 	}
-	int64_t registers_first_stage = (sc->stageRadix[0] < sc->fixMinRaderPrimeMult) ? sc->registers_per_thread_per_radix[sc->stageRadix[0]] : 1;
+	pfINT registers_first_stage = (sc->stageRadix[0] < sc->fixMinRaderPrimeMult) ? sc->registers_per_thread_per_radix[sc->stageRadix[0]] : 1;
 	if ((sc->rader_generator[0] > 0) || ((sc->fftDim.data.i / registers_first_stage) != localSize.data.i))
 		sc->readToRegisters = 0;
 	else
@@ -1704,7 +1704,7 @@ static inline void appendDCTIV_odd_read(VkFFTSpecializationConstantsLayout* sc, 
 			temp_int.data.i = 0;
 			PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 		}
-		for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+		for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 			if (sc->stridedSharedLayout) {
 				temp_int.data.i = (i)*sc->localSize[1].data.i;
 
@@ -1785,7 +1785,7 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
@@ -1839,7 +1839,7 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 		temp_int.data.i = 0;
 		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 		if (sc->axis_id > 0) {
 			temp_int.data.i = (i)*sc->localSize[1].data.i;
 
@@ -2005,13 +2005,13 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 		}
 
 		if (sc->mergeSequencesR2C) {
-			PfAdd_x(sc, &sc->regIDs[i], &sc->temp, &sc->w);
-			PfSub_y(sc, &sc->regIDs[i], &sc->temp, &sc->w);
+			PfAdd(sc, &sc->regIDs[i].data.c[0], &sc->temp.data.c[0], &sc->w.data.c[0]);
+			PfSub(sc, &sc->regIDs[i].data.c[1], &sc->temp.data.c[1], &sc->w.data.c[1]);
 
-			PfAdd_y(sc, &sc->w, &sc->temp, &sc->w);
-			PfSub_x(sc, &sc->w, &sc->w, &sc->temp);
-			PfMov_x_y(sc, &sc->temp, &sc->w);
-			PfMov_y_x(sc, &sc->temp, &sc->w);
+			PfAdd(sc, &sc->w.data.c[1], &sc->temp.data.c[1], &sc->w.data.c[1]);
+			PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[0]);
+			PfMov(sc, &sc->temp.data.c[0], &sc->w.data.c[1]);
+			PfMov(sc, &sc->temp.data.c[1], &sc->w.data.c[0]);
 		}
 		
 		temp_int.data.i = fftDim.data.i / 4;
@@ -2025,19 +2025,19 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 			temp_int.data.i = 0;
 			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
 			if (sc->mergeSequencesR2C) {
-				PfMov_x_Neg_x(sc, &sc->w, &sc->regIDs[i]);
-				PfMov_y_Neg_x(sc, &sc->w, &sc->temp);
+				PfMovNeg(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+				PfMovNeg(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
 			}
 			else {
-				PfMov_x_Neg_x(sc, &sc->w, &sc->temp);
+				PfMovNeg(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
 			}
 			PfIf_else(sc);
 			if (sc->mergeSequencesR2C) {
-				PfMov_x(sc, &sc->w, &sc->regIDs[i]);
-				PfMov_y_x(sc, &sc->w, &sc->temp);
+				PfMov(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+				PfMov(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
 			}
 			else {
-				PfMov_x(sc, &sc->w, &sc->temp);
+				PfMov(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
 			}
 			PfIf_end(sc);
 
@@ -2047,19 +2047,19 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 			temp_int.data.i = 0;
 			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
 			if (sc->mergeSequencesR2C) {
-				PfAdd_x_y(sc, &sc->w, &sc->w, &sc->regIDs[i]);
-				PfAdd_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+				PfAdd(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
 			}
 			else {
-				PfAdd_x_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
 			}
 			PfIf_else(sc);
 			if (sc->mergeSequencesR2C) {
-				PfSub_x_y(sc, &sc->w, &sc->w, &sc->regIDs[i]);
-				PfSub_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+				PfSub(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
 			}
 			else {
-				PfSub_x_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
 			}
 			PfIf_end(sc);
 
@@ -2079,19 +2079,19 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 			temp_int.data.i = 0;
 			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
 			if (sc->mergeSequencesR2C) {
-				PfMov_x_Neg_x(sc, &sc->w, &sc->regIDs[i]);
-				PfMov_y_Neg_x(sc, &sc->w, &sc->temp);
+				PfMovNeg(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+				PfMovNeg(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
 			}
 			else {
-				PfMov_x_Neg_x(sc, &sc->w, &sc->temp);
+				PfMovNeg(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
 			}
 			PfIf_else(sc);
 			if (sc->mergeSequencesR2C) {
-				PfMov_x(sc, &sc->w, &sc->regIDs[i]);
-				PfMov_y_x(sc, &sc->w, &sc->temp);
+				PfMov(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+				PfMov(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
 			}
 			else {
-				PfMov_x(sc, &sc->w, &sc->temp);
+				PfMov(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
 			}
 			PfIf_end(sc);
 
@@ -2101,19 +2101,19 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 			temp_int.data.i = 0;
 			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
 			if (sc->mergeSequencesR2C) {
-				PfSub_x_y(sc, &sc->w, &sc->w, &sc->regIDs[i]);
-				PfSub_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+				PfSub(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
 			}
 			else {
-				PfSub_x_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
 			}
 			PfIf_else(sc);
 			if (sc->mergeSequencesR2C) {
-				PfAdd_x_y(sc, &sc->w, &sc->w, &sc->regIDs[i]);
-				PfAdd_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+				PfAdd(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
 			}
 			else {
-				PfAdd_x_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
 			}
 			PfIf_end(sc);
 
@@ -2134,19 +2134,19 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 			temp_int.data.i = 0;
 			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
 			if (sc->mergeSequencesR2C) {
-				PfMov_x_Neg_x(sc, &sc->w, &sc->regIDs[i]);
-				PfMov_y_Neg_x(sc, &sc->w, &sc->temp);
+				PfMovNeg(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+				PfMovNeg(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
 			}
 			else {
-				PfMov_x_Neg_x(sc, &sc->w, &sc->temp);
+				PfMovNeg(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
 			}
 			PfIf_else(sc);
 			if (sc->mergeSequencesR2C) {
-				PfMov_x(sc, &sc->w, &sc->regIDs[i]);
-				PfMov_y_x(sc, &sc->w, &sc->temp);
+				PfMov(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+				PfMov(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
 			}
 			else {
-				PfMov_x(sc, &sc->w, &sc->temp);
+				PfMov(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
 			}
 			PfIf_end(sc);
 
@@ -2156,19 +2156,19 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 			temp_int.data.i = 0;
 			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
 			if (sc->mergeSequencesR2C) {
-				PfAdd_x_y(sc, &sc->w, &sc->w, &sc->regIDs[i]);
-				PfAdd_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+				PfAdd(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
 			}
 			else {
-				PfAdd_x_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
 			}
 			PfIf_else(sc);
 			if (sc->mergeSequencesR2C) {
-				PfSub_x_y(sc, &sc->w, &sc->w, &sc->regIDs[i]);
-				PfSub_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+				PfSub(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
 			}
 			else {
-				PfSub_x_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
 			}
 			PfIf_end(sc);
 
@@ -2187,19 +2187,19 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 			temp_int.data.i = 0;
 			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
 			if (sc->mergeSequencesR2C) {
-				PfMov_x_Neg_x(sc, &sc->w, &sc->regIDs[i]);
-				PfMov_y_Neg_x(sc, &sc->w, &sc->temp);
+				PfMovNeg(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+				PfMovNeg(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
 			}
 			else {
-				PfMov_x_Neg_x(sc, &sc->w, &sc->temp);
+				PfMovNeg(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
 			}
 			PfIf_else(sc);
 			if (sc->mergeSequencesR2C) {
-				PfMov_x(sc, &sc->w, &sc->regIDs[i]);
-				PfMov_y_x(sc, &sc->w, &sc->temp);
+				PfMov(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+				PfMov(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
 			}
 			else {
-				PfMov_x(sc, &sc->w, &sc->temp);
+				PfMov(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
 			}
 			PfIf_end(sc);
 
@@ -2209,34 +2209,34 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 			temp_int.data.i = 0;
 			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
 			if (sc->mergeSequencesR2C) {
-				PfSub_x_y(sc, &sc->w, &sc->w, &sc->regIDs[i]);
-				PfSub_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+				PfSub(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
 			}
 			else {
-				PfSub_x_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
 			}
 			PfIf_else(sc);
 			if (sc->mergeSequencesR2C) {
-				PfAdd_x_y(sc, &sc->w, &sc->w, &sc->regIDs[i]);
-				PfAdd_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+				PfAdd(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
 			}
 			else {
-				PfAdd_x_y(sc, &sc->w, &sc->w, &sc->temp);
+				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
 			}
 			PfIf_end(sc);
 
 		PfIf_end(sc);
 
-		temp_double.data.d = sqrt(2);
+		temp_double.data.d = pfFPinit("1.41421356237309504880168872420969807856967");
 		if (sc->mergeSequencesR2C) {
-			temp_double.data.d *= 0.5;
+			temp_double.data.d *= pfFPinit("0.5");
 		}
 
 		if (sc->mergeSequencesR2C) {
 			PfMul(sc, &sc->regIDs[i], &sc->w, &temp_double, 0);
 		}
 		else {
-			PfMul_x(sc, &sc->regIDs[i], &sc->w, &temp_double, 0);
+			PfMul(sc, &sc->regIDs[i].data.c[0], &sc->w.data.c[0], &temp_double, 0);
 		}
 
 		if (sc->axis_id > 0) {

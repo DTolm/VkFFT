@@ -32,7 +32,7 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
@@ -80,8 +80,8 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 		temp_int.data.i = 0;
 		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
-		if (i < (uint64_t)((fftDim.data.i / 2 + 1) / localSize.data.i)) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
+		if (i < (pfUINT)((fftDim.data.i / 2 + 1) / localSize.data.i)) {
 			temp_int.data.i = i * localSize.data.i;
 			if (sc->stridedSharedLayout) {
 				PfAdd(sc, &sc->sdataID, localInvocationID, &temp_int);
@@ -95,7 +95,7 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 			}
 			appendSharedToRegisters(sc, &sc->regIDs[i], &sc->sdataID);
 			if (sc->mergeSequencesR2C) {
-				temp_int.data.i = ((int64_t)ceil(fftDim.data.i / 2.0) + (1 - fftDim.data.i % 2));
+				temp_int.data.i = ((pfINT)pfceil(fftDim.data.i / 2.0) + (1 - fftDim.data.i % 2));
 
 				if (sc->stridedSharedLayout)
 					temp_int.data.i *= sc->sharedStride.data.i;
@@ -103,22 +103,22 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 				PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
 				appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
 
-				PfShuffleComplex(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, 0);
+				PfShuffleComplex(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, &sc->w);
 			}
 		}
 		else {
-			if (i >= (uint64_t)ceil((fftDim.data.i / 2 + 1) / (long double)localSize.data.i)) {
-				if ((1 + (int64_t)i) * localSize.data.i > fftDim.data.i) {
+			if (i >= (pfUINT)pfceil((fftDim.data.i / 2 + 1) / (pfLD)localSize.data.i)) {
+				if ((1 + (pfINT)i) * localSize.data.i > fftDim.data.i) {
 					temp_int.data.i = fftDim.data.i - (i)*localSize.data.i;
 					PfIf_lt_start(sc, localInvocationID, &temp_int);
 				}
-				if ((((int64_t)ceil(fftDim.data.i / 2.0) - 1 - (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1))) > ((int64_t)i - ((int64_t)ceil((fftDim.data.i / 2 + 1) / (long double)localSize.data.i))) * localSize.data.i) && ((int64_t)ceil(fftDim.data.i / 2.0) - 1 > (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1)))) {
+				if ((((pfINT)pfceil(fftDim.data.i / 2.0) - 1 - (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1))) > ((pfINT)i - ((pfINT)pfceil((fftDim.data.i / 2 + 1) / (pfLD)localSize.data.i))) * localSize.data.i) && ((pfINT)pfceil(fftDim.data.i / 2.0) - 1 > (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1)))) {
 					if (sc->zeropadBluestein[0]) {
-						temp_int.data.i = ((int64_t)ceil(fftDim.data.i / 2.0) - 1 - (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1))) - (i - ((int64_t)ceil((fftDim.data.i / 2 + 1) / (long double)localSize.data.i))) * localSize.data.i;
+						temp_int.data.i = ((pfINT)pfceil(fftDim.data.i / 2.0) - 1 - (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1))) - (i - ((pfINT)pfceil((fftDim.data.i / 2 + 1) / (pfLD)localSize.data.i))) * localSize.data.i;
 						PfIf_gt_start(sc, &temp_int, localInvocationID);
 					}
 
-					temp_int.data.i = ((int64_t)ceil(fftDim.data.i / 2.0) - 1 - (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1))) - (i - ((int64_t)ceil((fftDim.data.i / 2 + 1) / (long double)localSize.data.i))) * localSize.data.i;
+					temp_int.data.i = ((pfINT)pfceil(fftDim.data.i / 2.0) - 1 - (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1))) - (i - ((pfINT)pfceil((fftDim.data.i / 2 + 1) / (pfLD)localSize.data.i))) * localSize.data.i;
 					if (sc->stridedSharedLayout) {
 						PfSub(sc, &sc->sdataID, &temp_int, localInvocationID);
 						PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
@@ -131,7 +131,7 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 					}
 					appendSharedToRegisters(sc, &sc->regIDs[i], &sc->sdataID);
 					if (sc->mergeSequencesR2C) {
-						temp_int.data.i = ((int64_t)ceil(fftDim.data.i / 2.0) + (1 - fftDim.data.i % 2));
+						temp_int.data.i = ((pfINT)pfceil(fftDim.data.i / 2.0) + (1 - fftDim.data.i % 2));
 
 						if (sc->stridedSharedLayout)
 							temp_int.data.i *= sc->sharedStride.data.i;
@@ -139,7 +139,7 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 						PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
 						appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
 
-						PfShuffleComplexInv(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, 0);
+						PfShuffleComplexInv(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, &sc->w);
 					}
 					PfConjugate(sc, &sc->regIDs[i], &sc->regIDs[i]);
 
@@ -154,7 +154,7 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 				else {
 					PfSetToZero(sc, &sc->regIDs[i]);
 				}
-				if ((1 + (int64_t)i) * localSize.data.i > fftDim.data.i) {
+				if ((1 + (pfINT)i) * localSize.data.i > fftDim.data.i) {
 					PfIf_end(sc);
 				}
 			}
@@ -179,7 +179,7 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 				}
 				appendSharedToRegisters(sc, &sc->regIDs[i], &sc->sdataID);
 				if (sc->mergeSequencesR2C) {
-					temp_int.data.i = ((int64_t)ceil(fftDim.data.i / 2.0) + (1 - fftDim.data.i % 2));
+					temp_int.data.i = ((pfINT)pfceil(fftDim.data.i / 2.0) + (1 - fftDim.data.i % 2));
 
 					if (sc->stridedSharedLayout)
 						temp_int.data.i *= sc->sharedStride.data.i;
@@ -187,11 +187,11 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 					PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
 					appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
 
-					PfShuffleComplex(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, 0);
+					PfShuffleComplex(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, &sc->w);
 				}
 				PfIf_else(sc);
 
-				temp_int.data.i = ((int64_t)ceil(fftDim.data.i / 2.0) - 1 - (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1))) - (i - ((int64_t)ceil((fftDim.data.i / 2 + 1) / (long double)localSize.data.i))) * localSize.data.i;
+				temp_int.data.i = ((pfINT)pfceil(fftDim.data.i / 2.0) - 1 - (localSize.data.i - ((fftDim.data.i / 2) % localSize.data.i + 1))) - (i - ((pfINT)pfceil((fftDim.data.i / 2 + 1) / (pfLD)localSize.data.i))) * localSize.data.i;
 
 				if (sc->stridedSharedLayout)
 				{
@@ -206,7 +206,7 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 				}
 				appendSharedToRegisters(sc, &sc->regIDs[i], &sc->sdataID);
 				if (sc->mergeSequencesR2C) {
-					temp_int.data.i = ((int64_t)ceil(fftDim.data.i / 2.0) + (1 - fftDim.data.i % 2));
+					temp_int.data.i = ((pfINT)pfceil(fftDim.data.i / 2.0) + (1 - fftDim.data.i % 2));
 
 					if (sc->stridedSharedLayout)
 						temp_int.data.i *= sc->sharedStride.data.i;
@@ -214,7 +214,7 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 					PfAdd(sc, &sc->sdataID, &sc->sdataID, &temp_int);
 					appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
 
-					PfShuffleComplexInv(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, 0);
+					PfShuffleComplexInv(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->temp, &sc->w);
 				}
 				PfConjugate(sc, &sc->regIDs[i], &sc->regIDs[i]);
 
@@ -263,9 +263,9 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 			temp_int.data.i = 0;
 			PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 		}
-		for (uint64_t k = 0; k < sc->registerBoost; k++) {
-			for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
-				if ((int64_t)(1 + i + k * used_registers.data.i) * localSize.data.i > fftDim.data.i) {
+		for (pfUINT k = 0; k < sc->registerBoost; k++) {
+			for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
+				if ((pfINT)(1 + i + k * used_registers.data.i) * localSize.data.i > fftDim.data.i) {
 					temp_int.data.i = fftDim.data.i - (i + k * used_registers.data.i) * localSize.data.i;
 					PfIf_lt_start(sc, localInvocationID, &temp_int);
 				}
@@ -284,7 +284,7 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 					PfAdd(sc, &sc->sdataID, &sc->sdataID, localInvocationID);
 				}
 				appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[i + k * used_registers.data.i]);
-				if ((int64_t)(1 + i + k * used_registers.data.i) * localSize.data.i > fftDim.data.i) {
+				if ((pfINT)(1 + i + k * used_registers.data.i) * localSize.data.i > fftDim.data.i) {
 					sc->tempLen = sprintf(sc->tempStr, "		}\n");
 					PfAppendLine(sc);
 				}
@@ -304,7 +304,7 @@ static inline void appendR2C_write(VkFFTSpecializationConstantsLayout* sc, int t
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
@@ -368,7 +368,7 @@ static inline void appendR2C_write(VkFFTSpecializationConstantsLayout* sc, int t
 		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
 	//we actually construct 2x used_registers here, if mult = 2
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
 
 		if (sc->localSize[1].data.i == 1) {
 			//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		combinedID = %s + %" PRIu64 ";\n", &sc->gl_LocalInvocationID_x, (i + k * used_registers) * &sc->localSize[0]);
@@ -435,15 +435,15 @@ static inline void appendR2C_write(VkFFTSpecializationConstantsLayout* sc, int t
 		temp_int.data.i = 0;
 		PfIf_eq_start(sc, &sc->tempInt, &temp_int);
 
-		PfAdd_x(sc, &sc->regIDs[i], &sc->temp, &sc->w);
-		PfSub_y(sc, &sc->regIDs[i], &sc->temp, &sc->w);
+		PfAdd(sc, &sc->regIDs[i].data.c[0], &sc->temp.data.c[0], &sc->w.data.c[0]);
+		PfSub(sc, &sc->regIDs[i].data.c[1], &sc->temp.data.c[1], &sc->w.data.c[1]);
 		PfIf_else(sc);
-		PfAdd_y(sc, &sc->temp, &sc->temp, &sc->w);
-		PfSub_x(sc, &sc->temp, &sc->w, &sc->temp);
-		PfMov_x_y(sc, &sc->regIDs[i], &sc->temp);
-		PfMov_y_x(sc, &sc->regIDs[i], &sc->temp);
+		PfAdd(sc, &sc->temp.data.c[1], &sc->temp.data.c[1], &sc->w.data.c[1]);
+		PfSub(sc, &sc->temp.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[0]);
+		PfMov(sc, &sc->regIDs[i].data.c[0], &sc->temp.data.c[1]);
+		PfMov(sc, &sc->regIDs[i].data.c[1], &sc->temp.data.c[0]);
 		PfIf_end(sc);
-		temp_double.data.d = 0.5l;
+		temp_double.data.d = pfFPinit("0.5");
 		PfMul(sc, &sc->regIDs[i], &sc->regIDs[i], &temp_double, 0);
 
 		temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;

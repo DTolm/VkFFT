@@ -38,11 +38,11 @@ static inline void appendRadixShuffleNonStrided(VkFFTSpecializationConstantsLayo
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32; 
+	temp_double.type = 22; 
 	
-	PfContainer stageNormalization;
-	stageNormalization.type = 32;
-	PfContainer normalizationValue;
+	PfContainer stageNormalization = VKFFT_ZERO_INIT;
+	stageNormalization.type = 22;
+	PfContainer normalizationValue = VKFFT_ZERO_INIT;
 	normalizationValue.type = 31;
 	normalizationValue.data.i = 1;
 
@@ -60,26 +60,26 @@ static inline void appendRadixShuffleNonStrided(VkFFTSpecializationConstantsLayo
 		normalizationValue.data.i *= sc->fft_dim_full.data.i;
 	}
 	if (normalizationValue.data.i != 1) {
-		stageNormalization.data.d = 1.0 / (long double)(normalizationValue.data.i);
+		stageNormalization.data.d = pfFPinit("1.0") / (pfLD)(normalizationValue.data.i);
 	}
 	
-	PfContainer logicalStoragePerThread;
+	PfContainer logicalStoragePerThread = VKFFT_ZERO_INIT;
 	logicalStoragePerThread.type = 31;
 	logicalStoragePerThread.data.i = sc->registers_per_thread_per_radix[stageRadix->data.i] * sc->registerBoost;// (sc->registers_per_thread % stageRadix->data.i == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-	PfContainer logicalStoragePerThreadNext;
+	PfContainer logicalStoragePerThreadNext = VKFFT_ZERO_INIT;
 	logicalStoragePerThreadNext.type = 31;
 	logicalStoragePerThreadNext.data.i = sc->registers_per_thread_per_radix[stageRadixNext->data.i] * sc->registerBoost;// (sc->registers_per_thread % stageRadixNext->data.i == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-	PfContainer logicalRegistersPerThread; 
+	PfContainer logicalRegistersPerThread = VKFFT_ZERO_INIT; 
 	logicalRegistersPerThread.type = 31;
 	logicalRegistersPerThread.data.i = sc->registers_per_thread_per_radix[stageRadix->data.i];// (sc->registers_per_thread % stageRadix->data.i == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
-	PfContainer logicalRegistersPerThreadNext; 
+	PfContainer logicalRegistersPerThreadNext = VKFFT_ZERO_INIT; 
 	logicalRegistersPerThreadNext.type = 31;
 	logicalRegistersPerThreadNext.data.i = sc->registers_per_thread_per_radix[stageRadixNext->data.i];// (sc->registers_per_thread % stageRadixNext->data.i == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 
-	PfContainer logicalGroupSize;
+	PfContainer logicalGroupSize = VKFFT_ZERO_INIT;
 	logicalGroupSize.type = 31;
 	PfDivCeil(sc, &logicalGroupSize, &sc->fftDim, &logicalStoragePerThread);
-	PfContainer logicalGroupSizeNext;
+	PfContainer logicalGroupSizeNext = VKFFT_ZERO_INIT;
 	logicalGroupSizeNext.type = 31;
 	PfDivCeil(sc, &logicalGroupSizeNext, &sc->fftDim, &logicalStoragePerThreadNext);
 	
@@ -93,13 +93,13 @@ static inline void appendRadixShuffleNonStrided(VkFFTSpecializationConstantsLayo
 			PfContainer* tempID;
 			tempID = (PfContainer*)calloc(sc->registers_per_thread * sc->registerBoost, sizeof(PfContainer));
 			if (tempID) {
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
-					PfAllocateContainerFlexible(sc, &tempID[i], 50);
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					tempID[i].type = sc->regIDs[0].type;
+					PfAllocateContainerFlexible(sc, &tempID[i], 50);
 				}
 
-				for (uint64_t k = 0; k < sc->registerBoost; ++k) {
-					uint64_t t = 0;
+				for (pfUINT k = 0; k < sc->registerBoost; ++k) {
+					pfUINT t = 0;
 					if (sc->registerBoost > 1) {
 						appendBarrierVkFFT(sc);
 											
@@ -122,10 +122,10 @@ static inline void appendRadixShuffleNonStrided(VkFFTSpecializationConstantsLayo
 					if (logicalGroupSize.data.i != sc->localSize[0].data.i) {
 						PfIf_lt_start(sc, &sc->gl_LocalInvocationID_x, &logicalGroupSize);
 					}
-					for (uint64_t j = 0; j < (uint64_t)logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
-						if (logicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) <= sc->fftDim.data.i) {
-							if (logicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
-								PfContainer current_group_cut;
+					for (pfUINT j = 0; j < (pfUINT)logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
+						if (logicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) <= sc->fftDim.data.i) {
+							if (logicalGroupSize.data.i * ((pfINT)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
+								PfContainer current_group_cut = VKFFT_ZERO_INIT;
 								current_group_cut.type = 31;
 								current_group_cut.data.i = sc->fftDim.data.i / stageRadix->data.i - (j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * logicalGroupSize.data.i;
 								PfIf_lt_start(sc, &sc->gl_LocalInvocationID_x, &current_group_cut);
@@ -143,14 +143,14 @@ static inline void appendRadixShuffleNonStrided(VkFFTSpecializationConstantsLayo
 		blockInvocationID = (gl_LocalInvocationID.x + %" PRIu64 ") - stageInvocationID;\n\
 		inoutID = stageInvocationID + blockInvocationID * %" PRIu64 ";\n", j * logicalGroupSize, stageSize->data.i, j * logicalGroupSize, stageRadix->data.i);*/
 						
-						for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
-							PfContainer id;
+						for (pfUINT i = 0; i < (pfUINT)stageRadix->data.i; i++) {
+							PfContainer id = VKFFT_ZERO_INIT;
 							id.type = 31;
 							id.data.i = j + k * logicalRegistersPerThread.data.i / stageRadix->data.i + i * logicalStoragePerThread.data.i / stageRadix->data.i;
 							id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
 							PfCopyContainer(sc, &tempID[t + k * sc->registers_per_thread], &sc->regIDs[id.data.i]);
 							t++;
-							if (logicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) <= sc->fftDim.data.i) {
+							if (logicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) <= sc->fftDim.data.i) {
 								temp_int.data.i = i * stageSize->data.i;
 								PfAdd(sc, &sc->sdataID, &sc->inoutID, &temp_int);
 									
@@ -187,8 +187,8 @@ static inline void appendRadixShuffleNonStrided(VkFFTSpecializationConstantsLayo
 							/*sc->tempLen = sprintf(sc->tempStr, "\
 sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;\n", i * stageSize->data.i, sc->regIDs[id], stageNormalization);*/
 						}
-						if (logicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) <= sc->fftDim.data.i) {
-							if (logicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
+						if (logicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) <= sc->fftDim.data.i) {
+							if (logicalGroupSize.data.i * ((pfINT)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
 								PfIf_end(sc);
 							}
 						}
@@ -196,7 +196,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 					if (logicalGroupSize.data.i != sc->localSize[0].data.i) {
 						PfIf_end(sc);
 					}
-					for (uint64_t j = logicalRegistersPerThread.data.i; j < sc->registers_per_thread; j++) {
+					for (pfUINT j = logicalRegistersPerThread.data.i; j < sc->registers_per_thread; j++) {
 						PfCopyContainer(sc, &tempID[t + k * sc->registers_per_thread], &sc->regIDs[t + k * sc->registers_per_thread]);
 						t++;
 					}
@@ -222,9 +222,9 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 							temp_int.data.i = 0;
 							PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 						}
-						for (uint64_t j = 0; j < (uint64_t)logicalRegistersPerThreadNext.data.i / stageRadixNext->data.i; j++) {
-							for (uint64_t i = 0; i < (uint64_t)stageRadixNext->data.i; i++) {
-								PfContainer id;
+						for (pfUINT j = 0; j < (pfUINT)logicalRegistersPerThreadNext.data.i / stageRadixNext->data.i; j++) {
+							for (pfUINT i = 0; i < (pfUINT)stageRadixNext->data.i; i++) {
+								PfContainer id = VKFFT_ZERO_INIT;
 								id.type = 31;
 								id.data.i = j + k * logicalRegistersPerThreadNext.data.i / stageRadixNext->data.i + i * logicalStoragePerThreadNext.data.i / stageRadixNext->data.i;
 								id.data.i = (id.data.i / logicalRegistersPerThreadNext.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThreadNext.data.i;
@@ -261,10 +261,10 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 						}
 					}
 				}
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					PfCopyContainer(sc, &sc->regIDs[i], &tempID[i]);
 				}
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					PfDeallocateContainer(sc, &tempID[i]);
 				}
 				free(tempID);
@@ -281,32 +281,32 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 			tempID = (PfContainer*)calloc(sc->registers_per_thread * sc->registerBoost, sizeof(PfContainer));
 			if (tempID) {
 				//resID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
-					PfAllocateContainerFlexible(sc, &tempID[i], 50);
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					tempID[i].type = sc->regIDs[0].type;
+					PfAllocateContainerFlexible(sc, &tempID[i], 50);
 				}
 				if (sc->useDisableThreads) {
 					temp_int.data.i = 0;
 					PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 				}
-				for (uint64_t k = 0; k < (uint64_t)sc->registerBoost; ++k) {
-					for (uint64_t j = 0; j < (uint64_t)logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
-						for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
-							PfContainer id;
+				for (pfUINT k = 0; k < (pfUINT)sc->registerBoost; ++k) {
+					for (pfUINT j = 0; j < (pfUINT)logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
+						for (pfUINT i = 0; i < (pfUINT)stageRadix->data.i; i++) {
+							PfContainer id = VKFFT_ZERO_INIT;
 							id.type = 31;
 							id.data.i = j + k * logicalRegistersPerThread.data.i / stageRadix->data.i + i * logicalStoragePerThread.data.i / stageRadix->data.i;
 							id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
 							PfCopyContainer(sc, &tempID[j + i * logicalRegistersPerThread.data.i / stageRadix->data.i + k * sc->registers_per_thread], &sc->regIDs[id.data.i]);
 						}
 					}
-					for (uint64_t j = logicalRegistersPerThread.data.i; j < sc->registers_per_thread; j++) {
+					for (pfUINT j = logicalRegistersPerThread.data.i; j < sc->registers_per_thread; j++) {
 						PfCopyContainer(sc, &tempID[j + k * sc->registers_per_thread], &sc->regIDs[j + k * sc->registers_per_thread]);
 					}
 				}
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					PfCopyContainer(sc, &sc->regIDs[i], &tempID[i]);
 				}
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					PfDeallocateContainer(sc, &tempID[i]);
 				}
 				free(tempID);
@@ -326,8 +326,8 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 		}
 
 		if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle->data.d > 0))) {
-			for (uint64_t i = 0; i < (uint64_t)logicalStoragePerThread.data.i; i++) {
-				PfContainer id;
+			for (pfUINT i = 0; i < (pfUINT)logicalStoragePerThread.data.i; i++) {
+				PfContainer id = VKFFT_ZERO_INIT;
 				id.type = 31;
 				id.data.i = (i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + i % logicalRegistersPerThread.data.i;
 				
@@ -353,11 +353,11 @@ static inline void appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout*
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
-	PfContainer stageNormalization;
-	stageNormalization.type = 32;
-	PfContainer normalizationValue;
+	PfContainer stageNormalization = VKFFT_ZERO_INIT;
+	stageNormalization.type = 22;
+	PfContainer normalizationValue = VKFFT_ZERO_INIT;
 	normalizationValue.type = 31;
 	normalizationValue.data.i = 1;
 
@@ -375,27 +375,27 @@ static inline void appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout*
 		normalizationValue.data.i *= sc->fft_dim_full.data.i;
 	}
 	if (normalizationValue.data.i != 1) {
-		stageNormalization.data.d = 1.0 / (long double)(normalizationValue.data.i);
+		stageNormalization.data.d = pfFPinit("1.0") / (pfLD)(normalizationValue.data.i);
 	}
 	char tempNum[50] = "";
 
-	PfContainer logicalStoragePerThread;
+	PfContainer logicalStoragePerThread = VKFFT_ZERO_INIT;
 	logicalStoragePerThread.type = 31;
 	logicalStoragePerThread.data.i = sc->registers_per_thread_per_radix[stageRadix->data.i] * sc->registerBoost;// (sc->registers_per_thread % stageRadix->data.i == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-	PfContainer logicalStoragePerThreadNext;
+	PfContainer logicalStoragePerThreadNext = VKFFT_ZERO_INIT;
 	logicalStoragePerThreadNext.type = 31;
 	logicalStoragePerThreadNext.data.i = sc->registers_per_thread_per_radix[stageRadixNext->data.i] * sc->registerBoost;// (sc->registers_per_thread % stageRadixNext->data.i == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-	PfContainer logicalRegistersPerThread;
+	PfContainer logicalRegistersPerThread = VKFFT_ZERO_INIT;
 	logicalRegistersPerThread.type = 31;
 	logicalRegistersPerThread.data.i = sc->registers_per_thread_per_radix[stageRadix->data.i];// (sc->registers_per_thread % stageRadix->data.i == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
-	PfContainer logicalRegistersPerThreadNext;
+	PfContainer logicalRegistersPerThreadNext = VKFFT_ZERO_INIT;
 	logicalRegistersPerThreadNext.type = 31;
 	logicalRegistersPerThreadNext.data.i = sc->registers_per_thread_per_radix[stageRadixNext->data.i];// (sc->registers_per_thread % stageRadixNext->data.i == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 
-	PfContainer logicalGroupSize;
+	PfContainer logicalGroupSize = VKFFT_ZERO_INIT;
 	logicalGroupSize.type = 31;
 	PfDivCeil(sc, &logicalGroupSize, &sc->fftDim, &logicalStoragePerThread);
-	PfContainer logicalGroupSizeNext;
+	PfContainer logicalGroupSizeNext = VKFFT_ZERO_INIT;
 	logicalGroupSizeNext.type = 31;
 	PfDivCeil(sc, &logicalGroupSizeNext, &sc->fftDim, &logicalStoragePerThreadNext);
 
@@ -412,13 +412,13 @@ static inline void appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout*
 			PfContainer* tempID;
 			tempID = (PfContainer*)calloc(sc->registers_per_thread * sc->registerBoost, sizeof(PfContainer));
 			if (tempID) {
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
-					PfAllocateContainerFlexible(sc, &tempID[i], 50);
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					tempID[i].type = sc->regIDs[0].type;
+					PfAllocateContainerFlexible(sc, &tempID[i], 50);
 				}
 
-				for (uint64_t k = 0; k < sc->registerBoost; ++k) {
-					uint64_t t = 0;
+				for (pfUINT k = 0; k < sc->registerBoost; ++k) {
+					pfUINT t = 0;
 					if (sc->registerBoost > 1) {
 						appendBarrierVkFFT(sc);
 
@@ -440,10 +440,10 @@ static inline void appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout*
 					if (logicalGroupSize.data.i != sc->localSize[1].data.i) {
 						PfIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &logicalGroupSize);
 					}
-					for (uint64_t j = 0; j < (uint64_t)logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
-						if (logicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) <= sc->fftDim.data.i) {
-							if (logicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
-								PfContainer current_group_cut;
+					for (pfUINT j = 0; j < (pfUINT)logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
+						if (logicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) <= sc->fftDim.data.i) {
+							if (logicalGroupSize.data.i * ((pfINT)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
+								PfContainer current_group_cut = VKFFT_ZERO_INIT;
 								current_group_cut.type = 31;
 								current_group_cut.data.i = sc->fftDim.data.i / stageRadix->data.i - (j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * logicalGroupSize.data.i;
 								PfIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &current_group_cut);
@@ -461,14 +461,14 @@ static inline void appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout*
 		blockInvocationID = (gl_LocalInvocationID.x + %" PRIu64 ") - stageInvocationID;\n\
 		inoutID = stageInvocationID + blockInvocationID * %" PRIu64 ";\n", j * logicalGroupSize, stageSize->data.i, j * logicalGroupSize, stageRadix->data.i);*/
 
-						for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
-							PfContainer id;
+						for (pfUINT i = 0; i < (pfUINT)stageRadix->data.i; i++) {
+							PfContainer id = VKFFT_ZERO_INIT;
 							id.type = 31;
 							id.data.i = j + k * logicalRegistersPerThread.data.i / stageRadix->data.i + i * logicalStoragePerThread.data.i / stageRadix->data.i;
 							id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
 							PfCopyContainer(sc, &tempID[t + k * sc->registers_per_thread], &sc->regIDs[id.data.i]);
 							t++;
-							if (logicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) <= sc->fftDim.data.i) {
+							if (logicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) <= sc->fftDim.data.i) {
 								temp_int.data.i = i * stageSize->data.i;
 								PfAdd(sc, &sc->sdataID, &sc->inoutID, &temp_int);
 
@@ -484,8 +484,8 @@ static inline void appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout*
 							/*sc->tempLen = sprintf(sc->tempStr, "\
 sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;\n", i * stageSize->data.i, sc->regIDs[id], stageNormalization);*/
 						}
-						if (logicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) <= sc->fftDim.data.i) {
-							if (logicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
+						if (logicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) <= sc->fftDim.data.i) {
+							if (logicalGroupSize.data.i * ((pfINT)(1 + j + k * logicalRegistersPerThread.data.i / stageRadix->data.i) * stageRadix->data.i) > sc->fftDim.data.i) {
 								PfIf_end(sc);
 							}
 						}
@@ -493,7 +493,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 					if (logicalGroupSize.data.i != sc->localSize[1].data.i) {
 						PfIf_end(sc);
 					}
-					for (uint64_t j = logicalRegistersPerThread.data.i; j < sc->registers_per_thread; j++) {
+					for (pfUINT j = logicalRegistersPerThread.data.i; j < sc->registers_per_thread; j++) {
 						PfCopyContainer(sc, &tempID[t + k * sc->registers_per_thread], &sc->regIDs[t + k * sc->registers_per_thread]);
 						t++;
 					}
@@ -518,9 +518,9 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 							PfDivCeil(sc, &temp_int, &sc->fftDim, &logicalRegistersPerThreadNext);
 							PfIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &temp_int);
 						}
-						for (uint64_t j = 0; j < (uint64_t)logicalRegistersPerThreadNext.data.i / stageRadixNext->data.i; j++) {
-							for (uint64_t i = 0; i < (uint64_t)stageRadixNext->data.i; i++) {
-								PfContainer id;
+						for (pfUINT j = 0; j < (pfUINT)logicalRegistersPerThreadNext.data.i / stageRadixNext->data.i; j++) {
+							for (pfUINT i = 0; i < (pfUINT)stageRadixNext->data.i; i++) {
+								PfContainer id = VKFFT_ZERO_INIT;
 								id.type = 31;
 								id.data.i = j + k * logicalRegistersPerThreadNext.data.i / stageRadixNext->data.i + i * logicalStoragePerThreadNext.data.i / stageRadixNext->data.i;
 								id.data.i = (id.data.i / logicalRegistersPerThreadNext.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThreadNext.data.i;
@@ -548,10 +548,10 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 					}
 
 				}
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					PfCopyContainer(sc, &sc->regIDs[i], &tempID[i]);
 				}
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					PfDeallocateContainer(sc, &tempID[i]);
 				}
 				free(tempID);
@@ -568,32 +568,32 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 			tempID = (PfContainer*)calloc(sc->registers_per_thread * sc->registerBoost, sizeof(PfContainer));
 			if (tempID) {
 				//resID = (char**)malloc(sizeof(char*) * sc->registers_per_thread * sc->registerBoost);
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
-					PfAllocateContainerFlexible(sc, &tempID[i], 50);
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					tempID[i].type = sc->regIDs[0].type;
+					PfAllocateContainerFlexible(sc, &tempID[i], 50);
 				}
 				if (sc->useDisableThreads) {
 					temp_int.data.i = 0;
 					PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 				}
-				for (uint64_t k = 0; k < sc->registerBoost; ++k) {
-					for (uint64_t j = 0; j < (uint64_t)logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
-						for (uint64_t i = 0; i < (uint64_t)stageRadix->data.i; i++) {
-							PfContainer id;
+				for (pfUINT k = 0; k < sc->registerBoost; ++k) {
+					for (pfUINT j = 0; j < (pfUINT)logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
+						for (pfUINT i = 0; i < (pfUINT)stageRadix->data.i; i++) {
+							PfContainer id = VKFFT_ZERO_INIT;
 							id.type = 31;
 							id.data.i = j + k * logicalRegistersPerThread.data.i / stageRadix->data.i + i * logicalStoragePerThread.data.i / stageRadix->data.i;
 							id.data.i = (id.data.i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread.data.i;
 							PfCopyContainer(sc, &tempID[j + i * logicalRegistersPerThread.data.i / stageRadix->data.i + k * sc->registers_per_thread], &sc->regIDs[id.data.i]);
 						}
 					}
-					for (uint64_t j = logicalRegistersPerThread.data.i; j < sc->registers_per_thread; j++) {
+					for (pfUINT j = logicalRegistersPerThread.data.i; j < sc->registers_per_thread; j++) {
 						PfCopyContainer(sc, &tempID[j + k * sc->registers_per_thread], &sc->regIDs[j + k * sc->registers_per_thread]);
 					}
 				}
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					PfCopyContainer(sc, &sc->regIDs[i], &tempID[i]);
 				}
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					PfDeallocateContainer(sc, &tempID[i]);
 				}
 				free(tempID);
@@ -617,8 +617,8 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 			PfIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &temp_int);
 		}
 		if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle->data.d > 0))) {
-			for (uint64_t i = 0; i < (uint64_t)logicalStoragePerThread.data.i; i++) {
-				PfContainer id;
+			for (pfUINT i = 0; i < (pfUINT)logicalStoragePerThread.data.i; i++) {
+				PfContainer id = VKFFT_ZERO_INIT;
 				id.type = 31;
 				id.data.i = (i / logicalRegistersPerThread.data.i) * sc->registers_per_thread + i % logicalRegistersPerThread.data.i;
 
@@ -639,7 +639,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 	}
 	return;
 }
-static inline void appendRadixShuffle(VkFFTSpecializationConstantsLayout* sc, PfContainer* stageSize, PfContainer* stageSizeSum, PfContainer* stageAngle, PfContainer* stageRadix, PfContainer* stageRadixNext, uint64_t stageID, uint64_t shuffleType) {
+static inline void appendRadixShuffle(VkFFTSpecializationConstantsLayout* sc, PfContainer* stageSize, PfContainer* stageSizeSum, PfContainer* stageAngle, PfContainer* stageRadix, PfContainer* stageRadixNext, pfUINT stageID, pfUINT shuffleType) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if (sc->rader_generator[stageID] == 0) {
 		switch (shuffleType) {

@@ -29,14 +29,14 @@
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel0/vkFFT_KernelUtils.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel0/vkFFT_MemoryManagement/vkFFT_MemoryTransfers/vkFFT_Transfers.h"
 
-static inline void appendBluesteinMultiplication(VkFFTSpecializationConstantsLayout* sc, uint64_t strideType, uint64_t pre_or_post_multiplication) {
+static inline void appendBluesteinMultiplication(VkFFTSpecializationConstantsLayout* sc, pfUINT strideType, pfUINT pre_or_post_multiplication) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	
 	//char index_y[2000] = "";
@@ -79,8 +79,8 @@ static inline void appendBluesteinMultiplication(VkFFTSpecializationConstantsLay
 		
 	PfDivCeil(sc, &used_registers, &sc->fftDim, &localSize);
 
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
-		if (localSize.data.i * ((1 + (int64_t)i)) > sc->fftDim.data.i) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
+		if (localSize.data.i * ((1 + (pfINT)i)) > sc->fftDim.data.i) {
 			PfContainer current_group_cut;
 			current_group_cut.type = 31;
 			current_group_cut .data.i = sc->fftDim.data.i - i * localSize.data.i;
@@ -151,7 +151,7 @@ static inline void appendBluesteinMultiplication(VkFFTSpecializationConstantsLay
 
 		appendGlobalToRegisters(sc, &sc->w, &sc->BluesteinStruct, &sc->inoutID);
 		
-		//uint64_t k = 0;
+		//pfUINT k = 0;
 		if (!((sc->readToRegisters && (pre_or_post_multiplication == 0)) || (sc->writeFromRegisters && (pre_or_post_multiplication == 1)))) {
 			if (sc->stridedSharedLayout) {
 				temp_int.data.i = i * sc->localSize[1].data.i;
@@ -185,7 +185,7 @@ static inline void appendBluesteinMultiplication(VkFFTSpecializationConstantsLay
 		if ((sc->zeropadBluestein[1]) && (pre_or_post_multiplication == 1)) {
 			PfIf_end(sc);
 		}
-		if (localSize.data.i * ((1 + (int64_t)i)) > sc->fftDim.data.i) {
+		if (localSize.data.i * ((1 + (pfINT)i)) > sc->fftDim.data.i) {
 			PfIf_end(sc);
 		}
 	}
@@ -195,14 +195,14 @@ static inline void appendBluesteinMultiplication(VkFFTSpecializationConstantsLay
 	return;
 }
 
-static inline void appendBluesteinConvolution(VkFFTSpecializationConstantsLayout* sc, uint64_t strideType) {
+static inline void appendBluesteinConvolution(VkFFTSpecializationConstantsLayout* sc, pfUINT strideType) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 	
 	if (sc->useDisableThreads) {
 		temp_int.data.i = 0;
@@ -227,8 +227,8 @@ static inline void appendBluesteinConvolution(VkFFTSpecializationConstantsLayout
 		PfDivCeil(sc, &used_registers, &sc->fftDim, &sc->localSize[0]);
 	}
 
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
-		if (localSize.data.i * ((1 + (int64_t)i)) > sc->fftDim.data.i) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
+		if (localSize.data.i * ((1 + (pfINT)i)) > sc->fftDim.data.i) {
 			temp_int.data.i = sc->fftDim.data.i - i * localSize.data.i;
 			PfIf_lt_start(sc, localInvocationID, &temp_int);
 		}
@@ -298,7 +298,7 @@ static inline void appendBluesteinConvolution(VkFFTSpecializationConstantsLayout
 		PfMul(sc, &sc->regIDs[i], &sc->regIDs[i], &sc->w, &sc->temp);
 		
 		PfIf_end(sc);
-		if (localSize.data.i * ((1 + (int64_t)i)) > sc->fftDim.data.i) {
+		if (localSize.data.i * ((1 + (pfINT)i)) > sc->fftDim.data.i) {
 			PfIf_end(sc);
 		}
 	}

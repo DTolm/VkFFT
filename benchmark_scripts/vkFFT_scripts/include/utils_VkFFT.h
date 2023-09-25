@@ -16,6 +16,9 @@ typedef struct {
 	VkFence fence;//a vkGPU->fence used to synchronize dispatches
 	std::vector<const char*> enabledDeviceExtensions;
 	uint64_t enableValidationLayers;
+
+	VkBuffer* stagingBuffer;//optional pointer to the user defined staging buffer
+	VkDeviceMemory* stagingBufferMemory;//optional pointer to the user defined staging buffer memory, associated with the stagingBuffer
 #elif(VKFFT_BACKEND==1)
 	CUdevice device;
 	CUcontext context;

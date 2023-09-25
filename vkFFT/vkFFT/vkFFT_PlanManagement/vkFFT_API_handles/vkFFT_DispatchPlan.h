@@ -23,22 +23,22 @@
 #define VKFFT_DISPATCHPLAN_H
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 
-static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* axis, uint64_t* dispatchBlock) {
+static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* axis, pfUINT* dispatchBlock) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 	if (axis->specializationConstants.swapComputeWorkGroupID == 1) {
-		uint64_t temp = dispatchBlock[0];
+		pfUINT temp = dispatchBlock[0];
 		dispatchBlock[0] = dispatchBlock[1];
 		dispatchBlock[1] = temp;
 	}
 	if (axis->specializationConstants.swapComputeWorkGroupID == 2) {
-		uint64_t temp = dispatchBlock[0];
+		pfUINT temp = dispatchBlock[0];
 		dispatchBlock[0] = dispatchBlock[2];
 		dispatchBlock[2] = temp;
 	}
-	uint64_t blockNumber[3] = { (uint64_t)ceil(dispatchBlock[0] / (double)app->configuration.maxComputeWorkGroupCount[0]),(uint64_t)ceil(dispatchBlock[1] / (double)app->configuration.maxComputeWorkGroupCount[1]),(uint64_t)ceil(dispatchBlock[2] / (double)app->configuration.maxComputeWorkGroupCount[2]) };
-	uint64_t blockSize[3] = { (uint64_t)ceil(dispatchBlock[0] / (double)blockNumber[0]), (uint64_t)ceil(dispatchBlock[1] / (double)blockNumber[1]), (uint64_t)ceil(dispatchBlock[2] / (double)blockNumber[2]) };
-	uint64_t lastBlockSize[3] = { blockSize[0],blockSize[1],blockSize[2] };
-	uint64_t dispatchSize[3] = { 1,1,1 };
+	pfUINT blockNumber[3] = { (pfUINT)pfceil(dispatchBlock[0] / (double)app->configuration.maxComputeWorkGroupCount[0]),(pfUINT)pfceil(dispatchBlock[1] / (double)app->configuration.maxComputeWorkGroupCount[1]),(pfUINT)pfceil(dispatchBlock[2] / (double)app->configuration.maxComputeWorkGroupCount[2]) };
+	pfUINT blockSize[3] = { (pfUINT)pfceil(dispatchBlock[0] / (double)blockNumber[0]), (pfUINT)pfceil(dispatchBlock[1] / (double)blockNumber[1]), (pfUINT)pfceil(dispatchBlock[2] / (double)blockNumber[2]) };
+	pfUINT lastBlockSize[3] = { blockSize[0],blockSize[1],blockSize[2] };
+	pfUINT dispatchSize[3] = { 1,1,1 };
 	if (blockNumber[0] == 0) blockNumber[0] = 1;
 	if (blockNumber[1] == 0) blockNumber[1] = 1;
 	if (blockNumber[2] == 0) blockNumber[2] = 1;
@@ -56,11 +56,11 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 	}
 	//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 "\n", dispatchBlock[0], dispatchBlock[1], dispatchBlock[2]);
 	//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 "\n", blockNumber[0], blockNumber[1], blockNumber[2]);
-	for (uint64_t i = 0; i < 3; i++)
+	for (pfUINT i = 0; i < 3; i++)
 		if (blockNumber[i] == 1) blockSize[i] = dispatchBlock[i];
-	for (uint64_t i = 0; i < blockNumber[0]; i++) {
-		for (uint64_t j = 0; j < blockNumber[1]; j++) {
-			for (uint64_t k = 0; k < blockNumber[2]; k++) {
+	for (pfUINT i = 0; i < blockNumber[0]; i++) {
+		for (pfUINT j = 0; j < blockNumber[1]; j++) {
+			for (pfUINT k = 0; k < blockNumber[2]; k++) {
 				if (axis->pushConstants.workGroupShift[0] != i * blockSize[0]) {
 					axis->pushConstants.workGroupShift[0] = i * blockSize[0];
 					axis->updatePushConstants = 1;
@@ -75,41 +75,41 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				}
 				if (axis->updatePushConstants) {
 					if (app->configuration.useUint64) {
-						uint64_t offset = 0;
-						uint64_t temp = 0;
+						pfUINT offset = 0;
+						pfUINT temp = 0;
 						if (axis->specializationConstants.performWorkGroupShift[0]) {
-							memcpy(&axis->pushConstants.data[offset], &axis->pushConstants.workGroupShift[0], sizeof(uint64_t));
-							offset+=sizeof(uint64_t);
+							memcpy(&axis->pushConstants.data[offset], &axis->pushConstants.workGroupShift[0], sizeof(pfUINT));
+							offset+=sizeof(pfUINT);
 						}
 						if (axis->specializationConstants.performWorkGroupShift[1]) {
-							memcpy(&axis->pushConstants.data[offset], &axis->pushConstants.workGroupShift[1], sizeof(uint64_t));
-							offset += sizeof(uint64_t);
+							memcpy(&axis->pushConstants.data[offset], &axis->pushConstants.workGroupShift[1], sizeof(pfUINT));
+							offset += sizeof(pfUINT);
 						}
 						if (axis->specializationConstants.performWorkGroupShift[2]) {
-							memcpy(&axis->pushConstants.data[offset], &axis->pushConstants.workGroupShift[2], sizeof(uint64_t));
-							offset += sizeof(uint64_t);
+							memcpy(&axis->pushConstants.data[offset], &axis->pushConstants.workGroupShift[2], sizeof(pfUINT));
+							offset += sizeof(pfUINT);
 						}
 						if (axis->specializationConstants.performPostCompilationInputOffset) {
 							temp = axis->specializationConstants.inputOffset.data.i / axis->specializationConstants.inputNumberByteSize;
-							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(uint64_t));
-							offset += sizeof(uint64_t);
+							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(pfUINT));
+							offset += sizeof(pfUINT);
 						}
 						if (axis->specializationConstants.performPostCompilationOutputOffset) {
 							temp = axis->specializationConstants.outputOffset.data.i / axis->specializationConstants.outputNumberByteSize;
-							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(uint64_t));
-							offset += sizeof(uint64_t);
+							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(pfUINT));
+							offset += sizeof(pfUINT);
 						}
 						if (axis->specializationConstants.performPostCompilationKernelOffset) {
 							if (axis->specializationConstants.kernelNumberByteSize != 0)
 								temp = axis->specializationConstants.kernelOffset.data.i / axis->specializationConstants.kernelNumberByteSize;
 							else
 								temp = 0;
-							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(uint64_t));
-							offset += sizeof(uint64_t);
+							memcpy(&axis->pushConstants.data[offset], &temp, sizeof(pfUINT));
+							offset += sizeof(pfUINT);
 						}
 					}
 					else {
-						uint64_t offset = 0;
+						pfUINT offset = 0;
 						uint32_t temp = 0;
 						if (axis->specializationConstants.performWorkGroupShift[0]) {
 							temp = (uint32_t)axis->pushConstants.workGroupShift[0];
@@ -159,7 +159,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				CUresult result = CUDA_SUCCESS;
 				args[0] = axis->inputBuffer;
 				args[1] = axis->outputBuffer;
-				uint64_t args_id = 2;
+				pfUINT args_id = 2;
 				if (axis->specializationConstants.convolutionStep) {
 					args[args_id] = app->configuration.kernel;
 					args_id++;
@@ -225,7 +225,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				void* args[10];
 				args[0] = axis->inputBuffer;
 				args[1] = axis->outputBuffer;
-				uint64_t args_id = 2;
+				pfUINT args_id = 2;
 				if (axis->specializationConstants.convolutionStep) {
 					args[args_id] = app->configuration.kernel;
 					args_id++;
@@ -300,7 +300,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				if (result != CL_SUCCESS) {
 					return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
 				}
-				uint64_t args_id = 2;
+				pfUINT args_id = 2;
 				if (axis->specializationConstants.convolutionStep) {
 					args[args_id] = app->configuration.kernel;
 					result = clSetKernelArg(axis->kernel, (cl_uint)args_id, sizeof(cl_mem), args[args_id]);
@@ -373,7 +373,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				if (result != ZE_RESULT_SUCCESS) {
 					return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
 				}
-				uint64_t args_id = 2;
+				pfUINT args_id = 2;
 				if (axis->specializationConstants.convolutionStep) {
 					args[args_id] = app->configuration.kernel;
 					result = zeKernelSetArgumentValue(axis->VkFFTKernel, (uint32_t)args_id, sizeof(void*), args[args_id]);
@@ -439,9 +439,9 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				void* args[10];
 				app->configuration.commandEncoder->setBuffer(axis->inputBuffer[0], 0, 0);
 				app->configuration.commandEncoder->setBuffer(axis->outputBuffer[0], 0, 1);
-				app->configuration.commandEncoder->setThreadgroupMemoryLength((uint64_t)ceil(axis->specializationConstants.usedSharedMemory.data.i / 16.0) * 16, 0);
+				app->configuration.commandEncoder->setThreadgroupMemoryLength((pfUINT)pfceil(axis->specializationConstants.usedSharedMemory.data.i / 16.0) * 16, 0);
 
-				uint64_t args_id = 2;
+				pfUINT args_id = 2;
 				if (axis->specializationConstants.convolutionStep) {
 					app->configuration.commandEncoder->setBuffer(app->configuration.kernel[0], 0, args_id);
 					args_id++;

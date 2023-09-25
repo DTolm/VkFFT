@@ -193,7 +193,7 @@ static inline void appendOffset(VkFFTSpecializationConstantsLayout* sc, int read
             }
         }
 	}
-	int64_t maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
+	pfINT maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
 	if (sc->numCoordinates * sc->matrixConvolution > 1) {
 		PfDiv(sc, &sc->tempInt, &sc->gl_GlobalInvocationID_z, &sc->dispatchZactualFFTSize);
 		temp_int.data.i = maxCoordinate;
@@ -346,7 +346,7 @@ static inline void appendKernelOffset(VkFFTSpecializationConstantsLayout* sc, in
             }
         }
 	}
-	int64_t maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
+	pfINT maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
 	if (sc->numCoordinates * sc->matrixConvolution > 1) {
 		PfDiv(sc, &sc->tempInt, &sc->gl_GlobalInvocationID_z, &sc->dispatchZactualFFTSize);
 		temp_int.data.i = maxCoordinate;
@@ -588,12 +588,12 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 			PfMul(sc, &sc->tempInt, &sc->tempInt, &temp_int, 0);
 			PfAdd(sc, &sc->tempInt2, &sc->tempInt2, &sc->tempInt);
 
-			//sc->tempLen = sprintf(sc->tempStr, "		%s numActiveThreads = ((%s/%" PRIu64 ")==%" PRIu64 ") ? %" PRIu64 " : %" PRIu64 ";\n", uintType, sc->gl_WorkGroupID_x, sc->firstStageStartSize / sc->fftDim, ((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim), (uint64_t)ceil(((sc->fft_dim_full - (sc->firstStageStartSize / sc->fftDim) * ((((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim)) * sc->localSize[0] * sc->fftDim)) / (sc->firstStageStartSize / sc->fftDim)) / (double)used_registers_read), sc->localSize[0] * sc->localSize[1]);// sc->fft_dim_full, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full / (sc->localSize[0] * sc->fftDim));
+			//sc->tempLen = sprintf(sc->tempStr, "		%s numActiveThreads = ((%s/%" PRIu64 ")==%" PRIu64 ") ? %" PRIu64 " : %" PRIu64 ";\n", uintType, sc->gl_WorkGroupID_x, sc->firstStageStartSize / sc->fftDim, ((pfUINT)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim), (pfUINT)pfceil(((sc->fft_dim_full - (sc->firstStageStartSize / sc->fftDim) * ((((pfUINT)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim)) * sc->localSize[0] * sc->fftDim)) / (sc->firstStageStartSize / sc->fftDim)) / (double)used_registers_read), sc->localSize[0] * sc->localSize[1]);// sc->fft_dim_full, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full / (sc->localSize[0] * sc->fftDim));
 			temp_int.data.i = sc->firstStageStartSize.data.i / sc->fftDim.data.i;
 			PfDiv(sc, &sc->tempInt, &sc->gl_WorkGroupID_x, &temp_int);
-			temp_int1.data.i = ((int64_t)floor(sc->fft_dim_full.data.i / ((long double)batching_localSize.data.i * sc->fftDim.data.i))) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i);
+			temp_int1.data.i = ((pfINT)pffloor(sc->fft_dim_full.data.i / ((pfLD)batching_localSize.data.i * sc->fftDim.data.i))) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i);
 			PfIf_eq_start(sc, &sc->tempInt, &temp_int1);
-			temp_int1.data.i = ((sc->fft_dim_full.data.i - (sc->firstStageStartSize.data.i / sc->fftDim.data.i) * ((((int64_t)floor(sc->fft_dim_full.data.i / ((long double)batching_localSize.data.i * sc->fftDim.data.i))) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i)) * batching_localSize.data.i * sc->fftDim.data.i)) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i));
+			temp_int1.data.i = ((sc->fft_dim_full.data.i - (sc->firstStageStartSize.data.i / sc->fftDim.data.i) * ((((pfINT)pffloor(sc->fft_dim_full.data.i / ((pfLD)batching_localSize.data.i * sc->fftDim.data.i))) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i)) * batching_localSize.data.i * sc->fftDim.data.i)) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i));
 			PfMov(sc, &sc->blockInvocationID, &temp_int1);
 			PfIf_else(sc);
 			temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
@@ -634,9 +634,9 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 			PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->combinedID);
 		}
 	}
-	//for (uint64_t k = 0; k < &sc->registerBoost; k++) {
+	//for (pfUINT k = 0; k < &sc->registerBoost; k++) {
 	for (int k = 0; k < sc->registerBoost; k++) {
-		//for (uint64_t i = 0; i < used_registers; i++) {
+		//for (pfUINT i = 0; i < used_registers; i++) {
 		for (int i = 0; i < used_registers.data.i; i++) {
 			//combined thread numeration
 			if (sc->localSize[1].data.i == 1) {
@@ -1275,9 +1275,9 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 	}
 	PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->shiftZ);
 
-	//for (uint64_t k = 0; k < &sc->registerBoost; k++) {
+	//for (pfUINT k = 0; k < &sc->registerBoost; k++) {
 	for (int k = 0; k < sc->registerBoost; k++) {
-		//for (uint64_t i = 0; i < used_registers; i++) {
+		//for (pfUINT i = 0; i < used_registers; i++) {
 		for (int i = 0; i < used_registers.data.i; i++) {
 
 			temp_int1.data.i = (k * used_registers.data.i + i + 1) * sc->localSize[1].data.i;

@@ -22,8 +22,186 @@
 #ifndef VKFFT_SCHEDULER_H
 #define VKFFT_SCHEDULER_H
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
+static inline VkFFTResult VkFFTGetRegistersPerThreadQuad(VkFFTApplication* app, int fft_length, int extraSharedMemoryForPow2, pfUINT max_rhs, int useRader, int* loc_multipliers, int* registers_per_thread_per_radix, int* registers_per_thread, int* min_registers_per_thread, int* isGoodSequence) {
+	for (int i = 0; i < 33; i++) {
+		registers_per_thread_per_radix[i] = 0;
+	}
+	registers_per_thread[0] = 0;
+	min_registers_per_thread[0] = 10000000;
 
-static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int fft_length, int extraSharedMemoryForPow2, uint64_t max_rhs, int useRader, int* loc_multipliers, int* registers_per_thread_per_radix, int* registers_per_thread, int* min_registers_per_thread, int* isGoodSequence) {
+	if (loc_multipliers[2] > 0) {
+		if (loc_multipliers[3] > 0) {
+			if (loc_multipliers[5] > 0) {
+				registers_per_thread_per_radix[2] = 6;
+				registers_per_thread_per_radix[3] = 6;
+				registers_per_thread_per_radix[5] = 5;
+				registers_per_thread_per_radix[7] = 0;
+				registers_per_thread_per_radix[11] = 0;
+				registers_per_thread_per_radix[13] = 0;
+			}
+			else
+			{
+				registers_per_thread_per_radix[2] = 6;
+				registers_per_thread_per_radix[3] = 6;
+				registers_per_thread_per_radix[5] = 0;
+				registers_per_thread_per_radix[7] = 0;
+				registers_per_thread_per_radix[11] = 0;
+				registers_per_thread_per_radix[13] = 0;
+			}
+		}
+		else {
+			if (loc_multipliers[5] > 0) {
+				switch (loc_multipliers[2]) {
+				case 1:
+					registers_per_thread_per_radix[2] = 10;
+					registers_per_thread_per_radix[3] = 0;
+					registers_per_thread_per_radix[5] = 10;
+					registers_per_thread_per_radix[7] = 0;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
+					break;
+				case 2:
+					registers_per_thread_per_radix[2] = 10;
+					registers_per_thread_per_radix[3] = 0;
+					registers_per_thread_per_radix[5] = 10;
+					registers_per_thread_per_radix[7] = 0;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
+					break;
+				default:
+					registers_per_thread_per_radix[2] = 8;
+					registers_per_thread_per_radix[3] = 0;
+					registers_per_thread_per_radix[5] = 10;
+					registers_per_thread_per_radix[7] = 0;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
+					break;
+				}
+			}
+			else
+			{
+				int max_loc_multipliers_pow2 = 0;
+				pfUINT active_threads_y = max_rhs / 64; //estimate workbalance across CU (assume we have 64 CU)
+				if (active_threads_y == 0) active_threads_y = 1;
+				int testMinStages = 10000000;
+				int maxRadixMinStages = 1;
+				int fixMaxCheckRadix2 = 3;
+
+				for (int i = 1; i <= fixMaxCheckRadix2; i++) {
+					int numStages = (int)pfceil(log2(fft_length) / ((double)i));
+					if (numStages < testMinStages) {
+						testMinStages = numStages;
+						maxRadixMinStages = i;
+					}
+				}
+				for (int i = maxRadixMinStages; i >= 1; i--) {
+					pfUINT active_threads_x = (active_threads_y * fft_length) / ((int)pow(2, i));
+					if (active_threads_x >= 128) {
+						max_loc_multipliers_pow2 = i;
+						i = 1;
+					}
+
+				}
+				if (max_loc_multipliers_pow2 < 3) max_loc_multipliers_pow2 = 3;
+
+				int final_loc_multipliers_pow2 = 1;
+				int num_stages_min = (int)log2(fft_length);
+				for (int i = 2; i <= max_loc_multipliers_pow2; i++) {
+					int num_stages = (int)pfceil(((int)log2(fft_length)) / (double)i);
+					if (num_stages < num_stages_min) {
+						final_loc_multipliers_pow2 = i;
+						num_stages_min = num_stages;
+					}
+
+				}
+				registers_per_thread_per_radix[2] = (loc_multipliers[2] > final_loc_multipliers_pow2) ? (int)pow(2, final_loc_multipliers_pow2) : (int)pow(2, loc_multipliers[2]);
+				registers_per_thread_per_radix[2] = (loc_multipliers[2] < 3) ? (int)pow(2, loc_multipliers[2]) : registers_per_thread_per_radix[2];
+				registers_per_thread_per_radix[3] = 0;
+				registers_per_thread_per_radix[5] = 0;
+				registers_per_thread_per_radix[7] = 0;
+				registers_per_thread_per_radix[11] = 0;
+				registers_per_thread_per_radix[13] = 0;
+			}
+		}
+	}
+	else {
+		if (loc_multipliers[3] > 0) {
+			if (loc_multipliers[5] > 0) {
+				registers_per_thread_per_radix[2] = 0;
+				registers_per_thread_per_radix[3] = 3;
+				registers_per_thread_per_radix[5] = 5;
+				registers_per_thread_per_radix[7] = 0;
+				registers_per_thread_per_radix[11] = 0;
+				registers_per_thread_per_radix[13] = 0;
+			}
+			else
+			{
+				if (loc_multipliers[3] == 1) {
+					registers_per_thread_per_radix[2] = 0;
+					registers_per_thread_per_radix[3] = 3;
+					registers_per_thread_per_radix[5] = 0;
+					registers_per_thread_per_radix[7] = 0;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
+				}
+				else {
+					registers_per_thread_per_radix[2] = 0;
+					registers_per_thread_per_radix[3] = 9;
+					registers_per_thread_per_radix[5] = 0;
+					registers_per_thread_per_radix[7] = 0;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
+				}
+			}
+		}
+		else {
+			if (loc_multipliers[5] > 0) {
+				registers_per_thread_per_radix[2] = 0;
+				registers_per_thread_per_radix[3] = 0;
+				registers_per_thread_per_radix[5] = 5;
+				registers_per_thread_per_radix[7] = 0;
+				registers_per_thread_per_radix[11] = 0;
+				registers_per_thread_per_radix[13] = 0;
+			}
+			else
+			{
+				min_registers_per_thread[0] = 2;
+				registers_per_thread[0] = 2;
+				//Rader-only sequence
+				//return VKFFT_ERROR_UNSUPPORTED_RADIX;
+			}
+		}
+
+	}
+
+	registers_per_thread_per_radix[32] = ((registers_per_thread_per_radix[2] % 32) == 0) ? registers_per_thread_per_radix[2] : 0;
+	registers_per_thread_per_radix[16] = ((registers_per_thread_per_radix[2] % 16) == 0) ? registers_per_thread_per_radix[2] : 0;
+	registers_per_thread_per_radix[8] = ((registers_per_thread_per_radix[2] % 8) == 0) ? registers_per_thread_per_radix[2] : 0;
+	registers_per_thread_per_radix[4] = ((registers_per_thread_per_radix[2] % 4) == 0) ? registers_per_thread_per_radix[2] : 0;
+	if ((registers_per_thread_per_radix[2] >= 12) && (registers_per_thread_per_radix[3] >= 12)) {
+		registers_per_thread_per_radix[12] = (registers_per_thread_per_radix[2] > registers_per_thread_per_radix[3]) ? registers_per_thread_per_radix[3] : registers_per_thread_per_radix[2];
+		if ((registers_per_thread_per_radix[12] % 12) != 0) registers_per_thread_per_radix[12] = 0;
+	}
+	registers_per_thread_per_radix[6] = (registers_per_thread_per_radix[2] > registers_per_thread_per_radix[3]) ? registers_per_thread_per_radix[3] : registers_per_thread_per_radix[2];
+	registers_per_thread_per_radix[9] = ((registers_per_thread_per_radix[3] % 9) == 0) ? registers_per_thread_per_radix[3] : 0;
+	registers_per_thread_per_radix[10] = (registers_per_thread_per_radix[2] > registers_per_thread_per_radix[5]) ? registers_per_thread_per_radix[5] : registers_per_thread_per_radix[2];
+	registers_per_thread_per_radix[14] = (registers_per_thread_per_radix[2] > registers_per_thread_per_radix[7]) ? registers_per_thread_per_radix[7] : registers_per_thread_per_radix[2];
+	registers_per_thread_per_radix[15] = (registers_per_thread_per_radix[3] > registers_per_thread_per_radix[5]) ? registers_per_thread_per_radix[5] : registers_per_thread_per_radix[3];
+
+	for (int i = 0; i < 33; i++) {
+		if ((registers_per_thread_per_radix[i] != 0) && (registers_per_thread_per_radix[i] < min_registers_per_thread[0])) min_registers_per_thread[0] = registers_per_thread_per_radix[i];
+		if ((registers_per_thread_per_radix[i] != 0) && (registers_per_thread_per_radix[i] > registers_per_thread[0])) registers_per_thread[0] = registers_per_thread_per_radix[i];
+	}
+	if ((registers_per_thread[0] > 16) || (registers_per_thread[0] >= 2 * min_registers_per_thread[0])) isGoodSequence[0] = 0;
+	else isGoodSequence[0] = 1;
+	return VKFFT_SUCCESS;
+}
+
+static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int fft_length, int extraSharedMemoryForPow2, pfUINT max_rhs, int useRader, int* loc_multipliers, int* registers_per_thread_per_radix, int* registers_per_thread, int* min_registers_per_thread, int* isGoodSequence) {
+	if(app->configuration.quadDoubleDoublePrecision){
+		VkFFTGetRegistersPerThreadQuad(app, fft_length, extraSharedMemoryForPow2, max_rhs, useRader, loc_multipliers, registers_per_thread_per_radix, registers_per_thread, min_registers_per_thread, isGoodSequence);
+		return VKFFT_SUCCESS;
+	}
 	for (int i = 0; i < 33; i++) {
 		registers_per_thread_per_radix[i] = 0;
 	}
@@ -906,7 +1084,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int 
 						}
 						else {
 							int max_loc_multipliers_pow2 = 0;
-							uint64_t active_threads_y = max_rhs / 64; //estimate workbalance across CU (assume we have 64 CU)
+							pfUINT active_threads_y = max_rhs / 64; //estimate workbalance across CU (assume we have 64 CU)
 							if (active_threads_y == 0) active_threads_y = 1;
 							int testMinStages = 10000000;
 							int maxRadixMinStages = 1;
@@ -915,14 +1093,14 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int 
 							fixMaxCheckRadix2 = (((fft_length >= 1024) || (fft_length == 256)) && (extraSharedMemoryForPow2) && (!useRader)) ? 5 : 3;
 #endif
 							for (int i = 1; i <= fixMaxCheckRadix2; i++) {
-								int numStages = (int)ceil(log2(fft_length) / ((double)i));
+								int numStages = (int)pfceil(log2(fft_length) / ((double)i));
 								if (numStages < testMinStages) {
 									testMinStages = numStages;
 									maxRadixMinStages = i;
 								}
 							}
 							for (int i = maxRadixMinStages; i >= 1; i--) {
-								uint64_t active_threads_x = (active_threads_y * fft_length) / ((int)pow(2, i));
+								pfUINT active_threads_x = (active_threads_y * fft_length) / ((int)pow(2, i));
 								if (active_threads_x >= 128) {
 									max_loc_multipliers_pow2 = i;
 									i = 1;
@@ -934,7 +1112,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int 
 							int final_loc_multipliers_pow2 = 1;
 							int num_stages_min = (int)log2(fft_length);
 							for (int i = 2; i <= max_loc_multipliers_pow2; i++) {
-								int num_stages = (int)ceil(((int)log2(fft_length)) / (double)i);
+								int num_stages = (int)pfceil(((int)log2(fft_length)) / (double)i);
 								if (num_stages < num_stages_min) {
 									final_loc_multipliers_pow2 = i;
 									num_stages_min = num_stages;
@@ -1376,6 +1554,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int 
 	else isGoodSequence[0] = 1;
 	return VKFFT_SUCCESS;
 }
+
 static inline VkFFTResult VkFFTGetRegistersPerThreadOptimizeShared(int fft_length, int* registers_per_thread_per_radix, int* registers_per_thread, int* min_registers_per_thread) {
 	//try to split sequence in supported radix to optimize sm usage
 	int numStages = 20;
@@ -1426,7 +1605,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThreadOptimizeShared(int fft_lengt
 	for (int i = 0; i < 33; i++) {
 		if (registers_per_thread_per_radix[i] != 0) {
 			double ratio = (registers_per_thread[0] / (double)registers_per_thread_per_radix[i]);
-			int ratio_ceil = (int)ceil(ratio);
+			int ratio_ceil = (int)pfceil(ratio);
 			int ratio_floor = (int)floor(ratio);
 			double ratio2 = ((registers_per_thread_per_radix[i] * ratio_ceil) / (double)registers_per_thread[0]);
 			double ratio3 = (registers_per_thread[0] / (double)(registers_per_thread_per_radix[i] * ratio_floor));
@@ -1443,11 +1622,11 @@ static inline VkFFTResult VkFFTGetRegistersPerThreadOptimizeShared(int fft_lengt
 	}
 	return VKFFT_SUCCESS;
 }
-static inline VkFFTResult VkFFTConstructRaderTree(VkFFTApplication* app, VkFFTRaderContainer** raderContainer_input, uint64_t* tempSequence, int* numRaderPrimes, int fft_radix_part) {
+static inline VkFFTResult VkFFTConstructRaderTree(VkFFTApplication* app, VkFFTRaderContainer** raderContainer_input, pfUINT* tempSequence, int* numRaderPrimes, int fft_radix_part) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	uint64_t locTempSequence = tempSequence[0];
-	uint64_t tempSequence_copy = tempSequence[0];
-	uint64_t limit = ((tempSequence[0] + 1) > app->configuration.fixMaxRaderPrimeFFT) ? app->configuration.fixMaxRaderPrimeFFT : (tempSequence[0] + 1);
+	pfUINT locTempSequence = tempSequence[0];
+	pfUINT tempSequence_copy = tempSequence[0];
+	pfUINT limit = ((tempSequence[0] + 1) > app->configuration.fixMaxRaderPrimeFFT) ? app->configuration.fixMaxRaderPrimeFFT : (tempSequence[0] + 1);
 	for (int i = (int)app->configuration.fixMinRaderPrimeMult; i < limit; i++) {
 		if (locTempSequence % i == 0) {
 			numRaderPrimes[0]++;
@@ -1464,7 +1643,7 @@ static inline VkFFTResult VkFFTConstructRaderTree(VkFFTApplication* app, VkFFTRa
 	raderContainer_input[0] = (VkFFTRaderContainer*)calloc(sizeof(VkFFTRaderContainer), numRaderPrimes[0]);
 	if (raderContainer_input[0] == 0) return VKFFT_ERROR_MALLOC_FAILED;
 	VkFFTRaderContainer* raderContainer = raderContainer_input[0];
-	uint64_t tempSequence_temp = 1;
+	pfUINT tempSequence_temp = 1;
 	limit = ((tempSequence[0] + 1) > app->configuration.fixMaxRaderPrimeFFT) ? app->configuration.fixMaxRaderPrimeFFT : (tempSequence[0] + 1);
 	for (int i = (int)app->configuration.fixMinRaderPrimeMult; i < limit; i++) {
 		if (tempSequence[0] % i == 0) {
@@ -1475,7 +1654,7 @@ static inline VkFFTResult VkFFTConstructRaderTree(VkFFTApplication* app, VkFFTRa
 				continue;
 			}
 			//Sophie Germain safe prime check
-			uint64_t tempSequence2 = i - 1;
+			pfUINT tempSequence2 = i - 1;
 			for (int j = 2; j < app->configuration.fixMinRaderPrimeMult; j++) {
 				if (tempSequence2 % j == 0) {
 					tempSequence2 /= j;
@@ -1586,12 +1765,12 @@ static inline VkFFTResult VkFFTConstructRaderTree(VkFFTApplication* app, VkFFTRa
 }
 static inline VkFFTResult VkFFTOptimizeRaderFFTRegisters(VkFFTRaderContainer* raderContainer, int numRaderPrimes, int fftDim, int* min_registers_per_thread, int* registers_per_thread, int* registers_per_thread_per_radix) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
+	for (pfINT i = 0; i < (pfINT)numRaderPrimes; i++) {
 		if (raderContainer[i].type == 0) {
 			if (raderContainer[i].min_registers_per_thread / min_registers_per_thread[0] >= 2) {
 				min_registers_per_thread[0] *= (raderContainer[i].min_registers_per_thread / min_registers_per_thread[0]);
 				for (int j = 0; j < 33; j++) {
-					if ((registers_per_thread_per_radix[j] > 0) && (registers_per_thread_per_radix[j] < min_registers_per_thread[0])) registers_per_thread_per_radix[j] *= (int)ceil(min_registers_per_thread[0] / (double)registers_per_thread_per_radix[j]);
+					if ((registers_per_thread_per_radix[j] > 0) && (registers_per_thread_per_radix[j] < min_registers_per_thread[0])) registers_per_thread_per_radix[j] *= (int)pfceil(min_registers_per_thread[0] / (double)registers_per_thread_per_radix[j]);
 				}
 				for (int j = 0; j < 33; j++) {
 					if (registers_per_thread_per_radix[j] > registers_per_thread[0]) registers_per_thread[0] = registers_per_thread_per_radix[j];
@@ -1600,7 +1779,7 @@ static inline VkFFTResult VkFFTOptimizeRaderFFTRegisters(VkFFTRaderContainer* ra
 			else if (min_registers_per_thread[0] / raderContainer[i].min_registers_per_thread >= 2) {
 				raderContainer[i].min_registers_per_thread *= (min_registers_per_thread[0] / raderContainer[i].min_registers_per_thread);
 				for (int j = 0; j < 33; j++) {
-					if ((raderContainer[i].registers_per_thread_per_radix[j] > 0) && (raderContainer[i].registers_per_thread_per_radix[j] < raderContainer[i].min_registers_per_thread)) raderContainer[i].registers_per_thread_per_radix[j] *= (int)ceil(raderContainer[i].min_registers_per_thread / (double)raderContainer[i].registers_per_thread_per_radix[j]);
+					if ((raderContainer[i].registers_per_thread_per_radix[j] > 0) && (raderContainer[i].registers_per_thread_per_radix[j] < raderContainer[i].min_registers_per_thread)) raderContainer[i].registers_per_thread_per_radix[j] *= (int)pfceil(raderContainer[i].min_registers_per_thread / (double)raderContainer[i].registers_per_thread_per_radix[j]);
 				}
 				for (int j = 0; j < 33; j++) {
 					if (raderContainer[i].registers_per_thread_per_radix[j] > raderContainer[i].registers_per_thread) raderContainer[i].registers_per_thread = raderContainer[i].registers_per_thread_per_radix[j];
@@ -1618,12 +1797,12 @@ static inline VkFFTResult VkFFTOptimizeRaderFFTRegisters(VkFFTRaderContainer* ra
 				}
 			}
 
-			for (int64_t j = 2; j < 33; j++) {
+			for (pfINT j = 2; j < 33; j++) {
 				if (raderContainer[i].registers_per_thread_per_radix[j] != 0) {
-					double scaling = (raderContainer[i].containerFFTDim > raderContainer[i].registers_per_thread_per_radix[j]) ? ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[j]) : 1.0 / floor(raderContainer[i].registers_per_thread_per_radix[j] / (double)raderContainer[i].containerFFTDim);
-					while (((int)ceil(fftDim / (double)min_registers_per_thread[0])) < (raderContainer[i].containerFFTNum * scaling)) {
+					double scaling = (raderContainer[i].containerFFTDim > raderContainer[i].registers_per_thread_per_radix[j]) ? pfceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[j]) : 1.0 / floor(raderContainer[i].registers_per_thread_per_radix[j] / (double)raderContainer[i].containerFFTDim);
+					while (((int)pfceil(fftDim / (double)min_registers_per_thread[0])) < (raderContainer[i].containerFFTNum * scaling)) {
 						raderContainer[i].registers_per_thread_per_radix[j] += (int)j;
-						scaling = (raderContainer[i].containerFFTDim > raderContainer[i].registers_per_thread_per_radix[j]) ? ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[j]) : 1.0 / floor(raderContainer[i].registers_per_thread_per_radix[j] / (double)raderContainer[i].containerFFTDim);
+						scaling = (raderContainer[i].containerFFTDim > raderContainer[i].registers_per_thread_per_radix[j]) ? pfceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[j]) : 1.0 / floor(raderContainer[i].registers_per_thread_per_radix[j] / (double)raderContainer[i].containerFFTDim);
 					}
 					if (raderContainer[i].registers_per_thread_per_radix[j] > raderContainer[i].registers_per_thread) raderContainer[i].registers_per_thread = raderContainer[i].registers_per_thread_per_radix[j];
 				}
@@ -1632,9 +1811,9 @@ static inline VkFFTResult VkFFTOptimizeRaderFFTRegisters(VkFFTRaderContainer* ra
 		}
 	}
 	//try to increase registers usage closer to registers_per_thread across all primes
-	for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
+	for (pfINT i = 0; i < (pfINT)numRaderPrimes; i++) {
 		if (raderContainer[i].type == 0) {
-			for (int64_t j = 2; j < 33; j++) {
+			for (pfINT j = 2; j < 33; j++) {
 				if (raderContainer[i].registers_per_thread_per_radix[j] > 0) {
 					while ((raderContainer[i].registers_per_thread_per_radix[j] + j) <= registers_per_thread[0] + 1) {// fix
 						raderContainer[i].registers_per_thread_per_radix[j] += (int)j;
@@ -1643,7 +1822,7 @@ static inline VkFFTResult VkFFTOptimizeRaderFFTRegisters(VkFFTRaderContainer* ra
 			}
 			raderContainer[i].registers_per_thread = 0;
 			raderContainer[i].min_registers_per_thread = 10000000;
-			for (int64_t j = 2; j < 33; j++) {
+			for (pfINT j = 2; j < 33; j++) {
 				if (raderContainer[i].registers_per_thread_per_radix[j] > 0) {
 					if (raderContainer[i].registers_per_thread_per_radix[j] < raderContainer[i].min_registers_per_thread) {
 						raderContainer[i].min_registers_per_thread = raderContainer[i].registers_per_thread_per_radix[j];
@@ -1656,13 +1835,13 @@ static inline VkFFTResult VkFFTOptimizeRaderFFTRegisters(VkFFTRaderContainer* ra
 		}
 	}
 	//subprimes optimization
-	for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
+	for (pfINT i = 0; i < (pfINT)numRaderPrimes; i++) {
 		if (raderContainer[i].numSubPrimes) {
 			res = VkFFTOptimizeRaderFFTRegisters(raderContainer[i].container, raderContainer[i].numSubPrimes, fftDim, min_registers_per_thread, registers_per_thread, registers_per_thread_per_radix);
 			if (res != VKFFT_SUCCESS) return res;
 		}
 	}
-	for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
+	for (pfINT i = 0; i < (pfINT)numRaderPrimes; i++) {
 		if (min_registers_per_thread[0] > raderContainer[i].min_registers_per_thread) min_registers_per_thread[0] = raderContainer[i].min_registers_per_thread;
 		if (registers_per_thread[0] < raderContainer[i].registers_per_thread) registers_per_thread[0] = raderContainer[i].registers_per_thread;
 	}
@@ -1817,7 +1996,7 @@ static inline VkFFTResult VkFFTOptimizeRadixKernels(int* registers_per_thread_pe
 }
 static inline VkFFTResult VkFFTGetRaderFFTStages(VkFFTRaderContainer* raderContainer, int numRaderPrimes, int* stageid, int* stageRadix, int* stage_rader_generator) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
+	for (pfINT i = 0; i < (pfINT)numRaderPrimes; i++) {
 		if (raderContainer[i].multiplier > 0) {
 			stageRadix[stageid[0]] = raderContainer[i].prime;
 			stage_rader_generator[stageid[0]] = raderContainer[i].generator;
@@ -1828,7 +2007,7 @@ static inline VkFFTResult VkFFTGetRaderFFTStages(VkFFTRaderContainer* raderConta
 			//find primitive root
 		}
 	}
-	for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
+	for (pfINT i = 0; i < (pfINT)numRaderPrimes; i++) {
 		if (raderContainer[i].type == 0) {
 			if (raderContainer[i].numSubPrimes > 0) {
 				res = VkFFTGetRaderFFTStages(raderContainer[i].container, raderContainer[i].numSubPrimes, &raderContainer[i].numStages, raderContainer[i].stageRadix, raderContainer[i].stage_rader_generator);
@@ -1876,7 +2055,7 @@ static inline VkFFTResult VkFFTGetRaderFFTStages(VkFFTRaderContainer* raderConta
 }
 static inline VkFFTResult VkFFTMinMaxRegisterCheck(int numStages, int* stageRadix, int* min_registers_per_thread, int* registers_per_thread, int* registers_per_thread_per_radix, VkFFTRaderContainer* raderContainer, int numRaderPrimes, int* stage_rader_generator) {
 	VkFFTResult res = VKFFT_SUCCESS;
-	for (int64_t j = 0; j < (int64_t)numStages; j++) {
+	for (pfINT j = 0; j < (pfINT)numStages; j++) {
 		if (stage_rader_generator[j] == 0) {
 			if (registers_per_thread_per_radix[stageRadix[j]] > 0) {
 				if (registers_per_thread_per_radix[stageRadix[j]] < min_registers_per_thread[0]) {
@@ -1888,10 +2067,10 @@ static inline VkFFTResult VkFFTMinMaxRegisterCheck(int numStages, int* stageRadi
 			}
 		}
 		else {
-			for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
+			for (pfINT i = 0; i < (pfINT)numRaderPrimes; i++) {
 				if (raderContainer[i].prime == stageRadix[j]) {
 					if (raderContainer[i].type == 0) {
-						for (int64_t j2 = 0; j2 < (int64_t)raderContainer[i].numStages; j2++) {
+						for (pfINT j2 = 0; j2 < (pfINT)raderContainer[i].numStages; j2++) {
 							if (raderContainer[i].stage_rader_generator[j] == 0) {
 								if (raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j2]] > 0) {
 									if (raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j2]] < min_registers_per_thread[0]) {
@@ -1917,15 +2096,15 @@ static inline VkFFTResult VkFFTMinMaxRegisterCheck(int numStages, int* stageRadi
 static inline VkFFTResult VkFFTGetRaderFFTThreadsNum(VkFFTRaderContainer* raderContainer, int numRaderPrimes, int* numThreads) {
 	VkFFTResult res = VKFFT_SUCCESS;
 
-	for (int64_t i = 0; i < (int64_t)numRaderPrimes; i++) {
+	for (pfINT i = 0; i < (pfINT)numRaderPrimes; i++) {
 		if (raderContainer[i].type == 0) {
 			if (raderContainer[i].numSubPrimes > 0) {
 				res = VkFFTGetRaderFFTThreadsNum(raderContainer[i].container, raderContainer[i].numSubPrimes, numThreads);
 				if (res != VKFFT_SUCCESS) return res;
 			}
-			for (int64_t j = 0; j < (int64_t)raderContainer[i].numStages; j++) {
+			for (pfINT j = 0; j < (pfINT)raderContainer[i].numStages; j++) {
 				if (raderContainer[i].stage_rader_generator[j] == 0) {
-					if (raderContainer[i].containerFFTNum * (int)ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j]]) > numThreads[0]) numThreads[0] = raderContainer[i].containerFFTNum * (int)ceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j]]);
+					if (raderContainer[i].containerFFTNum * (int)pfceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j]]) > numThreads[0]) numThreads[0] = raderContainer[i].containerFFTNum * (int)pfceil(raderContainer[i].containerFFTDim / (double)raderContainer[i].registers_per_thread_per_radix[raderContainer[i].stageRadix[j]]);
 				}
 			}
 		}
@@ -1938,20 +2117,24 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	VkFFTAxis* axes = FFTPlan->axes[axis_id];
 
 	int complexSize;
-	if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory)
-		complexSize = (2 * sizeof(double));
-	else
-		if (app->configuration.halfPrecision)
-			complexSize = (2 * sizeof(float));
+	if (app->configuration.quadDoubleDoublePrecision)
+		complexSize = (4 * sizeof(double));
+	else 
+	{
+		if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory)
+			complexSize = (2 * sizeof(double));
 		else
-			complexSize = (2 * sizeof(float));
-
+			if (app->configuration.halfPrecision)
+				complexSize = (2 * sizeof(float));
+			else
+				complexSize = (2 * sizeof(float));
+	}
 	int usedSharedMemory = ((app->configuration.size[axis_id] & (app->configuration.size[axis_id] - 1)) == 0) ? (int)app->configuration.sharedMemorySizePow2 : (int)app->configuration.sharedMemorySize;
 	int maxSequenceLengthSharedMemory = usedSharedMemory / complexSize;
 	int maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
 
 	int nonStridedAxisId = (app->configuration.considerAllAxesStrided) ? -1 : 0;
-	uint64_t max_rhs = 1;
+	pfUINT max_rhs = 1;
 	for (int i = 0; i < app->configuration.FFTdim; i++) {
 		FFTPlan->actualFFTSizePerAxis[axis_id][i] = app->configuration.size[i];
 		if ((FFTPlan->actualFFTSizePerAxis[axis_id][i] > 0)) max_rhs *= FFTPlan->actualFFTSizePerAxis[axis_id][i];
@@ -1992,7 +2175,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		multipliers[i] = 0;
 	}
 
-	uint64_t tempSequence = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
+	pfUINT tempSequence = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 	for (int i = 2; i < app->configuration.fixMinRaderPrimeMult; i++) {
 		if (tempSequence % i == 0) {
 			tempSequence /= i;
@@ -2010,7 +2193,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			rader_multipliers[i] = 0;
 			rader_primes[i] = 0;
 		}
-		uint64_t tempSequence_temp = 1;
+		pfUINT tempSequence_temp = 1;
 		int maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / ((int)app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
 		int limit_max_rader_prime = ((axis_id == nonStridedAxisId) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] <= maxSequenceLengthSharedMemory)) ? maxSequenceLengthSharedMemory : maxSequenceLengthSharedMemoryStrided_temp;
 		if (limit_max_rader_prime > app->configuration.fixMaxRaderPrimeFFT) limit_max_rader_prime = (int)app->configuration.fixMaxRaderPrimeFFT;
@@ -2023,7 +2206,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					continue;
 				}
 				//Sophie Germain safe prime check
-				uint64_t tempSequence2 = i - 1;
+				pfUINT tempSequence2 = i - 1;
 				for (int j = 2; j < app->configuration.fixMinRaderPrimeMult; j++) {
 					if (tempSequence2 % j == 0) {
 						tempSequence2 /= j;
@@ -2149,13 +2332,13 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		else {
 			while (!FFTSizeSelected) {
 				if (axis_id == nonStridedAxisId) {
-					if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemory) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemory))))  tempSequence = (int)pow(2, (int)ceil(log2(tempSequence)));
+					if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)pfceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)pfceil(log2(tempSequence))) <= maxSequenceLengthSharedMemory) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemory))))  tempSequence = (int)pow(2, (int)pfceil(log2(tempSequence)));
 				}
 				else {
 					int maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / ((int)app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
-					if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemoryStrided_temp) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemoryStrided_temp))))  tempSequence = (int)pow(2, (int)ceil(log2(tempSequence)));
+					if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)pfceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)pfceil(log2(tempSequence))) <= maxSequenceLengthSharedMemoryStrided_temp) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemoryStrided_temp))))  tempSequence = (int)pow(2, (int)pfceil(log2(tempSequence)));
 				}
-				uint64_t testSequence = tempSequence;
+				pfUINT testSequence = tempSequence;
 				for (int i = 0; i < 33; i++) {
 					multipliers[i] = 0;
 				}
@@ -2208,7 +2391,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			}
 			if (app->configuration.fixMaxRadixBluestein > 0) {
 				while (!FFTSizeSelected) {
-					uint64_t testSequence = tempSequence;
+					pfUINT testSequence = tempSequence;
 					for (int i = 0; i < 33; i++) {
 						multipliers[i] = 0;
 					}
@@ -2226,13 +2409,13 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			else {
 				while (!FFTSizeSelected) {
 					if (axis_id == nonStridedAxisId) {
-						if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemory) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemory))))  tempSequence = (int)pow(2, (int)ceil(log2(tempSequence)));
+						if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)pfceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)pfceil(log2(tempSequence))) <= maxSequenceLengthSharedMemory) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemory))))  tempSequence = (int)pow(2, (int)pfceil(log2(tempSequence)));
 					}
 					else {
 						int maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / ((int)app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
-						if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)ceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)ceil(log2(tempSequence))) <= maxSequenceLengthSharedMemoryStrided_temp) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemoryStrided_temp))))  tempSequence = (int)pow(2, (int)ceil(log2(tempSequence)));
+						if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)pfceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)pfceil(log2(tempSequence))) <= maxSequenceLengthSharedMemoryStrided_temp) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemoryStrided_temp))))  tempSequence = (int)pow(2, (int)pfceil(log2(tempSequence)));
 					}
-					uint64_t testSequence = tempSequence;
+					pfUINT testSequence = tempSequence;
 					for (int i = 0; i < 33; i++) {
 						multipliers[i] = 0;
 					}
@@ -2280,8 +2463,8 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	int maxSingleSizeStrided = (!app->configuration.performConvolution) ? maxSequenceLengthSharedMemoryStrided * registerBoost : maxSequenceLengthSharedMemoryStrided;
 	int numPasses = 1;
 	int numPassesHalfBandwidth = 1;
-	uint64_t temp;
-	temp = (axis_id == nonStridedAxisId) ? (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeNonStrided) : (uint64_t)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeStrided);
+	pfUINT temp;
+	temp = (axis_id == nonStridedAxisId) ? (pfUINT)pfceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeNonStrided) : (pfUINT)pfceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeStrided);
 	if (temp > 1) {//more passes than one
 		for (int i = 1; i <= app->configuration.registerBoost4Step; i++) {
 			if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] % (i * i) == 0) {
@@ -2292,11 +2475,11 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		if ((!app->configuration.performConvolution)) maxSingleSizeStrided = maxSequenceLengthSharedMemoryStrided * registerBoost;
 		temp = ((axis_id == nonStridedAxisId) && ((!app->configuration.reorderFourStep) || (app->useBluesteinFFT[axis_id]))) ? FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / maxSingleSizeNonStrided : FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / maxSingleSizeStrided;
 		if (app->configuration.reorderFourStep && (!app->useBluesteinFFT[axis_id]))
-			numPasses = (int)ceil(log2(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]) / log2(maxSingleSizeStrided));
+			numPasses = (int)pfceil(log2(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]) / log2(maxSingleSizeStrided));
 		else
-			numPasses += (int)ceil(log2(temp) / log2(maxSingleSizeStrided));
+			numPasses += (int)pfceil(log2(temp) / log2(maxSingleSizeStrided));
 	}
-	registerBoost = ((axis_id == nonStridedAxisId) && ((app->useBluesteinFFT[axis_id]) || (!app->configuration.reorderFourStep) || (numPasses == 1))) ? (int)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)(pow(maxSequenceLengthSharedMemoryStrided, numPasses - 1) * maxSequenceLengthSharedMemory)) : (int)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)pow(maxSequenceLengthSharedMemoryStrided, numPasses));
+	registerBoost = ((axis_id == nonStridedAxisId) && ((app->useBluesteinFFT[axis_id]) || (!app->configuration.reorderFourStep) || (numPasses == 1))) ? (int)pfceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)(pow(maxSequenceLengthSharedMemoryStrided, numPasses - 1) * maxSequenceLengthSharedMemory)) : (int)pfceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)pow(maxSequenceLengthSharedMemoryStrided, numPasses));
 	int canBoost = 0;
 	for (int i = registerBoost; i <= app->configuration.registerBoost; i++) {
 		if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] % (i * i) == 0) {
@@ -2314,12 +2497,12 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	int maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
 	if ((axes->specializationConstants.performBandwidthBoost)) {
 		maxSingleSizeStridedHalfBandwidth = (app->configuration.coalescedMemory / axes->specializationConstants.performBandwidthBoost > complexSize) ? usedSharedMemory / ((int)app->configuration.coalescedMemory / axes->specializationConstants.performBandwidthBoost) : usedSharedMemory / complexSize;
-		temp = (axis_id == nonStridedAxisId) ? (int)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeNonStrided) : (int)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
+		temp = (axis_id == nonStridedAxisId) ? (int)pfceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeNonStrided) : (int)pfceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
 		//temp = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / maxSingleSizeNonStrided;
 		if (temp > 1) {//more passes than two
-			temp = ((!app->configuration.reorderFourStep) || (app->useBluesteinFFT[axis_id])) ? (int)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeNonStrided) : (int)ceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
+			temp = ((!app->configuration.reorderFourStep) || (app->useBluesteinFFT[axis_id])) ? (int)pfceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeNonStrided) : (int)pfceil(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (double)maxSingleSizeStridedHalfBandwidth);
 			for (int i = 0; i < 5; i++) {
-				temp = (int)ceil(temp / (double)maxSingleSizeStrided);
+				temp = (int)pfceil(temp / (double)maxSingleSizeStrided);
 				numPassesHalfBandwidth++;
 				if (temp == 1) i = 5;
 			}
@@ -2327,18 +2510,19 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			temp = ((axis_id == 0) && (!app->configuration.reorderFourStep)) ? FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / maxSingleSizeNonStrided : FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / maxSingleSizeStridedHalfBandwidth;
 
 			if (app->configuration.reorderFourStep)
-				numPassesHalfBandwidth = (int)ceil(log2(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]) / log2(maxSingleSizeStridedHalfBandwidth));
+				numPassesHalfBandwidth = (int)pfceil(log2(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]) / log2(maxSingleSizeStridedHalfBandwidth));
 			else
-				numPassesHalfBandwidth = 1 + (int)ceil(log2(temp) / log2(maxSingleSizeStridedHalfBandwidth));
+				numPassesHalfBandwidth = 1 + (int)pfceil(log2(temp) / log2(maxSingleSizeStridedHalfBandwidth));
 			if ((numPassesHalfBandwidth == 2)&& (!app->configuration.reorderFourStep)&&(registerBoost>1)) //switch back for two step and don't do half bandwidth on strided accesses if register boost and no 4-step reordering
 			*/
 		}
 		if (numPassesHalfBandwidth < numPasses) numPasses = numPassesHalfBandwidth;
 		else maxSingleSizeStridedHalfBandwidth = maxSingleSizeStrided;
 	}
-	if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] >= app->configuration.swapTo3Stage4Step) && (app->configuration.swapTo3Stage4Step >= 131072)) numPasses = 3;//Force set to 3 stage 4 step algorithm
+	if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] >= app->configuration.swapTo2Stage4Step) && (numPasses < 3)) numPasses = 2;//Force set to 2 stage 4 step algorithm
+	if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] >= app->configuration.swapTo3Stage4Step) && (app->configuration.swapTo3Stage4Step >= 65536)) numPasses = 3;//Force set to 3 stage 4 step algorithm
 	if (forceRaderTwoUpload && (numPasses == 1)) numPasses = 2;//Force set Rader cases that use more than 512 or maxNumThreads threads per one of Rader primes
-	uint64_t* locAxisSplit = FFTPlan->axisSplit[axis_id];
+	pfUINT* locAxisSplit = FFTPlan->axisSplit[axis_id];
 	if (numPasses == 1) {
 		locAxisSplit[0] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 	}
@@ -2409,7 +2593,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 						}
 					}
 				}*/
-				int sqrtSequence = (int)ceil(sqrt(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]));
+				int sqrtSequence = (int)pfceil(sqrt(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]));
 				for (int i = 0; i < sqrtSequence; i++) {
 					if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] % (sqrtSequence - i) == 0) {
 						if ((sqrtSequence - i <= maxSingleSizeStrided) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (sqrtSequence - i) <= maxSequenceLengthSharedMemory)) {
@@ -2422,7 +2606,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				}
 			}
 			else {
-				int sqrtSequence = (int)ceil(sqrt(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]));
+				int sqrtSequence = (int)pfceil(sqrt(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]));
 				for (int i = 0; i < sqrtSequence; i++) {
 					if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] % (sqrtSequence - i) == 0) {
 						if ((sqrtSequence - i <= maxSingleSizeStrided) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (sqrtSequence - i) <= maxSingleSizeStridedHalfBandwidth)) {
@@ -2537,7 +2721,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			if ((axis_id == nonStridedAxisId) && ((!app->configuration.reorderFourStep) || (app->useBluesteinFFT[axis_id]))) {
 				for (int i = 0; i < maxSequenceLengthSharedMemory; i++) {
 					if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] % (maxSequenceLengthSharedMemory - i) == 0) {
-						int sqrt3Sequence = (int)ceil(sqrt(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (maxSequenceLengthSharedMemory - i)));
+						int sqrt3Sequence = (int)pfceil(sqrt(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (maxSequenceLengthSharedMemory - i)));
 						for (int j = 0; j < sqrt3Sequence; j++) {
 							if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (maxSequenceLengthSharedMemory - i)) % (sqrt3Sequence - j) == 0) {
 								if (((maxSequenceLengthSharedMemory - i) <= maxSequenceLengthSharedMemory) && (sqrt3Sequence - j <= maxSingleSizeStrided) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (maxSequenceLengthSharedMemory - i) / (sqrt3Sequence - j) <= maxSingleSizeStrided)) {
@@ -2554,10 +2738,10 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				}
 			}
 			else {
-				int sqrt3Sequence = (int)ceil(pow(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id], 1.0 / 3.0));
+				int sqrt3Sequence = (int)pfceil(pow(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id], 1.0 / 3.0));
 				for (int i = 0; i < sqrt3Sequence; i++) {
 					if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] % (sqrt3Sequence - i) == 0) {
-						int sqrt2Sequence = (int)ceil(sqrt(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (sqrt3Sequence - i)));
+						int sqrt2Sequence = (int)pfceil(sqrt(FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (sqrt3Sequence - i)));
 						for (int j = 0; j < sqrt2Sequence; j++) {
 							if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (sqrt3Sequence - i)) % (sqrt2Sequence - j) == 0) {
 								if ((sqrt3Sequence - i <= maxSingleSizeStrided) && (sqrt2Sequence - j <= maxSingleSizeStrided) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] / (sqrt3Sequence - i) / (sqrt2Sequence - j) <= maxSingleSizeStridedHalfBandwidth)) {
@@ -2607,7 +2791,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	if (app->useBluesteinFFT[axis_id]) {
 		if ((app->configuration.performR2C) && (axis_id == 0)) {
 			if (FFTPlan->multiUploadR2C) {
-				uint64_t tempSize = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+				pfUINT tempSize = (FFTPlan->actualFFTSizePerAxis[axis_id][0] + 1) * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
 				for (int i = 1; i < app->configuration.FFTdim; i++)
 					tempSize *= FFTPlan->actualFFTSizePerAxis[axis_id][i];
 		
@@ -2615,7 +2799,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			}
 		}
 		else {
-			uint64_t tempSize = FFTPlan->actualFFTSizePerAxis[axis_id][0] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
+			pfUINT tempSize = FFTPlan->actualFFTSizePerAxis[axis_id][0] * app->configuration.coordinateFeatures * locNumBatches * app->configuration.numberKernels * complexSize;
 			for (int i = 1; i < app->configuration.FFTdim; i++)
 				tempSize *= FFTPlan->actualFFTSizePerAxis[axis_id][i];
 		
@@ -2673,7 +2857,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			if (res != VKFFT_SUCCESS) return res;
 		}
 		
-		for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
+		for (pfINT i = 0; i < (pfINT)axes[k].specializationConstants.numRaderPrimes; i++) {
 			if (axes[k].specializationConstants.raderContainer[i].type == 0) {
 				if (axes[k].specializationConstants.useRaderFFT < axes[k].specializationConstants.raderContainer[i].prime) axes[k].specializationConstants.useRaderFFT = axes[k].specializationConstants.raderContainer[i].prime;
 				if (axes[k].specializationConstants.raderContainer[i].containerFFTNum > app->configuration.maxThreadsNum) return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH;
@@ -2719,15 +2903,15 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		int rader_min_registers = min_registers_per_thread;
 
 		if (axes[k].specializationConstants.useRaderMult) {
-			for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
+			for (pfINT i = 0; i < (pfINT)axes[k].specializationConstants.numRaderPrimes; i++) {
 				if (axes[k].specializationConstants.raderContainer[i].type == 1) {
-					int temp_rader = (int)ceil((locAxisSplit[k] / (double)((rader_min_registers / 2 + scale_registers_rader) * 2)) / (double)((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2));
-					int active_rader = (int)ceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)temp_rader);
+					int temp_rader = (int)pfceil((locAxisSplit[k] / (double)((rader_min_registers / 2 + scale_registers_rader) * 2)) / (double)((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2));
+					int active_rader = (int)pfceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)temp_rader);
 					if (active_rader > 1) {
-						if ((((double)active_rader - (locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)temp_rader) >= 0.5) && ((((int)ceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)(active_rader - 1)) * ((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
+						if ((((double)active_rader - (locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)temp_rader) >= 0.5) && ((((int)pfceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)(active_rader - 1)) * ((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
 					}
 
-					int local_estimate_rader_threadnum = (int)ceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)active_rader) * ((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2) * maxBatchCoalesced;
+					int local_estimate_rader_threadnum = (int)pfceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)active_rader) * ((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2) * maxBatchCoalesced;
 					if ((maxBatchCoalesced * locAxisSplit[k] / ((rader_min_registers / 2 + scale_registers_rader) * 2 * registerBoost)) > local_estimate_rader_threadnum) local_estimate_rader_threadnum = (maxBatchCoalesced * (int)locAxisSplit[k] / ((rader_min_registers / 2 + scale_registers_rader) * 2 * registerBoost));
 					if ((local_estimate_rader_threadnum > app->configuration.maxThreadsNum) || ((((locAxisSplit[k] / min_registers_per_thread) > 256) || (local_estimate_rader_threadnum > 256)) && (((rader_min_registers / 2 + scale_registers_rader) * 2) <= 4))) {
 						scale_registers_rader++;
@@ -2748,7 +2932,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				}
 			}
 
-			for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
+			for (pfINT i = 0; i < (pfINT)axes[k].specializationConstants.numRaderPrimes; i++) {
 				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
 					for (int j = 2; j < 33; j++) {
 						if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] != 0) {
@@ -2766,7 +2950,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					registers_per_thread = registers_per_thread_per_radix[i];
 				}
 			}
-			for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
+			for (pfINT i = 0; i < (pfINT)axes[k].specializationConstants.numRaderPrimes; i++) {
 				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
 					for (int j = 2; j < 33; j++) {
 						if ((axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] > 0) && (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] < new_min_registers)) new_min_registers = axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j];
@@ -2778,16 +2962,16 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			}
 			min_registers_per_thread = (new_min_registers == 1e7) ? registers_per_thread : new_min_registers;
 		}
-		if ((int)ceil((maxBatchCoalesced * locAxisSplit[k] / (double)(min_registers_per_thread * registerBoost)) > app->configuration.maxThreadsNum) || (axes[k].specializationConstants.useRader && (estimate_rader_threadnum > app->configuration.maxThreadsNum)))
+		if ((int)pfceil((maxBatchCoalesced * locAxisSplit[k] / (double)(min_registers_per_thread * registerBoost)) > app->configuration.maxThreadsNum) || (axes[k].specializationConstants.useRader && (estimate_rader_threadnum > app->configuration.maxThreadsNum)))
 		{
 			int scaleRegistersNum = 1;
 			if ((axis_id == 0) && (k == 0) && (maxBatchCoalesced > 1)) {
 				maxBatchCoalesced = (int)(app->configuration.maxThreadsNum * (min_registers_per_thread * registerBoost) / locAxisSplit[k]);
 				if (maxBatchCoalesced < 1) maxBatchCoalesced = 1;
 			}
-			if (((int)ceil(maxBatchCoalesced * locAxisSplit[k] / (double)(min_registers_per_thread * registerBoost * scaleRegistersNum))) > app->configuration.maxThreadsNum) {
+			if (((int)pfceil(maxBatchCoalesced * locAxisSplit[k] / (double)(min_registers_per_thread * registerBoost * scaleRegistersNum))) > app->configuration.maxThreadsNum) {
 				for (int i = 2; i < locAxisSplit[k]; i++) {
-					if ((((int)ceil(maxBatchCoalesced * locAxisSplit[k] / (double)(min_registers_per_thread * registerBoost * i))) <= app->configuration.maxThreadsNum)) {
+					if ((((int)pfceil(maxBatchCoalesced * locAxisSplit[k] / (double)(min_registers_per_thread * registerBoost * i))) <= app->configuration.maxThreadsNum)) {
 						scaleRegistersNum = i;
 						i = (int)locAxisSplit[k];
 					}
@@ -2804,16 +2988,16 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			for (int i = 2; i < 33; i++) {
 				if ((registers_per_thread_per_radix[i] > 0) && (registers_per_thread_per_radix[i] < new_min_registers)) new_min_registers = registers_per_thread_per_radix[i];
 			}
-			for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
+			for (pfINT i = 0; i < (pfINT)axes[k].specializationConstants.numRaderPrimes; i++) {
 				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
 					for (int j = 2; j < 33; j++) {
 						if ((axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] > 0) && (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] < new_min_registers)) new_min_registers = axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j];
 					}
 				}
 			}
-			if ((int)ceil((maxBatchCoalesced * locAxisSplit[k] / (double)(new_min_registers * registerBoost))) > app->configuration.maxThreadsNum) {
+			if ((int)pfceil((maxBatchCoalesced * locAxisSplit[k] / (double)(new_min_registers * registerBoost))) > app->configuration.maxThreadsNum) {
 				// if we get here, there can be trouble with small primes, as we can have one thread do at max one fftDim. This is only an issue for small primes in sequences close to shared memory limit sizes for extremely big shared memory sizes (>136KB)
-				for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
+				for (pfINT i = 0; i < (pfINT)axes[k].specializationConstants.numRaderPrimes; i++) {
 					if (axes[k].specializationConstants.raderContainer[i].type == 0) {
 						for (int j = 2; j < 33; j++) {
 							if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] != 0) {
@@ -2839,7 +3023,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 					min_registers_per_thread = registers_per_thread_per_radix[i];
 				}
 			}
-			for (int64_t i = 0; i < (int64_t)axes[k].specializationConstants.numRaderPrimes; i++) {
+			for (pfINT i = 0; i < (pfINT)axes[k].specializationConstants.numRaderPrimes; i++) {
 				if (axes[k].specializationConstants.raderContainer[i].type == 0) {
 					for (int j = 2; j < 33; j++) {
 						if (axes[k].specializationConstants.raderContainer[i].registers_per_thread_per_radix[j] > registers_per_thread) {
@@ -2886,7 +3070,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		axes[k].specializationConstants.numStages = 0;
 		axes[k].specializationConstants.fftDim.type = 31;
 		axes[k].specializationConstants.fftDim.data.i = locAxisSplit[k];
-		int tempRegisterBoost = registerBoost;// ((axis_id == nonStridedAxisId) && ((!app->configuration.reorderFourStep)||(app->useBluesteinFFT[axis_id]))) ? (int)ceil(axes[k].specializationConstants.fftDim / (double)maxSingleSizeNonStrided) : (int)ceil(axes[k].specializationConstants.fftDim / (double)maxSingleSizeStrided);
+		int tempRegisterBoost = registerBoost;// ((axis_id == nonStridedAxisId) && ((!app->configuration.reorderFourStep)||(app->useBluesteinFFT[axis_id]))) ? (int)pfceil(axes[k].specializationConstants.fftDim / (double)maxSingleSizeNonStrided) : (int)pfceil(axes[k].specializationConstants.fftDim / (double)maxSingleSizeStrided);
 		int switchRegisterBoost = 0;
 		if (tempRegisterBoost > 1) {
 			if (loc_multipliers[tempRegisterBoost] > 0) {
@@ -2921,10 +3105,10 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			axes[k].specializationConstants.rader_min_registers = rader_min_registers;
 			for (int i = 0; i < axes[k].specializationConstants.numRaderPrimes; i++) {
 				if (axes[k].specializationConstants.raderContainer[i].type == 1) {
-					int temp_rader = (int)ceil((locAxisSplit[k] / (double)axes[k].specializationConstants.rader_min_registers) / (double)((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2));
-					int active_rader = (int)ceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)temp_rader);
+					int temp_rader = (int)pfceil((locAxisSplit[k] / (double)axes[k].specializationConstants.rader_min_registers) / (double)((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2));
+					int active_rader = (int)pfceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)temp_rader);
 					if (active_rader > 1) {
-						if ((((double)active_rader - (locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)temp_rader) >= 0.5) && ((((int)ceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)(active_rader - 1)) * ((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
+						if ((((double)active_rader - (locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)temp_rader) >= 0.5) && ((((int)pfceil((locAxisSplit[k] / axes[k].specializationConstants.raderContainer[i].prime) / (double)(active_rader - 1)) * ((axes[k].specializationConstants.raderContainer[i].prime + 1) / 2)) * maxBatchCoalesced) <= app->configuration.maxThreadsNum)) active_rader--;
 					}
 					axes[k].specializationConstants.raderRegisters = (active_rader * 2 > axes[k].specializationConstants.raderRegisters) ? active_rader * 2 : axes[k].specializationConstants.raderRegisters;
 					if (active_rader * 2 > registers_per_thread) registers_per_thread = active_rader * 2;

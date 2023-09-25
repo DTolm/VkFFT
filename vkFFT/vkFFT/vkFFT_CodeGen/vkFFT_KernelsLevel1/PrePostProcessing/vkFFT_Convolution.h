@@ -37,7 +37,7 @@ static inline void appendRegisterStorage(VkFFTSpecializationConstantsLayout* sc,
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer used_registers = VKFFT_ZERO_INIT;
 	used_registers.type = 31;
@@ -66,8 +66,8 @@ static inline void appendRegisterStorage(VkFFTSpecializationConstantsLayout* sc,
 			PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 		}
 
-		for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
-			if (localSize.data.i * ((1 + (int64_t)i)) > sc->fftDim.data.i) {
+		for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
+			if (localSize.data.i * ((1 + (pfINT)i)) > sc->fftDim.data.i) {
 				temp_int.data.i = sc->fftDim.data.i - i * localSize.data.i;
 				PfIf_lt_start(sc, localInvocationID, &temp_int);
 			}
@@ -91,7 +91,7 @@ static inline void appendRegisterStorage(VkFFTSpecializationConstantsLayout* sc,
 			else
 				appendSharedToRegisters(sc, &sc->regIDs[sc->coordinate.data.i * sc->registers_per_thread + i], &sc->sdataID);
 
-			if (localSize.data.i * ((1 + (int64_t)i)) > sc->fftDim.data.i) {
+			if (localSize.data.i * ((1 + (pfINT)i)) > sc->fftDim.data.i) {
 				PfIf_end(sc);
 			}
 		}
@@ -110,11 +110,11 @@ static inline void appendPreparationBatchedKernelConvolution(VkFFTSpecialization
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32; 
+	temp_double.type = 22; 
 	
-	for (uint64_t i = 0; i < sc->registers_per_thread; i++) {
+	for (pfUINT i = 0; i < sc->registers_per_thread; i++) {
 		//sc->tempLen = sprintf(sc->tempStr, "			temp%s[i]=temp[i];\n", separateRegisterStore);
-		for (uint64_t j = 0; j < sc->matrixConvolution; j++) {
+		for (pfUINT j = 0; j < sc->matrixConvolution; j++) {
 			PfMov(sc, &sc->regIDs_copy[i + j * sc->registers_per_thread], &sc->regIDs[i + j * sc->registers_per_thread]);
 		}
 	}
@@ -122,14 +122,14 @@ static inline void appendPreparationBatchedKernelConvolution(VkFFTSpecialization
 }
 
 
-static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* sc, uint64_t strideType) {
+static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* sc, pfUINT strideType) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer localSize = VKFFT_ZERO_INIT;
 	localSize.type = 31;
@@ -176,12 +176,12 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 			PfMul(sc, &temp_int, &batching_localSize, &sc->firstStageStartSize, 0);
 			PfMul(sc, &sc->tempInt, &sc->tempInt, &temp_int, 0);
 
-			//sc->tempLen = sprintf(sc->tempStr, "		%s numActiveThreads = ((%s/%" PRIu64 ")==%" PRIu64 ") ? %" PRIu64 " : %" PRIu64 ";\n", uintType, sc->gl_WorkGroupID_x, sc->firstStageStartSize / sc->fftDim, ((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim), (uint64_t)ceil(((sc->fft_dim_full - (sc->firstStageStartSize / sc->fftDim) * ((((uint64_t)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim)) * sc->localSize[0] * sc->fftDim)) / (sc->firstStageStartSize / sc->fftDim)) / (double)used_registers_read), sc->localSize[0] * sc->localSize[1]);// sc->fft_dim_full, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full / (sc->localSize[0] * sc->fftDim));
+			//sc->tempLen = sprintf(sc->tempStr, "		%s numActiveThreads = ((%s/%" PRIu64 ")==%" PRIu64 ") ? %" PRIu64 " : %" PRIu64 ";\n", uintType, sc->gl_WorkGroupID_x, sc->firstStageStartSize / sc->fftDim, ((pfUINT)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim), (pfUINT)pfceil(((sc->fft_dim_full - (sc->firstStageStartSize / sc->fftDim) * ((((pfUINT)floor(sc->fft_dim_full / ((double)sc->localSize[0] * sc->fftDim))) / (sc->firstStageStartSize / sc->fftDim)) * sc->localSize[0] * sc->fftDim)) / (sc->firstStageStartSize / sc->fftDim)) / (double)used_registers_read), sc->localSize[0] * sc->localSize[1]);// sc->fft_dim_full, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->fftDim, sc->gl_WorkGroupID_x, shiftX, sc->firstStageStartSize / sc->fftDim, sc->localSize[0] * sc->firstStageStartSize, sc->fft_dim_full / (sc->localSize[0] * sc->fftDim));
 			temp_int.data.i = sc->firstStageStartSize.data.i / sc->fftDim.data.i;
 			PfDiv(sc, &sc->tempInt, &sc->gl_WorkGroupID_x, &temp_int);
-			temp_int1.data.i = ((int64_t)floor(sc->fft_dim_full.data.i / ((long double)batching_localSize.data.i * sc->fftDim.data.i))) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i);
+			temp_int1.data.i = ((pfINT)pffloor(sc->fft_dim_full.data.i / ((pfLD)batching_localSize.data.i * sc->fftDim.data.i))) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i);
 			PfIf_eq_start(sc, &sc->tempInt, &temp_int1);
-			temp_int.data.i = (int64_t)ceil(((sc->fft_dim_full.data.i - (sc->firstStageStartSize.data.i / sc->fftDim.data.i) * ((((int64_t)floor(sc->fft_dim_full.data.i / ((long double)batching_localSize.data.i * sc->fftDim.data.i))) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i)) * batching_localSize.data.i * sc->fftDim.data.i)) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i)) / (long double)used_registers.data.i);
+			temp_int.data.i = (pfINT)pfceil(((sc->fft_dim_full.data.i - (sc->firstStageStartSize.data.i / sc->fftDim.data.i) * ((((pfINT)pffloor(sc->fft_dim_full.data.i / ((pfLD)batching_localSize.data.i * sc->fftDim.data.i))) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i)) * batching_localSize.data.i * sc->fftDim.data.i)) / (sc->firstStageStartSize.data.i / sc->fftDim.data.i)) / (pfLD)used_registers.data.i);
 			PfMov(sc, &sc->sdataID, &temp_int);
 			PfIf_else(sc);
 			temp_int.data.i = sc->localSize[0].data.i * sc->localSize[1].data.i;
@@ -250,11 +250,11 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 		PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->blockInvocationID);
 	}
 
-	for (uint64_t i = 0; i < (uint64_t)used_registers.data.i; i++) {
-		for (int64_t j = 0; j < sc->matrixConvolution; j++) {
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
+		for (pfINT j = 0; j < sc->matrixConvolution; j++) {
 			PfSetToZero(sc, &sc->temp_conv[j]);
 		}
-		if (localSize.data.i * ((1 + (int64_t)i)) > sc->fftDim.data.i) {
+		if (localSize.data.i * ((1 + (pfINT)i)) > sc->fftDim.data.i) {
 			temp_int.data.i = sc->fftDim.data.i - i * localSize.data.i;
 			PfIf_lt_start(sc, localInvocationID, &temp_int);
 		}
@@ -347,9 +347,9 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 		}
 		break;
 		}
-		for (uint64_t j = 0; j < sc->matrixConvolution; j++) {
-			for (uint64_t l = 0; l < sc->matrixConvolution; l++) {
-				uint64_t k = 0;
+		for (pfUINT j = 0; j < sc->matrixConvolution; j++) {
+			for (pfUINT l = 0; l < sc->matrixConvolution; l++) {
+				pfUINT k = 0;
 				if (sc->symmetricKernel) {
 					k = (l < j) ? (l * sc->matrixConvolution - l * l + j) : (j * sc->matrixConvolution - j * j + l);
 				}
@@ -389,7 +389,7 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 		else {
 			PfMov(sc, &sc->regIDs[i], &sc->temp_conv[0]);
 		}
-		for (uint64_t l = 1; l < sc->matrixConvolution; l++) {
+		for (pfUINT l = 1; l < sc->matrixConvolution; l++) {
 			if (sc->crossPowerSpectrumNormalization) {
 				PfNorm(sc, &sc->tempFloat, &sc->temp_conv[l]);
 				PfRsqrt(sc, &sc->tempFloat, &sc->tempFloat);

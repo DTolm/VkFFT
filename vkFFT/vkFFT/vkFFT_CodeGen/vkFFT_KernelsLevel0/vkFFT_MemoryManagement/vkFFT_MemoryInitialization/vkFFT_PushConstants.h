@@ -28,9 +28,9 @@
 static inline void appendPushConstant(VkFFTSpecializationConstantsLayout* sc, PfContainer* var) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if (var->type > 100) {
-		PfContainer* varType;
+		PfContainer* varType = VKFFT_ZERO_INIT;
 		PfGetTypeFromCode(sc, var->type, &varType);
-		sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", varType->data.s, var->data.s);
+		sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", varType->name, var->name);
 		PfAppendLine(sc);
 	}
 	else {
@@ -62,33 +62,33 @@ static inline void appendPushConstants(VkFFTSpecializationConstantsLayout* sc) {
 	char tempCopyStr[60];
 	if (sc->performWorkGroupShift[0]) {
 		appendPushConstant(sc, &sc->workGroupShiftX);
-		sprintf(tempCopyStr, "consts.%s", sc->workGroupShiftX.data.s);
-		sprintf(sc->workGroupShiftX.data.s, "%s", tempCopyStr);
+		sprintf(tempCopyStr, "consts.%s", sc->workGroupShiftX.name);
+		sprintf(sc->workGroupShiftX.name, "%s", tempCopyStr);
 	}
 	if (sc->performWorkGroupShift[1]) {
 		appendPushConstant(sc, &sc->workGroupShiftY);
-		sprintf(tempCopyStr, "consts.%s", sc->workGroupShiftY.data.s);
-		sprintf(sc->workGroupShiftY.data.s, "%s", tempCopyStr);
+		sprintf(tempCopyStr, "consts.%s", sc->workGroupShiftY.name);
+		sprintf(sc->workGroupShiftY.name, "%s", tempCopyStr);
 	}
 	if (sc->performWorkGroupShift[2]) {
 		appendPushConstant(sc, &sc->workGroupShiftZ);
-		sprintf(tempCopyStr, "consts.%s", sc->workGroupShiftZ.data.s);
-		sprintf(sc->workGroupShiftZ.data.s, "%s", tempCopyStr);
+		sprintf(tempCopyStr, "consts.%s", sc->workGroupShiftZ.name);
+		sprintf(sc->workGroupShiftZ.name, "%s", tempCopyStr);
 	}
 	if (sc->performPostCompilationInputOffset) {
 		appendPushConstant(sc, &sc->inputOffset);
-		sprintf(tempCopyStr, "consts.%s", sc->inputOffset.data.s);
-		sprintf(sc->inputOffset.data.s, "%s", tempCopyStr);
+		sprintf(tempCopyStr, "consts.%s", sc->inputOffset.name);
+		sprintf(sc->inputOffset.name, "%s", tempCopyStr);
 	}
 	if (sc->performPostCompilationOutputOffset) {
 		appendPushConstant(sc, &sc->outputOffset);
-		sprintf(tempCopyStr, "consts.%s", sc->outputOffset.data.s);
-		sprintf(sc->outputOffset.data.s, "%s", tempCopyStr);
+		sprintf(tempCopyStr, "consts.%s", sc->outputOffset.name);
+		sprintf(sc->outputOffset.name, "%s", tempCopyStr);
 	}
 	if (sc->performPostCompilationKernelOffset) {
 		appendPushConstant(sc, &sc->kernelOffset);
-		sprintf(tempCopyStr, "consts.%s", sc->kernelOffset.data.s);
-		sprintf(sc->kernelOffset.data.s, "%s", tempCopyStr);
+		sprintf(tempCopyStr, "consts.%s", sc->kernelOffset.name);
+		sprintf(sc->kernelOffset.name, "%s", tempCopyStr);
 	}
 #if(VKFFT_BACKEND==0)
 	sc->tempLen = sprintf(sc->tempStr, "} consts;\n\n");
