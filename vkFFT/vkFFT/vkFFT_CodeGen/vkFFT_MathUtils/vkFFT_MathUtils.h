@@ -1572,15 +1572,43 @@ static inline void PfQuadProd(VkFFTSpecializationConstantsLayout* sc, PfContaine
 		return;
 	}
 	if ((((out->type % 100) / 10) == 3) && ((out->type % 10) == 2)) {
-		PfMul(sc, &out->data.dd[0], in_1, in_2, 0);
+		//v1
+		/*PfMul(sc, &out->data.dd[0], in_1, in_2, 0);
 		PfQuadSplit(sc, &temp->data.c[0], in_1, &out->data.dd[1]);
 		PfQuadSplit(sc, &sc->tempQuad2.data.c[0], in_2, &out->data.dd[1]);
 
+		//PfMovNeg(sc, &sc->tempQuad2.data.c[1].data.dd[1], &out->data.dd[0]);
+		//PfFMA(sc, &out->data.dd[1], &temp->data.c[0].data.dd[0], &sc->tempQuad2.data.c[0].data.dd[0],  &sc->tempQuad2.data.c[1].data.dd[1]);
 		PfMul(sc, &out->data.dd[1], &temp->data.c[0].data.dd[0], &sc->tempQuad2.data.c[0].data.dd[0], 0);
 		PfSub(sc, &out->data.dd[1], &out->data.dd[1], &out->data.dd[0]);
+
 		PfFMA(sc, &out->data.dd[1], &temp->data.c[0].data.dd[0], &sc->tempQuad2.data.c[0].data.dd[1], &out->data.dd[1]);
 		PfFMA(sc, &out->data.dd[1], &temp->data.c[0].data.dd[1], &sc->tempQuad2.data.c[0].data.dd[0], &out->data.dd[1]);
-		PfFMA(sc, &out->data.dd[1], &temp->data.c[0].data.dd[1], &sc->tempQuad2.data.c[0].data.dd[1], &out->data.dd[1]);
+		PfFMA(sc, &out->data.dd[1], &temp->data.c[0].data.dd[1], &sc->tempQuad2.data.c[0].data.dd[1], &out->data.dd[1]);*/
+
+		//v2
+		/*PfMul(sc, &out->data.dd[0], in_1, in_2, 0);
+		PfQuadSplit(sc, &temp->data.c[0], in_1, &out->data.dd[1]);
+		PfQuadSplit(sc, &sc->tempQuad2.data.c[0], in_2, &out->data.dd[1]);
+		//important
+		PfMovNeg(sc, &sc->tempQuad2.data.c[1].data.dd[1], in_2);
+		PfFMA(sc, &sc->tempQuad2.data.c[1].data.dd[0], &sc->tempQuad2.data.c[1].data.dd[1], in_1, &out->data.dd[0]);
+
+		PfMovNeg(sc, &sc->tempQuad2.data.c[1].data.dd[1], &out->data.dd[0]);
+		PfFMA(sc, &out->data.dd[1], &temp->data.c[0].data.dd[0], &sc->tempQuad2.data.c[0].data.dd[0], &sc->tempQuad2.data.c[1].data.dd[1]);
+		//PfPrintReg(sc, &sc->inoutID, &sc->tempQuad2.data.c[1].data.dd[0]);
+		PfAdd(sc, &out->data.dd[1], &out->data.dd[1], &sc->tempQuad2.data.c[1].data.dd[0]);
+		//PfSub(sc, &out->data.dd[1], &out->data.dd[1], &sc->tempQuad2.data.c[1].data.dd[0]);
+		//PfPrintReg(sc, &sc->inoutID, &out->data.dd[1]);
+
+		PfFMA(sc, &out->data.dd[1], &temp->data.c[0].data.dd[0], &sc->tempQuad2.data.c[0].data.dd[1], &out->data.dd[1]);
+		PfFMA(sc, &out->data.dd[1], &temp->data.c[0].data.dd[1], &sc->tempQuad2.data.c[0].data.dd[0], &out->data.dd[1]);
+		PfFMA(sc, &out->data.dd[1], &temp->data.c[0].data.dd[1], &sc->tempQuad2.data.c[0].data.dd[1], &out->data.dd[1]);*/
+
+		//v3
+		PfMul(sc, &out->data.dd[0], in_1, in_2, 0);
+		PfMovNeg(sc, &out->data.dd[1], &out->data.dd[0]);
+		PfFMA(sc, &out->data.dd[1], in_1, in_2, &out->data.dd[1]);
 	}
 	return;
 }
