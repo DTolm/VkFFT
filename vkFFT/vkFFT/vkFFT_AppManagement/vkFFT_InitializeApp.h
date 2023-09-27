@@ -988,7 +988,9 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		deleteVkFFT(app);
 		return VKFFT_ERROR_EMPTY_size;
 	}
-
+	app->configuration.isInputFormatted = inputLaunchConfiguration.isInputFormatted;
+	app->configuration.isOutputFormatted = inputLaunchConfiguration.isOutputFormatted;
+	
 	app->configuration.size[0] = inputLaunchConfiguration.size[0];
 
 	if (inputLaunchConfiguration.bufferStride[0] == 0) {
@@ -1001,7 +1003,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.bufferStride[0] = inputLaunchConfiguration.bufferStride[0];
 
 	if (inputLaunchConfiguration.inputBufferStride[0] == 0) {
-		if (inputLaunchConfiguration.performR2C)
+		if (inputLaunchConfiguration.performR2C && (!app->configuration.isInputFormatted))
 			app->configuration.inputBufferStride[0] = app->configuration.size[0] + 2;
 		else
 			app->configuration.inputBufferStride[0] = app->configuration.size[0];
@@ -1010,7 +1012,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.inputBufferStride[0] = inputLaunchConfiguration.inputBufferStride[0];
 
 	if (inputLaunchConfiguration.outputBufferStride[0] == 0) {
-		if (inputLaunchConfiguration.performR2C)
+		if (inputLaunchConfiguration.performR2C && (!app->configuration.isOutputFormatted))
 			app->configuration.outputBufferStride[0] = app->configuration.size[0] + 2;
 		else
 			app->configuration.outputBufferStride[0] = app->configuration.size[0];
@@ -1039,8 +1041,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 			app->configuration.outputBufferStride[i] = inputLaunchConfiguration.outputBufferStride[i];
 	}
 
-	app->configuration.isInputFormatted = inputLaunchConfiguration.isInputFormatted;
-	app->configuration.isOutputFormatted = inputLaunchConfiguration.isOutputFormatted;
 	app->configuration.performConvolution = inputLaunchConfiguration.performConvolution;
 
 	if (inputLaunchConfiguration.bufferNum == 0)	app->configuration.bufferNum = 1;
@@ -1247,7 +1247,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 
 	if (app->configuration.useLUT == -1)	app->configuration.useLUT_4step = -1;
 	app->configuration.swapTo2Stage4Step = app->configuration.swapTo3Stage4Step;
-	
+
     if (app->configuration.quadDoubleDoublePrecision){
 		app->configuration.useLUT_4step = 1;
 		app->configuration.useLUT = 1;
