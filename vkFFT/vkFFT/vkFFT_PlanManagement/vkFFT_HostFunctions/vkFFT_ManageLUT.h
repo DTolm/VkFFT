@@ -62,7 +62,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 					maxStageSum += dimMult * 5;
 					break;
 				case 7:
-					if (app->configuration.quadDoubleDoublePrecision)
+					if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
 						maxStageSum += dimMult * 7;
 					else 
 						maxStageSum += dimMult * 6;
@@ -77,7 +77,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 					maxStageSum += dimMult * 9;
 					break;
 				case 11:
-					if (app->configuration.quadDoubleDoublePrecision)
+					if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
 						maxStageSum += dimMult * 11;
 					else 
 						maxStageSum += dimMult * 10;
@@ -86,7 +86,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 					maxStageSum += dimMult * 11;
 					break;
 				case 13:
-					if (app->configuration.quadDoubleDoublePrecision)
+					if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
 						maxStageSum += dimMult * 13;
 					else 
 						maxStageSum += dimMult * 12;
@@ -135,7 +135,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 							maxStageSum += dimMult * 5;
 							break;
 						case 7:
-							if (app->configuration.quadDoubleDoublePrecision)
+							if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
 								maxStageSum += dimMult * 7;
 							else 
 								maxStageSum += dimMult * 6;
@@ -150,7 +150,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 							maxStageSum += dimMult * 9;
 							break;
 						case 11:
-							if (app->configuration.quadDoubleDoublePrecision)
+							if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
 								maxStageSum += dimMult * 11;
 							else 
 								maxStageSum += dimMult * 10;
@@ -159,7 +159,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 							maxStageSum += dimMult * 11;
 							break;
 						case 13:
-							if (app->configuration.quadDoubleDoublePrecision)
+							if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
 								maxStageSum += dimMult * 13;
 							else 
 								maxStageSum += dimMult * 12;
@@ -211,7 +211,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 							maxStageSum += dimMult * 5;
 							break;
 						case 7:
-							if (app->configuration.quadDoubleDoublePrecision)
+							if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
 								maxStageSum += dimMult * 7;
 							else 
 								maxStageSum += dimMult * 6;
@@ -226,7 +226,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 							maxStageSum += dimMult * 9;
 							break;
 						case 11:
-							if (app->configuration.quadDoubleDoublePrecision)
+							if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
 								maxStageSum += dimMult * 11;
 							else 
 								maxStageSum += dimMult * 10;
@@ -235,7 +235,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 							maxStageSum += dimMult * 11;
 							break;
 						case 13:
-							if (app->configuration.quadDoubleDoublePrecision)
+							if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
 								maxStageSum += dimMult * 13;
 							else 
 								maxStageSum += dimMult * 12;
@@ -263,7 +263,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 				dimMult = 1;
 			}
 		}
-		if (app->configuration.quadDoubleDoublePrecision) {
+		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
 			pfLD double_PI = pfFPinit("3.14159265358979323846264338327950288419716939937510");
 			if (axis->specializationConstants.axis_upload_id > 0) {
 				if ((app->configuration.performDCT == 2) || (app->configuration.performDCT == 3)) {
@@ -1539,7 +1539,127 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 #elif(VKFFT_BACKEND==5)
 	#endif
 	if (app->configuration.useLUT == 1) {
-		if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
+			PfContainer in = VKFFT_ZERO_INIT;
+			PfContainer temp1 = VKFFT_ZERO_INIT;
+			in.type = 22;
+			
+			pfLD double_PI = pfFPinit("3.14159265358979323846264338327950288419716939937510");
+			axis->bufferLUTSize = (app->configuration.size[0] / 2) * 4 * sizeof(double);
+			double* tempLUT = (double*)malloc(axis->bufferLUTSize);
+			if (!tempLUT) {
+				deleteVkFFT(app);
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+			for (pfUINT i = 0; i < app->configuration.size[0] / 2; i++) {
+				pfLD angle = double_PI * i / (app->configuration.size[0] / 2);
+				
+				in.data.d = pfcos(angle);
+				PfConvToDoubleDouble(&axis->specializationConstants, &temp1, &in);
+				tempLUT[4 * i] = (double)temp1.data.dd[0].data.d;
+				tempLUT[4 * i + 1] = (double)temp1.data.dd[1].data.d;
+				in.data.d = pfsin(angle);
+				PfConvToDoubleDouble(&axis->specializationConstants, &temp1, &in);
+				tempLUT[4 * i + 2] = (double)temp1.data.dd[0].data.d;
+				tempLUT[4 * i + 3] = (double)temp1.data.dd[1].data.d;
+			}
+			axis->referenceLUT = 0;
+			PfDeallocateContainer(&axis->specializationConstants, &temp1);
+			if ((!inverse) && (!app->configuration.makeForwardPlanOnly)) {
+				axis->bufferLUT = app->localFFTPlan_inverse->R2Cdecomposition.bufferLUT;
+#if(VKFFT_BACKEND==0)
+				axis->bufferLUTDeviceMemory = app->localFFTPlan_inverse->R2Cdecomposition.bufferLUTDeviceMemory;
+#endif
+				axis->bufferLUTSize = app->localFFTPlan_inverse->R2Cdecomposition.bufferLUTSize;
+				axis->referenceLUT = 1;
+			}
+			else {
+#if(VKFFT_BACKEND==0)
+				resFFT = allocateBufferVulkan(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
+				if (resFFT != VKFFT_SUCCESS) {
+					deleteVkFFT(app);
+					free(tempLUT);
+					tempLUT = 0;
+					return resFFT;
+				}
+				resFFT = VkFFT_TransferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+				if (resFFT != VKFFT_SUCCESS) {
+					deleteVkFFT(app);
+					free(tempLUT);
+					tempLUT = 0;
+					return resFFT;
+				}
+#elif(VKFFT_BACKEND==1)
+				res = cudaMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
+				if (res != cudaSuccess) {
+					deleteVkFFT(app);
+					free(tempLUT);
+					tempLUT = 0;
+					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+				}
+				resFFT = VkFFT_TransferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+				if (resFFT != VKFFT_SUCCESS) {
+					deleteVkFFT(app);
+					free(tempLUT);
+					tempLUT = 0;
+					return resFFT;
+				}
+#elif(VKFFT_BACKEND==2)
+				res = hipMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
+				if (res != hipSuccess) {
+					deleteVkFFT(app);
+					free(tempLUT);
+					tempLUT = 0;
+					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+				}
+				resFFT = VkFFT_TransferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+				if (resFFT != VKFFT_SUCCESS) {
+					deleteVkFFT(app);
+					free(tempLUT);
+					tempLUT = 0;
+					return resFFT;
+				}
+#elif(VKFFT_BACKEND==3)
+				axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
+				if (res != CL_SUCCESS) {
+					deleteVkFFT(app);
+					free(tempLUT);
+					tempLUT = 0;
+					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+				}
+#elif(VKFFT_BACKEND==4)
+				ze_device_mem_alloc_desc_t device_desc = VKFFT_ZERO_INIT;
+				device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+				res = zeMemAllocDevice(app->configuration.context[0], &device_desc, axis->bufferLUTSize, sizeof(float), app->configuration.device[0], &axis->bufferLUT);
+				if (res != ZE_RESULT_SUCCESS) {
+					deleteVkFFT(app);
+					free(tempLUT);
+					tempLUT = 0;
+					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+				}
+				resFFT = VkFFT_TransferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+				if (resFFT != VKFFT_SUCCESS) {
+					deleteVkFFT(app);
+					free(tempLUT);
+					tempLUT = 0;
+					return resFFT;
+				}
+#elif(VKFFT_BACKEND==5)
+				axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate);
+
+				resFFT = VkFFT_TransferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
+				if (resFFT != VKFFT_SUCCESS) {
+					deleteVkFFT(app);
+					free(tempLUT);
+					tempLUT = 0;
+					return resFFT;
+				}
+#endif
+				free(tempLUT);
+				tempLUT = 0;
+			}
+		}
+		else if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
 			pfLD double_PI = pfFPinit("3.14159265358979323846264338327950288419716939937510");
 			axis->bufferLUTSize = (app->configuration.size[0] / 2) * 2 * sizeof(double);
 			double* tempLUT = (double*)malloc(axis->bufferLUTSize);

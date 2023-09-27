@@ -288,12 +288,12 @@ static inline void PfAppendConversionStart(VkFFTSpecializationConstantsLayout* s
 #endif
 				return;
 			case 3:
-				sc->tempLen = sprintf(sc->tempStr, "conv_quad_to_double(");
+				sc->tempLen = sprintf(sc->tempStr, "conv_pf_quad_to_double(");
 				PfAppendLine(sc);
 				return;
 			}
 		case 3:
-			sc->tempLen = sprintf(sc->tempStr, "conv_double_to_quad(");
+			sc->tempLen = sprintf(sc->tempStr, "conv_double_to_pf_quad(");
 			PfAppendLine(sc);
 			return;
 		}
@@ -329,12 +329,12 @@ static inline void PfAppendConversionStart(VkFFTSpecializationConstantsLayout* s
 #endif
 			return;
 			case 3:
-				sc->tempLen = sprintf(sc->tempStr, "conv_quad2_to_double2(");
+				sc->tempLen = sprintf(sc->tempStr, "conv_pf_quad2_to_double2(");
 				PfAppendLine(sc);
 				return;
 			}
 		case 3:
-			sc->tempLen = sprintf(sc->tempStr, "conv_double2_to_quad2(");
+			sc->tempLen = sprintf(sc->tempStr, "conv_double2_to_pf_quad2(");
 			PfAppendLine(sc);
 			return;
 		}

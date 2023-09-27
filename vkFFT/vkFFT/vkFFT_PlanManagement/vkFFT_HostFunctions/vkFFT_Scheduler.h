@@ -198,7 +198,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThreadQuad(VkFFTApplication* app, 
 }
 
 static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int fft_length, int extraSharedMemoryForPow2, pfUINT max_rhs, int useRader, int* loc_multipliers, int* registers_per_thread_per_radix, int* registers_per_thread, int* min_registers_per_thread, int* isGoodSequence) {
-	if(app->configuration.quadDoubleDoublePrecision){
+	if(app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
 		VkFFTGetRegistersPerThreadQuad(app, fft_length, extraSharedMemoryForPow2, max_rhs, useRader, loc_multipliers, registers_per_thread_per_radix, registers_per_thread, min_registers_per_thread, isGoodSequence);
 		return VKFFT_SUCCESS;
 	}
@@ -2117,7 +2117,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	VkFFTAxis* axes = FFTPlan->axes[axis_id];
 
 	int complexSize;
-	if (app->configuration.quadDoubleDoublePrecision)
+	if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
 		complexSize = (4 * sizeof(double));
 	else 
 	{

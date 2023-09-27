@@ -343,7 +343,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 #else
 		sprintf(opts[0], "--gpu-architecture=compute_%" PRIu64 "%" PRIu64 "", app->configuration.computeCapabilityMajor, app->configuration.computeCapabilityMinor);
 #endif
-		if (app->configuration.quadDoubleDoublePrecision){
+		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
 			opts[1] = (char*)malloc(sizeof(char) * 50);
 			if (!opts[1]) {
 				free(code0);
@@ -361,7 +361,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			(const char* const*)opts); // options
 
 		free(opts[0]);
-		if (app->configuration.quadDoubleDoublePrecision)
+		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
 			free(opts[1]);
 
 		if (result != NVRTC_SUCCESS) {
@@ -533,7 +533,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		}
 		int numOpts = 0;
 		char* opts[5];
-		if (app->configuration.quadDoubleDoublePrecision){
+		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
 			opts[0] = (char*)malloc(sizeof(char) * 50);
 			if (!opts[0]) {
 				free(code0);
@@ -549,7 +549,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			numOpts,     // numOptions
 			(const char**)opts); // options
 
-		if (app->configuration.quadDoubleDoublePrecision)
+		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
 			free(opts[0]);	
 		if (result != HIPRTC_SUCCESS) {
 			printf("hiprtcCompileProgram error: %s\n", hiprtcGetErrorString(result));

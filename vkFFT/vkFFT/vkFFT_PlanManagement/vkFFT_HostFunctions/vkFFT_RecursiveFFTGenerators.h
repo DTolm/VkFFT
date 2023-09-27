@@ -37,7 +37,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 	pfUINT bufferSize = (pfUINT)sizeof(float) * 2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 	if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) bufferSize *= sizeof(double) / sizeof(float);
-	if (app->configuration.quadDoubleDoublePrecision) bufferSize *= 4;
+	if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) bufferSize *= 4;
 	app->bufferBluesteinSize[axis_id] = bufferSize;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -244,7 +244,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		kernelPreparationConfiguration.size[1] = 1;
 		kernelPreparationConfiguration.size[2] = 1;
 		kernelPreparationConfiguration.doublePrecision = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory);
-		kernelPreparationConfiguration.quadDoubleDoublePrecision = app->configuration.quadDoubleDoublePrecision;
+		kernelPreparationConfiguration.quadDoubleDoublePrecision = (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory);
 		kernelPreparationConfiguration.useLUT = 1;
 		kernelPreparationConfiguration.useLUT_4step = 1;
 		kernelPreparationConfiguration.registerBoost = 1;
@@ -305,7 +305,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		if (app->configuration.performDCT == 1) phaseVectorsNonZeroSize = 2 * app->configuration.size[axis_id] - 2;
 
 		if ((FFTPlan->numAxisUploads[axis_id] > 1) && (!app->configuration.makeForwardPlanOnly)) {
-			if (app->configuration.quadDoubleDoublePrecision) {
+			if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
 				PfContainer in = VKFFT_ZERO_INIT;
 				PfContainer temp1 = VKFFT_ZERO_INIT;
 				in.type = 22;
@@ -540,7 +540,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 #endif
 		}
 		if ((FFTPlan->numAxisUploads[axis_id] > 1) && (!app->configuration.makeForwardPlanOnly)) {
-			if (app->configuration.quadDoubleDoublePrecision) {
+			if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
 				double* phaseVectors_cast = (double*)phaseVectors;
 				for (pfUINT i = 0; i < FFTPlan->actualFFTSizePerAxis[axis_id][axis_id]; i++) {
 					phaseVectors_cast[4 * i + 2] = -phaseVectors_cast[4 * i + 2];
@@ -562,7 +562,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			}
 		}
 		else {
-			if (app->configuration.quadDoubleDoublePrecision) {
+			if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
 				PfContainer in = VKFFT_ZERO_INIT;
 				PfContainer temp1 = VKFFT_ZERO_INIT;
 				in.type = 22;

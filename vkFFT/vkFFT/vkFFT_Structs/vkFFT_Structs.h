@@ -206,6 +206,7 @@ typedef struct {
 
 	pfUINT doublePrecision; //perform calculations in double precision (0 - off, 1 - on).
 	pfUINT quadDoubleDoublePrecision; //perform calculations in double-double quad precision (0 - off, 1 - on).
+	pfUINT quadDoubleDoublePrecisionDoubleMemory; //perform calculations in double-double quad precision, while all memory storage is done in FP64.
 	pfUINT halfPrecision; //perform calculations in half precision (0 - off, 1 - on)
 	pfUINT halfPrecisionMemoryOnly; //use half precision only as input/output buffer. Input/Output have to be allocated as half, buffer/tempBuffer have to be allocated as float (out of place mode only). Specify isInputFormatted and isOutputFormatted to use (0 - off, 1 - on)
 	pfUINT doublePrecisionFloatMemory; //use FP64 precision for all calculations, while all memory storage is done in FP32.

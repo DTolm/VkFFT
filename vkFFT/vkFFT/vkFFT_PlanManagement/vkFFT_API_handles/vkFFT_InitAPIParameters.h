@@ -205,6 +205,18 @@ static inline VkFFTResult initMemoryParametersAPI(VkFFTApplication* app, VkFFTSp
 		sc->vecTypeInputMemoryCode = 33;
 		sc->vecTypeOutputMemoryCode = 33;
 	}
+	else if (app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
+		sc->floatTypeCode = 32;
+		sc->vecTypeCode = 33;
+
+		sc->floatTypeKernelMemoryCode = 22;
+		sc->floatTypeInputMemoryCode = 22;
+		sc->floatTypeOutputMemoryCode = 22;
+
+		sc->vecTypeKernelMemoryCode = 23;
+		sc->vecTypeInputMemoryCode = 23;
+		sc->vecTypeOutputMemoryCode = 23;
+	}
 	else {
 		if (app->configuration.doublePrecisionFloatMemory) {
 			sc->floatTypeCode = 22;
