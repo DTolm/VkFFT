@@ -1260,35 +1260,37 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (inputLaunchConfiguration.forceBluesteinSequenceSize != 0) app->configuration.forceBluesteinSequenceSize = inputLaunchConfiguration.forceBluesteinSequenceSize;
 
 	if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
-		app->configuration.fixMinRaderPrimeMult = 7;
-		app->configuration.fixMaxRaderPrimeMult = 17;
+			app->configuration.fixMinRaderPrimeMult = 7;
+			app->configuration.fixMaxRaderPrimeMult = 29;
 	} else{
-		app->configuration.fixMinRaderPrimeMult = 17;
-		switch (app->configuration.vendorID) {
-		case 0x10DE://NVIDIA
-			app->configuration.fixMaxRaderPrimeMult = 89;
-			break;
-		case 0x1002://AMD profile
-			app->configuration.fixMaxRaderPrimeMult = 89;
-			break;
-		default:
-			app->configuration.fixMaxRaderPrimeMult = 17;
-			break;
-		}
-		if (inputLaunchConfiguration.fixMinRaderPrimeMult != 0) app->configuration.fixMinRaderPrimeMult = inputLaunchConfiguration.fixMinRaderPrimeMult;
+			app->configuration.fixMinRaderPrimeMult = 17;
+			switch (app->configuration.vendorID) {
+			case 0x10DE://NVIDIA
+					app->configuration.fixMaxRaderPrimeMult = 89;
+					break;
+			case 0x1002://AMD profile
+					app->configuration.fixMaxRaderPrimeMult = 89;
+					break;
+			default:
+					app->configuration.fixMaxRaderPrimeMult = 17;
+					break;
+			}
+			if (inputLaunchConfiguration.fixMinRaderPrimeMult != 0) app->configuration.fixMinRaderPrimeMult = inputLaunchConfiguration.fixMinRaderPrimeMult;
 	}
 	if (inputLaunchConfiguration.fixMaxRaderPrimeMult != 0) app->configuration.fixMaxRaderPrimeMult = inputLaunchConfiguration.fixMaxRaderPrimeMult;
 
 	switch (app->configuration.vendorID) {
 	case 0x1002://AMD profile
-		if (app->configuration.doublePrecision)
-			app->configuration.fixMinRaderPrimeFFT = 29;
-		else
-			app->configuration.fixMinRaderPrimeFFT = 17;
-		break;
+			if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
+					app->configuration.fixMinRaderPrimeFFT = 19;
+			else if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory)
+					app->configuration.fixMinRaderPrimeFFT = 29;
+			else
+					app->configuration.fixMinRaderPrimeFFT = 17;
+			break;
 	default:
-		app->configuration.fixMinRaderPrimeFFT = 17;
-		break;
+			app->configuration.fixMinRaderPrimeFFT = 17;
+			break;
 	}
 	app->configuration.fixMaxRaderPrimeFFT = 16384;
 	if (inputLaunchConfiguration.fixMinRaderPrimeFFT != 0) app->configuration.fixMinRaderPrimeFFT = inputLaunchConfiguration.fixMinRaderPrimeFFT;
