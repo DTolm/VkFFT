@@ -472,13 +472,13 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 						}
 
 						if (!axis->specializationConstants.inline_rader_kernel) {
-							pfLD* raderFFTkernel = (pfLD*)axis->specializationConstants.raderContainer[i].raderFFTkernel;
+							double* raderFFTkernel = (double*)axis->specializationConstants.raderContainer[i].raderFFTkernel;
 							for (pfUINT j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
-								in.data.d = (raderFFTkernel[2 * j] / (pfLD)(axis->specializationConstants.raderContainer[i].prime - 1));
+								in.data.d = (((pfLD)raderFFTkernel[4 * j] + (pfLD)raderFFTkernel[4 * j + 1])/ (pfLD)(axis->specializationConstants.raderContainer[i].prime - 1));
 								PfConvToDoubleDouble(&axis->specializationConstants, &temp1, &in);
 								tempLUT[4 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT)] = (double)temp1.data.dd[0].data.d;
 								tempLUT[4 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT) + 1] = (double)temp1.data.dd[1].data.d;
-								in.data.d = (raderFFTkernel[2 * j + 1] / (pfLD)(axis->specializationConstants.raderContainer[i].prime - 1));
+								in.data.d = (((pfLD)raderFFTkernel[4 * j + 2] + (pfLD)raderFFTkernel[4 * j + 3])/ (pfLD)(axis->specializationConstants.raderContainer[i].prime - 1));
 								PfConvToDoubleDouble(&axis->specializationConstants, &temp1, &in);
 								tempLUT[4 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT) + 2] = (double)temp1.data.dd[0].data.d;
 								tempLUT[4 * (j + axis->specializationConstants.raderContainer[i].RaderKernelOffsetLUT) + 3] = (double)temp1.data.dd[1].data.d;

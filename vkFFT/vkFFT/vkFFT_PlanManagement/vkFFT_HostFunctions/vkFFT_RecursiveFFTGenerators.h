@@ -1039,7 +1039,34 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 					continue;
 				}
 #endif
-				if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+				if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
+					PfContainer in = VKFFT_ZERO_INIT;
+					PfContainer temp1 = VKFFT_ZERO_INIT;
+					in.type = 22;
+					pfLD double_PI = pfFPinit("3.14159265358979323846264338327950288419716939937510");
+					double* raderFFTkernel = (double*)malloc((axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(double) * 4);
+					if (!raderFFTkernel) return VKFFT_ERROR_MALLOC_FAILED;
+					axis->specializationConstants.raderContainer[i].raderFFTkernel = (void*)raderFFTkernel;
+					app->raderFFTkernel[write_id] = (void*)raderFFTkernel;
+					app->rader_buffer_size[write_id] = (axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(double) * 4;
+					for (pfUINT j = 0; j < (axis->specializationConstants.raderContainer[i].prime - 1); j++) {//fix later
+						pfUINT g_pow = 1;
+						for (pfUINT t = 0; t < axis->specializationConstants.raderContainer[i].prime - 1 - j; t++) {
+							g_pow = (g_pow * axis->specializationConstants.raderContainer[i].generator) % axis->specializationConstants.raderContainer[i].prime;
+						}
+						pfLD angle = g_pow * double_PI * pfFPinit("2.0") / axis->specializationConstants.raderContainer[i].prime;
+						in.data.d = pfcos(angle);
+						PfConvToDoubleDouble(&axis->specializationConstants, &temp1, &in);
+						raderFFTkernel[4 * j] = (double)temp1.data.dd[0].data.d;
+						raderFFTkernel[4 * j + 1] = (double)temp1.data.dd[1].data.d;
+						in.data.d = -pfsin(angle);
+						PfConvToDoubleDouble(&axis->specializationConstants, &temp1, &in);
+						raderFFTkernel[4 * j + 2] = (double)temp1.data.dd[0].data.d;
+						raderFFTkernel[4 * j + 3] = (double)temp1.data.dd[1].data.d;
+					}
+					PfDeallocateContainer(&axis->specializationConstants, &temp1);
+				}
+				else if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
 					pfLD double_PI = pfFPinit("3.14159265358979323846264338327950288419716939937510");
 					double* raderFFTkernel = (double*)malloc((axis->specializationConstants.raderContainer[i].prime - 1) * sizeof(double) * 2);
 					if (!raderFFTkernel) return VKFFT_ERROR_MALLOC_FAILED;
@@ -1080,6 +1107,7 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 				kernelPreparationConfiguration.size[1] = 1;
 				kernelPreparationConfiguration.size[2] = 1;
 				kernelPreparationConfiguration.doublePrecision = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory);
+				kernelPreparationConfiguration.quadDoubleDoublePrecision = (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory);
 				kernelPreparationConfiguration.useLUT = 1;
 				kernelPreparationConfiguration.fixMinRaderPrimeFFT = 17;
 				kernelPreparationConfiguration.fixMinRaderPrimeMult = 17;
@@ -1109,6 +1137,7 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 
 				pfUINT bufferSize = (pfUINT)sizeof(float) * 2 * kernelPreparationConfiguration.size[0] * kernelPreparationConfiguration.size[1] * kernelPreparationConfiguration.size[2];
 				if (kernelPreparationConfiguration.doublePrecision) bufferSize *= sizeof(double) / sizeof(float);
+				if (kernelPreparationConfiguration.quadDoubleDoublePrecision) bufferSize *= 2 * sizeof(double) / sizeof(float);
 
 				kernelPreparationConfiguration.bufferSize = &bufferSize;
 				resFFT = initializeVkFFT(&kernelPreparationApplication, kernelPreparationConfiguration);
@@ -1363,7 +1392,10 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 			pfUINT offset = 0;
 			for (pfUINT i = 0; i < app->numRaderFFTPrimes; i++) {
 				pfUINT current_size = 0;
-				if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+				if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
+					current_size = (app->rader_primes[i] - 1) * sizeof(double) * 4;
+				}
+				else if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
 					current_size = (app->rader_primes[i] - 1) * sizeof(double) * 2;
 				}
 				else {

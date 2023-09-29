@@ -1254,18 +1254,15 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
     if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
 		app->configuration.useLUT_4step = 1;
 		app->configuration.useLUT = 1;
-		app->configuration.swapTo2Stage4Step = 1024;
-		app->configuration.swapTo3Stage4Step = 65536;
+		app->configuration.swapTo3Stage4Step = 524288;
 	}
 	if (inputLaunchConfiguration.fixMaxRadixBluestein != 0) app->configuration.fixMaxRadixBluestein = inputLaunchConfiguration.fixMaxRadixBluestein;
 	if (inputLaunchConfiguration.forceBluesteinSequenceSize != 0) app->configuration.forceBluesteinSequenceSize = inputLaunchConfiguration.forceBluesteinSequenceSize;
 
 	if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
 		app->configuration.fixMinRaderPrimeMult = 7;
-		app->configuration.fixMaxRaderPrimeMult = 29;
-		app->configuration.fixMinRaderPrimeFFT = 17;
-		app->configuration.fixMaxRaderPrimeFFT = 17;
-	}else{
+		app->configuration.fixMaxRaderPrimeMult = 17;
+	} else{
 		app->configuration.fixMinRaderPrimeMult = 17;
 		switch (app->configuration.vendorID) {
 		case 0x10DE://NVIDIA
@@ -1279,23 +1276,23 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 			break;
 		}
 		if (inputLaunchConfiguration.fixMinRaderPrimeMult != 0) app->configuration.fixMinRaderPrimeMult = inputLaunchConfiguration.fixMinRaderPrimeMult;
-		if (inputLaunchConfiguration.fixMaxRaderPrimeMult != 0) app->configuration.fixMaxRaderPrimeMult = inputLaunchConfiguration.fixMaxRaderPrimeMult;
-
-		switch (app->configuration.vendorID) {
-		case 0x1002://AMD profile
-			if (app->configuration.doublePrecision)
-				app->configuration.fixMinRaderPrimeFFT = 29;
-			else
-				app->configuration.fixMinRaderPrimeFFT = 17;
-			break;
-		default:
-			app->configuration.fixMinRaderPrimeFFT = 17;
-			break;
-		}
-		app->configuration.fixMaxRaderPrimeFFT = 16384;
-		if (inputLaunchConfiguration.fixMinRaderPrimeFFT != 0) app->configuration.fixMinRaderPrimeFFT = inputLaunchConfiguration.fixMinRaderPrimeFFT;
-		if (inputLaunchConfiguration.fixMaxRaderPrimeFFT != 0) app->configuration.fixMaxRaderPrimeFFT = inputLaunchConfiguration.fixMaxRaderPrimeFFT;
 	}
+	if (inputLaunchConfiguration.fixMaxRaderPrimeMult != 0) app->configuration.fixMaxRaderPrimeMult = inputLaunchConfiguration.fixMaxRaderPrimeMult;
+
+	switch (app->configuration.vendorID) {
+	case 0x1002://AMD profile
+		if (app->configuration.doublePrecision)
+			app->configuration.fixMinRaderPrimeFFT = 29;
+		else
+			app->configuration.fixMinRaderPrimeFFT = 17;
+		break;
+	default:
+		app->configuration.fixMinRaderPrimeFFT = 17;
+		break;
+	}
+	app->configuration.fixMaxRaderPrimeFFT = 16384;
+	if (inputLaunchConfiguration.fixMinRaderPrimeFFT != 0) app->configuration.fixMinRaderPrimeFFT = inputLaunchConfiguration.fixMinRaderPrimeFFT;
+	if (inputLaunchConfiguration.fixMaxRaderPrimeFFT != 0) app->configuration.fixMaxRaderPrimeFFT = inputLaunchConfiguration.fixMaxRaderPrimeFFT;
 	if (inputLaunchConfiguration.performR2C != 0) {
 		app->configuration.performR2C = inputLaunchConfiguration.performR2C;
 	}
