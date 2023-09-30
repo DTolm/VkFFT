@@ -1653,7 +1653,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		app->applicationStringSize = totalBinarySize;
 		char* localApplicationStringCast = (char*)app->saveApplicationString;
 		memcpy(localApplicationStringCast, &totalBinarySize, sizeof(pfUINT));
-		memcpy(localApplicationStringCast + 2, &app->applicationStringOffsetRader, sizeof(pfUINT));
+		memcpy(localApplicationStringCast + 2 * sizeof(pfUINT), &app->applicationStringOffsetRader, sizeof(pfUINT));
 		pfUINT currentPos = 5 * sizeof(pfUINT);
 		if (!app->configuration.makeForwardPlanOnly) {
 			for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
