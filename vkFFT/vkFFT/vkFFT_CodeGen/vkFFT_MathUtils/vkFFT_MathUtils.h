@@ -259,11 +259,14 @@ static inline void PfAppendConversionStart(VkFFTSpecializationConstantsLayout* s
 	case 2:
 		switch ((out->type % 100) / 10) {
 		case 0:
-#if((VKFFT_BACKEND==0)||(VKFFT_BACKEND==5))
-			sc->tempLen = sprintf(sc->tempStr, "half(");
+#if(VKFFT_BACKEND==0)
+			sc->tempLen = sprintf(sc->tempStr, "float16_t(");
 			PfAppendLine(sc);
 #elif((VKFFT_BACKEND==1)||(VKFFT_BACKEND==2)||(VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
 			sc->tempLen = sprintf(sc->tempStr, "(half)");
+			PfAppendLine(sc);
+#elif(VKFFT_BACKEND==5)
+			sc->tempLen = sprintf(sc->tempStr, "half(");
 			PfAppendLine(sc);
 #endif
 			return;

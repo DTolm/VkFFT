@@ -161,14 +161,12 @@ static inline void appendGlobalToRegisters(VkFFTSpecializationConstantsLayout* s
 static inline void appendGlobalToRegisters_x(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* bufferName, PfContainer* inoutID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	PfContainer* floatType;
-	PfGetTypeFromCode(sc, out->type - 1, &floatType);
-
+	
 	sc->tempLen = sprintf(sc->tempStr, "%s", out->data.c[0].name);
 	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, " = ");
 	PfAppendLine(sc);
-	PfAppendConversionStart(sc, floatType, bufferName);
+	PfAppendConversionStart(sc, &out->data.c[0], bufferName);
 	if ((!(strcmp(bufferName->name, sc->inputsStruct.name))) && (sc->inputBufferBlockNum != 1)) {
 		sc->tempLen = sprintf(sc->tempStr, "inputBlocks[%s / %" PRIu64 "].%s[%s %% %" PRIu64 "]", inoutID->name, sc->inputBufferBlockSize / (sc->complexSize / 2), bufferName->name, inoutID->name, sc->inputBufferBlockSize / (sc->complexSize / 2));
 	}
@@ -182,7 +180,7 @@ static inline void appendGlobalToRegisters_x(VkFFTSpecializationConstantsLayout*
 		sc->tempLen = sprintf(sc->tempStr, "%s[%s]", bufferName->name, inoutID->name);
 	}
 	PfAppendLine(sc);
-	PfAppendConversionEnd(sc, floatType, bufferName);
+	PfAppendConversionEnd(sc, &out->data.c[0], bufferName);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
 	PfAppendLine(sc);
 	return;
@@ -190,14 +188,12 @@ static inline void appendGlobalToRegisters_x(VkFFTSpecializationConstantsLayout*
 static inline void appendGlobalToRegisters_y(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* bufferName, PfContainer* inoutID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	PfContainer* floatType;
-	PfGetTypeFromCode(sc, out->type - 1, &floatType);
 	
 	sc->tempLen = sprintf(sc->tempStr, "%s", out->data.c[1].name);
 	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, " = ");
 	PfAppendLine(sc);
-	PfAppendConversionStart(sc, floatType, bufferName);
+	PfAppendConversionStart(sc, &out->data.c[1], bufferName);
 	if ((!(strcmp(bufferName->name, sc->inputsStruct.name))) && (sc->inputBufferBlockNum != 1)) {
 		sc->tempLen = sprintf(sc->tempStr, "inputBlocks[%s / %" PRIu64 "].%s[%s %% %" PRIu64 "]", inoutID->name, sc->inputBufferBlockSize / (sc->complexSize / 2), bufferName->name, inoutID->name, sc->inputBufferBlockSize / (sc->complexSize / 2));
 	}
@@ -211,7 +207,7 @@ static inline void appendGlobalToRegisters_y(VkFFTSpecializationConstantsLayout*
 		sc->tempLen = sprintf(sc->tempStr, "%s[%s]", bufferName->name, inoutID->name);
 	}
 	PfAppendLine(sc);
-	PfAppendConversionEnd(sc, floatType, bufferName);
+	PfAppendConversionEnd(sc, &out->data.c[1], bufferName);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
 	PfAppendLine(sc);
 	
@@ -248,8 +244,6 @@ static inline void appendRegistersToGlobal(VkFFTSpecializationConstantsLayout* s
 static inline void appendRegistersToGlobal_x(VkFFTSpecializationConstantsLayout* sc, PfContainer* bufferName, PfContainer* inoutID, PfContainer* in)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	PfContainer* floatType;
-	PfGetTypeFromCode(sc, in->type - 1, &floatType);
 	if ((!(strcmp(bufferName->name, sc->inputsStruct.name))) && (sc->inputBufferBlockNum != 1)) {
 		sc->tempLen = sprintf(sc->tempStr, "inputBlocks[%s / %" PRIu64 "].%s[%s %% %" PRIu64 "]", inoutID->name, sc->inputBufferBlockSize / (sc->complexSize / 2), bufferName->name, inoutID->name, sc->inputBufferBlockSize / (sc->complexSize / 2));
 	}
@@ -265,10 +259,10 @@ static inline void appendRegistersToGlobal_x(VkFFTSpecializationConstantsLayout*
 	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, " = ");
 	PfAppendLine(sc);
-	PfAppendConversionStart(sc, bufferName, floatType);
+	PfAppendConversionStart(sc, bufferName, &in->data.c[0]);
 	sc->tempLen = sprintf(sc->tempStr, "%s", in->data.c[0].name);
 	PfAppendLine(sc);
-	PfAppendConversionEnd(sc, bufferName, floatType);
+	PfAppendConversionEnd(sc, bufferName, &in->data.c[0]);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
 	PfAppendLine(sc);
 	return;
@@ -276,8 +270,6 @@ static inline void appendRegistersToGlobal_x(VkFFTSpecializationConstantsLayout*
 static inline void appendRegistersToGlobal_y(VkFFTSpecializationConstantsLayout* sc, PfContainer* bufferName, PfContainer* inoutID, PfContainer* in)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	PfContainer* floatType;
-	PfGetTypeFromCode(sc, in->type - 1, &floatType);
 	if ((!(strcmp(bufferName->name, sc->inputsStruct.name))) && (sc->inputBufferBlockNum != 1)) {
 		sc->tempLen = sprintf(sc->tempStr, "inputBlocks[%s / %" PRIu64 "].%s[%s %% %" PRIu64 "]", inoutID->name, sc->inputBufferBlockSize / (sc->complexSize / 2), bufferName->name, inoutID->name, sc->inputBufferBlockSize / (sc->complexSize / 2));
 	}
@@ -293,10 +285,10 @@ static inline void appendRegistersToGlobal_y(VkFFTSpecializationConstantsLayout*
 	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, " = ");
 	PfAppendLine(sc);
-	PfAppendConversionStart(sc, bufferName, floatType);
+	PfAppendConversionStart(sc, bufferName, &in->data.c[1]);
 	sc->tempLen = sprintf(sc->tempStr, "%s", in->data.c[1].name);
 	PfAppendLine(sc);
-	PfAppendConversionEnd(sc, bufferName, floatType);
+	PfAppendConversionEnd(sc, bufferName, &in->data.c[1]);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
 	PfAppendLine(sc);
 	return;

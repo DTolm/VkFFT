@@ -244,7 +244,7 @@ VkResult createDevice(VkGPU* vkGPU, uint64_t sample_id) {
 	VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	VkPhysicalDeviceFeatures deviceFeatures = {};
 	switch (sample_id) {
-	case 1: case 12: case 17: case 18: case 101: case 201: case 1001: {
+	case 1: case 9: case 12: case 17: case 18: case 19: case 101: case 201: case 203: case 1001: case 1004: {
 		deviceFeatures.shaderFloat64 = true;
 		deviceCreateInfo.enabledExtensionCount = (uint32_t)vkGPU->enabledDeviceExtensions.size();
 		deviceCreateInfo.ppEnabledExtensionNames = vkGPU->enabledDeviceExtensions.data();
@@ -257,7 +257,7 @@ VkResult createDevice(VkGPU* vkGPU, uint64_t sample_id) {
 		break;
 	}
 #if (VK_API_VERSION>10)
-	case 2: case 102: {
+	case 2: case 102: case 202: case 1002: {
 		VkPhysicalDeviceFeatures2 deviceFeatures2 = {};
 		VkPhysicalDevice16BitStorageFeatures shaderFloat16 = {};
 		shaderFloat16.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES;
