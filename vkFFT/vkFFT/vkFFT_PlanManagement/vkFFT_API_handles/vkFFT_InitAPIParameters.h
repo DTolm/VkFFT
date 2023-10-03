@@ -67,7 +67,7 @@ static inline VkFFTResult initMemoryParametersAPI(VkFFTApplication* app, VkFFTSp
 	sprintf(sc->halfDef.name, "float16_t");
 	sprintf(sc->floatDef.name, "float");
 	sprintf(sc->doubleDef.name, "double");
-	sprintf(sc->quadDef.name, "pf_quad");
+	sprintf(sc->quadDef.name, "dvec2");
 	sprintf(sc->half2Def.name, "f16vec2");
 	sprintf(sc->float2Def.name, "vec2");
 	sprintf(sc->double2Def.name, "dvec2");
@@ -84,7 +84,7 @@ static inline VkFFTResult initMemoryParametersAPI(VkFFTApplication* app, VkFFTSp
 	sprintf(sc->halfDef.name, "half");
 	sprintf(sc->floatDef.name, "float");
 	sprintf(sc->doubleDef.name, "double");
-	sprintf(sc->quadDef.name, "pf_quad");
+	sprintf(sc->quadDef.name, "double2");
 	sprintf(sc->half2Def.name, "half2");
 	sprintf(sc->float2Def.name, "float2");
 	sprintf(sc->double2Def.name, "double2");
@@ -101,7 +101,7 @@ static inline VkFFTResult initMemoryParametersAPI(VkFFTApplication* app, VkFFTSp
 	sprintf(sc->halfDef.name, "half");
 	sprintf(sc->floatDef.name, "float");
 	sprintf(sc->doubleDef.name, "double");
-	sprintf(sc->quadDef.name, "pf_quad");
+	sprintf(sc->quadDef.name, "double2");
 	sprintf(sc->half2Def.name, "half2");
 	sprintf(sc->float2Def.name, "float2");
 	sprintf(sc->double2Def.name, "double2");
@@ -117,7 +117,7 @@ static inline VkFFTResult initMemoryParametersAPI(VkFFTApplication* app, VkFFTSp
 	sprintf(sc->halfDef.name, "half");
 	sprintf(sc->floatDef.name, "float");
 	sprintf(sc->doubleDef.name, "double");
-	sprintf(sc->quadDef.name, "struct pf_quad");
+	sprintf(sc->quadDef.name, "double2");
 	sprintf(sc->half2Def.name, "half2");
 	sprintf(sc->float2Def.name, "float2");
 	sprintf(sc->double2Def.name, "double2");
@@ -133,7 +133,7 @@ static inline VkFFTResult initMemoryParametersAPI(VkFFTApplication* app, VkFFTSp
 	sprintf(sc->halfDef.name, "half");
 	sprintf(sc->floatDef.name, "float");
 	sprintf(sc->doubleDef.name, "double");
-	sprintf(sc->quadDef.name, "pf_quad");
+	sprintf(sc->quadDef.name, "double2");
 	sprintf(sc->half2Def.name, "half2");
 	sprintf(sc->float2Def.name, "float2");
 	sprintf(sc->double2Def.name, "double2");

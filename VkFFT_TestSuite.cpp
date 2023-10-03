@@ -464,16 +464,18 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
         resFFT = sample_101_benchmark_VkFFT_double_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 4);
         break;
     }
-    case 200: case 201:
+    case 200: case 201: case 202:
     {
         resFFT = user_benchmark_VkFFT(vkGPU, file_output, output, isCompilerInitialized, userParams);
         break;
     }
-	case 202:
+#ifdef VKFFT_USE_DOUBLEDOUBLE_FP128
+	case 203:
     {
         resFFT = user_benchmark_VkFFT(vkGPU, file_output, output, isCompilerInitialized, userParams);
         break;
     }
+#endif
     case 1000:
     {
         resFFT = sample_1000_benchmark_VkFFT_single_2_4096(vkGPU, file_output, output, isCompilerInitialized);

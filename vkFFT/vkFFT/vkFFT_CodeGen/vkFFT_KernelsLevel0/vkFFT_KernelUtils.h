@@ -116,30 +116,30 @@ using namespace metal;\n");
 }
 static inline void appendQuadDoubleDoubleStruct(VkFFTSpecializationConstantsLayout* sc) {
 #if(VKFFT_BACKEND==0)	
-	sc->tempLen = sprintf(sc->tempStr, "\
+	/*sc->tempLen = sprintf(sc->tempStr, "\
 struct pf_quad {\n\
 %s x;\n\
 %s y;\n\
 };\n", sc->doubleDef.name, sc->doubleDef.name);
-	PfAppendLine(sc);
+	PfAppendLine(sc);*/
 	sc->tempLen = sprintf(sc->tempStr, "\
 struct pf_quad2 {\n\
 %s x;\n\
 %s y;\n\
-};\n", sc->double2Def.name, sc->double2Def.name);
+};\n", sc->quadDef.name, sc->quadDef.name);
 	PfAppendLine(sc);
 #else	
-	sc->tempLen = sprintf(sc->tempStr, "\
+	/*sc->tempLen = sprintf(sc->tempStr, "\
 typedef struct pf_quad {\n\
 %s x;\n\
 %s y;\n\
 };\n", sc->doubleDef.name, sc->doubleDef.name);
-	PfAppendLine(sc);
+	PfAppendLine(sc);*/
 	sc->tempLen = sprintf(sc->tempStr, "\
 typedef struct pf_quad2 {\n\
 %s x;\n\
 %s y;\n\
-};\n", sc->double2Def.name, sc->double2Def.name);
+};\n", sc->quadDef.name, sc->quadDef.name);
 	PfAppendLine(sc);
 #endif
 }
@@ -235,21 +235,21 @@ static inline void appendConversion(VkFFTSpecializationConstantsLayout* sc) {
 	}
 	if (((sc->vecTypeCode % 100) / 10) == 3) {
 		sc->tempLen = sprintf(sc->tempStr, "\
-%s%s conv_%s_to_%s(%s input)\n\
+%s%s conv_%s_to_pf_quad(%s input)\n\
 {\n\
 	%s ret_val;\n\
 	ret_val.x = (%s) input;\n\
 	ret_val.y = (%s) 0;\n\
 	return ret_val;\n\
-}\n\n", sc->functionDef.name, sc->quadDef.name, sc->doubleDef.name, sc->quadDef.name, sc->doubleDef.name, sc->quadDef.name, sc->doubleDef.name, sc->doubleDef.name);
+}\n\n", sc->functionDef.name, sc->quadDef.name, sc->doubleDef.name, sc->doubleDef.name, sc->quadDef.name, sc->doubleDef.name, sc->doubleDef.name);
 		PfAppendLine(sc);
 		sc->tempLen = sprintf(sc->tempStr, "\
-%s%s conv_%s_to_%s(%s input)\n\
+%s%s conv_pf_quad_to_%s(%s input)\n\
 {\n\
 	%s ret_val;\n\
 	ret_val = (%s) input.x;\n\
 	return ret_val;\n\
-}\n\n", sc->functionDef.name, sc->doubleDef.name, sc->quadDef.name, sc->doubleDef.name, sc->quadDef.name, sc->doubleDef.name, sc->doubleDef.name);
+}\n\n", sc->functionDef.name, sc->doubleDef.name, sc->doubleDef.name, sc->quadDef.name, sc->doubleDef.name, sc->doubleDef.name);
 		PfAppendLine(sc);
 
 		sc->tempLen = sprintf(sc->tempStr, "\

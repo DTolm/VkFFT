@@ -132,8 +132,8 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 	PfAllocateContainerFlexible(sc, &sc->tempFloat, 50);
 	sprintf(name, "loc_0");
 	if (((sc->floatTypeCode % 100) / 10) == 3) {
-		sprintf(sc->tempFloat.data.dd[0].name, "%s.hi.x\n", name);
-		sprintf(sc->tempFloat.data.dd[1].name, "%s.lo.x\n", name);
+		sprintf(sc->tempFloat.data.dd[0].name, "%s.x.x\n", name);
+		sprintf(sc->tempFloat.data.dd[1].name, "%s.x.y\n", name);
 	}
 	else {
 		sprintf(sc->tempFloat.name, "%s.x", sc->temp.name);

@@ -1336,7 +1336,13 @@ static inline void appendDCTIV_even_write(VkFFTSpecializationConstantsLayout* sc
 		}
 		PfMul(sc, &sc->blockInvocationID, &sc->sdataID, &temp_int, 0);
 		temp_double.data.d = pfFPinit("1.0");
-		PfSub(sc, &sc->tempFloat, &temp_double, &sc->blockInvocationID);
+		if (sc->precision == 3) {
+			PfSetToZero(sc, &sc->tempFloat);
+			PfMov(sc, &sc->tempFloat.data.dd[0], &sc->blockInvocationID);
+			PfSub(sc, &sc->tempFloat, &temp_double, &sc->tempFloat);
+		} else {
+			PfSub(sc, &sc->tempFloat, &temp_double, &sc->blockInvocationID);
+		}
 		PfMul(sc, &sc->regIDs[i].data.c[1], &sc->regIDs[i].data.c[1], &sc->tempFloat, 0);
 
 		if (sc->LUT) {
