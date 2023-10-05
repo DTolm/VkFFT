@@ -665,17 +665,43 @@ static inline void PfSetToZero(VkFFTSpecializationConstantsLayout* sc, PfContain
 }
 static inline void PfSetToZeroShared(VkFFTSpecializationConstantsLayout* sc, PfContainer* sdataID) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	if ((((sc->sdataStruct.type % 100) / 10) == 3) && ((sc->sdataStruct.type % 10) > 1)) {
+	if(sc->storeSharedComplexComponentsSeparately){
+		if ((((sc->sdataStruct.type % 100) / 10) == 3) && ((sc->sdataStruct.type % 10) > 1)) {
+			if (sdataID->type > 100) {
+			switch (sdataID->type % 10) {
+			case 1: 
+					sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%s].x = 0;\n\
+sdata[%s].y = 0;\n", sdataID->name, sdataID->name);
+					PfAppendLine(sc);
+					sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%s + %" PRIi64 "].x = 0;\n\
+sdata[%s + %" PRIi64 "].y = 0;\n", sdataID->name, sc->offsetImaginaryShared.data.i, sdataID->name, sc->offsetImaginaryShared.data.i);
+					PfAppendLine(sc);
+					return;
+				}
+			}
+			else {
+				switch (sdataID->type % 10) {
+				case 1:
+					sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%" PRIi64 "].x = 0;\n\
+sdata[%" PRIi64 "].y = 0;\n", sdataID->data.i, sdataID->data.i);
+					PfAppendLine(sc);
+					sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%" PRIi64 "].x = 0;\n\
+sdata[%" PRIi64 "].y = 0;\n", sdataID->data.i + sc->offsetImaginaryShared.data.i, sdataID->data.i + sc->offsetImaginaryShared.data.i);
+					PfAppendLine(sc);
+					return;
+				}
+			}
+		}
 		if (sdataID->type > 100) {
-		switch (sdataID->type % 10) {
-		case 1: 
+			switch (sdataID->type % 10) {
+			case 1: 
 				sc->tempLen = sprintf(sc->tempStr, "\
-sdata[%s].x.x = 0;\n\
-sdata[%s].x.y = 0;\n", sdataID->name, sdataID->name);
-				PfAppendLine(sc);
-				sc->tempLen = sprintf(sc->tempStr, "\
-sdata[%s].y.x = 0;\n\
-sdata[%s].y.y = 0;\n", sdataID->name, sdataID->name);
+sdata[%s] = 0;\n\
+sdata[%s + %" PRIi64 "] = 0;\n", sdataID->name, sdataID->name, sc->offsetImaginaryShared.data.i);
 				PfAppendLine(sc);
 				return;
 			}
@@ -684,35 +710,62 @@ sdata[%s].y.y = 0;\n", sdataID->name, sdataID->name);
 			switch (sdataID->type % 10) {
 			case 1:
 				sc->tempLen = sprintf(sc->tempStr, "\
-sdata[%" PRIi64 "].x.x = 0;\n\
-sdata[%" PRIi64 "].x.y = 0;\n", sdataID->data.i, sdataID->data.i);
-				PfAppendLine(sc);
-				sc->tempLen = sprintf(sc->tempStr, "\
-sdata[%" PRIi64 "].y.x = 0;\n\
-sdata[%" PRIi64 "].y.y = 0;\n", sdataID->data.i, sdataID->data.i);
+sdata[%" PRIi64 "] = 0;\n\
+sdata[%" PRIi64 "] = 0;\n", sdataID->data.i, sdataID->data.i + sc->offsetImaginaryShared.data.i);
 				PfAppendLine(sc);
 				return;
 			}
 		}
-	}
-	if (sdataID->type > 100) {
-		switch (sdataID->type % 10) {
-		case 1: 
-			sc->tempLen = sprintf(sc->tempStr, "\
+	}else{
+		if ((((sc->sdataStruct.type % 100) / 10) == 3) && ((sc->sdataStruct.type % 10) > 1)) {
+			if (sdataID->type > 100) {
+			switch (sdataID->type % 10) {
+			case 1: 
+					sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%s].x.x = 0;\n\
+sdata[%s].x.y = 0;\n", sdataID->name, sdataID->name);
+					PfAppendLine(sc);
+					sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%s].y.x = 0;\n\
+sdata[%s].y.y = 0;\n", sdataID->name, sdataID->name);
+					PfAppendLine(sc);
+					return;
+				}
+			}
+			else {
+				switch (sdataID->type % 10) {
+				case 1:
+					sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%" PRIi64 "].x.x = 0;\n\
+sdata[%" PRIi64 "].x.y = 0;\n", sdataID->data.i, sdataID->data.i);
+					PfAppendLine(sc);
+					sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%" PRIi64 "].y.x = 0;\n\
+sdata[%" PRIi64 "].y.y = 0;\n", sdataID->data.i, sdataID->data.i);
+					PfAppendLine(sc);
+					return;
+				}
+			}
+		}
+		if (sdataID->type > 100) {
+			switch (sdataID->type % 10) {
+			case 1: 
+				sc->tempLen = sprintf(sc->tempStr, "\
 sdata[%s].x = 0;\n\
 sdata[%s].y = 0;\n", sdataID->name, sdataID->name);
-			PfAppendLine(sc);
-			return;
+				PfAppendLine(sc);
+				return;
+			}
 		}
-	}
-	else {
-		switch (sdataID->type % 10) {
-		case 1:
-			sc->tempLen = sprintf(sc->tempStr, "\
+		else {
+			switch (sdataID->type % 10) {
+			case 1:
+				sc->tempLen = sprintf(sc->tempStr, "\
 sdata[%" PRIi64 "].x = 0;\n\
 sdata[%" PRIi64 "].y = 0;\n", sdataID->data.i, sdataID->data.i);
-			PfAppendLine(sc);
-			return;
+				PfAppendLine(sc);
+				return;
+			}
 		}
 	}
 	sc->res = VKFFT_ERROR_MATH_FAILED;

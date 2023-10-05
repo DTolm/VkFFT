@@ -263,9 +263,13 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, pfI
 	
 	sc->tempLen = sprintf(sc->tempStr, "%s3 thread_position_in_threadgroup [[thread_position_in_threadgroup]], ", uintType->name);
 	PfAppendLine(sc);
-	
-	sc->tempLen = sprintf(sc->tempStr, "threadgroup %s* sdata [[threadgroup(0)]], ", vecType->name);
-	PfAppendLine(sc);
+	if (sc->storeSharedComplexComponentsSeparately){
+		sc->tempLen = sprintf(sc->tempStr, "threadgroup %s* sdata [[threadgroup(0)]], ", floatType->name);
+		PfAppendLine(sc);
+	}else{
+		sc->tempLen = sprintf(sc->tempStr, "threadgroup %s* sdata [[threadgroup(0)]], ", vecType->name);
+		PfAppendLine(sc);
+	}
 	switch (type) {
 	case 5:
 	{

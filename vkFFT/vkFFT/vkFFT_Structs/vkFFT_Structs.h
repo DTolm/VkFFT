@@ -777,6 +777,7 @@ typedef struct {
 	PfContainer kernelOffset;
 	PfContainer outputOffset;
 	int reorderFourStep;
+	int storeSharedComplexComponentsSeparately;
 	int pushConstantsStructSize;
 	int performWorkGroupShift[VKFFT_MAX_FFT_DIMENSIONS];
 	int performPostCompilationInputOffset;
@@ -877,6 +878,7 @@ typedef struct {
 	PfContainer LUTId;
 	PfContainer raderIDx;
 	PfContainer raderIDx2;
+	PfContainer offsetImaginaryShared;
 	PfContainer gl_LocalInvocationID_x;
 	PfContainer gl_LocalInvocationID_y;
 	PfContainer gl_LocalInvocationID_z;

@@ -87,9 +87,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axis->specializationConstants.maxTempLength = app->configuration.maxTempLength;
 
 	axis->specializationConstants.double_PI = pfFPinit("3.14159265358979323846264338327950288419716939937510");
+	axis->specializationConstants.storeSharedComplexComponentsSeparately = 0;
+	
 	if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
 		axis->specializationConstants.precision = 3;
 		axis->specializationConstants.complexSize = 32;
+		axis->specializationConstants.storeSharedComplexComponentsSeparately = 1;
 	}
 	else {
 		if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
@@ -107,7 +110,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			}
 		}
 	}
-
+	
 	pfUINT allowedSharedMemory = app->configuration.sharedMemorySize;
 	pfUINT allowedSharedMemoryPow2 = app->configuration.sharedMemorySizePow2;
 

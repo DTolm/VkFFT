@@ -27,82 +27,148 @@
 static inline void appendSharedToRegisters(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* sdataID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	sc->tempLen = sprintf(sc->tempStr, "\
+	if (sc->storeSharedComplexComponentsSeparately){
+		sc->tempLen = sprintf(sc->tempStr, "\
+%s = sdata[%s];\n", out->data.c[0].name, sdataID->name);
+		PfAppendLine(sc);
+		sc->tempLen = sprintf(sc->tempStr, "\
+%s = sdata[%s + %" PRIi64 "];\n", out->data.c[1].name, sdataID->name, sc->offsetImaginaryShared.data.i);
+		PfAppendLine(sc);
+	}else{
+		sc->tempLen = sprintf(sc->tempStr, "\
 %s = sdata[%s];\n", out->name, sdataID->name);
-	PfAppendLine(sc);
+		PfAppendLine(sc);
+	}
 	return;
 }
 static inline void appendSharedToRegisters_x_x(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* sdataID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	sc->tempLen = sprintf(sc->tempStr, "\
+	if (sc->storeSharedComplexComponentsSeparately){
+		sc->tempLen = sprintf(sc->tempStr, "\
+%s = sdata[%s];\n", out->data.c[0].name, sdataID->name);
+		PfAppendLine(sc);
+	}else{
+		sc->tempLen = sprintf(sc->tempStr, "\
 %s = sdata[%s].x;\n", out->data.c[0].name, sdataID->name);
-	PfAppendLine(sc);
+		PfAppendLine(sc);
+	}
 	return;
 }
 static inline void appendSharedToRegisters_x_y(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* sdataID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	sc->tempLen = sprintf(sc->tempStr, "\
+	if (sc->storeSharedComplexComponentsSeparately){
+		sc->tempLen = sprintf(sc->tempStr, "\
+%s = sdata[%s + %" PRIi64 "];\n", out->data.c[0].name, sdataID->name, sc->offsetImaginaryShared.data.i);
+		PfAppendLine(sc);
+	}else{
+		sc->tempLen = sprintf(sc->tempStr, "\
 %s = sdata[%s].y;\n", out->data.c[0].name, sdataID->name);
-	PfAppendLine(sc);
+		PfAppendLine(sc);
+	}
 	return;
 }
 static inline void appendSharedToRegisters_y_x(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* sdataID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	sc->tempLen = sprintf(sc->tempStr, "\
+	if (sc->storeSharedComplexComponentsSeparately){
+		sc->tempLen = sprintf(sc->tempStr, "\
+%s = sdata[%s];\n", out->data.c[1].name, sdataID->name);
+		PfAppendLine(sc);
+	}else{
+		sc->tempLen = sprintf(sc->tempStr, "\
 %s = sdata[%s].x;\n", out->data.c[1].name, sdataID->name);
-	PfAppendLine(sc);
+		PfAppendLine(sc);
+	}
 	return;
 }
 static inline void appendSharedToRegisters_y_y(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* sdataID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	sc->tempLen = sprintf(sc->tempStr, "\
+	if (sc->storeSharedComplexComponentsSeparately){
+		sc->tempLen = sprintf(sc->tempStr, "\
+%s = sdata[%s + %" PRIi64 "];\n", out->data.c[1].name, sdataID->name, sc->offsetImaginaryShared.data.i);
+		PfAppendLine(sc);
+	}else{
+		sc->tempLen = sprintf(sc->tempStr, "\
 %s = sdata[%s].y;\n", out->data.c[1].name, sdataID->name);
-	PfAppendLine(sc);
+		PfAppendLine(sc);
+	}
 	return;
 }
 
 static inline void appendRegistersToShared(VkFFTSpecializationConstantsLayout* sc, PfContainer* sdataID, PfContainer* out)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	sc->tempLen = sprintf(sc->tempStr, "\
+	if (sc->storeSharedComplexComponentsSeparately){
+		sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%s] = %s;\n", sdataID->name, out->data.c[0].name);
+		PfAppendLine(sc);
+		sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%s + %" PRIi64 "] = %s;\n", sdataID->name, sc->offsetImaginaryShared.data.i, out->data.c[1].name);
+		PfAppendLine(sc);
+	}else{
+		sc->tempLen = sprintf(sc->tempStr, "\
 sdata[%s] = %s;\n", sdataID->name, out->name);
-	PfAppendLine(sc);
+		PfAppendLine(sc);
+	}
 	return;
 }
 static inline void appendRegistersToShared_x_x(VkFFTSpecializationConstantsLayout* sc, PfContainer* sdataID, PfContainer* out)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	sc->tempLen = sprintf(sc->tempStr, "\
+	if (sc->storeSharedComplexComponentsSeparately){
+		sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%s] = %s;\n", sdataID->name, out->data.c[0].name);
+		PfAppendLine(sc);
+	}else{
+		sc->tempLen = sprintf(sc->tempStr, "\
 sdata[%s].x = %s;\n", sdataID->name, out->data.c[0].name);
-	PfAppendLine(sc);
+		PfAppendLine(sc);
+	}
 	return;
 }
 static inline void appendRegistersToShared_x_y(VkFFTSpecializationConstantsLayout* sc, PfContainer* sdataID, PfContainer* out)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	sc->tempLen = sprintf(sc->tempStr, "\
+	if (sc->storeSharedComplexComponentsSeparately){
+		sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%s] = %s;\n", sdataID->name, out->data.c[1].name);
+		PfAppendLine(sc);
+	}else{
+		sc->tempLen = sprintf(sc->tempStr, "\
 sdata[%s].x = %s;\n", sdataID->name, out->data.c[1].name);
-	PfAppendLine(sc);
+		PfAppendLine(sc);
+	}
 	return;
 }
 static inline void appendRegistersToShared_y_y(VkFFTSpecializationConstantsLayout* sc, PfContainer* sdataID, PfContainer* out)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	sc->tempLen = sprintf(sc->tempStr, "\
+	if (sc->storeSharedComplexComponentsSeparately){
+		sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%s + %" PRIi64 "] = %s;\n", sdataID->name, sc->offsetImaginaryShared.data.i, out->data.c[1].name);
+		PfAppendLine(sc);
+	}else{
+		sc->tempLen = sprintf(sc->tempStr, "\
 sdata[%s].y = %s;\n", sdataID->name, out->data.c[1].name);
-	PfAppendLine(sc);
+		PfAppendLine(sc);
+	}
 	return;
 }
 static inline void appendRegistersToShared_y_x(VkFFTSpecializationConstantsLayout* sc, PfContainer* sdataID, PfContainer* out)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	sc->tempLen = sprintf(sc->tempStr, "\
+	if (sc->storeSharedComplexComponentsSeparately){
+		sc->tempLen = sprintf(sc->tempStr, "\
+sdata[%s + %" PRIi64 "] = %s;\n", sdataID->name, sc->offsetImaginaryShared.data.i, out->data.c[0].name);
+		PfAppendLine(sc);
+	}else{
+		sc->tempLen = sprintf(sc->tempStr, "\
 sdata[%s].y = %s;\n", sdataID->name, out->data.c[0].name);
-	PfAppendLine(sc);
+		PfAppendLine(sc);
+	}
 	return;
 }
 
@@ -297,8 +363,13 @@ static inline void appendRegistersToGlobal_y(VkFFTSpecializationConstantsLayout*
 static inline void appendGlobalToShared(VkFFTSpecializationConstantsLayout* sc, PfContainer* sdataID, PfContainer* bufferName, PfContainer* inoutID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
-	sc->tempLen = sprintf(sc->tempStr, "sdata[%s]", sdataID->name);
-	PfAppendLine(sc);
+	if (sc->storeSharedComplexComponentsSeparately){
+		sc->tempLen = sprintf(sc->tempStr, "%s", sc->temp.name);
+		PfAppendLine(sc);
+	}else{
+		sc->tempLen = sprintf(sc->tempStr, "sdata[%s]", sdataID->name);
+		PfAppendLine(sc);
+	}
 	sc->tempLen = sprintf(sc->tempStr, " = ");
 	PfAppendLine(sc);
 	PfAppendConversionStart(sc, &sc->sdataStruct, bufferName);
@@ -318,11 +389,18 @@ static inline void appendGlobalToShared(VkFFTSpecializationConstantsLayout* sc, 
 	PfAppendConversionEnd(sc, &sc->sdataStruct, bufferName);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
 	PfAppendLine(sc);
+
+	if (sc->storeSharedComplexComponentsSeparately){
+		appendRegistersToShared(sc, sdataID, &sc->temp);
+	}
 	return;
 }
 static inline void appendSharedToGlobal(VkFFTSpecializationConstantsLayout* sc, PfContainer* bufferName, PfContainer* inoutID, PfContainer* sdataID)
 {
 	if (sc->res != VKFFT_SUCCESS) return;
+	if (sc->storeSharedComplexComponentsSeparately){
+		appendSharedToRegisters(sc, &sc->temp, sdataID);
+	}
 	if ((!(strcmp(bufferName->name, sc->inputsStruct.name))) && (sc->inputBufferBlockNum != 1)) {
 		sc->tempLen = sprintf(sc->tempStr, "inputBlocks[%s / %" PRIu64 "].%s[%s %% %" PRIu64 "]", inoutID->name, sc->inputBufferBlockSize / sc->complexSize, bufferName->name, inoutID->name, sc->inputBufferBlockSize / sc->complexSize);
 	}
@@ -339,8 +417,13 @@ static inline void appendSharedToGlobal(VkFFTSpecializationConstantsLayout* sc, 
 	sc->tempLen = sprintf(sc->tempStr, " = ");
 	PfAppendLine(sc);
 	PfAppendConversionStart(sc, bufferName, &sc->sdataStruct);
-	sc->tempLen = sprintf(sc->tempStr, "sdata[%s]", sdataID->name);
-	PfAppendLine(sc);
+	if (sc->storeSharedComplexComponentsSeparately){
+		sc->tempLen = sprintf(sc->tempStr, "%s", sc->temp.name);
+		PfAppendLine(sc);
+	}else{
+		sc->tempLen = sprintf(sc->tempStr, "sdata[%s]", sdataID->name);
+		PfAppendLine(sc);
+	}
 	PfAppendConversionEnd(sc, bufferName, &sc->sdataStruct);
 	sc->tempLen = sprintf(sc->tempStr, ";\n");
 	PfAppendLine(sc);
