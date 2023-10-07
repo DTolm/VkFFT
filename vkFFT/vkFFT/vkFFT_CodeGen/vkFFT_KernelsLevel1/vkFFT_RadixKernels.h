@@ -661,44 +661,40 @@ temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &
 		break;
 	}
 	case 7: {
-		/*if (sc->LUT) {
-			&sc->tempLen = sprintf(&sc->tempStr, "void radix5(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, inout %s temp_4, %s LUTId) {\n", vecType, vecType, vecType, vecType, vecType, uintType);
+		PfContainer tf_x[6] = VKFFT_ZERO_INIT;
+		PfContainer tf_y[6] = VKFFT_ZERO_INIT;
+		for (pfINT i = 0; i < 6; i++){
+			tf_x[i].type = 22;
+			tf_y[i].type = 22;
 		}
-		else {
-			&sc->tempLen = sprintf(&sc->tempStr, "void radix5(inout %s temp_0, inout %s temp_1, inout %s temp_2, inout %s temp_3, inout %s temp_4, %s angle) {\n", vecType, vecType, vecType, vecType, vecType, floatType);
-		}*/
-		PfContainer tf[8] = VKFFT_ZERO_INIT;
-		for (pfINT i = 0; i < 8; i++){
-			tf[i].type = 22;
-		}
-		//PfAppendLine(sc, "	{\n");
-		tf[0].data.d = pfFPinit("-1.16666666666666651863693004997913");
-		tf[1].data.d = pfFPinit("0.79015646852540022404554065360571");
-		tf[2].data.d = pfFPinit("0.05585426728964774240049351305970");
-		tf[3].data.d = pfFPinit("0.73430220123575240531721419756650");
+		
+		tf_x[0].data.d = pfFPinit("0.6234898018587335305250048840042398106322747308964021053655");
+		tf_x[1].data.d = pfFPinit("-0.222520933956314404288902564496794759466355568764544955311");
+		tf_x[2].data.d = pfFPinit("-0.900968867902419126236102319507445051165919162131857150053");
+		tf_x[3].data.d = tf_x[0].data.d;
+		tf_x[4].data.d = tf_x[1].data.d;
+		tf_x[5].data.d = tf_x[2].data.d;
 		if (stageAngle < 0) {
-			tf[4].data.d = pfFPinit("0.44095855184409837868031445395900");
-			tf[5].data.d = pfFPinit("0.34087293062393136944265847887436");
-			tf[6].data.d = pfFPinit("-0.53396936033772524066165487965918");
-			tf[7].data.d = pfFPinit("0.87484229096165666561546458979137");
+			tf_y[0].data.d = pfFPinit("-0.7818314824680298087084445266740577502323345187086875289806");
+			tf_y[1].data.d = pfFPinit("0.9749279121818236070181316829939312172327858006199974376480");
+			tf_y[2].data.d = pfFPinit("0.4338837391175581204757683328483587546099907277874598764445");
+			tf_y[3].data.d = -tf_y[0].data.d;
+			tf_y[4].data.d = -tf_y[1].data.d;
+			tf_y[5].data.d = -tf_y[2].data.d;
 		}
 		else {
-			tf[4].data.d = pfFPinit("-0.44095855184409837868031445395900");
-			tf[5].data.d = pfFPinit("-0.34087293062393136944265847887436");
-			tf[6].data.d = pfFPinit("0.53396936033772524066165487965918");
-			tf[7].data.d = pfFPinit("-0.87484229096165666561546458979137");
+			tf_y[0].data.d = pfFPinit("0.7818314824680298087084445266740577502323345187086875289806");
+			tf_y[1].data.d = pfFPinit("-0.9749279121818236070181316829939312172327858006199974376480");
+			tf_y[2].data.d = pfFPinit("-0.4338837391175581204757683328483587546099907277874598764445");
+			tf_y[3].data.d = -tf_y[0].data.d;
+			tf_y[4].data.d = -tf_y[1].data.d;
+			tf_y[5].data.d = -tf_y[2].data.d;
 		}
-		/*for (pfUINT i = 0; i < 7; i++) {
-			&sc->locID[i], (char*)malloc(sizeof(char) * 50);
-			sprintf(&sc->locID[i], loc_%" PRIu64 "", i);
-			&sc->tempLen = sprintf(&sc->tempStr, "	%s %s;\n", vecType, &sc->locID[i]);
-			
-			}*/
 		for (pfUINT i = radix - 1; i > 0; i--) {
 			if (stageSize == 1) {
 				temp_complex.data.c[0].data.d = pfFPinit("1.0");
 				temp_complex.data.c[1].data.d = pfFPinit("0.0");
-				PfMov(sc, &sc->w, &temp_complex);	
+			PfMov(sc, &sc->w, &temp_complex);	
 				
 			}
 			else {
@@ -738,7 +734,7 @@ temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &
 						}
 						if (stageAngle < 0) {
 							PfConjugate(sc, &sc->w, &sc->w);
-					
+							
 						}
 					}
 					else {
@@ -750,169 +746,57 @@ temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &
 			}
 			PfMul(sc, &sc->locID[i], &regID[i], &sc->w, 0);
 			
-			/*&sc->tempLen = sprintf(&sc->tempStr, "\
-loc_%" PRIu64 ".x = temp%s.x * w.x - temp%s.y * w.y;\n\
-loc_%" PRIu64 ".y = temp%s.y * w.x + temp%s.x * w.y;\n", i, &regID[i], &regID[i], i, &regID[i], &regID[i]);*/
 		}
 		PfMov(sc, &sc->locID[0], &regID[0]);
 		
-		PfAdd(sc, &regID[0], &sc->locID[1], &sc->locID[6]);
+		pfUINT permute[7] = { 0, 1, 3, 2, 6, 4, 5 };
+		PfPermute(sc, permute, 7, 0, 0, &sc->w);
 		
-		PfSub(sc, &regID[1], &sc->locID[1], &sc->locID[6]);
-		
-		PfAdd(sc, &regID[2], &sc->locID[2], &sc->locID[5]);
-		
-		PfSub(sc, &regID[3], &sc->locID[2], &sc->locID[5]);
-		
-		PfAdd(sc, &regID[4], &sc->locID[4], &sc->locID[3]);
-		
-		PfSub(sc, &regID[5], &sc->locID[4], &sc->locID[3]);
-		
-		/*&sc->tempLen = sprintf(&sc->tempStr, "\
-loc_0 = temp%s;\n\
-temp%s = loc_1 + loc_6;\n\
-temp%s = loc_1 - loc_6;\n\
-temp%s = loc_2 + loc_5;\n\
-temp%s = loc_2 - loc_5;\n\
-temp%s = loc_4 + loc_3;\n\
-temp%s = loc_4 - loc_3;\n", &regID[0], &regID[0], &regID[1], &regID[2], &regID[3], &regID[4], &regID[5]);*/
-		PfAdd(sc, &sc->locID[5], &regID[1], &regID[3]);
-		
-		PfAdd(sc, &sc->locID[5], &sc->locID[5], &regID[5]);
-		
-		PfAdd(sc, &sc->locID[1], &regID[0], &regID[2]);
-		
-		PfAdd(sc, &sc->locID[1], &sc->locID[1], &regID[4]);
-		
-		PfAdd(sc, &sc->locID[0], &sc->locID[0], &sc->locID[1]);
-		
-		/*&sc->tempLen = sprintf(&sc->tempStr, "\
-loc_5 = temp%s + temp%s + temp%s;\n\
-loc_1 = temp%s + temp%s + temp%s;\n\
-loc_0 += loc_1;\n", &regID[1], &regID[3], &regID[5], &regID[0], &regID[2], &regID[4]);*/
-		PfSub(sc, &sc->locID[2], &regID[0], &regID[4]);
-		
-		PfSub(sc, &sc->locID[3], &regID[4], &regID[2]);
-		
-		PfSub(sc, &sc->locID[4], &regID[2], &regID[0]);
-		
-		/*&sc->tempLen = sprintf(&sc->tempStr, "\
-loc_2 = temp%s - temp%s;\n\
-loc_3 = temp%s - temp%s;\n\
-loc_4 = temp%s - temp%s;\n", &regID[0], &regID[4], &regID[4], &regID[2], &regID[2], &regID[0]);*/
-		PfSub(sc, &regID[0], &regID[1], &regID[5]);
-		
-		PfSub(sc, &regID[2], &regID[5], &regID[3]);
-		
-		PfSub(sc, &regID[4], &regID[3], &regID[1]);
-		
-		/*&sc->tempLen = sprintf(&sc->tempStr, "\
-temp%s = temp%s - temp%s;\n\
-temp%s = temp%s - temp%s;\n\
-temp%s = temp%s - temp%s;\n", &regID[0], &regID[1], &regID[5], &regID[2], &regID[5], &regID[3], &regID[4], &regID[3], &regID[1]);*/
-
-		PfMul(sc, &sc->locID[1], &sc->locID[1], &tf[0], &regID[5]);
-		
-		PfMul(sc, &sc->locID[2], &sc->locID[2], &tf[1], &regID[5]);
-		
-		PfMul(sc, &sc->locID[3], &sc->locID[3], &tf[2], &regID[5]);
-		
-		PfMul(sc, &sc->locID[4], &sc->locID[4], &tf[3], &regID[5]);
-		
-		PfMul(sc, &sc->locID[5], &sc->locID[5], &tf[4], &regID[5]);
-		
-		PfMul(sc, &regID[0], &regID[0], &tf[5], &regID[5]);
-		
-		PfMul(sc, &regID[2], &regID[2], &tf[6], &regID[5]);
-		
-		PfMul(sc, &regID[4], &regID[4], &tf[7], &regID[5]);
-		
-		/*&sc->tempLen = sprintf(&sc->tempStr, "\
-loc_1 *= -1.16666666666666651863693004997913;\n\
-loc_2 *= 0.79015646852540022404554065360571;\n\
-loc_3 *= 0.05585426728964774240049351305970;\n\
-loc_4 *= 0.73430220123575240531721419756650;\n\
-loc_5 *= 0.44095855184409837868031445395900;\n\
-temp%s *= 0.34087293062393136944265847887436;\n\
-temp%s *= -0.53396936033772524066165487965918;\n\
-temp%s *= 0.87484229096165666561546458979137;\n", &regID[0], &regID[2], &regID[4]);*/
-
-		PfSub(sc, &regID[5], &regID[4], &regID[2]);
-		
-		PfAdd(sc, &regID[6], &regID[4], &regID[0]);
-		PfMovNeg(sc, &regID[6], &regID[6]);
-		
-		PfAdd(sc, &regID[4], &regID[0], &regID[2]);
-		
-		/*&sc->tempLen = sprintf(&sc->tempStr, "\
-temp%s = temp%s - temp%s;\n\
-temp%s = - temp%s - temp%s;\n\
-temp%s = temp%s + temp%s;\n", &regID[5], &regID[4], &regID[2], &regID[6], &regID[4], &regID[0], &regID[4], &regID[0], &regID[2]);*/
-		PfAdd(sc, &regID[0], &sc->locID[0], &sc->locID[1]);
-		
-		PfAdd(sc, &regID[1], &sc->locID[2], &sc->locID[3]);
-		
-		PfSub(sc, &regID[2], &sc->locID[4], &sc->locID[3]);
-		
-		PfAdd(sc, &regID[3], &sc->locID[2], &sc->locID[4]);
-		PfMovNeg(sc, &regID[3], &regID[3]);
-		/*&sc->tempLen = sprintf(&sc->tempStr, "\
-temp%s = loc_0 + loc_1;\n\
-temp%s = loc_2 + loc_3;\n\
-temp%s = loc_4 - loc_3;\n\
-temp%s = - loc_2 - loc_4;\n", &regID[0], &regID[1], &regID[2], &regID[3]);*/
-		PfAdd(sc, &sc->locID[1], &regID[0], &regID[1]);
-		
-		PfAdd(sc, &sc->locID[2], &regID[0], &regID[2]);
-		
-		PfAdd(sc, &sc->locID[3], &regID[0], &regID[3]);
-		
-		PfAdd(sc, &sc->locID[4], &regID[4], &sc->locID[5]);
-		
-		PfAdd(sc, &sc->locID[6], &regID[6], &sc->locID[5]);
-		
-		PfAdd(sc, &sc->locID[5], &sc->locID[5], &regID[5]);
-		
-		PfMov(sc, &regID[0], &sc->locID[0]);
-		
-		/*&sc->tempLen = sprintf(&sc->tempStr, "\
-loc_1 = temp%s + temp%s;\n\
-loc_2 = temp%s + temp%s;\n\
-loc_3 = temp%s + temp%s;\n\
-loc_4 = temp%s + loc_5;\n\
-loc_6 = temp%s + loc_5;\n\
-loc_5 += temp%s;\n\
-temp%s = loc_0;\n", &regID[0], &regID[1], &regID[0], &regID[2], &regID[0], &regID[3], &regID[4], &regID[6], &regID[5], &regID[0]);*/
-		PfShuffleComplexInv(sc, &regID[1], &sc->locID[1], &sc->locID[4], &sc->locID[0]);
-		
-		PfShuffleComplexInv(sc, &regID[2], &sc->locID[3], &sc->locID[6], &sc->locID[0]);
-		
-		PfShuffleComplex(sc, &regID[3], &sc->locID[2], &sc->locID[5], &sc->locID[0]);
-		
-		PfShuffleComplexInv(sc, &regID[4], &sc->locID[2], &sc->locID[5], &sc->locID[0]);
-		
-		PfShuffleComplex(sc, &regID[5], &sc->locID[3], &sc->locID[6], &sc->locID[0]);
-		
-		PfShuffleComplex(sc, &regID[6], &sc->locID[1], &sc->locID[4], &sc->locID[0]);
-		
-
-		/*&sc->tempLen = sprintf(&sc->tempStr, "\
-temp%s.x = loc_1.x + loc_4.y; \n\
-temp%s.y = loc_1.y - loc_4.x; \n\
-temp%s.x = loc_3.x + loc_6.y; \n\
-temp%s.y = loc_3.y - loc_6.x; \n\
-temp%s.x = loc_2.x - loc_5.y; \n\
-temp%s.y = loc_2.y + loc_5.x; \n\
-temp%s.x = loc_2.x + loc_5.y; \n\
-temp%s.y = loc_2.y - loc_5.x; \n\
-temp%s.x = loc_3.x - loc_6.y; \n\
-temp%s.y = loc_3.y + loc_6.x; \n\
-temp%s.x = loc_1.x - loc_4.y; \n\
-temp%s.y = loc_1.y + loc_4.x; \n", &regID[1], &regID[1], &regID[2], &regID[2], &regID[3], &regID[3], &regID[4], &regID[4], &regID[5], &regID[5], &regID[6], &regID[6]);
-		PfAppendLine(sc, "	}\n");*/
-		/*for (pfUINT i = 0; i < 7; i++) {
-			free(&sc->locID[i]);
-		}*/
+		for (pfUINT i = 0; i < 3; i++) {
+			PfSub(sc, &regID[i + 4].data.c[0], &sc->locID[i + 1].data.c[0], &sc->locID[i + 4].data.c[0]);
+			
+			PfAdd(sc, &regID[i + 1].data.c[0], &sc->locID[i + 1].data.c[0], &sc->locID[i + 4].data.c[0]);
+			
+			PfAdd(sc, &regID[i + 4].data.c[1], &sc->locID[i + 1].data.c[1], &sc->locID[i + 4].data.c[1]);
+			
+			PfSub(sc, &regID[i + 1].data.c[1], &sc->locID[i + 1].data.c[1], &sc->locID[i + 4].data.c[1]);
+			
+		}
+		for (pfUINT i = 0; i < 3; i++) {
+			PfAdd(sc, &regID[0].data.c[0], &regID[0].data.c[0], &regID[i + 1].data.c[0]);
+			
+			PfAdd(sc, &regID[0].data.c[1], &regID[0].data.c[1], &regID[i + 4].data.c[1]);
+			
+		}
+		for (pfUINT i = 1; i < 4; i++) {
+			PfMov(sc, &sc->locID[i], &sc->locID[0]);
+			
+			
+		}
+		for (pfUINT i = 4; i < 7; i++) {
+			PfSetToZero(sc, &sc->locID[i]);
+		}
+		for (pfUINT i = 0; i < 3; i++) {
+			for (pfUINT j = 0; j < 3; j++) {
+				pfUINT id = ((6 - i) + j) % 6;
+				PfFMA3_const_w(sc, &sc->locID[j + 1], &sc->locID[j + 4], &regID[i + 1], &tf_x[id], &tf_y[id], &regID[i + 4], &sc->w, &sc->locID[0]);
+				
+			}
+		}
+		for (pfUINT i = 1; i < 4; i++) {
+			PfSub(sc, &regID[i].data.c[0], &sc->locID[i].data.c[0], &sc->locID[i + 3].data.c[0]);
+			
+			PfAdd(sc, &regID[i].data.c[1], &sc->locID[i].data.c[1], &sc->locID[i + 3].data.c[1]);
+			
+		}
+		for (pfUINT i = 1; i < 4; i++) {
+			PfAdd(sc, &regID[i + 3].data.c[0], &sc->locID[i].data.c[0], &sc->locID[i + 3].data.c[0]);
+			
+			PfSub(sc, &regID[i + 3].data.c[1], &sc->locID[i].data.c[1], &sc->locID[i + 3].data.c[1]);
+			
+		}
+		pfUINT permute2[7] = { 0, 1, 5, 6, 3, 2, 4 };
+		PfPermute(sc, permute2, 7, 1, regID, &sc->w);
 		break;
 	}
 	case 8: {
@@ -1560,39 +1444,39 @@ temp%s = temp;\n\
 			tf_y[i].type = 22;
 		}
 		
-		tf_x[0].data.d = pfFPinit("8.4125353283118116886306336876800e-01");
-		tf_x[1].data.d = pfFPinit("-9.5949297361449738990105129410324e-01");
-		tf_x[2].data.d = pfFPinit("-1.4231483827328514046015907335008e-01");
-		tf_x[3].data.d = pfFPinit("-6.5486073394528506407246543075118e-01");
-		tf_x[4].data.d = pfFPinit("4.1541501300188642567903264668505e-01");
-		tf_x[5].data.d = pfFPinit("8.4125353283118116886306336876800e-01");
-		tf_x[6].data.d = pfFPinit("-9.5949297361449738990105129410324e-01");
-		tf_x[7].data.d = pfFPinit("-1.4231483827328514046015907335008e-01");
-		tf_x[8].data.d = pfFPinit("-6.5486073394528506407246543075118e-01");
-		tf_x[9].data.d = pfFPinit("4.1541501300188642567903264668505e-01");
+		tf_x[0].data.d = pfFPinit("0.8412535328311811688618116489193677175132924984205378986426");
+		tf_x[1].data.d = pfFPinit("-0.959492973614497389890368057066327699062454848422161955044");
+		tf_x[2].data.d = pfFPinit("-0.142314838273285140443792668616369668791051361125984328418");
+		tf_x[3].data.d = pfFPinit("-0.654860733945285064056925072466293553183791199336928427606");
+		tf_x[4].data.d = pfFPinit("0.4154150130018864255292741492296232035240049104645368124262");
+		tf_x[5].data.d = tf_x[0].data.d;
+		tf_x[6].data.d = tf_x[1].data.d;
+		tf_x[7].data.d = tf_x[2].data.d;
+		tf_x[8].data.d = tf_x[3].data.d;
+		tf_x[9].data.d = tf_x[4].data.d;
 		if (stageAngle < 0) {
-			tf_y[0].data.d = pfFPinit("-5.4064081745559758210122047739077e-01");
-			tf_y[1].data.d = pfFPinit("2.8173255684142969773359373164556e-01");
-			tf_y[2].data.d = pfFPinit("-9.8982144188093273235937163967435e-01");
-			tf_y[3].data.d = pfFPinit("7.5574957435425828375808593451168e-01");
-			tf_y[4].data.d = pfFPinit("9.0963199535451837136413102968824e-01");
-			tf_y[5].data.d = pfFPinit("5.4064081745559758210122047739077e-01");
-			tf_y[6].data.d = pfFPinit("-2.8173255684142969773359373164556e-01");
-			tf_y[7].data.d = pfFPinit("9.8982144188093273235937163967435e-01");
-			tf_y[8].data.d = pfFPinit("-7.5574957435425828375808593451168e-01");
-			tf_y[9].data.d = pfFPinit("-9.0963199535451837136413102968824e-01");
+			tf_y[0].data.d = pfFPinit("-0.5406408174555975821076359543186916954317706078981138400357");
+			tf_y[1].data.d = pfFPinit("0.2817325568414296977114179153466168990357778989732668718310");
+			tf_y[2].data.d = pfFPinit("-0.9898214418809327323760920377767187873765193719487166878386");
+			tf_y[3].data.d = pfFPinit("0.7557495743542582837740358439723444201797174451692235695799");
+			tf_y[4].data.d = pfFPinit("0.9096319953545183714117153830790284600602410511946441707561");
+			tf_y[5].data.d = -tf_y[0].data.d;
+			tf_y[6].data.d = -tf_y[1].data.d;
+			tf_y[7].data.d = -tf_y[2].data.d;
+			tf_y[8].data.d = -tf_y[3].data.d;
+			tf_y[9].data.d = -tf_y[4].data.d;
 		}
 		else {
-			tf_y[0].data.d = pfFPinit("5.4064081745559758210122047739077e-01");
-			tf_y[1].data.d = pfFPinit("-2.8173255684142969773359373164556e-01");
-			tf_y[2].data.d = pfFPinit("9.8982144188093273235937163967435e-01");
-			tf_y[3].data.d = pfFPinit("-7.5574957435425828375808593451168e-01");
-			tf_y[4].data.d = pfFPinit("-9.0963199535451837136413102968824e-01");
-			tf_y[5].data.d = pfFPinit("-5.4064081745559758210122047739077e-01");
-			tf_y[6].data.d = pfFPinit("2.8173255684142969773359373164556e-01");
-			tf_y[7].data.d = pfFPinit("-9.8982144188093273235937163967435e-01");
-			tf_y[8].data.d = pfFPinit("7.5574957435425828375808593451168e-01");
-			tf_y[9].data.d = pfFPinit("9.0963199535451837136413102968824e-01");
+			tf_y[0].data.d = pfFPinit("0.5406408174555975821076359543186916954317706078981138400357");
+			tf_y[1].data.d = pfFPinit("-0.2817325568414296977114179153466168990357778989732668718310");
+			tf_y[2].data.d = pfFPinit("0.9898214418809327323760920377767187873765193719487166878386");
+			tf_y[3].data.d = pfFPinit("-0.7557495743542582837740358439723444201797174451692235695799");
+			tf_y[4].data.d = pfFPinit("-0.9096319953545183714117153830790284600602410511946441707561");
+			tf_y[5].data.d = -tf_y[0].data.d;
+			tf_y[6].data.d = -tf_y[1].data.d;
+			tf_y[7].data.d = -tf_y[2].data.d;
+			tf_y[8].data.d = -tf_y[3].data.d;
+			tf_y[9].data.d = -tf_y[4].data.d;
 		}
 		for (pfUINT i = radix - 1; i > 0; i--) {
 			if (stageSize == 1) {
@@ -1884,45 +1768,45 @@ temp%s = temp;\n\
 			tf_y[i].type = 22;
 		}
 		
-		tf_x[0].data.d = pfFPinit("8.8545602565320989587194927539215e-01");
-		tf_x[1].data.d = pfFPinit("-9.7094181742605202719252621701429e-01");
-		tf_x[2].data.d = pfFPinit("1.2053668025532305345994812592614e-01");
-		tf_x[3].data.d = pfFPinit("-7.4851074817110109868448578063216e-01");
-		tf_x[4].data.d = pfFPinit("-3.5460488704253562600274447824678e-01");
-		tf_x[5].data.d = pfFPinit("5.6806474673115580237845248512407e-01");
-		tf_x[6].data.d = pfFPinit("8.8545602565320989608878970988926e-01");
-		tf_x[7].data.d = pfFPinit("-9.7094181742605202719252621701429e-01");
-		tf_x[8].data.d = pfFPinit("1.2053668025532305324988395500707e-01");
-		tf_x[9].data.d = pfFPinit("-7.4851074817110109863027567200788e-01");
-		tf_x[10].data.d = pfFPinit("-3.5460488704253562600274447824678e-01");
-		tf_x[11].data.d = pfFPinit("5.6806474673115580248687270237262e-01");
+		tf_x[0].data.d = pfFPinit("0.8854560256532098959003755220150988786054984163475349018024");
+		tf_x[1].data.d = pfFPinit("-0.970941817426052027156982276293789227249865105739003588587");
+		tf_x[2].data.d = pfFPinit("0.1205366802553230533490676874525435822736811592275714047969");
+		tf_x[3].data.d = pfFPinit("-0.748510748171101098634630599701351383846451590175826134069");
+		tf_x[4].data.d = pfFPinit("-0.354604887042535625969637892600018474316355432113794753421");
+		tf_x[5].data.d = pfFPinit("0.5680647467311558025118075591275166245334925524535181694796");
+		tf_x[6].data.d = tf_x[0].data.d;
+		tf_x[7].data.d = tf_x[1].data.d;
+		tf_x[8].data.d = tf_x[2].data.d;
+		tf_x[9].data.d = tf_x[3].data.d;
+		tf_x[10].data.d = tf_x[4].data.d;
+		tf_x[11].data.d = tf_x[5].data.d;
 		if (stageAngle < 0) {
-			tf_y[0].data.d = pfFPinit("-4.6472317204376854566250792943904e-01");
-			tf_y[1].data.d = pfFPinit("2.3931566428755776706062234626682e-01");
-			tf_y[2].data.d = pfFPinit("9.9270887409805399278096144088934e-01");
-			tf_y[3].data.d = pfFPinit("-6.6312265824079520232193704631918e-01");
-			tf_y[4].data.d = pfFPinit("9.3501624268541482344965776185575e-01");
-			tf_y[5].data.d = pfFPinit("8.2298386589365639468820687318917e-01");
-			tf_y[6].data.d = pfFPinit("4.6472317204376854531014222338126e-01");
-			tf_y[7].data.d = pfFPinit("-2.3931566428755776695220212901827e-01");
-			tf_y[8].data.d = pfFPinit("-9.9270887409805399283517154951362e-01");
-			tf_y[9].data.d = pfFPinit("6.6312265824079520243035726356773e-01");
-			tf_y[10].data.d = pfFPinit("-9.3501624268541482344965776185575e-01");
-			tf_y[11].data.d = pfFPinit("-8.2298386589365639457978665594062e-01");
+			tf_y[0].data.d = pfFPinit("-0.4647231720437685456560153351331047775577358653324689769540");
+			tf_y[1].data.d = pfFPinit("0.2393156642875577671487537262602118952031730227383060133551");
+			tf_y[2].data.d = pfFPinit("0.9927088740980539928007516494925201793436756329701668557709");
+			tf_y[3].data.d = pfFPinit("-0.6631226582407952023767854926667662795247641070441061881807");
+			tf_y[4].data.d = pfFPinit("0.9350162426854148234397845998378307290505174695784318706963");
+			tf_y[5].data.d = pfFPinit("0.8229838658936563945796174234393819906550676930875738058270");
+			tf_y[6].data.d = -tf_y[0].data.d;
+			tf_y[7].data.d = -tf_y[1].data.d;
+			tf_y[8].data.d = -tf_y[2].data.d;
+			tf_y[9].data.d = -tf_y[3].data.d;
+			tf_y[10].data.d = -tf_y[4].data.d;
+			tf_y[11].data.d = -tf_y[5].data.d;
 		}
 		else {
-			tf_y[0].data.d = pfFPinit("4.6472317204376854566250792943904e-01");
-			tf_y[1].data.d = pfFPinit("-2.3931566428755776706062234626682e-01");
-			tf_y[2].data.d = pfFPinit("-9.9270887409805399278096144088934e-01");
-			tf_y[3].data.d = pfFPinit("6.6312265824079520232193704631918e-01");
-			tf_y[4].data.d = pfFPinit("-9.3501624268541482344965776185575e-01");
-			tf_y[5].data.d = pfFPinit("-8.2298386589365639468820687318917e-01");
-			tf_y[6].data.d = pfFPinit("-4.6472317204376854531014222338126e-01");
-			tf_y[7].data.d = pfFPinit("2.3931566428755776695220212901827e-01");
-			tf_y[8].data.d = pfFPinit("9.9270887409805399283517154951362e-01");
-			tf_y[9].data.d = pfFPinit("-6.6312265824079520243035726356773e-01");
-			tf_y[10].data.d = pfFPinit("9.3501624268541482344965776185575e-01");
-			tf_y[11].data.d = pfFPinit("8.2298386589365639457978665594062e-01");
+			tf_y[0].data.d = pfFPinit("0.4647231720437685456560153351331047775577358653324689769540");
+			tf_y[1].data.d = pfFPinit("-0.2393156642875577671487537262602118952031730227383060133551");
+			tf_y[2].data.d = pfFPinit("-0.9927088740980539928007516494925201793436756329701668557709");
+			tf_y[3].data.d = pfFPinit("0.6631226582407952023767854926667662795247641070441061881807");
+			tf_y[4].data.d = pfFPinit("-0.9350162426854148234397845998378307290505174695784318706963");
+			tf_y[5].data.d = pfFPinit("-0.8229838658936563945796174234393819906550676930875738058270");
+			tf_y[6].data.d = -tf_y[0].data.d;
+			tf_y[7].data.d = -tf_y[1].data.d;
+			tf_y[8].data.d = -tf_y[2].data.d;
+			tf_y[9].data.d = -tf_y[3].data.d;
+			tf_y[10].data.d = -tf_y[4].data.d;
+			tf_y[11].data.d = -tf_y[5].data.d;
 		}
 		for (pfUINT i = radix - 1; i > 0; i--) {
 			if (stageSize == 1) {
@@ -2035,28 +1919,36 @@ temp%s = temp;\n\
 		break;
 	}
 	case 14: {
-		PfContainer tf[8] = VKFFT_ZERO_INIT;
-		for (pfINT i = 0; i < 8; i++){
-			tf[i].type = 22;
+		PfContainer tf_x[6] = VKFFT_ZERO_INIT;
+		PfContainer tf_y[6] = VKFFT_ZERO_INIT;
+		for (pfINT i = 0; i < 6; i++){
+			tf_x[i].type = 22;
+			tf_y[i].type = 22;
 		}
-		//PfAppendLine(sc, "	{\n");
 		
-		tf[0].data.d = pfFPinit("-1.16666666666666651863693004997913");
-		tf[1].data.d = pfFPinit("0.79015646852540022404554065360571");
-		tf[2].data.d = pfFPinit("0.05585426728964774240049351305970");
-		tf[3].data.d = pfFPinit("0.73430220123575240531721419756650");
+		tf_x[0].data.d = pfFPinit("0.6234898018587335305250048840042398106322747308964021053655");
+		tf_x[1].data.d = pfFPinit("-0.222520933956314404288902564496794759466355568764544955311");
+		tf_x[2].data.d = pfFPinit("-0.900968867902419126236102319507445051165919162131857150053");
+		tf_x[3].data.d = tf_x[0].data.d;
+		tf_x[4].data.d = tf_x[1].data.d;
+		tf_x[5].data.d = tf_x[2].data.d;
 		if (stageAngle < 0) {
-			tf[4].data.d = pfFPinit("0.44095855184409837868031445395900");
-			tf[5].data.d = pfFPinit("0.34087293062393136944265847887436");
-			tf[6].data.d = pfFPinit("-0.53396936033772524066165487965918");
-			tf[7].data.d = pfFPinit("0.87484229096165666561546458979137");
+			tf_y[0].data.d = pfFPinit("-0.7818314824680298087084445266740577502323345187086875289806");
+			tf_y[1].data.d = pfFPinit("0.9749279121818236070181316829939312172327858006199974376480");
+			tf_y[2].data.d = pfFPinit("0.4338837391175581204757683328483587546099907277874598764445");
+			tf_y[3].data.d = -tf_y[0].data.d;
+			tf_y[4].data.d = -tf_y[1].data.d;
+			tf_y[5].data.d = -tf_y[2].data.d;
 		}
 		else {
-			tf[4].data.d = pfFPinit("-0.44095855184409837868031445395900");
-			tf[5].data.d = pfFPinit("-0.34087293062393136944265847887436");
-			tf[6].data.d = pfFPinit("0.53396936033772524066165487965918");
-			tf[7].data.d = pfFPinit("-0.87484229096165666561546458979137");
+			tf_y[0].data.d = pfFPinit("0.7818314824680298087084445266740577502323345187086875289806");
+			tf_y[1].data.d = pfFPinit("-0.9749279121818236070181316829939312172327858006199974376480");
+			tf_y[2].data.d = pfFPinit("-0.4338837391175581204757683328483587546099907277874598764445");
+			tf_y[3].data.d = -tf_y[0].data.d;
+			tf_y[4].data.d = -tf_y[1].data.d;
+			tf_y[5].data.d = -tf_y[2].data.d;
 		}
+
 		for (pfUINT i = radix - 1; i > 0; i--) {
 			if (stageSize == 1) {
 				temp_complex.data.c[0].data.d = pfFPinit("1.0");
@@ -2120,124 +2012,84 @@ temp%s = temp;\n\
 
 		pfUINT P = 7;
 		pfUINT Q = 2;
+		PfContainer tempID[7] = VKFFT_ZERO_INIT;
+
+		for (int t = 0; t < 7; t++) {
+			tempID[t].type = 100 + sc->vecTypeCode;
+			PfAllocateContainerFlexible(sc, &tempID[t], 50);
+		}
+
 		for (pfUINT i = 0; i < Q; i++) {
-			PfMov(sc, &sc->locID[0], &regID[i]);
+			pfUINT permute[7] = { 0, 1, 3, 2, 6, 4, 5 };
 			
-			PfMov(sc, &sc->locID[1], &regID[i + Q]);
-			
-			PfMov(sc, &sc->locID[2], &regID[i + 2 * Q]);
-			
-			PfMov(sc, &sc->locID[3], &regID[i + 3 * Q]);
-			
-			PfMov(sc, &sc->locID[4], &regID[i + 4 * Q]);
-			
-			PfMov(sc, &sc->locID[5], &regID[i + 5 * Q]);
-			
+			for (pfUINT t = 0; t < 7; t++)
+				PfCopyContainer(sc, &tempID[t], &regID[i + Q * t]);
+			for (pfUINT t = 0; t < 7; t++)
+				PfCopyContainer(sc, &regID[i + Q * t], &tempID[permute[t]]);
+
+			PfMov(sc, &sc->locID[0], &regID[i]);		
+			PfMov(sc, &sc->locID[1], &regID[i + Q]);	
+			PfMov(sc, &sc->locID[2], &regID[i + 2 * Q]);	
+			PfMov(sc, &sc->locID[3], &regID[i + 3 * Q]);	
+			PfMov(sc, &sc->locID[4], &regID[i + 4 * Q]);	
+			PfMov(sc, &sc->locID[5], &regID[i + 5 * Q]);	
 			PfMov(sc, &sc->locID[6], &regID[i + 6 * Q]);
+		
+			for (pfUINT t = 0; t < 3; t++) {
+				PfSub(sc, &regID[i + Q * (t + 4)].data.c[0], &sc->locID[t + 1].data.c[0], &sc->locID[t + 4].data.c[0]);
 			
-
-			PfAdd(sc, &regID[i], &sc->locID[1], &sc->locID[6]);
+				PfAdd(sc, &regID[i + Q * (t + 1)].data.c[0], &sc->locID[t + 1].data.c[0], &sc->locID[t + 4].data.c[0]);
 			
-			PfSub(sc, &regID[i + Q], &sc->locID[1], &sc->locID[6]);
+				PfAdd(sc, &regID[i + Q * (t + 4)].data.c[1], &sc->locID[t + 1].data.c[1], &sc->locID[t + 4].data.c[1]);
 			
-			PfAdd(sc, &regID[i + 2 * Q], &sc->locID[2], &sc->locID[5]);
+				PfSub(sc, &regID[i + Q * (t + 1)].data.c[1], &sc->locID[t + 1].data.c[1], &sc->locID[t + 4].data.c[1]);
 			
-			PfSub(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[5]);
+			}
+			for (pfUINT t = 0; t < 3; t++) {
+				PfAdd(sc, &regID[i].data.c[0], &regID[i].data.c[0], &regID[i + Q * (t + 1)].data.c[0]);
 			
-			PfAdd(sc, &regID[i + 4 * Q], &sc->locID[4], &sc->locID[3]);
+				PfAdd(sc, &regID[i].data.c[1], &regID[i].data.c[1], &regID[i + Q * (t + 4)].data.c[1]);
 			
-			PfSub(sc, &regID[i + 5 * Q], &sc->locID[4], &sc->locID[3]);
+			}
+			for (pfUINT t = 1; t < 4; t++) {
+				PfMov(sc, &sc->locID[t], &sc->locID[0]);
 			
-
-			PfAdd(sc, &sc->locID[5], &regID[i + Q], &regID[i + 3 * Q]);
 			
-			PfAdd(sc, &sc->locID[5], &sc->locID[5], &regID[i + 5 * Q]);
+			}
+			for (pfUINT t = 4; t < 7; t++) {
+				PfSetToZero(sc, &sc->locID[t]);
+			}
+			for (pfUINT t = 0; t < 3; t++) {
+				for (pfUINT j = 0; j < 3; j++) {
+					pfUINT id = ((6 - t) + j) % 6;
+					PfFMA3_const_w(sc, &sc->locID[j + 1], &sc->locID[j + 4], &regID[i + Q * (t + 1)], &tf_x[id], &tf_y[id], &regID[i + Q * (t + 4)], &sc->w, &sc->locID[0]);
+				
+				}
+			}
+			for (pfUINT t = 1; t < 4; t++) {
+				PfSub(sc, &regID[i + Q * t].data.c[0], &sc->locID[t].data.c[0], &sc->locID[t + 3].data.c[0]);
 			
-			PfAdd(sc, &sc->locID[1], &regID[i], &regID[i + 2 * Q]);
+				PfAdd(sc, &regID[i + Q * t].data.c[1], &sc->locID[t].data.c[1], &sc->locID[t + 3].data.c[1]);
 			
-			PfAdd(sc, &sc->locID[1], &sc->locID[1], &regID[i + 4 * Q]);
+			}
+			for (pfUINT t = 1; t < 4; t++) {
+				PfAdd(sc, &regID[i + Q * (t + 3)].data.c[0], &sc->locID[t].data.c[0], &sc->locID[t + 3].data.c[0]);
 			
-			PfAdd(sc, &sc->locID[0], &sc->locID[0], &sc->locID[1]);
+				PfSub(sc, &regID[i + Q * (t + 3)].data.c[1], &sc->locID[t].data.c[1], &sc->locID[t + 3].data.c[1]);
 			
-
-			PfSub(sc, &sc->locID[2], &regID[i], &regID[i + 4 * Q]);
-			
-			PfSub(sc, &sc->locID[3], &regID[i + 4 * Q], &regID[i + 2 * Q]);
-			
-			PfSub(sc, &sc->locID[4], &regID[i + 2 * Q], &regID[i]);
-			
-
-			PfSub(sc, &regID[i], &regID[i + Q], &regID[i + 5 * Q]);
-			
-			PfSub(sc, &regID[i + 2 * Q], &regID[i + 5 * Q], &regID[i + 3 * Q]);
-			
-			PfSub(sc, &regID[i + 4 * Q], &regID[i + 3 * Q], &regID[i + Q]);
-			
-
-			PfMul(sc, &sc->locID[1], &sc->locID[1], &tf[0], &regID[i + 5 * Q]);
-			
-			PfMul(sc, &sc->locID[2], &sc->locID[2], &tf[1], &regID[i + 5 * Q]);
-			
-			PfMul(sc, &sc->locID[3], &sc->locID[3], &tf[2], &regID[i + 5 * Q]);
-			
-			PfMul(sc, &sc->locID[4], &sc->locID[4], &tf[3], &regID[i + 5 * Q]);
-			
-			PfMul(sc, &sc->locID[5], &sc->locID[5], &tf[4], &regID[i + 5 * Q]);
-			
-			PfMul(sc, &regID[i], &regID[i], &tf[5], &regID[i + 5 * Q]);
-			
-			PfMul(sc, &regID[i + 2 * Q], &regID[i + 2 * Q], &tf[6], &regID[i + 5 * Q]);
-			
-			PfMul(sc, &regID[i + 4 * Q], &regID[i + 4 * Q], &tf[7], &regID[i + 5 * Q]);
-			
-
-			PfSub(sc, &regID[i + 5 * Q], &regID[i + 4 * Q], &regID[i + 2 * Q]);
-			
-			PfAdd(sc, &regID[i + 6 * Q], &regID[i + 4 * Q], &regID[i]);
-			
-			PfMovNeg(sc, &regID[i + 6 * Q], &regID[i + 6 * Q]);
-
-			PfAdd(sc, &regID[i + 4 * Q], &regID[i], &regID[i + 2 * Q]);
-			
-			PfAdd(sc, &regID[i], &sc->locID[0], &sc->locID[1]);
-			
-			PfAdd(sc, &regID[i + Q], &sc->locID[2], &sc->locID[3]);
-			
-			PfSub(sc, &regID[i + 2 * Q], &sc->locID[4], &sc->locID[3]);
-			
-			PfAdd(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[4]);
-			
-			PfMovNeg(sc, &regID[i + 3 * Q], &regID[i + 3 * Q]);
-
-			PfAdd(sc, &sc->locID[1], &regID[i], &regID[i + Q]);
-			
-			PfAdd(sc, &sc->locID[2], &regID[i], &regID[i + 2 * Q]);
-			
-			PfAdd(sc, &sc->locID[3], &regID[i], &regID[i + 3 * Q]);
-			
-			PfAdd(sc, &sc->locID[4], &regID[i + 4 * Q], &sc->locID[5]);
-			
-			PfAdd(sc, &sc->locID[6], &regID[i + 6 * Q], &sc->locID[5]);
-			
-			PfAdd(sc, &sc->locID[5], &sc->locID[5], &regID[i + 5 * Q]);
-			
-			PfMov(sc, &regID[i], &sc->locID[0]);
-			
-			PfShuffleComplexInv(sc, &regID[i + Q], &sc->locID[1], &sc->locID[4], &sc->locID[0]);
-			
-			PfShuffleComplexInv(sc, &regID[i + 2 * Q], &sc->locID[3], &sc->locID[6], &sc->locID[0]);
-			
-			PfShuffleComplex(sc, &regID[i + 3 * Q], &sc->locID[2], &sc->locID[5], &sc->locID[0]);
-			
-			PfShuffleComplexInv(sc, &regID[i + 4 * Q], &sc->locID[2], &sc->locID[5], &sc->locID[0]);
-			
-			PfShuffleComplex(sc, &regID[i + 5 * Q], &sc->locID[3], &sc->locID[6], &sc->locID[0]);
-			
-			PfShuffleComplex(sc, &regID[i + 6 * Q], &sc->locID[1], &sc->locID[4], &sc->locID[0]);
-			
+			}
+			pfUINT permute2[7] = { 0, 1, 5, 6, 3, 2, 4 };
+						
+			for (pfUINT t = 0; t < 7; t++)
+				PfCopyContainer(sc, &tempID[t], &regID[i + Q * t]);
+			for (pfUINT t = 0; t < 7; t++)
+				PfCopyContainer(sc, &regID[i + Q * t], &tempID[permute2[t]]);
 
 		}
 
+		for (int t = 0; t < 7; t++) {
+			PfDeallocateContainer(sc, &tempID[t]);
+		}
 
 		for (pfUINT i = 0; i < P; i++) {
 			if (i > 0) {

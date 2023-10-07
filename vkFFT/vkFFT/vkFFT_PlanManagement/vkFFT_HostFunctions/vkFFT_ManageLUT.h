@@ -62,9 +62,6 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 					maxStageSum += dimMult * 5;
 					break;
 				case 7:
-					if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
-						maxStageSum += dimMult * 7;
-					else 
 						maxStageSum += dimMult * 6;
 					break;
 				case 8:
@@ -135,9 +132,6 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 							maxStageSum += dimMult * 5;
 							break;
 						case 7:
-							if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
-								maxStageSum += dimMult * 7;
-							else 
 								maxStageSum += dimMult * 6;
 							break;
 						case 8:
@@ -211,9 +205,6 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 							maxStageSum += dimMult * 5;
 							break;
 						case 7:
-							if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
-								maxStageSum += dimMult * 7;
-							else 
 								maxStageSum += dimMult * 6;
 							break;
 						case 8:

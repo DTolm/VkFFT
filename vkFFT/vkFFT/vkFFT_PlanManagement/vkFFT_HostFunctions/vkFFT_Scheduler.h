@@ -32,143 +32,251 @@ static inline VkFFTResult VkFFTGetRegistersPerThreadQuad(VkFFTApplication* app, 
 	if (loc_multipliers[2] > 0) {
 		if (loc_multipliers[3] > 0) {
 			if (loc_multipliers[5] > 0) {
-				registers_per_thread_per_radix[2] = 6;
-				registers_per_thread_per_radix[3] = 6;
-				registers_per_thread_per_radix[5] = 5;
-				registers_per_thread_per_radix[7] = 0;
-				registers_per_thread_per_radix[11] = 0;
-				registers_per_thread_per_radix[13] = 0;
+				if (loc_multipliers[7] > 0) {
+					registers_per_thread_per_radix[2] = 6;
+					registers_per_thread_per_radix[3] = 6;
+					registers_per_thread_per_radix[5] = 5;
+					registers_per_thread_per_radix[7] = 7;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
+				}
+				else
+				{
+					registers_per_thread_per_radix[2] = 6;
+					registers_per_thread_per_radix[3] = 6;
+					registers_per_thread_per_radix[5] = 5;
+					registers_per_thread_per_radix[7] = 0;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
+				}
 			}
 			else
 			{
-				registers_per_thread_per_radix[2] = 6;
-				registers_per_thread_per_radix[3] = 6;
-				registers_per_thread_per_radix[5] = 0;
-				registers_per_thread_per_radix[7] = 0;
-				registers_per_thread_per_radix[11] = 0;
-				registers_per_thread_per_radix[13] = 0;
+				if (loc_multipliers[7] > 0) {
+					switch (loc_multipliers[2]) {
+					case 1:
+						registers_per_thread_per_radix[2] = 6;
+						registers_per_thread_per_radix[3] = 6;
+						registers_per_thread_per_radix[5] = 0;
+						registers_per_thread_per_radix[7] = 7;
+						registers_per_thread_per_radix[11] = 0;
+						registers_per_thread_per_radix[13] = 0;
+						break;
+					case 2:
+						registers_per_thread_per_radix[2] = 6;
+						registers_per_thread_per_radix[3] = 6;
+						registers_per_thread_per_radix[5] = 0;
+						registers_per_thread_per_radix[7] = 7;
+						registers_per_thread_per_radix[11] = 0;
+						registers_per_thread_per_radix[13] = 0;
+						break;
+					default:
+						registers_per_thread_per_radix[2] = 8;
+						registers_per_thread_per_radix[3] = 6;
+						registers_per_thread_per_radix[5] = 0;
+						registers_per_thread_per_radix[7] = 7;
+						registers_per_thread_per_radix[11] = 0;
+						registers_per_thread_per_radix[13] = 0;
+						break;
+					}
+				}
+				else
+				{
+					registers_per_thread_per_radix[2] = 6;
+					registers_per_thread_per_radix[3] = 6;
+					registers_per_thread_per_radix[5] = 0;
+					registers_per_thread_per_radix[7] = 0;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
+				}
 			}
 		}
 		else {
 			if (loc_multipliers[5] > 0) {
-				switch (loc_multipliers[2]) {
-				case 1:
-					registers_per_thread_per_radix[2] = 10;
+				if (loc_multipliers[7] > 0) {
+					switch (loc_multipliers[2]) {
+					case 1:
+						registers_per_thread_per_radix[2] = 6;
+						registers_per_thread_per_radix[3] = 0;
+						registers_per_thread_per_radix[5] = 5;
+						registers_per_thread_per_radix[7] = 7;
+						registers_per_thread_per_radix[11] = 0;
+						registers_per_thread_per_radix[13] = 0;
+						break;
+					case 2:
+						registers_per_thread_per_radix[2] = 8;
+						registers_per_thread_per_radix[3] = 0;
+						registers_per_thread_per_radix[5] = 5;
+						registers_per_thread_per_radix[7] = 7;
+						registers_per_thread_per_radix[11] = 0;
+						registers_per_thread_per_radix[13] = 0;
+						break;
+					default:
+						registers_per_thread_per_radix[2] = 8;
+						registers_per_thread_per_radix[3] = 0;
+						registers_per_thread_per_radix[5] = 5;
+						registers_per_thread_per_radix[7] = 7;
+						registers_per_thread_per_radix[11] = 0;
+						registers_per_thread_per_radix[13] = 0;
+						break;
+					}
+				}
+				else
+				{
+					registers_per_thread_per_radix[2] = 4;
 					registers_per_thread_per_radix[3] = 0;
-					registers_per_thread_per_radix[5] = 10;
+					registers_per_thread_per_radix[5] = 5;
 					registers_per_thread_per_radix[7] = 0;
 					registers_per_thread_per_radix[11] = 0;
 					registers_per_thread_per_radix[13] = 0;
-					break;
-				case 2:
-					registers_per_thread_per_radix[2] = 10;
-					registers_per_thread_per_radix[3] = 0;
-					registers_per_thread_per_radix[5] = 10;
-					registers_per_thread_per_radix[7] = 0;
-					registers_per_thread_per_radix[11] = 0;
-					registers_per_thread_per_radix[13] = 0;
-					break;
-				default:
-					registers_per_thread_per_radix[2] = 8;
-					registers_per_thread_per_radix[3] = 0;
-					registers_per_thread_per_radix[5] = 10;
-					registers_per_thread_per_radix[7] = 0;
-					registers_per_thread_per_radix[11] = 0;
-					registers_per_thread_per_radix[13] = 0;
-					break;
 				}
 			}
 			else
 			{
-				int max_loc_multipliers_pow2 = 0;
-				pfUINT active_threads_y = max_rhs / 64; //estimate workbalance across CU (assume we have 64 CU)
-				if (active_threads_y == 0) active_threads_y = 1;
-				int testMinStages = 10000000;
-				int maxRadixMinStages = 1;
-				int fixMaxCheckRadix2 = 3;
-
-				for (int i = 1; i <= fixMaxCheckRadix2; i++) {
-					int numStages = (int)pfceil(log2(fft_length) / ((double)i));
-					if (numStages < testMinStages) {
-						testMinStages = numStages;
-						maxRadixMinStages = i;
-					}
+				if (loc_multipliers[7] > 0) {
+					registers_per_thread_per_radix[2] = 8;
+					registers_per_thread_per_radix[3] = 0;
+					registers_per_thread_per_radix[5] = 0;
+					registers_per_thread_per_radix[7] = 7;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
 				}
-				for (int i = maxRadixMinStages; i >= 1; i--) {
-					pfUINT active_threads_x = (active_threads_y * fft_length) / ((int)pow(2, i));
-					if (active_threads_x >= 128) {
-						max_loc_multipliers_pow2 = i;
-						i = 1;
+				else
+				{
+					int max_loc_multipliers_pow2 = 0;
+					pfUINT active_threads_y = max_rhs / 64; //estimate workbalance across CU (assume we have 64 CU)
+					if (active_threads_y == 0) active_threads_y = 1;
+					int testMinStages = 10000000;
+					int maxRadixMinStages = 1;
+					int fixMaxCheckRadix2 = 3;
+
+					for (int i = 1; i <= fixMaxCheckRadix2; i++) {
+						int numStages = (int)pfceil(log2(fft_length) / ((double)i));
+						if (numStages < testMinStages) {
+							testMinStages = numStages;
+							maxRadixMinStages = i;
+						}
 					}
+					for (int i = maxRadixMinStages; i >= 1; i--) {
+						pfUINT active_threads_x = (active_threads_y * fft_length) / ((int)pow(2, i));
+						if (active_threads_x >= 128) {
+							max_loc_multipliers_pow2 = i;
+							i = 1;
+						}
 
-				}
-				if (max_loc_multipliers_pow2 < 3) max_loc_multipliers_pow2 = 3;
-
-				int final_loc_multipliers_pow2 = 1;
-				int num_stages_min = (int)log2(fft_length);
-				for (int i = 2; i <= max_loc_multipliers_pow2; i++) {
-					int num_stages = (int)pfceil(((int)log2(fft_length)) / (double)i);
-					if (num_stages < num_stages_min) {
-						final_loc_multipliers_pow2 = i;
-						num_stages_min = num_stages;
 					}
+					if (max_loc_multipliers_pow2 < 3) max_loc_multipliers_pow2 = 3;
 
+					int final_loc_multipliers_pow2 = 1;
+					int num_stages_min = (int)log2(fft_length);
+					for (int i = 2; i <= max_loc_multipliers_pow2; i++) {
+						int num_stages = (int)pfceil(((int)log2(fft_length)) / (double)i);
+						if (num_stages < num_stages_min) {
+							final_loc_multipliers_pow2 = i;
+							num_stages_min = num_stages;
+						}
+
+					}
+					registers_per_thread_per_radix[2] = (loc_multipliers[2] > final_loc_multipliers_pow2) ? (int)pow(2, final_loc_multipliers_pow2) : (int)pow(2, loc_multipliers[2]);
+					registers_per_thread_per_radix[2] = (loc_multipliers[2] < 3) ? (int)pow(2, loc_multipliers[2]) : registers_per_thread_per_radix[2];
+					registers_per_thread_per_radix[3] = 0;
+					registers_per_thread_per_radix[5] = 0;
+					registers_per_thread_per_radix[7] = 0;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
 				}
-				registers_per_thread_per_radix[2] = (loc_multipliers[2] > final_loc_multipliers_pow2) ? (int)pow(2, final_loc_multipliers_pow2) : (int)pow(2, loc_multipliers[2]);
-				registers_per_thread_per_radix[2] = (loc_multipliers[2] < 3) ? (int)pow(2, loc_multipliers[2]) : registers_per_thread_per_radix[2];
-				registers_per_thread_per_radix[3] = 0;
-				registers_per_thread_per_radix[5] = 0;
-				registers_per_thread_per_radix[7] = 0;
-				registers_per_thread_per_radix[11] = 0;
-				registers_per_thread_per_radix[13] = 0;
 			}
 		}
 	}
 	else {
 		if (loc_multipliers[3] > 0) {
 			if (loc_multipliers[5] > 0) {
-				registers_per_thread_per_radix[2] = 0;
-				registers_per_thread_per_radix[3] = 3;
-				registers_per_thread_per_radix[5] = 5;
-				registers_per_thread_per_radix[7] = 0;
-				registers_per_thread_per_radix[11] = 0;
-				registers_per_thread_per_radix[13] = 0;
-			}
-			else
-			{
-				if (loc_multipliers[3] == 1) {
+				if (loc_multipliers[7] > 0) {
+					registers_per_thread_per_radix[2] = 0;
+					registers_per_thread_per_radix[3] = 6;
+					registers_per_thread_per_radix[5] = 5;
+					registers_per_thread_per_radix[7] = 7;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
+				}
+				else
+				{
 					registers_per_thread_per_radix[2] = 0;
 					registers_per_thread_per_radix[3] = 3;
-					registers_per_thread_per_radix[5] = 0;
+					registers_per_thread_per_radix[5] = 5;
 					registers_per_thread_per_radix[7] = 0;
 					registers_per_thread_per_radix[11] = 0;
 					registers_per_thread_per_radix[13] = 0;
 				}
-				else {
+			}
+			else
+			{
+				if (loc_multipliers[7] > 0) {
 					registers_per_thread_per_radix[2] = 0;
-					registers_per_thread_per_radix[3] = 9;
+					registers_per_thread_per_radix[3] = 6;
 					registers_per_thread_per_radix[5] = 0;
-					registers_per_thread_per_radix[7] = 0;
+					registers_per_thread_per_radix[7] = 7;
 					registers_per_thread_per_radix[11] = 0;
 					registers_per_thread_per_radix[13] = 0;
+				}
+				else
+				{
+					if (loc_multipliers[3] == 1) {
+						registers_per_thread_per_radix[2] = 0;
+						registers_per_thread_per_radix[3] = 3;
+						registers_per_thread_per_radix[5] = 0;
+						registers_per_thread_per_radix[7] = 0;
+						registers_per_thread_per_radix[11] = 0;
+						registers_per_thread_per_radix[13] = 0;
+					}
+					else {
+						registers_per_thread_per_radix[2] = 0;
+						registers_per_thread_per_radix[3] = 9;
+						registers_per_thread_per_radix[5] = 0;
+						registers_per_thread_per_radix[7] = 0;
+						registers_per_thread_per_radix[11] = 0;
+						registers_per_thread_per_radix[13] = 0;
+					}
 				}
 			}
 		}
 		else {
 			if (loc_multipliers[5] > 0) {
-				registers_per_thread_per_radix[2] = 0;
-				registers_per_thread_per_radix[3] = 0;
-				registers_per_thread_per_radix[5] = 5;
-				registers_per_thread_per_radix[7] = 0;
-				registers_per_thread_per_radix[11] = 0;
-				registers_per_thread_per_radix[13] = 0;
+				if (loc_multipliers[7] > 0) {
+					registers_per_thread_per_radix[2] = 0;
+					registers_per_thread_per_radix[3] = 0;
+					registers_per_thread_per_radix[5] = 5;
+					registers_per_thread_per_radix[7] = 7;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
+				}
+				else
+				{
+					registers_per_thread_per_radix[2] = 0;
+					registers_per_thread_per_radix[3] = 0;
+					registers_per_thread_per_radix[5] = 5;
+					registers_per_thread_per_radix[7] = 0;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
+				}
 			}
 			else
 			{
-				min_registers_per_thread[0] = 2;
-				registers_per_thread[0] = 2;
-				//Rader-only sequence
-				//return VKFFT_ERROR_UNSUPPORTED_RADIX;
+				if (loc_multipliers[7] > 0) {
+					registers_per_thread_per_radix[2] = 0;
+					registers_per_thread_per_radix[3] = 0;
+					registers_per_thread_per_radix[5] = 0;
+					registers_per_thread_per_radix[7] = 7;
+					registers_per_thread_per_radix[11] = 0;
+					registers_per_thread_per_radix[13] = 0;
+				}
+				else
+				{
+					min_registers_per_thread[0] = 2;
+					registers_per_thread[0] = 2;
+					//Rader-only sequence
+					//return VKFFT_ERROR_UNSUPPORTED_RADIX;
+				}
 			}
 		}
 
@@ -198,7 +306,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThreadQuad(VkFFTApplication* app, 
 }
 
 static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int fft_length, int extraSharedMemoryForPow2, pfUINT max_rhs, int useRader, int* loc_multipliers, int* registers_per_thread_per_radix, int* registers_per_thread, int* min_registers_per_thread, int* isGoodSequence) {
-	if(app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
+	if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
 		VkFFTGetRegistersPerThreadQuad(app, fft_length, extraSharedMemoryForPow2, max_rhs, useRader, loc_multipliers, registers_per_thread_per_radix, registers_per_thread, min_registers_per_thread, isGoodSequence);
 		return VKFFT_SUCCESS;
 	}

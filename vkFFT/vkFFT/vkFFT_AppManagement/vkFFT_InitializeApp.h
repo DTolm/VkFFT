@@ -1260,7 +1260,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (inputLaunchConfiguration.forceBluesteinSequenceSize != 0) app->configuration.forceBluesteinSequenceSize = inputLaunchConfiguration.forceBluesteinSequenceSize;
 
 	if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
-			app->configuration.fixMinRaderPrimeMult = 7;
+			app->configuration.fixMinRaderPrimeMult = 11;
 			app->configuration.fixMaxRaderPrimeMult = 29;
 	} else{
 			app->configuration.fixMinRaderPrimeMult = 17;

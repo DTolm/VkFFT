@@ -26,7 +26,7 @@ void launch_precision_rocFFT_double(void* inputC, void* output_rocFFT, int devic
 		fprintf(stderr, "ROCM error: Failed to allocate\n");
 		return;
 	}
-	switch (dims[3]) {
+	switch (dims[4]) {
 	case 1:
 		hipfftPlan1d(&planZ2Z, dims[0], HIPFFT_Z2Z, 1);
 		break;

@@ -177,9 +177,6 @@ static inline VkFFTResult shaderGen_FFT(VkFFTSpecializationConstantsLayout* sc, 
 						stageSizeSum.data.i += stageSize.data.i * 5;
 						break;
 					case 7:
-						if (sc->precision == 3)
-							stageSizeSum.data.i += stageSize.data.i * 7;
-						else 
 							stageSizeSum.data.i += stageSize.data.i * 6;
 						break;
 					case 8:
@@ -291,9 +288,6 @@ static inline VkFFTResult shaderGen_FFT(VkFFTSpecializationConstantsLayout* sc, 
 							stageSizeSum.data.i += stageSize.data.i * 5;
 							break;
 						case 7:
-							if (sc->precision == 3)
-								stageSizeSum.data.i += stageSize.data.i * 7;
-							else 
 								stageSizeSum.data.i += stageSize.data.i * 6;
 							break;
 						case 8:
