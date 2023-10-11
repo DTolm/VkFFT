@@ -442,7 +442,7 @@ static inline void PfSetContainerName(VkFFTSpecializationConstantsLayout* sc, Pf
 		if(out->type < 200){
 			if ((((out->type % 100) / 10) == 3) && ((out->type % 10) == 2)){
 				sprintf(out->data.dd[0].name, "%s.x", name);
-				sprintf(out->data.dd[1].name, "%s.x", name);
+				sprintf(out->data.dd[1].name, "%s.y", name);
 			}else{
 				if (((out->type % 10) == 3) && (out->type > 100)) {
 					sprintf(out->data.c[0].name, "%s.x", name);
@@ -3340,7 +3340,7 @@ static inline void PfRsqrt(VkFFTSpecializationConstantsLayout* sc, PfContainer* 
 				switch (in_1->type % 10) {
 				case 2:
 					sc->tempLen = sprintf(sc->tempStr, "\
-%s = %.17Le;\n", out->name, (long double)(1.0l / pfsqrt(in_1->data.d)));
+%s = %.17Le;\n", out->name, (long double)(pfFPinit("1.0") / pfsqrt(in_1->data.d)));
 					PfAppendLine(sc);
 					return;
 				}
@@ -3355,7 +3355,7 @@ static inline void PfRsqrt(VkFFTSpecializationConstantsLayout* sc, PfContainer* 
 			else {
 				switch (in_1->type % 10) {
 				case 2:
-					out->data.d = 1.0l / pfsqrt(in_1->data.d);
+					out->data.d = pfFPinit("1.0") / pfsqrt(in_1->data.d);
 					return;
 				}
 			}
