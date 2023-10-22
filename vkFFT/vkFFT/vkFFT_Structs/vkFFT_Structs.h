@@ -213,6 +213,7 @@ typedef struct {
 
 	pfUINT performR2C; //perform R2C/C2R decomposition (0 - off, 1 - on)
 	pfUINT performDCT; //perform DCT transformation (X - DCT type, 1-4)
+	pfUINT performDST; //perform DST transformation (X - DCT type, 1-4)
 	pfUINT disableMergeSequencesR2C; //disable merging of two real sequences to reduce calculations (0 - off, 1 - on)
 	pfUINT normalize; //normalize inverse transform (0 - off, 1 - on)
 	pfUINT disableReorderFourStep; // disables unshuffling of Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on)
@@ -226,7 +227,9 @@ typedef struct {
 	pfUINT isOutputFormatted; //specify if output buffer is padded - 0 - padded, 1 - not padded. For example if it is not padded for R2C if out-of-place mode is selected (only if numberBatches==1 and numberKernels==1)
 	pfUINT inputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];//input buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
 	pfUINT outputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];//output buffer strides. Used if isInputFormatted is enabled. Default set to bufferStride values
-
+	pfUINT swapTo2Stage4Step; //specify at which number to switch from 1 upload to 2 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled.
+	pfUINT swapTo3Stage4Step; //specify at which number to switch from 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled. Must be at least 65536
+	
 	pfUINT considerAllAxesStrided;//will create plan for nonstrided axis similar as a strided axis - used with disableReorderFourStep to get the same layout for Bluestein kernel (0 - off, 1 - on)
 	pfUINT keepShaderCode;//will keep shader code and print all executed shaders during the plan execution in order (0 - off, 1 - on)
 	pfUINT printMemoryLayout;//will print order of buffers used in shaders (0 - off, 1 - on)
@@ -274,8 +277,6 @@ typedef struct {
 	pfUINT registerBoost4Step; //specify if register file overutilization should be used in big sequences (>2^14), same definition as registerBoost. Default 1
 
 	//not used techniques:
-	pfUINT swapTo2Stage4Step; //specify at which number to switch from 1 upload to 2 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled.
-	pfUINT swapTo3Stage4Step; //specify at which number to switch from 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower than coalesced sequence helps to combat TLB misses. Default 0 - disabled. Must be at least 65536
 	pfUINT devicePageSize;//in KB, the size of a page on the GPU. Setting to 0 disables local buffer split in pages
 	pfUINT localPageSize;//in KB, the size to split page into if sequence spans multiple devicePageSize pages
 
@@ -413,7 +414,7 @@ typedef enum VkFFTResult {
 	VKFFT_ERROR_UNSUPPORTED_RADIX = 3001,
 	VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH = 3002,
 	VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C = 3003,
-	VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT = 3004,
+	VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2R = 3004,
 	VKFFT_ERROR_UNSUPPORTED_FFT_OMIT = 3005,
 	VKFFT_ERROR_FAILED_TO_ALLOCATE = 4001,
 	VKFFT_ERROR_FAILED_TO_MAP_MEMORY = 4002,
@@ -552,8 +553,8 @@ static inline const char* getVkFFTErrorString(VkFFTResult result)
 		return "VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH";
 	case VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C:
 		return "VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C";
-	case VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT:
-		return "VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT";
+	case VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2R:
+		return "VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2R";
 	case VKFFT_ERROR_UNSUPPORTED_FFT_OMIT:
 		return "VKFFT_ERROR_UNSUPPORTED_FFT_OMIT";
 	case VKFFT_ERROR_FAILED_TO_ALLOCATE:
@@ -749,6 +750,7 @@ typedef struct {
 	int performR2C;
 	int performR2CmultiUpload;
 	int performDCT;
+	int performDST; 
 	int performBandwidthBoost;
 	int frequencyZeropadding;
 	int performZeropaddingFull[VKFFT_MAX_FFT_DIMENSIONS]; // don't do read/write if full sequence is omitted

@@ -122,7 +122,10 @@ static inline VkFFTResult shaderGen_FFT(VkFFTSpecializationConstantsLayout* sc, 
 			appendC2R_read(sc, type, 0);
 		}
 		if ((type == 110) || (type == 111)) {
-			appendDCTI_read(sc, type, 0);
+			if(sc->performDST==1)
+				appendDSTI_read(sc, type, 0);
+			else
+				appendDCTI_read(sc, type, 0);
 		}
 		if ((type == 120) || (type == 121)) {
 			appendDCTII_read_III_write(sc, type, 0);

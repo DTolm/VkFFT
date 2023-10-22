@@ -180,6 +180,173 @@ static inline void appendDCTI_read(VkFFTSpecializationConstantsLayout* sc, int t
 	return;
 }
 
+static inline void appendDSTI_read(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
+	if (sc->res != VKFFT_SUCCESS) return;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
+	temp_int.type = 31;
+	PfContainer temp_int1 = VKFFT_ZERO_INIT;
+	temp_int1.type = 31;
+	PfContainer temp_double = VKFFT_ZERO_INIT;
+	temp_double.type = 22;
+
+	PfContainer used_registers = VKFFT_ZERO_INIT;
+	used_registers.type = 31;
+	
+	PfContainer fftDim = VKFFT_ZERO_INIT;
+	fftDim.type = 31;
+
+	PfContainer localSize = VKFFT_ZERO_INIT;
+	localSize.type = 31;
+
+	PfContainer batching_localSize = VKFFT_ZERO_INIT;
+	batching_localSize.type = 31;
+
+	PfContainer* localInvocationID = VKFFT_ZERO_INIT;
+	PfContainer* batchingInvocationID = VKFFT_ZERO_INIT;
+
+	if (sc->stridedSharedLayout) {
+		batching_localSize.data.i = sc->localSize[0].data.i;
+		localSize.data.i = sc->localSize[1].data.i;
+		localInvocationID = &sc->gl_LocalInvocationID_y;
+		batchingInvocationID = &sc->gl_LocalInvocationID_x;
+	}
+	else {
+		batching_localSize.data.i = sc->localSize[1].data.i;
+		localSize.data.i = sc->localSize[0].data.i;
+		localInvocationID = &sc->gl_LocalInvocationID_x;
+		batchingInvocationID = &sc->gl_LocalInvocationID_y;
+	}
+
+	if (sc->zeropadBluestein[readWrite]) {
+		if (readWrite) {
+			fftDim.data.i = (sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i - 2) / 2;
+		}
+		else {
+			fftDim.data.i = (sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i - 2) / 2;
+		}
+	}
+	else {
+		fftDim.data.i = (sc->fftDim.data.i - 2) / 2;
+	}
+
+	if (sc->stridedSharedLayout) {
+		PfDivCeil(sc, &used_registers, &fftDim, &sc->localSize[1]);
+	}
+	else {
+		PfDivCeil(sc, &used_registers, &fftDim, &sc->localSize[0]);
+	}
+
+	appendBarrierVkFFT(sc);
+	if (sc->useDisableThreads) {
+		temp_int.data.i = 0;
+		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
+	}
+	for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
+		if (sc->stridedSharedLayout) {
+			temp_int.data.i = (i)*sc->localSize[1].data.i;
+
+			PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_y, &temp_int);
+
+			temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+			temp_int1.data.i = fftDim.data.i;
+			if (temp_int.data.i > temp_int1.data.i) {
+				//check that we only read fftDim * local batch data
+				//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
+				PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+			}
+		}
+		else {
+			if (sc->localSize[1].data.i == 1) {
+				temp_int.data.i = (i)*sc->localSize[0].data.i;
+
+				PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
+			}
+			else {
+				PfMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
+
+				temp_int.data.i = (i)*sc->localSize[0].data.i * sc->localSize[1].data.i;
+
+				PfAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
+				PfAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
+			}
+			temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+			temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+			if (temp_int.data.i > temp_int1.data.i) {
+				//check that we only read fftDim * local batch data
+				//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
+				PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+			}
+		}
+		if (!sc->stridedSharedLayout) {
+			PfMod(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+		}
+		if (sc->stridedSharedLayout) {
+			PfMul(sc, &sc->tempInt, &sc->combinedID, &sc->sharedStride, 0);
+
+			temp_int.data.i = (2 * fftDim.data.i + 1) * sc->sharedStride.data.i;
+			PfAdd(sc, &sc->inoutID, &sc->gl_LocalInvocationID_x, &temp_int);
+			PfSub(sc, &sc->inoutID, &sc->inoutID, &sc->tempInt);
+
+			PfAdd(sc, &sc->sdataID, &sc->gl_LocalInvocationID_x, &sc->tempInt);
+			
+			if (i == 0) {
+				temp_int.data.i = 0;
+				PfIf_eq_start(sc, &sc->combinedID, &temp_int);
+				PfSetToZeroShared(sc, &sc->sdataID);
+				temp_int.data.i = (fftDim.data.i + 1) * sc->sharedStride.data.i;
+				PfAdd(sc, &sc->tempInt, &sc->sdataID, &temp_int);
+				PfSetToZeroShared(sc, &sc->tempInt);
+				PfIf_end(sc);
+			}
+			PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride);
+		}
+		else {
+			PfDiv(sc, &sc->sdataID, &sc->combinedID, &fftDim);
+			PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+
+			temp_int.data.i = (2 * fftDim.data.i + 1);
+			PfAdd(sc, &sc->inoutID, &sc->sdataID, &temp_int);
+			PfSub(sc, &sc->inoutID, &sc->inoutID, &sc->tempInt);
+
+			PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+
+			if (i == 0) {
+				temp_int.data.i = 0;
+				PfIf_eq_start(sc, &sc->tempInt, &temp_int);
+				PfSetToZeroShared(sc, &sc->sdataID);
+				temp_int.data.i = (fftDim.data.i + 1);
+				PfAdd(sc, &sc->tempInt, &sc->sdataID, &temp_int);
+				PfSetToZeroShared(sc, &sc->tempInt);
+				PfIf_end(sc);
+			}
+			PfInc(sc, &sc->sdataID);
+		}
+		appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
+		PfMovNeg(sc, &sc->temp, &sc->temp);
+		appendRegistersToShared(sc, &sc->inoutID, &sc->temp);
+		if (sc->stridedSharedLayout) {
+			temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+			temp_int1.data.i = fftDim.data.i;
+			if (temp_int.data.i > temp_int1.data.i) {
+				//check that we only read fftDim * local batch data
+				//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
+				PfIf_end(sc);
+			}
+		}
+		else {
+			temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+			temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+			if (temp_int.data.i > temp_int1.data.i) {
+				PfIf_end(sc);
+			}
+		}
+	}
+	if (sc->useDisableThreads) {
+		PfIf_end(sc);
+	}
+	return;
+}
+
 static inline void appendDCTII_read_III_write(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	PfContainer temp_int = VKFFT_ZERO_INIT;
@@ -288,6 +455,13 @@ static inline void appendDCTII_read_III_write(VkFFTSpecializationConstantsLayout
 			temp_int.data.i = 2;
 			PfMod(sc, &sc->sdataID, &sc->tempInt, &temp_int);
 		}
+		if (sc->performDST == 2)  {
+			temp_int.data.i = 1;
+			PfIf_eq_start(sc, &sc->sdataID, &temp_int);
+			PfMovNeg(sc, &sc->regIDs[i], &sc->regIDs[i]);
+			PfIf_end(sc);
+		}
+		temp_int.data.i = 2;
 		PfMul(sc, &sc->blockInvocationID, &sc->sdataID, &temp_int, 0);
 		temp_int.data.i = 2;
 		if (sc->axis_id > 0) {
@@ -324,6 +498,21 @@ static inline void appendDCTII_read_III_write(VkFFTSpecializationConstantsLayout
 		else
 			appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[i]);
 
+		if (sc->performDST == 3)  {
+			if (sc->axis_id > 0){
+				temp_int.data.i = 2;
+				PfMod(sc, &sc->sdataID, &sc->combinedID, &temp_int);
+			}
+			else {
+				PfMod(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+				temp_int.data.i = 2;
+				PfMod(sc, &sc->sdataID, &sc->tempInt, &temp_int);
+			}
+			temp_int.data.i = 1;
+			PfIf_eq_start(sc, &sc->sdataID, &temp_int);
+			PfMovNeg(sc, &sc->regIDs[i], &sc->regIDs[i]);
+			PfIf_end(sc);
+		}
 		if (sc->axis_id > 0) {
 			temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
 			temp_int1.data.i = fftDim.data.i;
@@ -398,6 +587,167 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 	}
 	else {
 		fftDim.data.i = sc->fftDim.data.i;
+	}
+
+	if (sc->performDST == 3) {
+		appendBarrierVkFFT(sc);
+		if (sc->stridedSharedLayout) {
+			PfDivCeil(sc, &used_registers, &fftDim, &sc->localSize[1]);
+		}
+		else {
+			PfDivCeil(sc, &used_registers, &fftDim, &sc->localSize[0]);
+		}
+		if (sc->useDisableThreads) {
+			temp_int.data.i = 0;
+			PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
+		}
+		for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
+			if (sc->stridedSharedLayout) {
+				temp_int.data.i = (i)*sc->localSize[1].data.i;
+
+				PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_y, &temp_int);
+
+				temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					//check that we only read fftDim * local batch data
+					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
+					PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+				}
+			}
+			else {
+				if (sc->localSize[1].data.i == 1) {
+					temp_int.data.i = (i)*sc->localSize[0].data.i;
+
+					PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
+				}
+				else {
+					PfMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
+
+					temp_int.data.i = (i)*sc->localSize[0].data.i * sc->localSize[1].data.i;
+
+					PfAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
+					PfAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
+				}
+				temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					//check that we only read fftDim * local batch data
+					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim_half * &sc->localSize[0]);
+					PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+				}
+			}
+			if (sc->stridedSharedLayout) {
+				temp_int.data.i = fftDim.data.i - 1;
+				PfSub(sc, &sc->combinedID, &temp_int, &sc->combinedID);
+
+				PfMul(sc, &sc->sdataID, &sc->combinedID, &sc->sharedStride, 0);
+
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+			}
+			else {
+				PfMod(sc, &sc->sdataID, &sc->combinedID, &fftDim);
+				temp_int.data.i = fftDim.data.i - 1;
+				PfSub(sc, &sc->sdataID, &temp_int, &sc->sdataID);
+
+				PfDiv(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+				PfMul(sc, &sc->tempInt, &sc->tempInt, &sc->sharedStride, 0);
+
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+			}
+			appendSharedToRegisters(sc, &sc->regIDs[i], &sc->sdataID);
+			if (sc->stridedSharedLayout) {
+				temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					PfIf_end(sc);
+				}
+			}
+			else {
+				temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					PfIf_end(sc);
+				}
+			}
+		}
+		if (sc->useDisableThreads) {
+			PfIf_end(sc);
+		}
+		appendBarrierVkFFT(sc);
+		
+		if (sc->useDisableThreads) {
+			temp_int.data.i = 0;
+			PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
+		}
+		for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
+			if (sc->stridedSharedLayout) {
+				temp_int.data.i = (i)*sc->localSize[1].data.i;
+
+				PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_y, &temp_int);
+
+				temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					//check that we only read fftDim * local batch data
+					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
+					PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+				}
+			}
+			else {
+				if (sc->localSize[1].data.i == 1) {
+					temp_int.data.i = (i)*sc->localSize[0].data.i;
+
+					PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
+				}
+				else {
+					PfMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
+
+					temp_int.data.i = (i)*sc->localSize[0].data.i * sc->localSize[1].data.i;
+
+					PfAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
+					PfAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
+				}
+				temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					//check that we only read fftDim * local batch data
+					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim_half * &sc->localSize[0]);
+					PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+				}
+			}
+			if (sc->stridedSharedLayout) {
+				PfMul(sc, &sc->sdataID, &sc->combinedID, &sc->sharedStride, 0);
+
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+			}
+			else {
+				PfMod(sc, &sc->sdataID, &sc->combinedID, &fftDim);
+				
+				PfDiv(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+				PfMul(sc, &sc->tempInt, &sc->tempInt, &sc->sharedStride, 0);
+
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+			}
+			appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[i]);
+			if (sc->stridedSharedLayout) {
+				temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					PfIf_end(sc);
+				}
+			}
+			else {
+				temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					PfIf_end(sc);
+				}
+			}
+		}
+		if (sc->useDisableThreads) {
+			PfIf_end(sc);
+		}
 	}
 
 	temp_int.data.i = 2;
@@ -611,6 +961,166 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 	if (sc->useDisableThreads) {
 		PfIf_end(sc);
 	}
+	if (sc->performDST == 2) {
+		appendBarrierVkFFT(sc);
+		if (sc->stridedSharedLayout) {
+			PfDivCeil(sc, &used_registers, &fftDim, &sc->localSize[1]);
+		}
+		else {
+			PfDivCeil(sc, &used_registers, &fftDim, &sc->localSize[0]);
+		}
+		if (sc->useDisableThreads) {
+			temp_int.data.i = 0;
+			PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
+		}
+		for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
+			if (sc->stridedSharedLayout) {
+				temp_int.data.i = (i)*sc->localSize[1].data.i;
+
+				PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_y, &temp_int);
+
+				temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					//check that we only read fftDim * local batch data
+					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
+					PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+				}
+			}
+			else {
+				if (sc->localSize[1].data.i == 1) {
+					temp_int.data.i = (i)*sc->localSize[0].data.i;
+
+					PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
+				}
+				else {
+					PfMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
+
+					temp_int.data.i = (i)*sc->localSize[0].data.i * sc->localSize[1].data.i;
+
+					PfAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
+					PfAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
+				}
+				temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					//check that we only read fftDim * local batch data
+					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim_half * &sc->localSize[0]);
+					PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+				}
+			}
+			if (sc->stridedSharedLayout) {
+				temp_int.data.i = fftDim.data.i - 1;
+				PfSub(sc, &sc->combinedID, &temp_int, &sc->combinedID);
+
+				PfMul(sc, &sc->sdataID, &sc->combinedID, &sc->sharedStride, 0);
+
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+			}
+			else {
+				PfMod(sc, &sc->sdataID, &sc->combinedID, &fftDim);
+				temp_int.data.i = fftDim.data.i - 1;
+				PfSub(sc, &sc->sdataID, &temp_int, &sc->sdataID);
+
+				PfDiv(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+				PfMul(sc, &sc->tempInt, &sc->tempInt, &sc->sharedStride, 0);
+
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+			}
+			appendSharedToRegisters(sc, &sc->regIDs[i], &sc->sdataID);
+			if (sc->stridedSharedLayout) {
+				temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					PfIf_end(sc);
+				}
+			}
+			else {
+				temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					PfIf_end(sc);
+				}
+			}
+		}
+		if (sc->useDisableThreads) {
+			PfIf_end(sc);
+		}
+		appendBarrierVkFFT(sc);
+		
+		if (sc->useDisableThreads) {
+			temp_int.data.i = 0;
+			PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
+		}
+		for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
+			if (sc->stridedSharedLayout) {
+				temp_int.data.i = (i)*sc->localSize[1].data.i;
+
+				PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_y, &temp_int);
+
+				temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					//check that we only read fftDim * local batch data
+					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
+					PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+				}
+			}
+			else {
+				if (sc->localSize[1].data.i == 1) {
+					temp_int.data.i = (i)*sc->localSize[0].data.i;
+
+					PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
+				}
+				else {
+					PfMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
+
+					temp_int.data.i = (i)*sc->localSize[0].data.i * sc->localSize[1].data.i;
+
+					PfAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
+					PfAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
+				}
+				temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					//check that we only read fftDim * local batch data
+					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim_half * &sc->localSize[0]);
+					PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+				}
+			}
+			if (sc->stridedSharedLayout) {
+				PfMul(sc, &sc->sdataID, &sc->combinedID, &sc->sharedStride, 0);
+
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+			}
+			else {
+				PfMod(sc, &sc->sdataID, &sc->combinedID, &fftDim);
+				
+				PfDiv(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+				PfMul(sc, &sc->tempInt, &sc->tempInt, &sc->sharedStride, 0);
+
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+			}
+			appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[i]);
+			if (sc->stridedSharedLayout) {
+				temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					PfIf_end(sc);
+				}
+			}
+			else {
+				temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					PfIf_end(sc);
+				}
+			}
+		}
+		if (sc->useDisableThreads) {
+			PfIf_end(sc);
+		}
+	}
 	return;
 }
 
@@ -755,6 +1265,20 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 				PfMod(sc, &sc->tempInt, &sc->combinedID, &fftDim);
 				temp_int.data.i = 2;
 				PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+			}
+			if (sc->performDST)  {
+				if (i < (pfUINT)used_registers.data.i / 2) {
+					temp_int.data.i = 1;
+					PfIf_eq_start(sc, &sc->tempInt, &temp_int);
+					PfMovNeg(sc, &sc->regIDs[i].data.c[0], &sc->regIDs[i].data.c[0]);
+					PfIf_end(sc);
+				}
+				else {
+					temp_int.data.i = 1;
+					PfIf_eq_start(sc, &sc->tempInt, &temp_int);
+					PfMovNeg(sc, &sc->regIDs[i - used_registers.data.i / 2].data.c[1], &sc->regIDs[i - used_registers.data.i / 2].data.c[1]);
+					PfIf_end(sc);
+				}
 			}
 			temp_int.data.i = 0;
 			PfIf_eq_start(sc, &sc->tempInt, &temp_int);
@@ -1401,7 +1925,10 @@ static inline void appendDCTIV_even_write(VkFFTSpecializationConstantsLayout* sc
 				PfSub(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
 			}
 		}
-		appendRegistersToShared_y_y(sc, &sc->sdataID, &sc->regIDs[i]);
+		if (sc->performDST) 
+			appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[i]);
+		else
+			appendRegistersToShared_y_y(sc, &sc->sdataID, &sc->regIDs[i]);
 		if (sc->axis_id > 0) {
 			temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
 			temp_int1.data.i = fftDim.data.i;
@@ -1464,12 +1991,22 @@ static inline void appendDCTIV_even_write(VkFFTSpecializationConstantsLayout* sc
 		}
 
 		if (sc->axis_id > 0) {
-			PfMul(sc, &sc->tempInt, &sc->combinedID, &sc->sharedStride, 0);
+			if (sc->performDST) {
+				temp_int.data.i = fftDim.data.i - 1;
+				PfSub(sc, &sc->tempInt, &temp_int, &sc->combinedID);
+				PfMul(sc, &sc->tempInt, &sc->tempInt, &sc->sharedStride, 0);
+			}
+			else
+				PfMul(sc, &sc->tempInt, &sc->combinedID, &sc->sharedStride, 0);
 
 			PfAdd(sc, &sc->sdataID, &sc->gl_LocalInvocationID_x, &sc->tempInt);
 		}
 		else {
 			PfMod(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+			if (sc->performDST) {
+				temp_int.data.i = fftDim.data.i - 1;
+				PfSub(sc, &sc->tempInt, &temp_int, &sc->tempInt);
+			}
 			if (sc->stridedSharedLayout) {
 				PfMul(sc, &sc->sdataID, &sc->tempInt, &sc->sharedStride, 0);
 
@@ -1483,7 +2020,32 @@ static inline void appendDCTIV_even_write(VkFFTSpecializationConstantsLayout* sc
 				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
 			}
 		}
-		appendSharedToRegisters_y_y(sc, &sc->regIDs[i], &sc->sdataID);
+		if (sc->performDST) {
+			appendSharedToRegisters_x_y(sc, &sc->regIDs[i], &sc->sdataID);
+			if (sc->axis_id > 0) {
+				PfMul(sc, &sc->tempInt, &sc->combinedID, &sc->sharedStride, 0);
+
+				PfAdd(sc, &sc->sdataID, &sc->gl_LocalInvocationID_x, &sc->tempInt);
+			}
+			else {
+				PfMod(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+				if (sc->stridedSharedLayout) {
+					PfMul(sc, &sc->sdataID, &sc->tempInt, &sc->sharedStride, 0);
+
+					PfDiv(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+				}
+				else {
+					PfDiv(sc, &sc->sdataID, &sc->combinedID, &fftDim);
+					PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+				}
+			}
+			appendSharedToRegisters_y_x(sc, &sc->regIDs[i], &sc->sdataID);
+		}
+		else
+			appendSharedToRegisters_y_y(sc, &sc->regIDs[i], &sc->sdataID);
 		if (sc->axis_id > 0) {
 			temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
 			temp_int1.data.i = fftDim.data.i;
@@ -1650,7 +2212,12 @@ static inline void appendDCTIV_odd_read(VkFFTSpecializationConstantsLayout* sc, 
 		temp_int.data.i = fftDim.data.i * 4;
 		PfSub(sc, &sc->sdataID, &sc->inoutID, &temp_int);
 		PfIf_end(sc);
-		
+
+		if (sc->performDST) {
+			temp_int.data.i = 2;
+			PfMod(sc, &sc->blockInvocationID, &sc->sdataID, &temp_int);
+		}
+
 		if (sc->stridedSharedLayout) {
 			PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
 			PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
@@ -1661,6 +2228,13 @@ static inline void appendDCTIV_odd_read(VkFFTSpecializationConstantsLayout* sc, 
 			PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
 		}
 		appendSharedToRegisters(sc, &sc->regIDs[i], &sc->sdataID);
+
+		if (sc->performDST)  {
+			temp_int.data.i = 1;
+			PfIf_eq_start(sc, &sc->blockInvocationID, &temp_int);
+			PfMovNeg(sc, &sc->regIDs[i], &sc->regIDs[i]);
+			PfIf_end(sc);
+		}
 
 		temp_int.data.i = fftDim.data.i * 2;
 		PfIf_lt_start(sc, &sc->inoutID, &temp_int);
@@ -1892,19 +2466,19 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 		temp_int.data.i = fftDim.data.i / 4;
 		PfIf_lt_start(sc, &sc->sdataID, &temp_int);
 
-			temp_int.data.i = 2;
-			PfMul(sc, &sc->inoutID, &sc->sdataID, &temp_int, 0);
-			PfInc(sc, &sc->inoutID);
-			if (sc->mergeSequencesR2C) {
-				PfSub(sc, &sc->tempInt, &fftDim, &sc->inoutID);
-				PfIf_eq_start(sc, &sc->tempInt, &fftDim);
-				PfSetToZero(sc, &sc->tempInt);
-				PfIf_end(sc);
-			}
-
-			PfIf_eq_start(sc, &sc->inoutID, &fftDim);
-			PfSetToZero(sc, &sc->inoutID);
+		temp_int.data.i = 2;
+		PfMul(sc, &sc->inoutID, &sc->sdataID, &temp_int, 0);
+		PfInc(sc, &sc->inoutID);
+		if (sc->mergeSequencesR2C) {
+			PfSub(sc, &sc->tempInt, &fftDim, &sc->inoutID);
+			PfIf_eq_start(sc, &sc->tempInt, &fftDim);
+			PfSetToZero(sc, &sc->tempInt);
 			PfIf_end(sc);
+		}
+
+		PfIf_eq_start(sc, &sc->inoutID, &fftDim);
+		PfSetToZero(sc, &sc->inoutID);
+		PfIf_end(sc);
 
 		PfIf_end(sc);
 
@@ -1913,22 +2487,22 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 		temp_int.data.i = fftDim.data.i / 4;
 		PfIf_ge_start(sc, &sc->sdataID, &temp_int);
 
-			temp_int.data.i = 2;
-			PfMul(sc, &sc->inoutID, &sc->sdataID, &temp_int, 0);
-			if (sc->mergeSequencesR2C) {
-				temp_int.data.i = fftDim.data.i - 2 * (fftDim.data.i / 2);
-				PfAdd(sc, &sc->tempInt, &temp_int, &sc->inoutID);
+		temp_int.data.i = 2;
+		PfMul(sc, &sc->inoutID, &sc->sdataID, &temp_int, 0);
+		if (sc->mergeSequencesR2C) {
+			temp_int.data.i = fftDim.data.i - 2 * (fftDim.data.i / 2);
+			PfAdd(sc, &sc->tempInt, &temp_int, &sc->inoutID);
 
-				PfIf_eq_start(sc, &sc->tempInt, &fftDim);
-				PfSetToZero(sc, &sc->tempInt);
-				PfIf_end(sc);
-			}
-			temp_int.data.i = 2 * (fftDim.data.i / 2);
-			PfSub(sc, &sc->inoutID, &temp_int, &sc->inoutID);
-
-			PfIf_eq_start(sc, &sc->inoutID, &fftDim);
-			PfSetToZero(sc, &sc->inoutID);
+			PfIf_eq_start(sc, &sc->tempInt, &fftDim);
+			PfSetToZero(sc, &sc->tempInt);
 			PfIf_end(sc);
+		}
+		temp_int.data.i = 2 * (fftDim.data.i / 2);
+		PfSub(sc, &sc->inoutID, &temp_int, &sc->inoutID);
+
+		PfIf_eq_start(sc, &sc->inoutID, &fftDim);
+		PfSetToZero(sc, &sc->inoutID);
+		PfIf_end(sc);
 
 		PfIf_end(sc);
 		PfIf_end(sc);
@@ -1938,21 +2512,21 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 		temp_int.data.i = fftDim.data.i / 2;
 		PfIf_ge_start(sc, &sc->sdataID, &temp_int);
 
-			temp_int.data.i = 2;
-			PfMul(sc, &sc->inoutID, &sc->sdataID, &temp_int, 0);
-			if (sc->mergeSequencesR2C) {
-				temp_int.data.i = fftDim.data.i + 2 * (fftDim.data.i / 2);
-				PfSub(sc, &sc->tempInt, &temp_int, &sc->inoutID);
-				PfIf_eq_start(sc, &sc->tempInt, &fftDim);
-				PfSetToZero(sc, &sc->tempInt);
-				PfIf_end(sc);
-			}
-			temp_int.data.i = 2 * (fftDim.data.i / 2);
-			PfSub(sc, &sc->inoutID, &sc->inoutID, &temp_int);
-
-			PfIf_eq_start(sc, &sc->inoutID, &fftDim);
-			PfSetToZero(sc, &sc->inoutID);
+		temp_int.data.i = 2;
+		PfMul(sc, &sc->inoutID, &sc->sdataID, &temp_int, 0);
+		if (sc->mergeSequencesR2C) {
+			temp_int.data.i = fftDim.data.i + 2 * (fftDim.data.i / 2);
+			PfSub(sc, &sc->tempInt, &temp_int, &sc->inoutID);
+			PfIf_eq_start(sc, &sc->tempInt, &fftDim);
+			PfSetToZero(sc, &sc->tempInt);
 			PfIf_end(sc);
+		}
+		temp_int.data.i = 2 * (fftDim.data.i / 2);
+		PfSub(sc, &sc->inoutID, &sc->inoutID, &temp_int);
+
+		PfIf_eq_start(sc, &sc->inoutID, &fftDim);
+		PfSetToZero(sc, &sc->inoutID);
+		PfIf_end(sc);
 
 		PfIf_end(sc);
 		PfIf_end(sc);
@@ -1960,21 +2534,21 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 		temp_int.data.i = 3 * fftDim.data.i / 4;
 		PfIf_ge_start(sc, &sc->sdataID, &temp_int);
 
-			temp_int.data.i = 2;
-			PfMul(sc, &sc->inoutID, &sc->sdataID, &temp_int, 0);
-			if (sc->mergeSequencesR2C) {
-				temp_int.data.i = fftDim.data.i - 1;
-				PfSub(sc, &sc->tempInt, &sc->inoutID, &temp_int);
-				PfIf_eq_start(sc, &sc->tempInt, &fftDim);
-				PfSetToZero(sc, &sc->tempInt);
-				PfIf_end(sc);
-			}
-			temp_int.data.i = 2 * fftDim.data.i - 1;
-			PfSub(sc, &sc->inoutID, &temp_int, &sc->inoutID);
-
-			PfIf_eq_start(sc, &sc->inoutID, &fftDim);
-			PfSetToZero(sc, &sc->inoutID);
+		temp_int.data.i = 2;
+		PfMul(sc, &sc->inoutID, &sc->sdataID, &temp_int, 0);
+		if (sc->mergeSequencesR2C) {
+			temp_int.data.i = fftDim.data.i - 1;
+			PfSub(sc, &sc->tempInt, &sc->inoutID, &temp_int);
+			PfIf_eq_start(sc, &sc->tempInt, &fftDim);
+			PfSetToZero(sc, &sc->tempInt);
 			PfIf_end(sc);
+		}
+		temp_int.data.i = 2 * fftDim.data.i - 1;
+		PfSub(sc, &sc->inoutID, &temp_int, &sc->inoutID);
+
+		PfIf_eq_start(sc, &sc->inoutID, &fftDim);
+		PfSetToZero(sc, &sc->inoutID);
+		PfIf_end(sc);
 
 		PfIf_end(sc);
 
@@ -2023,51 +2597,51 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 		temp_int.data.i = fftDim.data.i / 4;
 		PfIf_lt_start(sc, &sc->sdataID, &temp_int);
 
-			temp_int.data.i = 1;
-			PfAdd(sc, &sc->tempInt, &sc->sdataID, &temp_int);
-			temp_int.data.i = 2;
-			PfDiv(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-			PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-			temp_int.data.i = 0;
-			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
-			if (sc->mergeSequencesR2C) {
-				PfMovNeg(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
-				PfMovNeg(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
-			}
-			else {
-				PfMovNeg(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
-			}
-			PfIf_else(sc);
-			if (sc->mergeSequencesR2C) {
-				PfMov(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
-				PfMov(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
-			}
-			else {
-				PfMov(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
-			}
-			PfIf_end(sc);
+		temp_int.data.i = 1;
+		PfAdd(sc, &sc->tempInt, &sc->sdataID, &temp_int);
+		temp_int.data.i = 2;
+		PfDiv(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+		PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+		temp_int.data.i = 0;
+		PfIf_gt_start(sc, &sc->tempInt, &temp_int);
+		if (sc->mergeSequencesR2C) {
+			PfMovNeg(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+			PfMovNeg(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
+		}
+		else {
+			PfMovNeg(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
+		}
+		PfIf_else(sc);
+		if (sc->mergeSequencesR2C) {
+			PfMov(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+			PfMov(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
+		}
+		else {
+			PfMov(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
+		}
+		PfIf_end(sc);
 
-			temp_int.data.i = 2;
-			PfDiv(sc, &sc->tempInt, &sc->sdataID, &temp_int);
-			PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-			temp_int.data.i = 0;
-			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
-			if (sc->mergeSequencesR2C) {
-				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
-				PfAdd(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
-			}
-			else {
-				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
-			}
-			PfIf_else(sc);
-			if (sc->mergeSequencesR2C) {
-				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
-				PfSub(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
-			}
-			else {
-				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
-			}
-			PfIf_end(sc);
+		temp_int.data.i = 2;
+		PfDiv(sc, &sc->tempInt, &sc->sdataID, &temp_int);
+		PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+		temp_int.data.i = 0;
+		PfIf_gt_start(sc, &sc->tempInt, &temp_int);
+		if (sc->mergeSequencesR2C) {
+			PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+			PfAdd(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
+		}
+		else {
+			PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
+		}
+		PfIf_else(sc);
+		if (sc->mergeSequencesR2C) {
+			PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+			PfSub(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
+		}
+		else {
+			PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
+		}
+		PfIf_end(sc);
 
 		PfIf_end(sc);
 
@@ -2077,51 +2651,51 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 		temp_int.data.i = fftDim.data.i / 4;
 		PfIf_ge_start(sc, &sc->sdataID, &temp_int);
 
-			temp_int.data.i = 1;
-			PfAdd(sc, &sc->tempInt, &sc->sdataID, &temp_int);
-			temp_int.data.i = 2;
-			PfDiv(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-			PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-			temp_int.data.i = 0;
-			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
-			if (sc->mergeSequencesR2C) {
-				PfMovNeg(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
-				PfMovNeg(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
-			}
-			else {
-				PfMovNeg(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
-			}
-			PfIf_else(sc);
-			if (sc->mergeSequencesR2C) {
-				PfMov(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
-				PfMov(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
-			}
-			else {
-				PfMov(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
-			}
-			PfIf_end(sc);
+		temp_int.data.i = 1;
+		PfAdd(sc, &sc->tempInt, &sc->sdataID, &temp_int);
+		temp_int.data.i = 2;
+		PfDiv(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+		PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+		temp_int.data.i = 0;
+		PfIf_gt_start(sc, &sc->tempInt, &temp_int);
+		if (sc->mergeSequencesR2C) {
+			PfMovNeg(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+			PfMovNeg(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
+		}
+		else {
+			PfMovNeg(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
+		}
+		PfIf_else(sc);
+		if (sc->mergeSequencesR2C) {
+			PfMov(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+			PfMov(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
+		}
+		else {
+			PfMov(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
+		}
+		PfIf_end(sc);
 
-			temp_int.data.i = 2;
-			PfDiv(sc, &sc->tempInt, &sc->sdataID, &temp_int);
-			PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-			temp_int.data.i = 0;
-			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
-			if (sc->mergeSequencesR2C) {
-				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
-				PfSub(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
-			}
-			else {
-				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
-			}
-			PfIf_else(sc);
-			if (sc->mergeSequencesR2C) {
-				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
-				PfAdd(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
-			}
-			else {
-				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
-			}
-			PfIf_end(sc);
+		temp_int.data.i = 2;
+		PfDiv(sc, &sc->tempInt, &sc->sdataID, &temp_int);
+		PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+		temp_int.data.i = 0;
+		PfIf_gt_start(sc, &sc->tempInt, &temp_int);
+		if (sc->mergeSequencesR2C) {
+			PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+			PfSub(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
+		}
+		else {
+			PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
+		}
+		PfIf_else(sc);
+		if (sc->mergeSequencesR2C) {
+			PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+			PfAdd(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
+		}
+		else {
+			PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
+		}
+		PfIf_end(sc);
 
 		PfIf_end(sc);
 		PfIf_end(sc);
@@ -2132,51 +2706,51 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 		temp_int.data.i = fftDim.data.i / 2;
 		PfIf_ge_start(sc, &sc->sdataID, &temp_int);
 		
-			temp_int.data.i = 1;
-			PfAdd(sc, &sc->tempInt, &sc->sdataID, &temp_int);
-			temp_int.data.i = 2;
-			PfDiv(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-			PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-			temp_int.data.i = 0;
-			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
-			if (sc->mergeSequencesR2C) {
-				PfMovNeg(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
-				PfMovNeg(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
-			}
-			else {
-				PfMovNeg(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
-			}
-			PfIf_else(sc);
-			if (sc->mergeSequencesR2C) {
-				PfMov(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
-				PfMov(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
-			}
-			else {
-				PfMov(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
-			}
-			PfIf_end(sc);
+		temp_int.data.i = 1;
+		PfAdd(sc, &sc->tempInt, &sc->sdataID, &temp_int);
+		temp_int.data.i = 2;
+		PfDiv(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+		PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+		temp_int.data.i = 0;
+		PfIf_gt_start(sc, &sc->tempInt, &temp_int);
+		if (sc->mergeSequencesR2C) {
+			PfMovNeg(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+			PfMovNeg(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
+		}
+		else {
+			PfMovNeg(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
+		}
+		PfIf_else(sc);
+		if (sc->mergeSequencesR2C) {
+			PfMov(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+			PfMov(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
+		}
+		else {
+			PfMov(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
+		}
+		PfIf_end(sc);
 
-			temp_int.data.i = 2;
-			PfDiv(sc, &sc->tempInt, &sc->sdataID, &temp_int);
-			PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-			temp_int.data.i = 0;
-			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
-			if (sc->mergeSequencesR2C) {
-				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
-				PfAdd(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
-			}
-			else {
-				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
-			}
-			PfIf_else(sc);
-			if (sc->mergeSequencesR2C) {
-				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
-				PfSub(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
-			}
-			else {
-				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
-			}
-			PfIf_end(sc);
+		temp_int.data.i = 2;
+		PfDiv(sc, &sc->tempInt, &sc->sdataID, &temp_int);
+		PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+		temp_int.data.i = 0;
+		PfIf_gt_start(sc, &sc->tempInt, &temp_int);
+		if (sc->mergeSequencesR2C) {
+			PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+			PfAdd(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
+		}
+		else {
+			PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
+		}
+		PfIf_else(sc);
+		if (sc->mergeSequencesR2C) {
+			PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+			PfSub(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
+		}
+		else {
+			PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
+		}
+		PfIf_end(sc);
 
 		PfIf_end(sc);
 		PfIf_end(sc);
@@ -2185,51 +2759,51 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 		temp_int.data.i = 3 * fftDim.data.i / 4;
 		PfIf_ge_start(sc, &sc->sdataID, &temp_int);
 		
-			temp_int.data.i = 1;
-			PfAdd(sc, &sc->tempInt, &sc->sdataID, &temp_int);
-			temp_int.data.i = 2;
-			PfDiv(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-			PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-			temp_int.data.i = 0;
-			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
-			if (sc->mergeSequencesR2C) {
-				PfMovNeg(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
-				PfMovNeg(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
-			}
-			else {
-				PfMovNeg(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
-			}
-			PfIf_else(sc);
-			if (sc->mergeSequencesR2C) {
-				PfMov(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
-				PfMov(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
-			}
-			else {
-				PfMov(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
-			}
-			PfIf_end(sc);
+		temp_int.data.i = 1;
+		PfAdd(sc, &sc->tempInt, &sc->sdataID, &temp_int);
+		temp_int.data.i = 2;
+		PfDiv(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+		PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+		temp_int.data.i = 0;
+		PfIf_gt_start(sc, &sc->tempInt, &temp_int);
+		if (sc->mergeSequencesR2C) {
+			PfMovNeg(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+			PfMovNeg(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
+		}
+		else {
+			PfMovNeg(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
+		}
+		PfIf_else(sc);
+		if (sc->mergeSequencesR2C) {
+			PfMov(sc, &sc->w.data.c[0], &sc->regIDs[i].data.c[0]);
+			PfMov(sc, &sc->w.data.c[1], &sc->temp.data.c[0]);
+		}
+		else {
+			PfMov(sc, &sc->w.data.c[0], &sc->temp.data.c[0]);
+		}
+		PfIf_end(sc);
 
-			temp_int.data.i = 2;
-			PfDiv(sc, &sc->tempInt, &sc->sdataID, &temp_int);
-			PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
-			temp_int.data.i = 0;
-			PfIf_gt_start(sc, &sc->tempInt, &temp_int);
-			if (sc->mergeSequencesR2C) {
-				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
-				PfSub(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
-			}
-			else {
-				PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
-			}
-			PfIf_else(sc);
-			if (sc->mergeSequencesR2C) {
-				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
-				PfAdd(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
-			}
-			else {
-				PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
-			}
-			PfIf_end(sc);
+		temp_int.data.i = 2;
+		PfDiv(sc, &sc->tempInt, &sc->sdataID, &temp_int);
+		PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+		temp_int.data.i = 0;
+		PfIf_gt_start(sc, &sc->tempInt, &temp_int);
+		if (sc->mergeSequencesR2C) {
+			PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+			PfSub(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
+		}
+		else {
+			PfSub(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
+		}
+		PfIf_else(sc);
+		if (sc->mergeSequencesR2C) {
+			PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->regIDs[i].data.c[1]);
+			PfAdd(sc, &sc->w.data.c[1], &sc->w.data.c[1], &sc->temp.data.c[1]);
+		}
+		else {
+			PfAdd(sc, &sc->w.data.c[0], &sc->w.data.c[0], &sc->temp.data.c[1]);
+		}
+		PfIf_end(sc);
 
 		PfIf_end(sc);
 
@@ -2262,6 +2836,183 @@ static inline void appendDCTIV_odd_write(VkFFTSpecializationConstantsLayout* sc,
 	}
 	if (sc->useDisableThreads) {
 		PfIf_end(sc);
+	}
+
+	if (sc->performDST) {
+		appendBarrierVkFFT(sc);
+		if (sc->useDisableThreads) {
+			temp_int.data.i = 0;
+			PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
+		}
+		for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
+			if (sc->axis_id > 0) {
+				temp_int.data.i = (i)*sc->localSize[1].data.i;
+
+				PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_y, &temp_int);
+
+				temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					//check that we only read fftDim * local batch data
+					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
+					PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+				}
+			}
+			else {
+				if (sc->localSize[1].data.i == 1) {
+					temp_int.data.i = (i)*sc->localSize[0].data.i;
+
+					PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
+				}
+				else {
+					PfMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
+
+					temp_int.data.i = (i)*sc->localSize[0].data.i * sc->localSize[1].data.i;
+
+					PfAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
+					PfAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
+				}
+				temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					//check that we only read fftDim * local batch data
+					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim_half * &sc->localSize[0]);
+					PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+				}
+			}
+			if (sc->axis_id > 0) {
+				temp_int.data.i = fftDim.data.i - 1;
+				PfSub(sc, &sc->combinedID, &temp_int, &sc->combinedID);
+
+				PfMul(sc, &sc->sdataID, &sc->combinedID, &sc->sharedStride, 0);
+
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+			}
+			else {
+				if (sc->stridedSharedLayout) {
+					PfMod(sc, &sc->sdataID, &sc->combinedID, &fftDim);
+					temp_int.data.i = fftDim.data.i - 1;
+					PfSub(sc, &sc->sdataID, &temp_int, &sc->sdataID);
+					PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+
+					PfDiv(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+					
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+				}
+				else {
+					PfMod(sc, &sc->sdataID, &sc->combinedID, &fftDim);
+					temp_int.data.i = fftDim.data.i - 1;
+					PfSub(sc, &sc->sdataID, &temp_int, &sc->sdataID);
+
+					PfDiv(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+					PfMul(sc, &sc->tempInt, &sc->tempInt, &sc->sharedStride, 0);
+
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+				}
+			}
+			appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[i]);
+			if (sc->axis_id > 0) {
+				temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					PfIf_end(sc);
+				}
+			}
+			else {
+				temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					PfIf_end(sc);
+				}
+			}
+		}
+		if (sc->useDisableThreads) {
+			PfIf_end(sc);
+		}
+		appendBarrierVkFFT(sc);
+		
+		if (sc->useDisableThreads) {
+			temp_int.data.i = 0;
+			PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
+		}
+		for (pfUINT i = 0; i < (pfUINT)used_registers.data.i; i++) {
+			if (sc->axis_id > 0) {
+				temp_int.data.i = (i)*sc->localSize[1].data.i;
+
+				PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_y, &temp_int);
+
+				temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					//check that we only read fftDim * local batch data
+					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim * &sc->localSize[0]);
+					PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+				}
+			}
+			else {
+				if (sc->localSize[1].data.i == 1) {
+					temp_int.data.i = (i)*sc->localSize[0].data.i;
+
+					PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_x, &temp_int);
+				}
+				else {
+					PfMul(sc, &sc->combinedID, &sc->localSize[0], &sc->gl_LocalInvocationID_y, 0);
+
+					temp_int.data.i = (i)*sc->localSize[0].data.i * sc->localSize[1].data.i;
+
+					PfAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
+					PfAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
+				}
+				temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					//check that we only read fftDim * local batch data
+					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID < %" PRIu64 "){\n", &sc->fftDim_half * &sc->localSize[0]);
+					PfIf_lt_start(sc, &sc->combinedID, &temp_int1);
+				}
+			}
+			if (sc->axis_id > 0) {
+				PfMul(sc, &sc->sdataID, &sc->combinedID, &sc->sharedStride, 0);
+
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+			}
+			else {
+				if (sc->stridedSharedLayout) {
+					PfMod(sc, &sc->sdataID, &sc->combinedID, &fftDim);
+					PfMul(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride, 0);
+
+					PfDiv(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+					
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+				}
+				else {
+					PfMod(sc, &sc->sdataID, &sc->combinedID, &fftDim);
+					
+					PfDiv(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+					PfMul(sc, &sc->tempInt, &sc->tempInt, &sc->sharedStride, 0);
+
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+				}
+			}
+			appendSharedToRegisters(sc, &sc->regIDs[i], &sc->sdataID);
+			if (sc->axis_id > 0) {
+				temp_int.data.i = (i + 1) * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					PfIf_end(sc);
+				}
+			}
+			else {
+				temp_int.data.i = (i + 1) * sc->localSize[0].data.i * sc->localSize[1].data.i;
+				temp_int1.data.i = fftDim.data.i * batching_localSize.data.i;
+				if (temp_int.data.i > temp_int1.data.i) {
+					PfIf_end(sc);
+				}
+			}
+		}
+		if (sc->useDisableThreads) {
+			PfIf_end(sc);
+		}
 	}
 	sc->writeFromRegisters = 1;
 	

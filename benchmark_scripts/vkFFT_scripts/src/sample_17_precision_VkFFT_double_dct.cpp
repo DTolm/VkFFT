@@ -303,7 +303,7 @@ VkFFTResult sample_17_precision_VkFFT_double_dct(VkGPU* vkGPU, uint64_t file_out
 				}
 				//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 				resFFT = initializeVkFFT(&app, configuration);
-				if (resFFT == VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT) {
+				if (resFFT == VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2R) {
 					if (file_output)
 						fprintf(output, "VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 "x%" PRIu64 " - UNSUPPORTED\n", t, dims[0], dims[1], dims[2], dims[3]);
 					printf("VkFFT DCT-%d System: %" PRIu64 "x%" PRIu64 "x%" PRIu64 "x%" PRIu64 " - UNSUPPORTED\n", t, dims[0], dims[1], dims[2], dims[3]);

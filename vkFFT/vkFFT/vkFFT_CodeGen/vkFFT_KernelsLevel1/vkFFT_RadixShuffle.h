@@ -47,8 +47,10 @@ static inline void appendRadixShuffleNonStrided(VkFFTSpecializationConstantsLayo
 	normalizationValue.data.i = 1;
 
 	if ((((sc->actualInverse) && (sc->normalize)) || (sc->convolutionStep && (stageAngle->data.d > 0))) && (stageSize->data.i == 1) && (sc->axis_upload_id == 0) && (!(sc->useBluesteinFFT && (stageAngle->data.d < 0)))) {
-		if ((sc->performDCT) && (sc->actualInverse)) {
-			if (sc->performDCT == 1)
+		if (((sc->performDCT) || (sc->performDST)) && (sc->actualInverse)) {
+			if (sc->performDST == 1)
+				normalizationValue.data.i = (sc->sourceFFTSize.data.i + 1) * 2;
+			else if (sc->performDCT == 1)
 				normalizationValue.data.i = (sc->sourceFFTSize.data.i - 1) * 2;
 			else
 				normalizationValue.data.i = sc->sourceFFTSize.data.i * 2;
@@ -83,12 +85,12 @@ static inline void appendRadixShuffleNonStrided(VkFFTSpecializationConstantsLayo
 	logicalGroupSizeNext.type = 31;
 	PfDivCeil(sc, &logicalGroupSizeNext, &sc->fftDim, &logicalStoragePerThreadNext);
 	
-	if ((!((sc->writeFromRegisters == 1) && (stageSize->data.i == sc->fftDim.data.i / stageRadix->data.i) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle->data.d < 0) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)))))) && (((sc->registerBoost == 1) && ((sc->localSize[0].data.i * logicalStoragePerThread.data.i > sc->fftDim.data.i) || (stageSize->data.i < sc->fftDim.data.i / stageRadix->data.i) || ((sc->reorderFourStep) && (sc->fftDim.data.i < sc->fft_dim_full.data.i) && (sc->localSize[1].data.i > 1)) || (sc->localSize[1].data.i > 1) || ((sc->performR2C) && (!sc->actualInverse) && (sc->axis_id == 0)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)) && (stageAngle->data.d < 0)))) || (sc->performDCT)))
+	if ((!((sc->writeFromRegisters == 1) && (stageSize->data.i == sc->fftDim.data.i / stageRadix->data.i) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle->data.d < 0) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)))))) && (((sc->registerBoost == 1) && ((sc->localSize[0].data.i * logicalStoragePerThread.data.i > sc->fftDim.data.i) || (stageSize->data.i < sc->fftDim.data.i / stageRadix->data.i) || ((sc->reorderFourStep) && (sc->fftDim.data.i < sc->fft_dim_full.data.i) && (sc->localSize[1].data.i > 1)) || (sc->localSize[1].data.i > 1) || ((sc->performR2C) && (!sc->actualInverse) && (sc->axis_id == 0)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)) && (stageAngle->data.d < 0)))) || ((sc->performDCT) || (sc->performDST))))
 	{
 		appendBarrierVkFFT(sc);
 	}
 	//if ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize->data.i < sc->fftDim / stageRadix->data.i) || ((sc->reorderFourStep) && (sc->fftDim < sc->fft_dim_full) && (sc->localSize[1] > 1)) || (sc->localSize[1] > 1) || ((sc->performR2C) && (!sc->actualInverse) && (sc->axis_id == 0)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle->data.d < 0)) || (sc->registerBoost > 1) || (sc->performDCT)) {
-	if ((!((sc->writeFromRegisters == 1) && (stageSize->data.i == sc->fftDim.data.i / stageRadix->data.i) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle->data.d < 0) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)))))) && ((sc->localSize[0].data.i * logicalStoragePerThread.data.i > sc->fftDim.data.i) || (stageSize->data.i < sc->fftDim.data.i / stageRadix->data.i) || ((sc->reorderFourStep) && (sc->fftDim.data.i < sc->fft_dim_full.data.i) && (sc->localSize[1].data.i > 1)) || (sc->localSize[1].data.i > 1) || ((sc->performR2C) && (!sc->actualInverse) && (sc->axis_id == 0)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)) && (stageAngle->data.d < 0)) || (sc->registerBoost > 1) || (sc->performDCT))) {
+	if ((!((sc->writeFromRegisters == 1) && (stageSize->data.i == sc->fftDim.data.i / stageRadix->data.i) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle->data.d < 0) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)))))) && ((sc->localSize[0].data.i * logicalStoragePerThread.data.i > sc->fftDim.data.i) || (stageSize->data.i < sc->fftDim.data.i / stageRadix->data.i) || ((sc->reorderFourStep) && (sc->fftDim.data.i < sc->fft_dim_full.data.i) && (sc->localSize[1].data.i > 1)) || (sc->localSize[1].data.i > 1) || ((sc->performR2C) && (!sc->actualInverse) && (sc->axis_id == 0)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)) && (stageAngle->data.d < 0)) || (sc->registerBoost > 1) || ((sc->performDCT) || (sc->performDST)))) {
 		if (!((sc->registerBoost > 1) && (stageSize->data.i * stageRadix->data.i == sc->fftDim.data.i / sc->stageRadix[sc->numStages - 1]) && (sc->stageRadix[sc->numStages - 1] == sc->registerBoost))) {
 			PfContainer* tempID;
 			tempID = (PfContainer*)calloc(sc->registers_per_thread * sc->registerBoost, sizeof(PfContainer));
@@ -362,8 +364,10 @@ static inline void appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout*
 	normalizationValue.data.i = 1;
 
 	if ((((sc->actualInverse) && (sc->normalize)) || (sc->convolutionStep && (stageAngle->data.d > 0))) && (stageSize->data.i == 1) && (sc->axis_upload_id == 0) && (!(sc->useBluesteinFFT && (stageAngle->data.d < 0)))) {
-		if ((sc->performDCT) && (sc->actualInverse)) {
-			if (sc->performDCT == 1)
+		if (((sc->performDCT) || (sc->performDST)) && (sc->actualInverse)) {
+			if (sc->performDST == 1)
+				normalizationValue.data.i = (sc->sourceFFTSize.data.i + 1) * 2;
+			else if (sc->performDCT == 1)
 				normalizationValue.data.i = (sc->sourceFFTSize.data.i - 1) * 2;
 			else
 				normalizationValue.data.i = sc->sourceFFTSize.data.i * 2;
@@ -399,7 +403,7 @@ static inline void appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout*
 	logicalGroupSizeNext.type = 31;
 	PfDivCeil(sc, &logicalGroupSizeNext, &sc->fftDim, &logicalStoragePerThreadNext);
 
-	if ((!((sc->writeFromRegisters == 1) && (stageSize->data.i == sc->fftDim.data.i / stageRadix->data.i) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle->data.d < 0) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)))))) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1].data.i * logicalStoragePerThread.data.i > sc->fftDim.data.i) || (stageSize->data.i < sc->fftDim.data.i / stageRadix->data.i) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)) && (stageAngle->data.d < 0)) || (sc->performDCT)))
+	if ((!((sc->writeFromRegisters == 1) && (stageSize->data.i == sc->fftDim.data.i / stageRadix->data.i) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle->data.d < 0) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)))))) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1].data.i * logicalStoragePerThread.data.i > sc->fftDim.data.i) || (stageSize->data.i < sc->fftDim.data.i / stageRadix->data.i) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)) && (stageAngle->data.d < 0)) || ((sc->performDCT) || (sc->performDST))))
 	{
 		appendBarrierVkFFT(sc);
 	}
@@ -407,7 +411,7 @@ static inline void appendRadixShuffleStrided(VkFFTSpecializationConstantsLayout*
 		PfMov(sc, &sc->sharedStride, &sc->sharedStrideReadWriteConflict);
 	}
 	//if ((sc->localSize[0] * logicalStoragePerThread > sc->fftDim) || (stageSize->data.i < sc->fftDim / stageRadix->data.i) || ((sc->reorderFourStep) && (sc->fftDim < sc->fft_dim_full) && (sc->localSize[1] > 1)) || (sc->localSize[1] > 1) || ((sc->performR2C) && (!sc->actualInverse) && (sc->axis_id == 0)) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels > 1)) && (stageAngle->data.d < 0)) || (sc->registerBoost > 1) || (sc->performDCT)) {
-	if ((!((sc->writeFromRegisters == 1) && (stageSize->data.i == sc->fftDim.data.i / stageRadix->data.i) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle->data.d < 0) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)))))) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1].data.i * logicalStoragePerThread.data.i > sc->fftDim.data.i) || (stageSize->data.i < sc->fftDim.data.i / stageRadix->data.i) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)) && (stageAngle->data.d < 0)) || (sc->performDCT))) {
+	if ((!((sc->writeFromRegisters == 1) && (stageSize->data.i == sc->fftDim.data.i / stageRadix->data.i) && (!(((sc->convolutionStep) || (sc->useBluesteinFFT && sc->BluesteinConvolutionStep)) && (stageAngle->data.d < 0) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)))))) && (((sc->axis_id == 0) && (sc->axis_upload_id == 0)) || (sc->localSize[1].data.i * logicalStoragePerThread.data.i > sc->fftDim.data.i) || (stageSize->data.i < sc->fftDim.data.i / stageRadix->data.i) || ((sc->convolutionStep) && ((sc->matrixConvolution > 1) || (sc->numKernels.data.i > 1)) && (stageAngle->data.d < 0)) || ((sc->performDCT) || (sc->performDST)))) {
 		if (!((sc->registerBoost > 1) && (stageSize->data.i * stageRadix->data.i == sc->fftDim.data.i / sc->stageRadix[sc->numStages - 1]) && (sc->stageRadix[sc->numStages - 1] == sc->registerBoost))) {
 			PfContainer* tempID;
 			tempID = (PfContainer*)calloc(sc->registers_per_thread * sc->registerBoost, sizeof(PfContainer));

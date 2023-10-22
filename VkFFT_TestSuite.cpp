@@ -562,7 +562,7 @@ int main(int argc, char* argv[])
 		version_decomposed[0] = version / 10000;
 		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
 		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
-		printf("VkFFT v%d.%d.%d (25-09-2023). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
+		printf("VkFFT v%d.%d.%d (22-10-2023). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
 #if (VKFFT_BACKEND==0)
 		printf("Vulkan backend\n");
 #elif (VKFFT_BACKEND==1)
@@ -591,7 +591,7 @@ int main(int argc, char* argv[])
 		printf("		7 - FFT + iFFT C2C Bluestein benchmark in single precision\n");
 		printf("		8 - FFT + iFFT C2C Bluestein benchmark in double precision\n");
 #ifdef VKFFT_USE_DOUBLEDOUBLE_FP128
-		printf("		9 - FFT + iFFT C2C benchmark 1D batched in quad double-double precision LUT\n");
+		printf("		9 - FFT + iFFT C2C benchmark 1D batched in double-double emulation of quad precision LUT\n");
 #endif
 #if (VKFFT_BACKEND==0)
 		printf("		10 - multiple buffer(4 by default) split version of benchmark 0\n");
@@ -607,7 +607,7 @@ int main(int argc, char* argv[])
 		printf("		17 - VkFFT / FFTW R2R DCT-I, II, III and IV precision test in double precision\n");
 		printf("		18 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in double precision\n");
 #ifdef VKFFT_USE_DOUBLEDOUBLE_FP128
-		printf("		19 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in quad double-double precision\n");
+		printf("		19 - VkFFT / FFTW C2C precision test in double-double emulation of quad precision\n");
 #endif
 #elif USE_rocFFT
 		printf("		11 - VkFFT / rocFFT / FFTW C2C precision test in single precision\n");
@@ -619,7 +619,7 @@ int main(int argc, char* argv[])
 		printf("		17 - VkFFT / FFTW R2R DCT-I, II, III and IV precision test in double precision\n");
 		printf("		18 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in double precision\n");
 #ifdef VKFFT_USE_DOUBLEDOUBLE_FP128
-		printf("		19 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in quad double-double precision\n");
+		printf("		19 - VkFFT / FFTW C2C precision test in double-double emulation of quad precision\n");
 #endif
 #else
 		printf("		11 - VkFFT / FFTW C2C precision test in single precision\n");
@@ -631,7 +631,7 @@ int main(int argc, char* argv[])
 		printf("		17 - VkFFT / FFTW R2R DCT-I, II, III and IV precision test in double precision\n");
 		printf("		18 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in double precision\n");
 #ifdef VKFFT_USE_DOUBLEDOUBLE_FP128
-		printf("		19 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision test in quad double-double precision\n");
+		printf("		19 - VkFFT / FFTW C2C precision test in double-double emulation of quad precision\n");
 #endif
 #endif
 #endif
@@ -652,12 +652,12 @@ int main(int argc, char* argv[])
 		printf("		1002 - FFT + iFFT C2C benchmark 1D batched in half precision: all supported systems from 2 to 4096\n");
 		printf("		1003 - FFT + iFFT C2C multidimensional benchmark in single precision: all supported cubes from 2 to 512\n");
 #ifdef VKFFT_USE_DOUBLEDOUBLE_FP128
-		printf("		1004 - FFT + iFFT C2C benchmark 1D batched in quad double-double precision: all supported systems from 2 to 4096\n");
+		printf("		1004 - FFT + iFFT C2C benchmark 1D batched in double-double emulation of quad precision: all supported systems from 2 to 4096\n");
 #endif
 		printf("	-benchmark_vkfft: run VkFFT benchmark on a user-defined system:\n\
 		-X uint, -Y uint, -Z uint - FFT dimensions (default Y and Z are 1)\n");
 		printf("\
-		-P uint - precision (0 - single, 1 - double, 2 - half, 3 - quad double-double) (default 0)\n");
+		-P uint - precision (0 - single, 1 - double, 2 - half, 3 - double-double) (default 0)\n");
 		printf("\
 		-B uint - number of batched systems (default 1)\n\
 		-N uint - number of consecutive FFT+iFFT iterations (default 1)\n\

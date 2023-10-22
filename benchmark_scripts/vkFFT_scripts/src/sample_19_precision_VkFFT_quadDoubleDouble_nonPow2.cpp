@@ -74,8 +74,8 @@ VkFFTResult sample_19_precision_VkFFT_quadDoubleDouble_nonPow2(VkGPU* vkGPU, uin
 #elif(VKFFT_BACKEND==5)
 #endif
 	if (file_output)
-		fprintf(output, "19 - VkFFT/FFTW C2C precision test in quad double-double precision\n");
-	printf("19 - VkFFT/FFTW C2C precision test in quad double-double precision\n");
+		fprintf(output, "19 - VkFFT/FFTW C2C precision test in double-double emulation of quad precision\n");
+	printf("19 - VkFFT/FFTW C2C precision test in double-double emulation of quad precision\n");
 
 	const int num_benchmark_samples = 349;
 	const int num_runs = 1;

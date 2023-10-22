@@ -44,8 +44,10 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 	normalizationValue.data.i = 1;
 
 	if ((((sc->actualInverse) && (sc->normalize)) || (sc->convolutionStep && (stageAngle->data.d > 0))) && (stageSize->data.i == 1) && (sc->axis_upload_id == 0) && (!(sc->useBluesteinFFT && (stageAngle->data.d < 0)))) {
-		if ((sc->performDCT) && (sc->actualInverse)) {
-			if (sc->performDCT == 1)
+		if (((sc->performDCT) || (sc->performDST)) && (sc->actualInverse)) {
+			if (sc->performDST == 1)
+				normalizationValue.data.i = (sc->sourceFFTSize.data.i + 1) * 2;
+			else if (sc->performDCT == 1)
 				normalizationValue.data.i = (sc->sourceFFTSize.data.i - 1) * 2;
 			else
 				normalizationValue.data.i = sc->sourceFFTSize.data.i * 2;
@@ -1293,8 +1295,10 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 	normalizationValue.data.i = 1;
 
 	if ((((sc->actualInverse) && (sc->normalize)) || (sc->convolutionStep && (stageAngle->data.d > 0))) && (stageSize->data.i == 1) && (sc->axis_upload_id == 0) && (!(sc->useBluesteinFFT && (stageAngle->data.d < 0)))) {
-		if ((sc->performDCT) && (sc->actualInverse)) {
-			if (sc->performDCT == 1)
+		if (((sc->performDCT) || (sc->performDST)) && (sc->actualInverse)) {
+			if (sc->performDST == 1)
+				normalizationValue.data.i = (sc->sourceFFTSize.data.i + 1) * 2;
+			else if (sc->performDCT == 1)
 				normalizationValue.data.i = (sc->sourceFFTSize.data.i - 1) * 2;
 			else
 				normalizationValue.data.i = sc->sourceFFTSize.data.i * 2;

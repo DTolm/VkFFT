@@ -63,8 +63,8 @@ VkFFTResult sample_1004_benchmark_VkFFT_quadDoubleDouble_2_4096(VkGPU* vkGPU, ui
 #elif(VKFFT_BACKEND==5)
 #endif
 	if (file_output)
-		fprintf(output, "1004 - VkFFT FFT + iFFT C2C benchmark 1D batched in quad double-double precision: all supported systems from 2 to 4096\n");
-	printf("1004 - VkFFT FFT + iFFT C2C benchmark 1D batched in quad double-double precision: all supported systems from 2 to 4096\n");
+		fprintf(output, "1004 - VkFFT FFT + iFFT C2C benchmark 1D batched in double-double emulation of quad precision: all supported systems from 2 to 4096\n");
+	printf("1004 - VkFFT FFT + iFFT C2C benchmark 1D batched in double-double emulation of quad precision: all supported systems from 2 to 4096\n");
 	const int num_runs = 3;
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
 	//memory allocated on the CPU once, makes benchmark completion faster + avoids performance issues connected to frequent allocation/deallocation.

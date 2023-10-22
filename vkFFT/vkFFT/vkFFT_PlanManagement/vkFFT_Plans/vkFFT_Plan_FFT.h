@@ -150,12 +150,12 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		axis->specializationConstants.useBluesteinFFT = 1;
 	}
 
-	if (app->configuration.performDCT == 3) {
+	if ((app->configuration.performDCT == 3) || (app->configuration.performDST == 3)) {
 		axis->specializationConstants.actualInverse = (int)inverse;
 		axis->specializationConstants.inverse = (int)!inverse;
 	}
 	else {
-		if (app->configuration.performDCT == 4) {
+		if ((app->configuration.performDCT == 4) || (app->configuration.performDST == 4)) {
 			axis->specializationConstants.actualInverse = (int)inverse;
 			axis->specializationConstants.inverse = 1;
 		}
@@ -167,11 +167,11 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	if (app->useBluesteinFFT[axis_id]) {
 		axis->specializationConstants.actualInverse = (int)inverse;
 		axis->specializationConstants.inverse = (int)reverseBluesteinMultiUpload;
-		if (app->configuration.performDCT == 3) {
+		if ((app->configuration.performDCT == 3) || (app->configuration.performDST == 3)) {
 			axis->specializationConstants.inverseBluestein = (int)!inverse;
 		}
 		else {
-			if (app->configuration.performDCT == 4) {
+			if ((app->configuration.performDCT == 4) || (app->configuration.performDST == 4)) {
 				axis->specializationConstants.inverseBluestein = 1;
 			}
 			else {
@@ -196,19 +196,19 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 	axis->specializationConstants.performR2C = (int)FFTPlan->actualPerformR2CPerAxis[axis_id];
 	axis->specializationConstants.performR2CmultiUpload = (int)FFTPlan->multiUploadR2C;
-	if (app->configuration.performDCT == 3) {
-		axis->specializationConstants.performDCT = 2;
-	}
-	else {
+
+	if (app->configuration.performDCT > 0)
 		axis->specializationConstants.performDCT = (int)app->configuration.performDCT;
-	}
+	if (app->configuration.performDST > 0)
+		axis->specializationConstants.performDST = (int)app->configuration.performDST;
+
 	if ((axis->specializationConstants.performR2CmultiUpload) && (app->configuration.size[0] % 2 != 0)) return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
 	pfUINT additionalR2Cshared = 0;
-	if ((axis->specializationConstants.performR2C || ((axis->specializationConstants.performDCT == 2) || ((axis->specializationConstants.performDCT == 4) && ((axis->specializationConstants.fftDim.data.i % 2) != 0)))) && (axis->specializationConstants.axis_id == 0) && (!axis->specializationConstants.performR2CmultiUpload)) {
+	if ((axis->specializationConstants.performR2C || ((axis->specializationConstants.performDCT == 2) || (axis->specializationConstants.performDST == 2) || (axis->specializationConstants.performDCT == 3) || (axis->specializationConstants.performDST == 3) || (((axis->specializationConstants.performDCT == 4) || (axis->specializationConstants.performDST == 4)) && ((axis->specializationConstants.fftDim.data.i % 2) != 0)))) && (axis->specializationConstants.axis_id == 0) && (!axis->specializationConstants.performR2CmultiUpload)) {
 		additionalR2Cshared = ((axis->specializationConstants.fftDim.data.i % 2) == 0) ? 2 : 1;
-		if ((axis->specializationConstants.performDCT == 2) || ((axis->specializationConstants.performDCT == 4) && ((axis->specializationConstants.fftDim.data.i % 2) != 0))) additionalR2Cshared = 1;
+		if ((axis->specializationConstants.performDCT == 2) || (axis->specializationConstants.performDST == 2) || (axis->specializationConstants.performDCT == 3) || (axis->specializationConstants.performDST == 3) || (((axis->specializationConstants.performDCT == 4) || (axis->specializationConstants.performDST == 4)) && ((axis->specializationConstants.fftDim.data.i % 2) != 0))) additionalR2Cshared = 1;
 	}
-	axis->specializationConstants.mergeSequencesR2C = (((axis->specializationConstants.fftDim.data.i + additionalR2Cshared) <= maxSequenceLengthSharedMemory) && (FFTPlan->actualFFTSizePerAxis[axis_id][1] > 1) && ((FFTPlan->actualPerformR2CPerAxis[axis_id]) || (((app->configuration.performDCT == 3) || (app->configuration.performDCT == 2) || (app->configuration.performDCT == 1) || ((app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) != 0))) && (axis_id == 0)))) ? (1 - (int)app->configuration.disableMergeSequencesR2C) : 0;
+	axis->specializationConstants.mergeSequencesR2C = (((axis->specializationConstants.fftDim.data.i + additionalR2Cshared) <= maxSequenceLengthSharedMemory) && (FFTPlan->actualFFTSizePerAxis[axis_id][1] > 1) && ((FFTPlan->actualPerformR2CPerAxis[axis_id]) || ((((axis->specializationConstants.performDCT == 3) || (axis->specializationConstants.performDST == 3)) || ((axis->specializationConstants.performDCT == 2) || (axis->specializationConstants.performDST == 2)) || ((axis->specializationConstants.performDCT == 1) || (axis->specializationConstants.performDST == 1)) || (((axis->specializationConstants.performDCT == 4) || (axis->specializationConstants.performDST == 4)) && ((app->configuration.size[axis_id] % 2) != 0))) && (axis_id == 0)))) ? (1 - (int)app->configuration.disableMergeSequencesR2C) : 0;
 	//pfUINT passID = FFTPlan->numAxisUploads[axis_id] - 1 - axis_upload_id;
 	axis->specializationConstants.fft_dim_full.type = 31;
 	axis->specializationConstants.fft_dim_full.data.i = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
@@ -530,8 +530,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].type = 31;
 			axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i = (pfINT)app->configuration.size[axis_id];
 			if ((FFTPlan->multiUploadR2C) && (axis_id == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i /= 2;
-			if (app->configuration.performDCT == 1) axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i = 2 * axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i - 2;
-			if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i /= 2;
+			if (axis->specializationConstants.performDCT == 1) axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i = 2 * axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i - 2;
+			if (axis->specializationConstants.performDST == 1) axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i = 2 * axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i + 2;
+			if (((axis->specializationConstants.performDCT == 4) || (axis->specializationConstants.performDST == 4)) && (app->configuration.size[axis_id] % 2 == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_read[axis_id].data.i /= 2;
 			axis->specializationConstants.fft_zeropad_Bluestein_right_read[axis_id].type = 31;
 			axis->specializationConstants.fft_zeropad_Bluestein_right_read[axis_id].data.i = (pfINT)FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 		}
@@ -540,8 +541,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].type = 31;
 			axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i = (pfINT)app->configuration.size[axis_id];
 			if ((FFTPlan->multiUploadR2C) && (axis_id == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i /= 2;
-			if (app->configuration.performDCT == 1) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i = 2 * axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i - 2;
-			if ((app->configuration.performDCT == 4) && (app->configuration.size[axis_id] % 2 == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i /= 2;
+			if (axis->specializationConstants.performDCT == 1) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i = 2 * axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i - 2;
+			if (axis->specializationConstants.performDST == 1) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i = 2 * axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i + 2;
+			if (((axis->specializationConstants.performDCT == 4) || (axis->specializationConstants.performDST == 4)) && (app->configuration.size[axis_id] % 2 == 0)) axis->specializationConstants.fft_zeropad_Bluestein_left_write[axis_id].data.i /= 2;
 			axis->specializationConstants.fft_zeropad_Bluestein_right_write[axis_id].type = 31;
 			axis->specializationConstants.fft_zeropad_Bluestein_right_write[axis_id].data.i = (pfINT)FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 		}
@@ -696,16 +698,16 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		//if ((axis->specializationConstants.fftDim == 8 * maxSequenceLengthSharedMemory) && (app->configuration.registerBoost >= 8)) axis->specializationConstants.registerBoost = 8;
 		if ((axis_id == 0) && (!axis->specializationConstants.actualInverse) && (FFTPlan->actualPerformR2CPerAxis[axis_id])) type = 5;
 		if ((axis_id == 0) && (axis->specializationConstants.actualInverse) && (FFTPlan->actualPerformR2CPerAxis[axis_id])) type = 6;
-		if ((axis_id == 0) && (app->configuration.performDCT == 1)) type = 110;
-		if ((axis_id != 0) && (app->configuration.performDCT == 1)) type = 111;
-		if ((axis_id == 0) && (((app->configuration.performDCT == 2) && (!inverse)) || ((app->configuration.performDCT == 3) && (inverse)))) type = 120;
-		if ((axis_id != 0) && (((app->configuration.performDCT == 2) && (!inverse)) || ((app->configuration.performDCT == 3) && (inverse)))) type = 121;
-		if ((axis_id == 0) && (((app->configuration.performDCT == 2) && (inverse)) || ((app->configuration.performDCT == 3) && (!inverse)))) type = 130;
-		if ((axis_id != 0) && (((app->configuration.performDCT == 2) && (inverse)) || ((app->configuration.performDCT == 3) && (!inverse)))) type = 131;
-		if ((axis_id == 0) && (app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) == 0)) type = 142;
-		if ((axis_id == 0) && (app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) == 1)) type = 144;
-		if ((axis_id != 0) && (app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) == 0)) type = 143;
-		if ((axis_id != 0) && (app->configuration.performDCT == 4) && ((app->configuration.size[axis_id] % 2) == 1)) type = 145;
+		if ((axis_id == 0) && ((axis->specializationConstants.performDCT == 1) || (axis->specializationConstants.performDST == 1))) type = 110;
+		if ((axis_id != 0) && ((axis->specializationConstants.performDCT == 1) || (axis->specializationConstants.performDST == 1))) type = 111;
+		if ((axis_id == 0) && ((((axis->specializationConstants.performDCT == 2) || (axis->specializationConstants.performDST == 2))  && (!inverse)) || (((axis->specializationConstants.performDCT == 3) || (axis->specializationConstants.performDST == 3)) && (inverse)))) type = 120;
+		if ((axis_id != 0) && ((((axis->specializationConstants.performDCT == 2) || (axis->specializationConstants.performDST == 2)) && (!inverse)) || (((axis->specializationConstants.performDCT == 3) || (axis->specializationConstants.performDST == 3)) && (inverse)))) type = 121;
+		if ((axis_id == 0) && ((((axis->specializationConstants.performDCT == 2) || (axis->specializationConstants.performDST == 2)) && (inverse)) || (((axis->specializationConstants.performDCT == 3) || (axis->specializationConstants.performDST == 3)) && (!inverse)))) type = 130;
+		if ((axis_id != 0) && ((((axis->specializationConstants.performDCT == 2) || (axis->specializationConstants.performDST == 2)) && (inverse)) || (((axis->specializationConstants.performDCT == 3) || (axis->specializationConstants.performDST == 3)) && (!inverse)))) type = 131;
+		if ((axis_id == 0) && ((axis->specializationConstants.performDCT == 4) || (axis->specializationConstants.performDST == 4)) && ((app->configuration.size[axis_id] % 2) == 0)) type = 142;
+		if ((axis_id == 0) && ((axis->specializationConstants.performDCT == 4) || (axis->specializationConstants.performDST == 4)) && ((app->configuration.size[axis_id] % 2) == 1)) type = 144;
+		if ((axis_id != 0) && ((axis->specializationConstants.performDCT == 4) || (axis->specializationConstants.performDST == 4)) && ((app->configuration.size[axis_id] % 2) == 0)) type = 143;
+		if ((axis_id != 0) && ((axis->specializationConstants.performDCT == 4) || (axis->specializationConstants.performDST == 4)) && ((app->configuration.size[axis_id] % 2) == 1)) type = 145;
 
 		resFFT = initMemoryParametersAPI(app, &axis->specializationConstants);
 		if (resFFT != VKFFT_SUCCESS) {

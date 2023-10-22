@@ -37,9 +37,9 @@ static inline void appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLayout* s
 	maxSequenceSharedMemory.data.i = sc->sharedMemSize / sc->complexSize;
 	//maxSequenceSharedMemoryPow2 = sc->sharedMemSizePow2 / sc->complexSize;
 	pfUINT additionalR2Cshared = 0;
-	if ((sc->performR2C || ((sc->performDCT == 2) || ((sc->performDCT == 4) && ((sc->fftDim.data.i % 2) != 0)))) && (sc->mergeSequencesR2C) && (sc->axis_id == 0) && (!sc->performR2CmultiUpload)) {
+	if ((sc->performR2C || ((sc->performDCT == 2) || (sc->performDST == 2) || (sc->performDCT == 3) || (sc->performDST == 3) || (((sc->performDCT == 4) || (sc->performDST == 4)) && ((sc->fftDim.data.i % 2) != 0)))) && (sc->mergeSequencesR2C) && (sc->axis_id == 0) && (!sc->performR2CmultiUpload)) {
 		additionalR2Cshared = (sc->fftDim.data.i % 2 == 0) ? 2 : 1;
-		if ((sc->performDCT == 2) || ((sc->performDCT == 4) && ((sc->fftDim.data.i % 2) != 0))) additionalR2Cshared = 1;
+		if ((sc->performDCT == 2) || (sc->performDST == 2) || (sc->performDCT == 3) || (sc->performDST == 3) || (((sc->performDCT == 4) || (sc->performDST == 4)) && ((sc->fftDim.data.i % 2) != 0))) additionalR2Cshared = 1;
 	}
 	switch (type) {
 	case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144://single_c2c + single_r2c
