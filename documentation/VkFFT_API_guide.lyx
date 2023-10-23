@@ -192,7 +192,7 @@ vspace{1cm}
 
 {
 \backslash
-large July 2023, version 1.3.0
+large October 2023, version 1.3.2
 \backslash
 par} 
 \end_layout
@@ -526,7 +526,7 @@ end{mdframed}
 
 \begin_layout Enumerate
 CUDA API: CUDA and NVRTC.
- Sample CMakeLists can look like this:
+ Sample CMakeLists can look like this: 
 \begin_inset ERT
 status open
 
@@ -1144,8 +1144,8 @@ Fourier Transform types and their definitions
 
 \begin_layout Standard
 VkFFT supports commonly used Complex to complex (C2C), real to complex (R2C),
- complex to real (C2R) transformations and real to real (R2R) Discrete Cosine
- Transformations of types II, III and IV.
+ complex to real (C2R) transformations and real to real (R2R) Discrete Cosine/Si
+ne Transformations of types I, II, III and IV.
  VkFFT uses the same definitions as FFTW, except for the multidimensional
  FFT axis ordering: in FFTW dimensions are ordered with the decrease in
  consecutive elements stride, while VkFFT does the opposite - the first
@@ -1178,8 +1178,8 @@ VkFFT assumes that complex numbers are stored consecutively in memory: RIRIRI...
  where R denotes the real part of the complex number and I denotes the imaginary
  part.
  There is no difference between using a float2/double2/half2 container or
- access memory as float/double/half as long as the byte order remains the
- same.
+ access memory as float/double/half/double-double as long as the byte order
+ remains the same.
 \end_layout
 
 \begin_layout Standard
@@ -1274,7 +1274,7 @@ R2R (DCT) transforms
 
 \begin_layout Standard
 R2R transforms in VkFFT are implemented in the form of Discrete cosine transform
-s of types I, II, III and IV.
+s and Discrete sine transforms of types I, II, III and IV.
  Their definitions and transforms results match FFTW:
 \end_layout
 
@@ -1288,7 +1288,7 @@ DCT-I:
 
 \begin_layout Enumerate
 DCT-II: 
-\begin_inset Formula $X_{k}=2\stackrel[n=1]{N-1}{\sum}x_{n}cos(\frac{\pi}{N}(n+\frac{1}{2})k)$
+\begin_inset Formula $X_{k}=2\stackrel[n=0]{N-1}{\sum}x_{n}cos(\frac{\pi}{N}(n+\frac{1}{2})k)$
 \end_inset
 
 , inverse of DCT-III
@@ -1308,6 +1308,38 @@ DCT-IV:
 \end_inset
 
 , inverse of DCT-IV (itself)
+\end_layout
+
+\begin_layout Enumerate
+DST-I: 
+\begin_inset Formula $X_{k}=2\stackrel[n=0]{N-1}{\sum}x_{n}sin(\frac{\pi}{N+1}(n+1)(k+1))$
+\end_inset
+
+, inverse of DST-I (itself)
+\end_layout
+
+\begin_layout Enumerate
+DST-II: 
+\begin_inset Formula $X_{k}=2\stackrel[n=0]{N-1}{\sum}x_{n}sin(\frac{\pi}{N}(n+\frac{1}{2})(k+1))$
+\end_inset
+
+, inverse of DST-III
+\end_layout
+
+\begin_layout Enumerate
+DST-III: 
+\begin_inset Formula $X_{k}=(-1)^{k}x_{N-1}+2\stackrel[n=0]{N-2}{\sum}x_{n}sin(\frac{\pi}{N}(n+1)(k+\frac{1}{2}))$
+\end_inset
+
+, inverse of DST-II
+\end_layout
+
+\begin_layout Enumerate
+DST-IV: 
+\begin_inset Formula $X_{k}=2\stackrel[n=0]{N-1}{\sum}x_{n}sin(\frac{\pi}{N}(n+\frac{1}{2})(k+\frac{1}{2}))$
+\end_inset
+
+, inverse of DST-IV (itself)
 \end_layout
 
 \begin_layout Standard
@@ -1450,6 +1482,7 @@ For an out-of-place R2C FFT, there is no need to pad buffer with real numbers,
 \end_inset
 
  complex numbers for the frequency space.
+ 
 \end_layout
 
 \begin_layout Standard
@@ -1480,6 +1513,11 @@ literal "false"
 \end_inset
 
 )
+\end_layout
+
+\begin_layout Standard
+By default, R2C/C2R will assume the complex-padded real strides in the in-place
+ mode and non-padded real strides in out-of-place mode.
 \end_layout
 
 \begin_layout Subsection
@@ -1632,7 +1670,8 @@ ate FFT results out-of-place.
 To estimate if your sequence size is single upload or not, divide the amount
  of available shared memory (48KB - Nvidia GPUs with Vulkan/OpenCL API,
  64KB - AMD GPUs, 100KB - Nvidia GPUs in CUDA API) by the complex size used
- for calculations (8 byte - single precision, 16 byte - double precision).
+ for calculations (4 byte - half precision, 8 byte - single precision, 16
+ byte - double precision, 32 byte - double-double).
  For 64KB of shared memory, we get 8192 as max single upload single-precision
  non-strided FFT, 4096 for double precision.
  For strided axes (H and D parts of the layout) these numbers have to be
@@ -1695,11 +1734,12 @@ For even sequences there exists an easy mapping between R2C/C2R FFTs and
 \end_layout
 
 \begin_layout Subsubsection
-R2R Discrete Cosine Transforms
+R2R Discrete Cosine/Sine Transforms
 \end_layout
 
 \begin_layout Standard
 There exist many different mappings between DCT and FFT.
+ DSTs are reformulated as DCTs inside the VkFFT, so they use the same algorithms.
  As of now, VkFFT has the following algorithms implemented (all single-upload
  for now):
 \end_layout
@@ -1789,15 +1829,16 @@ VkFFT accuracy
 \end_layout
 
 \begin_layout Standard
-To measure how VkFFT (single/double/half precision) results compare to cuFFT/roc
-FFT (single/double/half precision) and FFTW (double precision), multiple
- sets of systems covering full supported C2C/R2C+C2R/R2R FFT range are filled
- with random complex data on the scale of [-1,1] and one transform was performed
- on each system.
+To measure how VkFFT (single/double/half/double-double precision) results
+ compare to cuFFT/rocFFT (single/double/half precision) and FFTW (double/quad
+ precision), multiple sets of systems covering full supported C2C/R2C+C2R/R2R
+ FFT range are filled with random complex data on the scale of [-1,1] and
+ one transform was performed on each system.
  Samples 11(single), 12(double), 13(half), 14(non-power of 2 C2C, single),
  15(R2C+C2R, single), 16(DCT-I/II/III/IV, single), 17(DCT-I/II/III/IV, double),
- 18(non-power of 2 C2C, double) are available in VkFFT Benchmark Suite to
- perform VkFFT verification on any of the target platforms.
+ 18(non-power of 2 C2C, double), 19(double-double emulation of quad precision,
+ C2C) are available in VkFFT Benchmark Suite to perform VkFFT verification
+ on any of the target platforms.
  Overall, the Cooley-Tukey algorithm (Stockham autosort) exhibits logarithmic
  relative error scaling, similar to those of other GPU FFT libraries.
  Typically, the more computationally expensive algorithm is - the worse
@@ -1823,13 +1864,16 @@ Double precision in VkFFT also supports two modes of calculation - by using
 \end_layout
 
 \begin_layout Standard
-Half precision is currently only supported in the Vulkan backend and is
- often experiencing precision problems with the first number of the resulting
- FFT sequence, which is the sum of all input numbers.
+Half precision is supported in all backends.
  Half precision is implemented only as a memory trick - all on-chip computations
- are done in single precision, but this doesn't help with the first number
- problem.
+ are done in single precision.
  Half precision can use SFU or LUT as well.
+\end_layout
+
+\begin_layout Standard
+Double-double emulation of quad precision uses precomputed on CPU in quad
+ precision twiddle factors and implements only additions and multiplications
+ on GPU (for now).
 \end_layout
 
 \begin_layout Standard
@@ -1869,8 +1913,8 @@ phase vectors used in the Four Step FFT algorithm between stages
 \end_layout
 
 \begin_layout Itemize
-phase vectors used in DCT-II/III/IV to perform a mapping between R2R and
- C2C
+phase vectors used in DCT/DST-II/III/IV to perform a mapping between R2R
+ and C2C
 \end_layout
 
 \begin_layout Itemize
@@ -1938,6 +1982,58 @@ To do Bluestein's FFT algorithm, precomputed sequences
  required size of the tempBuffer will also vary.
  VkFFT determines the biggest size needed among axes and allocated tempBuffer
  of this size.
+\end_layout
+
+\begin_layout Subsection
+VkFFT support for double-double emulation of quad precision
+\end_layout
+
+\begin_layout Standard
+Since VkFFT 1.3.2 experimental support for double-double emulation of quad
+ precision has been added.
+ Double-double number is defined as an unevaluated sum of two double numbers,
+ second one being on the order of ~1 ULP of the first one (like 1 and 1e-16).
+ This boosts the significand from 53 to 106 bits and leaves the exponent
+ the same (11bits).
+ For example, true quad precision would have 15 bits of exponent and 113
+ bits significand.
+ The range of double-double stays the same as in double precision (1e308
+ vs 1e4932), while precision boosts from ~1e-16 to ~1e-32 (vs ~1e-34 of
+ true quad precision).
+ The double-double format of VkFFT is equivalent to __ibm128 type in gcc.
+ VkFFT uses quadmath library to precompute twiddle factors and initialize
+ kernels for double-double in the true quad precision.
+ Currently, conversion between quad and double-double is only possible on
+ CPU in true quad (GPU can only do operations on data in double-double format).
+ This will be changed later.
+\end_layout
+
+\begin_layout Standard
+To enable double-double support, link against quadmath and set VkFFT_use_FP128_d
+ouble_double compile flag to true.
+\end_layout
+
+\begin_layout Standard
+The performance impact is rather harsh - the code becomes compute-bound
+ even on modern HPC clusters.
+ The simple radix algorithms work well and are usable (~2x impact compared
+ to double precision), while Bluestein and big primes Rader algorithms incur
+ a high toll on operations count.
+ This can be improved in the future, but probably not to the extent of being
+ VRAM bandwidth-bound on modern accelerators.
+\end_layout
+
+\begin_layout Standard
+The main usage for the double-double precision should be mixed-precision
+ calculations, where most of the time is spent in regular FP64 and only
+ some parts that hit precision boundaries are calculated in double-double.
+ For example, in VkFFT it is possible to perform a double precision FFT
+ with all on-chip calculations done in double-double.
+ This way the final errors should be on the scale of 1 ULP.
+\end_layout
+
+\begin_layout Standard
+
 \end_layout
 
 \begin_layout Standard
@@ -2196,6 +2292,13 @@ I have also explored other ways to implement these container abstractions
 \end_layout
 
 \begin_layout Standard
+VkFFT supports two base number modes (used for all FP calculations on CPU)
+ - long double or quad (__float128).
+ The latter is needed to calculate the twiddle factors in double-double
+ emulation of quad precision.
+\end_layout
+
+\begin_layout Standard
 \begin_inset Newpage newpage
 \end_inset
 
@@ -2293,6 +2396,12 @@ VKFFT_ERROR_MATH_FAILED = 6,	// Math instruction in code generator failed
 VKFFT_ERROR_FFTdim_GT_MAX_FFT_DIMENSIONS = 7,	// User specified a number
  of dimensions higher than the code is compiled to handle with VKFFT_MAX_FFT_DIM
 ENSIONS
+\end_layout
+
+\begin_layout Plain Layout
+
+VKFFT_ERROR_NONZERO_APP_INITIALIZATION = 8,	// The app pointer is not pointing
+ to the zero-filled memory block
 \end_layout
 
 \begin_layout Plain Layout
@@ -2438,6 +2547,11 @@ ern is enabled
 
 \begin_layout Plain Layout
 
+VKFFT_ERROR_EMPTY_app = 2015,	// app pointer is zero
+\end_layout
+
+\begin_layout Plain Layout
+
 VKFFT_ERROR_UNSUPPORTED_RADIX = 3001,	// VkFFT has encountered unsupported
  radix (more than 13) during decomposition and Bluestein's FFT fallback
  did not work
@@ -2457,8 +2571,8 @@ VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C = 3003,	// VkFFT can not do this
 
 \begin_layout Plain Layout
 
-VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT = 3004,	// VkFFT can not do this
- sequence length currently - multi-upload R2R transforms, odd DCT-IV transforms
+VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2R = 3004,	// VkFFT can not do this
+ sequence length currently - multi-upload R2R transforms
 \end_layout
 
 \begin_layout Plain Layout
@@ -2781,7 +2895,7 @@ VkFFT has a unified plan management model - all different transform types/
  while the next one will go into how to configure VkFFTConfiguration correctly.
  All of the functions operate on VkFFTApplication and VkFFTConfiguration
  assuming they have been zero-initialized before usage, so do not forget
- to do this when initializing:
+ to do this when initializing (otherwise VkFFT will throw an error):
 \end_layout
 
 \begin_layout Standard
@@ -3146,6 +3260,7 @@ This section will cover all the parameters that can be specified in the
  VkFFTConfiguration struct.
  It will start with a short description of the struct (intended to be used
  as a cheat sheet), then go for each field in detail.
+ Here pfUINT and pfINT are defined as uint64_t and int64_t respectively.
 \end_layout
 
 \begin_layout Standard
@@ -3178,12 +3293,12 @@ typedef struct {
 
 \begin_layout Plain Layout
 
-uint64_t FFTdim;	// FFT dimensionality (1, 2 or 3)
+pfUINT FFTdim;	// FFT dimensionality (1, 2 or 3)
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t size[VKFFT_MAX_FFT_DIMENSIONS];	// WHD+ - system dimensions
+pfUINT size[VKFFT_MAX_FFT_DIMENSIONS];	// WHD+ - system dimensions
 \end_layout
 
 \begin_layout Plain Layout
@@ -3220,8 +3335,8 @@ VkFence* fence;	// Pointer to Vulkan fence, created with vkCreateFence
 
 \begin_layout Plain Layout
 
-uint64_t isCompilerInitialized;	// Specify if glslang compiler has been
- intialized before (0 - off, 1 - on).
+pfUINT isCompilerInitialized;	// Specify if glslang compiler has been intialized
+ before (0 - off, 1 - on).
  Default 0 
 \end_layout
 
@@ -3232,7 +3347,7 @@ uint64_t isCompilerInitialized;	// Specify if glslang compiler has been
 
 \begin_layout Plain Layout
 
-CUdevice* device;	// Pointer to CUDA device, obtained from cuDeviceGet 	
+CUdevice* device;	// Pointer to CUDA device, obtained from cuDeviceGet
 \end_layout
 
 \begin_layout Plain Layout
@@ -3244,9 +3359,10 @@ cudaStream_t* stream;	// Pointer to streams (can be more than 1), where
 
 \begin_layout Plain Layout
 
-uint64_t num_streams;	// Try to submit CUDA kernels in multiple streams
- for asynchronous execution.
- Default 1 
+pfUINT num_streams;	// Try to submit CUDA kernels in multiple streams for
+ asynchronous execution.
+ Default 0, set to >=1 if you pass values in the stream pointer.
+  
 \end_layout
 
 \begin_layout Plain Layout
@@ -3268,9 +3384,9 @@ hipStream_t* stream;	// Pointer to streams (can be more than 1), where to
 
 \begin_layout Plain Layout
 
-uint64_t num_streams;	// Try to submit HIP kernels in multiple streams for
+pfUINT num_streams;	// Try to submit HIP kernels in multiple streams for
  asynchronous execution.
- Default 1 
+ Default 0, set to >=1 if you pass values in the stream pointer.
 \end_layout
 
 \begin_layout Plain Layout
@@ -3355,7 +3471,7 @@ mmandQueue()
 
 \begin_layout Plain Layout
 
-uint64_t userTempBuffer;	// Buffer allocated by app automatically if needed
+pfUINT userTempBuffer;	// Buffer allocated by app automatically if needed
  to reorder Four step algorithm.
  Setting to non zero value enables manual user allocation (0 - off, 1 -
  on)
@@ -3363,13 +3479,13 @@ uint64_t userTempBuffer;	// Buffer allocated by app automatically if needed
 
 \begin_layout Plain Layout
 
-uint64_t bufferNum;	// Multiple buffer sequence storage is Vulkan only.
+pfUINT bufferNum;	// Multiple buffer sequence storage is Vulkan only.
  Default 1
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t tempBufferNum;	// Multiple buffer sequence storage is Vulkan only.
+pfUINT tempBufferNum;	// Multiple buffer sequence storage is Vulkan only.
  Default 1, buffer allocated by app automatically if needed to reorder Four
  step algorithm.
  Setting to non zero value enables manual user allocation 	
@@ -3377,31 +3493,30 @@ uint64_t tempBufferNum;	// Multiple buffer sequence storage is Vulkan only.
 
 \begin_layout Plain Layout
 
-uint64_t inputBufferNum;	// Multiple buffer sequence storage is Vulkan only.
+pfUINT inputBufferNum;	// Multiple buffer sequence storage is Vulkan only.
  Default 1, if isInputFormatted is enabled 
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t outputBufferNum;	// Multiple buffer sequence storage is Vulkan
- only.
+pfUINT outputBufferNum;	// Multiple buffer sequence storage is Vulkan only.
  Default 1, if isOutputFormatted is enabled 
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t kernelNum;	// Multiple buffer sequence storage is Vulkan only.
+pfUINT kernelNum;	// Multiple buffer sequence storage is Vulkan only.
  Default 1, if performConvolution is enabled
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t* bufferSize;	// Array of buffers sizes in bytes
+pfUINT* bufferSize;	// Array of buffers sizes in bytes
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t* tempBufferSize;	// Array of temp buffers sizes in bytes.
+pfUINT* tempBufferSize;	// Array of temp buffers sizes in bytes.
  Default set to bufferSize sum, buffer allocated by app automatically if
  needed to reorder Four step algorithm.
  Setting to non zero value enables manual user allocation 
@@ -3409,20 +3524,20 @@ uint64_t* tempBufferSize;	// Array of temp buffers sizes in bytes.
 
 \begin_layout Plain Layout
 
-uint64_t* inputBufferSize;	// Array of input buffers sizes in bytes, if
- isInputFormatted is enabled
+pfUINT* inputBufferSize;	// Array of input buffers sizes in bytes, if isInputFor
+matted is enabled
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t* outputBufferSize;	// Array of output buffers sizes in bytes, if
+pfUINT* outputBufferSize;	// Array of output buffers sizes in bytes, if
  isOutputFormatted is enabled
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t* kernelSize;	// Array of kernel buffers sizes in bytes, if performConvo
-lution is enabled
+pfUINT* kernelSize;	// Array of kernel buffers sizes in bytes, if performConvolu
+tion is enabled
 \end_layout
 
 \begin_layout Plain Layout
@@ -3655,7 +3770,7 @@ MTL::Buffer** kernel;	// Pointer to device buffer used to read kernel data
 
 \begin_layout Plain Layout
 
-uint64_t bufferOffset;	// Specify if VkFFT has to offset the first element
+pfUINT bufferOffset;	// Specify if VkFFT has to offset the first element
  position inside the buffer.
  In bytes.
  Default 0
@@ -3663,7 +3778,7 @@ uint64_t bufferOffset;	// Specify if VkFFT has to offset the first element
 
 \begin_layout Plain Layout
 
-uint64_t tempBufferOffset;	// Specify if VkFFT has to offset the first element
+pfUINT tempBufferOffset;	// Specify if VkFFT has to offset the first element
  position inside the temp buffer.
  In bytes.
  Default 0
@@ -3671,23 +3786,23 @@ uint64_t tempBufferOffset;	// Specify if VkFFT has to offset the first element
 
 \begin_layout Plain Layout
 
-uint64_t inputBufferOffset;	// Specify if VkFFT has to offset the first
- element position inside the input buffer.
+pfUINT inputBufferOffset;	// Specify if VkFFT has to offset the first element
+ position inside the input buffer.
  In bytes.
  Default 0
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t outputBufferOffset;	// Specify if VkFFT has to offset the first
- element position inside the output buffer.
+pfUINT outputBufferOffset;	// Specify if VkFFT has to offset the first element
+ position inside the output buffer.
  In bytes.
  Default 0
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t kernelOffset;	// Specify if VkFFT has to offset the first element
+pfUINT kernelOffset;	// Specify if VkFFT has to offset the first element
  position inside the kernel.
  In bytes.
  Default 0
@@ -3695,8 +3810,8 @@ uint64_t kernelOffset;	// Specify if VkFFT has to offset the first element
 
 \begin_layout Plain Layout
 
-uint64_t specifyOffsetsAtLaunch;	// Specify if offsets will be selected
- with launch parameters VkFFTLaunchParams (0 - off, 1 - on).
+pfUINT specifyOffsetsAtLaunch;	// Specify if offsets will be selected with
+ launch parameters VkFFTLaunchParams (0 - off, 1 - on).
  Default 0
 \end_layout
 
@@ -3711,7 +3826,7 @@ uint64_t specifyOffsetsAtLaunch;	// Specify if offsets will be selected
 
 \begin_layout Plain Layout
 
-uint64_t coalescedMemory;	// In bytes, for Nvidia and AMD is equal to 32,
+pfUINT coalescedMemory;	// In bytes, for Nvidia and AMD is equal to 32,
  Intel is equal 64, scaled for half precision.
  Going to work regardless, but if specified by user correctly, the performance
  will be higher.
@@ -3719,38 +3834,38 @@ uint64_t coalescedMemory;	// In bytes, for Nvidia and AMD is equal to 32,
 
 \begin_layout Plain Layout
 
-uint64_t aimThreads;	// Aim at this many threads per block.
+pfUINT aimThreads;	// Aim at this many threads per block.
  Default 128
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t numSharedBanks;	// How many banks shared memory has.
+pfUINT numSharedBanks;	// How many banks shared memory has.
  Default 32
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t inverseReturnToInputBuffer;	// return data to the input buffer
- in inverse transform (0 - off, 1 - on).
+pfUINT inverseReturnToInputBuffer;	// return data to the input buffer in
+ inverse transform (0 - off, 1 - on).
  isInputFormatted must be enabled
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t numberBatches;	// N - used to perform multiple batches of initial
+pfUINT numberBatches;	// N - used to perform multiple batches of initial
  data.
  Default 1
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t useUint64;	// Use 64-bit addressing mode in generated kernels
+pfUINT useUint64;	// Use 64-bit addressing mode in generated kernels
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t omitDimension[VKFFT_MAX_FFT_DIMENSIONS];	// Disable FFT for this
+pfUINT omitDimension[VKFFT_MAX_FFT_DIMENSIONS];	// Disable FFT for this
  dimension (0 - FFT enabled, 1 - FFT disabled).
  Default 0.
  Doesn't work for R2C first axis for now.
@@ -3759,10 +3874,10 @@ uint64_t omitDimension[VKFFT_MAX_FFT_DIMENSIONS];	// Disable FFT for this
 
 \begin_layout Plain Layout
 
-uint64_t performBandwidthBoost; // Try to reduce coalsesced number by a
- factor of X to get bigger sequence in one upload for strided axes.
- Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise
-  
+pfUINT performBandwidthBoost; // Try to reduce coalsesced number by a factor
+ of X to get bigger sequence in one upload for strided axes.
+ Default: -1 for DCT/DST, 2 for Bluestein's algorithm (or -1 if DCT/DST),
+ 0 otherwise  
 \end_layout
 
 \begin_layout Plain Layout
@@ -3771,19 +3886,32 @@ uint64_t performBandwidthBoost; // Try to reduce coalsesced number by a
 
 \begin_layout Plain Layout
 
-uint64_t doublePrecision;	// Perform calculations in double precision (0
- - off, 1 - on).
+pfUINT doublePrecision;	// Perform calculations in double precision (0 -
+ off, 1 - on).
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t halfPrecision;	// Perform calculations in half precision (0 - off,
+pfUINT quadDoubleDoublePrecision; // Perform calculations in double-double
+ emulation of quad precision (0 - off, 1 - on).
+\end_layout
+
+\begin_layout Plain Layout
+
+pfUINT quadDoubleDoublePrecisionDoubleMemory; // Perform calculations in
+ double-double emulation of quad precision, while all memory storage is
+ done in FP64.
+\end_layout
+
+\begin_layout Plain Layout
+
+pfUINT halfPrecision;	// Perform calculations in half precision (0 - off,
  1 - on)
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t halfPrecisionMemoryOnly;	// Use half precision only as input/output
+pfUINT halfPrecisionMemoryOnly;	// Use half precision only as input/output
  buffer.
  Input/Output have to be allocated as half, buffer/tempBuffer have to be
  allocated as float (out-of-place mode only).
@@ -3792,65 +3920,82 @@ uint64_t halfPrecisionMemoryOnly;	// Use half precision only as input/output
 
 \begin_layout Plain Layout
 
-uint64_t doublePrecisionFloatMemory;	// Use FP64 precision for all calculations,
+pfUINT doublePrecisionFloatMemory;	// Use FP64 precision for all calculations,
  while all memory storage is done in FP32.
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t performR2C;	// Perform R2C/C2R decomposition (0 - off, 1 - on)
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t performDCT;	// Perform DCT transformation (X - DCT type, 1-4)
+pfUINT performR2C;	// Perform R2C/C2R decomposition (0 - off, 1 - on)
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t disableMergeSequencesR2C;	// Disable merging of two real sequences
+pfUINT performDCT;	// Perform DCT transformation (X - DCT type, 1-4)
+\end_layout
+
+\begin_layout Plain Layout
+
+pfUINT performDST;	// Perform DST transformation (X - DST type, 1-4)
+\end_layout
+
+\begin_layout Plain Layout
+
+pfUINT disableMergeSequencesR2C;	// Disable merging of two real sequences
  to reduce calculations (0 - off, 1 - on) 
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t normalize;	// Normalize inverse transform (0 - off, 1 - on)
+pfUINT normalize;	// Normalize inverse transform (0 - off, 1 - on)
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t disableReorderFourStep;	// Disables unshuffling of Four step algorithm.
+pfUINT disableReorderFourStep;	// Disables unshuffling of Four step algorithm.
  Requires tempbuffer allocation (0 - off, 1 - on)
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t useLUT;	// Switches from calculating sincos to using precomputed
- LUT tables (0 - off, 1 - on).
+pfINT useLUT;	// Switches from calculating sincos to using precomputed LUT
+ tables (0 - off, 1 - on).
  Configured by initialization routine
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t makeForwardPlanOnly;	// Generate code only for forward FFT (0 -
- off, 1 - on)
+pfINT useLUT_4step; // Switches from calculating sincos to using precomputed
+ LUT tables for intermediate roots of 1 in the Four-step FFT algorithm.
+ (-1 - off, 0 - auto, 1 - on).
+ Configured by initialization routine
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t makeInversePlanOnly;	// Generate code only for inverse FFT (0 -
- off, 1 - on)
+pfUINT makeForwardPlanOnly;	// Generate code only for forward FFT (0 - off,
+ 1 - on)
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t bufferStride[VKFFT_MAX_FFT_DIMENSIONS];	// Buffer strides - default
+pfUINT makeInversePlanOnly;	// Generate code only for inverse FFT (0 - off,
+ 1 - on)
+\end_layout
+
+\begin_layout Plain Layout
+
+pfUINT bufferStride[VKFFT_MAX_FFT_DIMENSIONS];	// Buffer strides - default
  set to x - x*y - x*y*z values
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t isInputFormatted;	// Specify if input buffer is padded - 0 - padded,
+pfUINT isInputFormatted;	// Specify if input buffer is padded - 0 - padded,
  1 - not padded.
  For example if it is not padded for R2C if out-of-place mode is selected
  (only if numberBatches==1 and numberKernels==1)
@@ -3858,43 +4003,64 @@ uint64_t isInputFormatted;	// Specify if input buffer is padded - 0 - padded,
 
 \begin_layout Plain Layout
 
-uint64_t isOutputFormatted;	// Specify if output buffer is padded - 0 -
- padded, 1 - not padded.
+pfUINT isOutputFormatted;	// Specify if output buffer is padded - 0 - padded,
+ 1 - not padded.
  For example if it is not padded for R2C if out-of-place mode is selected
  (only if numberBatches==1 and numberKernels==1)
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t inputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];	// Input buffer strides.
+pfUINT inputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];	// Input buffer strides.
  Used if isInputFormatted is enabled.
  Default set to bufferStride values
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t outputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];	// Output buffer
- strides.
+pfUINT outputBufferStride[VKFFT_MAX_FFT_DIMENSIONS];	// Output buffer strides.
  Used if isInputFormatted is enabled.
  Default set to bufferStride values
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t considerAllAxesStrided;	// Will create plan for non-strided axis
+pfUINT swapTo2Stage4Step; // Specify at which number to switch from 1 upload
+ to 2 upload 4-step FFT, in case if making max sequence size lower than
+ coalesced sequence helps to combat TLB misses.
+ Default 0 - disabled.
+ 	
+\end_layout
+
+\begin_layout Plain Layout
+
+pfUINT swapTo3Stage4Step;	// Specify at which power of 2 to switch from
+ 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower
+ than coalesced sequence helps to combat TLB misses.
+ Default 0 - disabled.
+ Must be at least 17
+\end_layout
+
+\begin_layout Plain Layout
+
+pfUINT considerAllAxesStrided;	// Will create plan for non-strided axis
  similar as a strided axis - used with disableReorderFourStep to get the
  same layout for Bluestein kernel (0 - off, 1 - on)
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t keepShaderCode;	// Will keep shader code and print all executed
- shaders during the plan execution in order (0 - off, 1 - on)
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t printMemoryLayout;	// Will print order of buffers used in shaders
+pfUINT keepShaderCode;	// Will keep shader code and print all executed shaders
+ during the plan execution in order (0 - off, 1 - on)
+\end_layout
+
+\begin_layout Plain Layout
+
+pfUINT printMemoryLayout;	// Will print order of buffers used in shaders
  (0 - off, 1 - on) 
 \end_layout
 
@@ -3904,9 +4070,9 @@ uint64_t printMemoryLayout;	// Will print order of buffers used in shaders
 
 \begin_layout Plain Layout
 
-uint64_t saveApplicationToString;	// Will save all compiled binaries to
- VkFFTApplication.saveApplicationString (will be allocated by VkFFT, deallocated
- with deleteVkFFT call).
+pfUINT saveApplicationToString;	// Will save all compiled binaries to VkFFTAppli
+cation.saveApplicationString (will be allocated by VkFFT, deallocated with
+ deleteVkFFT call).
  VkFFTApplication.applicationStringSize will contain size of binary in bytes.
  Currently disabled in Metal backend.
  (0 - off, 1 - on)
@@ -3914,8 +4080,8 @@ uint64_t saveApplicationToString;	// Will save all compiled binaries to
 
 \begin_layout Plain Layout
 
-uint64_t loadApplicationFromString;	// Will load all binaries from loadApplicati
-onString instead of recompiling them (must be allocated by user, must contain
+pfUINT loadApplicationFromString;	// Will load all binaries from loadApplication
+String instead of recompiling them (must be allocated by user, must contain
  what saveApplicationToString call generated previously in VkFFTApplication.saveA
 pplicationString).
  Currently disabled in Metal backend.
@@ -3937,8 +4103,8 @@ void* loadApplicationString;	// Memory binary array through which user can
 
 \begin_layout Plain Layout
 
-uint64_t disableSetLocale;	// disables all VkFFT attempts to set locale
- to C - user must ensure that VkFFT has C locale during the plan initialization.
+pfUINT disableSetLocale;	// disables all VkFFT attempts to set locale to
+ C - user must ensure that VkFFT has C locale during the plan initialization.
  This option is needed for multithreading.
  Default 0.
  
@@ -3950,12 +4116,12 @@ uint64_t disableSetLocale;	// disables all VkFFT attempts to set locale
 
 \begin_layout Plain Layout
 
-//optional Bluestein optimizations: (default 0 if not stated otherwise)
+// Optional Bluestein optimizations: (default 0 if not stated otherwise)
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t fixMaxRadixBluestein;	// controls the padding of sequences in Bluestein
+pfUINT fixMaxRadixBluestein;	// controls the padding of sequences in Bluestein
  convolution.
  If specified, padded sequence will be made of up to fixMaxRadixBluestein
  primes.
@@ -3966,14 +4132,14 @@ uint64_t fixMaxRadixBluestein;	// controls the padding of sequences in Bluestein
 
 \begin_layout Plain Layout
 
-uint64_t forceBluesteinSequenceSize;	// force the sequence size to pad to
+pfUINT forceBluesteinSequenceSize;	// force the sequence size to pad to
  in Bluestein's algorithm.
  Must be at least 2*N-1 and decomposable with primes 2-13.
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t useCustomBluesteinPaddingPattern;	// force the sequence sizes to
+pfUINT useCustomBluesteinPaddingPattern;	// force the sequence sizes to
  pad to in Bluestein's algorithm, but on a range.
  This number specifies the number of elements in primeSizes and in paddedSizes
  arrays.
@@ -3989,12 +4155,12 @@ uint64_t useCustomBluesteinPaddingPattern;	// force the sequence sizes to
 
 \begin_layout Plain Layout
 
-uint64_t* primeSizes;	// described in useCustomBluesteinPaddingPattern
+pfUINT* primeSizes;	// described in useCustomBluesteinPaddingPattern
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t* paddedSizes;	// described in useCustomBluesteinPaddingPattern
+pfUINT* paddedSizes;	// described in useCustomBluesteinPaddingPattern
 \end_layout
 
 \begin_layout Plain Layout
@@ -4003,7 +4169,7 @@ uint64_t* paddedSizes;	// described in useCustomBluesteinPaddingPattern
 
 \begin_layout Plain Layout
 
-uint64_t fixMinRaderPrimeMult;	// start direct multiplication Rader's algorithm
+pfUINT fixMinRaderPrimeMult;	// start direct multiplication Rader's algorithm
  for radix primes from this number.
  This means that VkFFT will inline custom Rader kernels if sequence is divisible
  by these primes.
@@ -4013,8 +4179,8 @@ uint64_t fixMinRaderPrimeMult;	// start direct multiplication Rader's algorithm
 
 \begin_layout Plain Layout
 
-uint64_t fixMaxRaderPrimeMult;	// switch from Mult Rader's algorithm for
- radix primes from this number.
+pfUINT fixMaxRaderPrimeMult;	// switch from Mult Rader's algorithm for radix
+ primes from this number.
  Current limitation for Rader is maxThreadNum/2+1, realistically you would
  want to switch somewhere on 30-100 range.
  Default is vendor-specific (currently ~40)
@@ -4026,8 +4192,8 @@ uint64_t fixMaxRaderPrimeMult;	// switch from Mult Rader's algorithm for
 
 \begin_layout Plain Layout
 
-uint64_t fixMinRaderPrimeFFT;	// start FFT convolution version of Rader
- for radix primes from this number.
+pfUINT fixMinRaderPrimeFFT;	// start FFT convolution version of Rader for
+ radix primes from this number.
  Better than direct multiplication version for almost all primes (except
  small ones, like 17-23 on some GPUs).
  Must be bigger or equal to fixMinRaderPrimeMult.
@@ -4037,7 +4203,7 @@ uint64_t fixMinRaderPrimeFFT;	// start FFT convolution version of Rader
 
 \begin_layout Plain Layout
 
-uint64_t fixMaxRaderPrimeFFT;	// switch to Bluestein's algorithm for radix
+pfUINT fixMaxRaderPrimeFFT;	// switch to Bluestein's algorithm for radix
  primes from this number.
  Switch may happen earlier if prime can't fit in shared memory.
  Default is 16384, which is bigger than most current GPU's shared memory.
@@ -4054,26 +4220,26 @@ uint64_t fixMaxRaderPrimeFFT;	// switch to Bluestein's algorithm for radix
 
 \begin_layout Plain Layout
 
-uint64_t performZeropadding[VKFFT_MAX_FFT_DIMENSIONS];	// Don't read some
+pfUINT performZeropadding[VKFFT_MAX_FFT_DIMENSIONS];	// Don't read some
  data/perform computations if some input sequences are zeropadded for each
  axis (0 - off, 1 - on)
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t fft_zeropad_left[VKFFT_MAX_FFT_DIMENSIONS];	// Specify start boundary
+pfUINT fft_zeropad_left[VKFFT_MAX_FFT_DIMENSIONS];	// Specify start boundary
  of zero block in the system for each axis
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t fft_zeropad_right[VKFFT_MAX_FFT_DIMENSIONS];	// Specify end boundary
+pfUINT fft_zeropad_right[VKFFT_MAX_FFT_DIMENSIONS];	// Specify end boundary
  of zero block in the system for each axis
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t frequencyZeroPadding;	// Set to 1 if zeropadding of frequency domain,
+pfUINT frequencyZeroPadding;	// Set to 1 if zeropadding of frequency domain,
  default 0 - spatial zeropadding
 \end_layout
 
@@ -4088,41 +4254,40 @@ uint64_t frequencyZeroPadding;	// Set to 1 if zeropadding of frequency domain,
 
 \begin_layout Plain Layout
 
-uint64_t performConvolution;	// Perform convolution in this application
- (0 - off, 1 - on).
+pfUINT performConvolution;	// Perform convolution in this application (0
+ - off, 1 - on).
  Disables reorderFourStep parameter
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t coordinateFeatures;	// C - coordinate, or dimension of features
- vector.
+pfUINT coordinateFeatures;	// C - coordinate, or dimension of features vector.
  In matrix convolution - size of a vector
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t matrixConvolution;	// If equal to 2 perform 2x2, if equal to 3
- perform 3x3 matrix-vector convolution.
+pfUINT matrixConvolution;	// If equal to 2 perform 2x2, if equal to 3 perform
+ 3x3 matrix-vector convolution.
  Overrides coordinateFeatures
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t symmetricKernel;	// Specify if kernel in 2x2 or 3x3 matrix convolution
+pfUINT symmetricKernel;	// Specify if kernel in 2x2 or 3x3 matrix convolution
  is symmetric
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t numberKernels;	// N - only used in convolution step - specify how
+pfUINT numberKernels;	// N - only used in convolution step - specify how
  many kernels were initialized before.
  Expands one input to multiple (batched) output
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t kernelConvolution;	// Specify if this application is used to create
+pfUINT kernelConvolution;	// Specify if this application is used to create
  kernel for convolution, so it has the same properties.
  performConvolution has to be set to 0 for kernel creation
 \end_layout
@@ -4138,10 +4303,10 @@ uint64_t kernelConvolution;	// Specify if this application is used to create
 
 \begin_layout Plain Layout
 
-uint64_t registerBoost;	// Specify if register file size is bigger than
- shared memory and can be used to extend it X times (on Nvidia 256KB register
- file can be used instead of 32KB of shared memory, set this constant to
- 4 to emulate 128KB of shared memory).
+pfUINT registerBoost;	// Specify if register file size is bigger than shared
+ memory and can be used to extend it X times (on Nvidia 256KB register file
+ can be used instead of 32KB of shared memory, set this constant to 4 to
+ emulate 128KB of shared memory).
  Defaults: Nvidia - 4 in Vulkan/OpenCL, 1 in CUDA backend; AMD - 2 if shared
  memory >= 64KB, else 4 in Vulkan/OpenCL backend, 1 in HIP backend; Intel
  - 1 if shared memory >= 64KB, else 2 in Vulkan/OpenCL/Level Zero backends,
@@ -4150,15 +4315,19 @@ uint64_t registerBoost;	// Specify if register file size is bigger than
 
 \begin_layout Plain Layout
 
-uint64_t registerBoostNonPow2;	// Specify if register overutilization should
+pfUINT registerBoostNonPow2;	// Specify if register overutilization should
  be used on non power of 2 sequences (0 - off, 1 - on)
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t registerBoost4Step;	// Specify if register file overutilization
- should be used in big sequences (>2^14), same definition as registerBoost.
+pfUINT registerBoost4Step;	// Specify if register file overutilization should
+ be used in big sequences (>2^14), same definition as registerBoost.
  Default 1
+\end_layout
+
+\begin_layout Plain Layout
+
 \end_layout
 
 \begin_layout Plain Layout
@@ -4168,22 +4337,13 @@ uint64_t registerBoost4Step;	// Specify if register file overutilization
 
 \begin_layout Plain Layout
 
-uint64_t swapTo3Stage4Step;	// Specify at which power of 2 to switch from
- 2 upload to 3 upload 4-step FFT, in case if making max sequence size lower
- than coalesced sequence helps to combat TLB misses.
- Default 0 - disabled.
- Must be at least 17
-\end_layout
-
-\begin_layout Plain Layout
-
-uint64_t devicePageSize;	// In KB, the size of a page on the GPU.
+pfUINT devicePageSize;	// In KB, the size of a page on the GPU.
  Setting to 0 disables local buffer split in pages
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t localPageSize;	// In KB, the size to split page into if sequence
+pfUINT localPageSize;	// In KB, the size to split page into if sequence
  spans multiple devicePageSize pages
 \end_layout
 
@@ -4199,77 +4359,77 @@ uint64_t localPageSize;	// In KB, the size to split page into if sequence
 
 \begin_layout Plain Layout
 
-uint64_t computeCapabilityMajor;	// CUDA/HIP compute capability of the device
+pfUINT computeCapabilityMajor;	// CUDA/HIP compute capability of the device
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t computeCapabilityMinor;	// CUDA/HIP compute capability of the device
+pfUINT computeCapabilityMinor;	// CUDA/HIP compute capability of the device
  	
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t maxComputeWorkGroupCount[VKFFT_MAX_FFT_DIMENSIONS];	// maxComputeWorkGr
-oupCount from VkPhysicalDeviceLimits
+pfUINT maxComputeWorkGroupCount[VKFFT_MAX_FFT_DIMENSIONS];	// maxComputeWorkGrou
+pCount from VkPhysicalDeviceLimits
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t maxComputeWorkGroupSize[VKFFT_MAX_FFT_DIMENSIONS];	// maxComputeWorkGro
-upCount from VkPhysicalDeviceLimits
+pfUINT maxComputeWorkGroupSize[VKFFT_MAX_FFT_DIMENSIONS];	// maxComputeWorkGroup
+Count from VkPhysicalDeviceLimits
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t maxThreadsNum;	// Max number of threads from VkPhysicalDeviceLimits
+pfUINT maxThreadsNum;	// Max number of threads from VkPhysicalDeviceLimits
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t sharedMemorySizeStatic;	// Available for static allocation shared
+pfUINT sharedMemorySizeStatic;	// Available for static allocation shared
  memory size, in bytes
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t sharedMemorySize;	// Available for allocation shared memory size,
+pfUINT sharedMemorySize;	// Available for allocation shared memory size,
  in bytes
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t sharedMemorySizePow2;	// Power of 2 which is less or equal to sharedMem
-orySize, in bytes
+pfUINT sharedMemorySizePow2;	// Power of 2 which is less or equal to sharedMemor
+ySize, in bytes
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t warpSize;	// Number of threads per warp/wavefront.
+pfUINT warpSize;	// Number of threads per warp/wavefront.
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t halfThreads;	// Intel fix
+pfUINT halfThreads;	// Intel fix
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t allocateTempBuffer;	// Buffer allocated by app automatically if
- needed to reorder Four step algorithm.
+pfUINT allocateTempBuffer;	// Buffer allocated by app automatically if needed
+ to reorder Four step algorithm.
  Parameter to check if it has been allocated
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t reorderFourStep;	// Unshuffle Four step algorithm.
+pfUINT reorderFourStep;	// Unshuffle Four step algorithm.
  Requires tempbuffer allocation (0 - off, 1 - on).
  Default 1.
 \end_layout
 
 \begin_layout Plain Layout
 
-int64_t maxCodeLength;	// Specify how big can be buffer used for code generation
+pfINT maxCodeLength;	// Specify how big can be buffer used for code generation
  (in char).
  Default 1000000 chars.
  
@@ -4277,7 +4437,7 @@ int64_t maxCodeLength;	// Specify how big can be buffer used for code generation
 
 \begin_layout Plain Layout
 
-int64_t maxTempLength;	// Specify how big can be buffer used for intermediate
+pfINT maxTempLength;	// Specify how big can be buffer used for intermediate
  string sprintfs be (in char).
  Default 5000 chars.
  If code segfaults for some reason - try increasing this number.
@@ -4285,19 +4445,19 @@ int64_t maxTempLength;	// Specify how big can be buffer used for intermediate
 
 \begin_layout Plain Layout
 
-uint64_t autoCustomBluesteinPaddingPattern; // default value for useCustomBluest
-einPaddingPattern
+pfUINT autoCustomBluesteinPaddingPattern; // default value for useCustomBluestei
+nPaddingPattern
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t useRaderUintLUT; // allocate additional LUT to store g_pow
+pfUINT useRaderUintLUT; // allocate additional LUT to store g_pow
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 -
- AMD, etc
+pfUINT vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 - AMD,
+ etc
 \end_layout
 
 \begin_layout Plain Layout
@@ -4332,12 +4492,12 @@ cudaEvent_t* stream_event;	// Filled at app creation
 
 \begin_layout Plain Layout
 
-uint64_t streamCounter;	// Filled at app creation
+pfUINT streamCounter;	// Filled at app creation
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t streamID;	// Filled at app creation
+pfUINT streamID;	// Filled at app creation
 \end_layout
 
 \begin_layout Plain Layout
@@ -4352,12 +4512,12 @@ hipEvent_t* stream_event;	// Filled at app creation
 
 \begin_layout Plain Layout
 
-uint64_t streamCounter;	// Filled at app creation
+pfUINT streamCounter;	// Filled at app creation
 \end_layout
 
 \begin_layout Plain Layout
 
-uint64_t streamID;	// Filled at app creation
+pfUINT streamID;	// Filled at app creation
 \end_layout
 
 \begin_layout Plain Layout
@@ -4490,7 +4650,8 @@ cudaStream_t* stream - Pointer to streams (can be more than 1), where to
 \begin_layout Itemize
 uint64_t num_streams - Try to submit CUDA kernels in multiple streams for
  asynchronous execution.
- Default 1 
+ Default 0, set to >=1 if you pass values in the stream pointer.
+ 
 \end_layout
 
 \begin_layout Standard
@@ -4513,7 +4674,8 @@ hipStream_t* stream - Pointer to streams (can be more than 1), where to
 \begin_layout Itemize
 uint64_t num_streams - Try to submit HIP kernels in multiple streams for
  asynchronous execution.
- Default 1 
+ Default 0, set to >=1 if you pass values in the stream pointer.
+  
 \end_layout
 
 \begin_layout Standard
@@ -4719,15 +4881,22 @@ uint64_t numberBatches - N parameter of the transform.
 
 \begin_layout Standard
 uint64_t performR2C - perform R2C/C2R decomposition.
- performDCT must be set to 0.
+ performDCT and performDST must be set to 0.
  Default 0, set to 1 to enable.
  Optional parameter.
 \end_layout
 
 \begin_layout Standard
 uint64_t performDCT - perform DCT transformation.
- performR2C must be set to 0.
+ performR2C and performDST must be set to 0.
  Default 0, set to X for DCT-X (currently supported X: 1, 2, 3 and 4).
+ Optional parameter.
+\end_layout
+
+\begin_layout Standard
+uint64_t performDST - perform DST transformation.
+ performR2C and performDCT must be set to 0.
+ Default 0, set to X for DST-X (currently supported X: 1, 2, 3 and 4).
  Optional parameter.
 \end_layout
 
@@ -4762,8 +4931,22 @@ uint64_t doublePrecisionFloatMemory - perform calculations in double precision,
  In Vulkan/OpenCL/Level Zero your device must support double precision functiona
 lity.
  Metal API does not support double precision.
- Experimental feature.
  Optional parameter.
+\end_layout
+
+\begin_layout Standard
+uint64_t quadDoubleDoublePrecision - perform calculations in double-double
+ emulation of quad precision (0 - off, 1 - on).
+ Optional parameter.
+ Requires quadmath library (for now).
+\end_layout
+
+\begin_layout Standard
+uint64_t quadDoubleDoublePrecisionDoubleMemory - perform calculations in
+ double-double emulation of quad precision, while all memory storage is
+ done in FP64.
+ Optional parameter.
+ Requires quadmath library (for now).
 \end_layout
 
 \begin_layout Standard
@@ -4772,8 +4955,6 @@ uint64_t halfPrecision - half-precision in VkFFT is implemented only as
  All calculations are done in single precision (similar way as doublePrecisionFl
 oatMemory works for double and single precision).
  Default 0, set to 1 to enable.
- Works only in Vulkan API now, experimental feature (half precision seems
- to have bad precision for the first FFT element).
  Optional parameter.
 \end_layout
 
@@ -4789,7 +4970,6 @@ uint64_t halfPrecisionMemoryOnly - another way of performing half-precision
  the base halfPrecision case.
  halfPrecision must be set to 1.
  Default 0, set to 1 to enable.
- Works only in Vulkan API now, experimental feature.
  Optional parameter.
 \end_layout
 
@@ -4879,8 +5059,8 @@ uint64_t useUint64 - forces 64-bit addressing in generated kernels.
 \begin_layout Standard
 uint64_t performBandwidthBoost - try to reduce coalsesced number by a factor
  of X to get bigger sequence in one upload for strided axes.
- Default: -1(inf) for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0
- otherwise 
+ Default: -1(inf) for DCT and DST, 2 for Bluestein's algorithm (or -1 if
+ DCT and DST), 0 otherwise 
 \end_layout
 
 \begin_layout Standard
@@ -5402,6 +5582,11 @@ Sample 8 - FFT + iFFT C2C Bluestein benchmark in double precision
 \end_layout
 
 \begin_layout Itemize
+Sample 9 - FFT + iFFT C2C benchmark 1D batched in double-double emulation
+ of quad precision
+\end_layout
+
+\begin_layout Itemize
 Sample 10 - multiple buffers (4 by default) split version of benchmark 0
 \end_layout
 
@@ -5446,6 +5631,11 @@ Sample 18 - VkFFT / FFTW C2C radix 3 / 5 / 7 / 11 / 13 / Bluestein precision
 \end_layout
 
 \begin_layout Itemize
+Sample 19 - VkFFT / FFTW C2C precision test in double-double emulation of
+ quad precision
+\end_layout
+
+\begin_layout Itemize
 Sample 50 - convolution example with identity kernel
 \end_layout
 
@@ -5473,13 +5663,23 @@ Sample 1000 - FFT + iFFT C2C benchmark 1D batched in single precision: all
 \end_layout
 
 \begin_layout Itemize
-Sample 1001 - FFT + iFFT C2C benchmark 1D batched in single precision: all
+Sample 1001 - FFT + iFFT C2C benchmark 1D batched in double precision: all
+ supported systems from 2 to 4096
+\end_layout
+
+\begin_layout Itemize
+Sample 1002 - FFT + iFFT C2C benchmark 1D batched in half precision: all
  supported systems from 2 to 4096
 \end_layout
 
 \begin_layout Itemize
 Sample 1003 - FFT + iFFT C2C benchmark 1D batched in single precision: all
  supported systems from 2 to 4096
+\end_layout
+
+\begin_layout Itemize
+Sample 1004 - FFT + iFFT C2C benchmark 1D batched in double-double emulation
+ of quad precision: all supported systems from 2 to 4096
 \end_layout
 
 \begin_layout Subsection
@@ -7150,6 +7350,11 @@ if (P == 1) configuration.doublePrecision = 1;
 \begin_layout Plain Layout
 
 if (P == 2) configuration.halfPrecision = 1;
+\end_layout
+
+\begin_layout Plain Layout
+
+if (P == 3) configuration.quadDoubleDoublePrecision = 1;
 \end_layout
 
 \begin_layout Plain Layout

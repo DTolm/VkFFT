@@ -201,12 +201,12 @@ typedef struct {
 	pfUINT numberBatches;// N - used to perform multiple batches of initial data. Default 1
 	pfUINT useUint64;// use 64-bit addressing mode in generated kernels
 	pfUINT omitDimension[VKFFT_MAX_FFT_DIMENSIONS];//disable FFT for this dimension (0 - FFT enabled, 1 - FFT disabled). Default 0. Doesn't work for R2C dimension 0 for now. Doesn't work with convolutions.
-	int performBandwidthBoost;//try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise 
+	pfUINT performBandwidthBoost;//try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise 
 	pfUINT groupedBatch[VKFFT_MAX_FFT_DIMENSIONS];// try to force this many FFTs to be perfromed by one threadblock for each dimension
 
 	pfUINT doublePrecision; //perform calculations in double precision (0 - off, 1 - on).
-	pfUINT quadDoubleDoublePrecision; //perform calculations in double-double quad precision (0 - off, 1 - on).
-	pfUINT quadDoubleDoublePrecisionDoubleMemory; //perform calculations in double-double quad precision, while all memory storage is done in FP64.
+	pfUINT quadDoubleDoublePrecision; //perform calculations in double-double emulation of quad precision (0 - off, 1 - on).
+	pfUINT quadDoubleDoublePrecisionDoubleMemory; //perform calculations in double-double emulation of quad precision, while all memory storage is done in FP64.
 	pfUINT halfPrecision; //perform calculations in half precision (0 - off, 1 - on)
 	pfUINT halfPrecisionMemoryOnly; //use half precision only as input/output buffer. Input/Output have to be allocated as half, buffer/tempBuffer have to be allocated as float (out of place mode only). Specify isInputFormatted and isOutputFormatted to use (0 - off, 1 - on)
 	pfUINT doublePrecisionFloatMemory; //use FP64 precision for all calculations, while all memory storage is done in FP32.
