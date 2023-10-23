@@ -27,7 +27,7 @@ void launch_precision_cuFFT_single(void* inputC, void* output_cuFFT, int device_
 		fprintf(stderr, "Cuda error: Failed to allocate\n");
 		return;
 	}
-	switch (dims[3]) {
+	switch (dims[4]) {
 	case 1:
 		cufftPlan1d(&planC2C, dims[0], CUFFT_C2C, 1);
 		break;

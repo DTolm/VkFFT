@@ -23,8 +23,8 @@
 #define VKFFT_DELETEPLAN_H
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 
-static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis) {
-	if (axis->specializationConstants.numRaderPrimes) {
+static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis, int isInverseBluesteinAxes) {
+	if (axis->specializationConstants.numRaderPrimes && (!isInverseBluesteinAxes)) {
 		free(axis->specializationConstants.raderContainer);
 		axis->specializationConstants.raderContainer = 0;
 		axis->specializationConstants.numRaderPrimes = 0;

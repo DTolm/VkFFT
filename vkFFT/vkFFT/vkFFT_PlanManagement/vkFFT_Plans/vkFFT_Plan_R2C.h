@@ -27,7 +27,7 @@
 #include "vkFFT/vkFFT_PlanManagement/vkFFT_HostFunctions/vkFFT_ManageLUT.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel2/vkFFT_R2C_even_decomposition.h"
 #include "vkFFT/vkFFT_AppManagement/vkFFT_DeleteApp.h"
-static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication* app, VkFFTPlan* FFTPlan, uint64_t inverse) {
+static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication* app, VkFFTPlan* FFTPlan, pfUINT inverse) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -43,7 +43,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 #endif
 	VkFFTAxis* axis = &FFTPlan->R2Cdecomposition;
 	axis->specializationConstants.sourceFFTSize.type = 31;
-	axis->specializationConstants.sourceFFTSize.data.i = (int64_t)app->configuration.size[0];
+	axis->specializationConstants.sourceFFTSize.data.i = (pfINT)app->configuration.size[0];
     axis->specializationConstants.numFFTdims = (int)app->configuration.FFTdim;
     
 	axis->specializationConstants.warpSize = (int)app->configuration.warpSize;
@@ -60,23 +60,28 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 	axis->specializationConstants.maxCodeLength = (int)app->configuration.maxCodeLength;
 	axis->specializationConstants.maxTempLength = (int)app->configuration.maxTempLength;
 
-	axis->specializationConstants.double_PI = 3.14159265358979323846264338327950288419716939937510L;
-
-	if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
-		axis->specializationConstants.precision = 1;
-		axis->specializationConstants.complexSize = (2 * sizeof(double));
+	axis->specializationConstants.double_PI = pfFPinit("3.14159265358979323846264338327950288419716939937510");
+	if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
+		axis->specializationConstants.precision = 3;
+		axis->specializationConstants.complexSize = (4 * sizeof(double));
 	}
-	else {
-		if (app->configuration.halfPrecision) {
-            axis->specializationConstants.precision = 0;
-            axis->specializationConstants.complexSize = (2 * sizeof(float));
+	else
+	{
+		if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) {
+			axis->specializationConstants.precision = 1;
+			axis->specializationConstants.complexSize = (2 * sizeof(double));
 		}
 		else {
-			axis->specializationConstants.precision = 0;
-			axis->specializationConstants.complexSize = (2 * sizeof(float));
+			if (app->configuration.halfPrecision) {
+				axis->specializationConstants.precision = 0;
+				axis->specializationConstants.complexSize = (2 * sizeof(float));
+			}
+			else {
+				axis->specializationConstants.precision = 0;
+				axis->specializationConstants.complexSize = (2 * sizeof(float));
+			}
 		}
 	}
-	axis->specializationConstants.complexSize = axis->specializationConstants.complexSize;
 	axis->specializationConstants.supportAxis = 0;
 	axis->specializationConstants.symmetricKernel = (int)app->configuration.symmetricKernel;
 	axis->specializationConstants.conjugateConvolution = (int)app->configuration.conjugateConvolution;
@@ -120,8 +125,8 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
     }
     
 	axis->specializationConstants.inverse = (int)inverse;
-	uint64_t axis_id = 0;
-	uint64_t axis_upload_id = 0;
+	pfUINT axis_id = 0;
+	pfUINT axis_upload_id = 0;
 
 	resFFT = VkFFTConfigureDescriptorsR2CMultiUploadDecomposition(app, FFTPlan, axis, axis_id, axis_upload_id, inverse);
 	if (resFFT != VKFFT_SUCCESS) {
@@ -152,23 +157,23 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 		axis->axisBlock[1] = 1;
 		axis->axisBlock[2] = 1;
 
-        uint64_t tempSize[3] = {1, 1, 1};
+        pfUINT tempSize[3] = {1, 1, 1};
         for (int i = 0; i < app->configuration.FFTdim; i++){
             tempSize[0] *= app->configuration.size[i];
         }
-        tempSize[0] = (uint64_t)ceil(tempSize[0]/ (long double)(2 * axis->axisBlock[0]));
+        tempSize[0] = (pfUINT)pfceil(tempSize[0]/ (pfLD)(2 * axis->axisBlock[0]));
        
 		tempSize[2] *= app->configuration.numberKernels * app->configuration.numberBatches * app->configuration.coordinateFeatures;
         
 		if ((app->configuration.maxComputeWorkGroupCount[0] > app->configuration.maxComputeWorkGroupCount[1]) && (tempSize[1] > app->configuration.maxComputeWorkGroupCount[1]) && (tempSize[1] > tempSize[0]) && (tempSize[1] >= tempSize[2])) {
-			uint64_t temp_tempSize = tempSize[0];
+			pfUINT temp_tempSize = tempSize[0];
 			tempSize[0] = tempSize[1];
 			tempSize[1] = temp_tempSize;
 			axis->specializationConstants.swapComputeWorkGroupID = 1;
 		}
 		else {
 			if ((app->configuration.maxComputeWorkGroupCount[0] > app->configuration.maxComputeWorkGroupCount[2]) && (tempSize[2] > app->configuration.maxComputeWorkGroupCount[2]) && (tempSize[2] > tempSize[0]) && (tempSize[2] >= tempSize[1])) {
-				uint64_t temp_tempSize = tempSize[0];
+				pfUINT temp_tempSize = tempSize[0];
 				tempSize[0] = tempSize[2];
 				tempSize[2] = temp_tempSize;
 				axis->specializationConstants.swapComputeWorkGroupID = 2;
@@ -190,34 +195,34 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 
 		axis->specializationConstants.numCoordinates = (app->configuration.matrixConvolution > 1) ? 1 : (int)app->configuration.coordinateFeatures;
 		axis->specializationConstants.matrixConvolution = (int)app->configuration.matrixConvolution;
-        for (uint64_t i = 0; i < VKFFT_MAX_FFT_DIMENSIONS; i++) {
+        for (pfUINT i = 0; i < VKFFT_MAX_FFT_DIMENSIONS; i++) {
             axis->specializationConstants.size[i].type = 31;
-            axis->specializationConstants.size[i].data.i = (int64_t)app->configuration.size[i];
+            axis->specializationConstants.size[i].data.i = (pfINT)app->configuration.size[i];
         }
 
 		axis->specializationConstants.registers_per_thread = 4;
 
 		axis->specializationConstants.numBatches.type = 31;
-		axis->specializationConstants.numBatches.data.i = (int64_t)app->configuration.numberBatches;
+		axis->specializationConstants.numBatches.data.i = (pfINT)app->configuration.numberBatches;
 		if ((app->configuration.FFTdim == 1) && (app->configuration.size[1] == 1) && ((app->configuration.numberBatches == 1) && (app->actualNumBatches > 1)) && (!app->configuration.performConvolution) && (app->configuration.coordinateFeatures == 1)) {
-			axis->specializationConstants.numBatches.data.i = (int64_t)app->actualNumBatches;
+			axis->specializationConstants.numBatches.data.i = (pfINT)app->actualNumBatches;
 		}
 
 		axis->specializationConstants.numKernels.type = 31;
-		axis->specializationConstants.numKernels.data.i = (int64_t)app->configuration.numberKernels;
+		axis->specializationConstants.numKernels.data.i = (pfINT)app->configuration.numberKernels;
 		axis->specializationConstants.sharedMemSize = (int)app->configuration.sharedMemorySize;
 		axis->specializationConstants.sharedMemSizePow2 = (int)app->configuration.sharedMemorySizePow2;
 		axis->specializationConstants.normalize = (int)app->configuration.normalize;
 		axis->specializationConstants.axis_id = 0;
 		axis->specializationConstants.axis_upload_id = 0;
 
-		for (uint64_t i = 0; i < VKFFT_MAX_FFT_DIMENSIONS; i++) {
+		for (pfUINT i = 0; i < VKFFT_MAX_FFT_DIMENSIONS; i++) {
 			axis->specializationConstants.frequencyZeropadding = (int)app->configuration.frequencyZeroPadding;
 			axis->specializationConstants.performZeropaddingFull[i] = (int)app->configuration.performZeropadding[i]; // don't read if input is zeropadded (0 - off, 1 - on)
 			axis->specializationConstants.fft_zeropad_left_full[i].type = 31;
-			axis->specializationConstants.fft_zeropad_left_full[i].data.i = (int64_t)app->configuration.fft_zeropad_left[i];
+			axis->specializationConstants.fft_zeropad_left_full[i].data.i = (pfINT)app->configuration.fft_zeropad_left[i];
 			axis->specializationConstants.fft_zeropad_right_full[i].type = 31;
-			axis->specializationConstants.fft_zeropad_right_full[i].data.i = (int64_t)app->configuration.fft_zeropad_right[i];
+			axis->specializationConstants.fft_zeropad_right_full[i].data.i = (pfINT)app->configuration.fft_zeropad_right[i];
 		}
 		/*if ((inverse)) {
 			if ((app->configuration.frequencyZeroPadding) &&  (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) {
@@ -285,12 +290,12 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 				axis->pushConstants.structSize += 1;
 			}
 			if (app->configuration.useUint64)
-				axis->pushConstants.structSize *= sizeof(uint64_t);
+				axis->pushConstants.structSize *= sizeof(pfUINT);
 			else
 				axis->pushConstants.structSize *= sizeof(uint32_t);
 			axis->specializationConstants.pushConstantsStructSize = (int)axis->pushConstants.structSize;
 		}
-		//uint64_t LUT = app->configuration.useLUT;
+		//pfUINT LUT = app->configuration.useLUT;
 
 		resFFT = initMemoryParametersAPI(app, &axis->specializationConstants);
 		if (resFFT != VKFFT_SUCCESS) {
@@ -298,7 +303,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			return resFFT;
 		}
 
-		uint64_t type = 0;
+		pfUINT type = 0;
 
 		axis->specializationConstants.inputMemoryCode = axis->specializationConstants.vecTypeInputMemoryCode;
 		switch ((axis->specializationConstants.inputMemoryCode % 100) / 10) {
@@ -310,6 +315,9 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			break;
 		case 2:
 			axis->specializationConstants.inputNumberByteSize = 16;
+			break;
+		case 3:
+			axis->specializationConstants.inputNumberByteSize = 32;
 			break;
 		}
 
@@ -323,6 +331,9 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			break;
 		case 2:
 			axis->specializationConstants.outputNumberByteSize = 16;
+			break;
+		case 3:
+			axis->specializationConstants.outputNumberByteSize = 32;
 			break;
 		}
 		resFFT = initParametersAPI(app, &axis->specializationConstants);

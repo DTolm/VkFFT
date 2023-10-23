@@ -30,22 +30,24 @@
 static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, PfContainer* stageSize, PfContainer* stageSizeSum, PfContainer* stageAngle, PfContainer* stageRadix, int stageID) {
 	if (sc->res != VKFFT_SUCCESS) return;
 
-	PfContainer temp_double;
-	temp_double.type = 32;
-	PfContainer temp_int;
+	PfContainer temp_double = VKFFT_ZERO_INIT;
+	temp_double.type = 22;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	PfContainer temp_int1;
+	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 
-	PfContainer stageNormalization;
-	stageNormalization.type = 32;
-	PfContainer normalizationValue;
+	PfContainer stageNormalization = VKFFT_ZERO_INIT;
+	stageNormalization.type = 22;
+	PfContainer normalizationValue = VKFFT_ZERO_INIT;
 	normalizationValue.type = 31;
 	normalizationValue.data.i = 1;
 
 	if ((((sc->actualInverse) && (sc->normalize)) || (sc->convolutionStep && (stageAngle->data.d > 0))) && (stageSize->data.i == 1) && (sc->axis_upload_id == 0) && (!(sc->useBluesteinFFT && (stageAngle->data.d < 0)))) {
-		if ((sc->performDCT) && (sc->actualInverse)) {
-			if (sc->performDCT == 1)
+		if (((sc->performDCT) || (sc->performDST)) && (sc->actualInverse)) {
+			if (sc->performDST == 1)
+				normalizationValue.data.i = (sc->sourceFFTSize.data.i + 1) * 2;
+			else if (sc->performDCT == 1)
 				normalizationValue.data.i = (sc->sourceFFTSize.data.i - 1) * 2;
 			else
 				normalizationValue.data.i = sc->sourceFFTSize.data.i * 2;
@@ -57,7 +59,7 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 		normalizationValue.data.i *= sc->fft_dim_full.data.i;
 	}
 	if (normalizationValue.data.i != 1) {
-		stageNormalization.data.d = 1.0 / (long double)(normalizationValue.data.i);
+		stageNormalization.data.d = pfFPinit("1.0") / (pfLD)(normalizationValue.data.i);
 	}
 
 	sc->useCoalescedLUTUploadToSM = 0;
@@ -90,16 +92,16 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 	}
 
 	if (stageSize->data.i > 1) {
-		PfContainer num_logical_subgroups; 
+		PfContainer num_logical_subgroups = VKFFT_ZERO_INIT; 
 		num_logical_subgroups.type = 31;
 		num_logical_subgroups.data.i = (sc->stridedSharedLayout) ? sc->localSize[1].data.i : sc->localSize[0].data.i;
-		PfContainer num_logical_groups;
+		PfContainer num_logical_groups = VKFFT_ZERO_INIT;
 		num_logical_groups.type = 31;
 		PfDivCeil(sc, &num_logical_groups, &sc->fftDim, &num_logical_subgroups);
 
-		for (uint64_t t = 0; t < (uint64_t)num_logical_groups.data.i; t++) {
-			if (((1 + (int64_t)t) * num_logical_subgroups.data.i) > sc->fftDim.data.i) {
-				PfContainer current_group_cut;
+		for (pfUINT t = 0; t < (pfUINT)num_logical_groups.data.i; t++) {
+			if (((1 + (pfINT)t) * num_logical_subgroups.data.i) > sc->fftDim.data.i) {
+				PfContainer current_group_cut = VKFFT_ZERO_INIT;
 				current_group_cut.type = 31;
 				current_group_cut.data.i = sc->fftDim.data.i - t * num_logical_subgroups.data.i;
 				PfIf_lt_start(sc, localInvocationID, &current_group_cut);
@@ -120,7 +122,7 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 				}
 			}
 			else {
-				temp_double.data.d = stageAngle->data.d * 2.0 / (stageRadix->data.i);
+				temp_double.data.d = stageAngle->data.d * pfFPinit("2.0") / (stageRadix->data.i);
 				PfMul(sc, &sc->angle, &sc->stageInvocationID, &temp_double, 0);
 				temp_int.data.i = sc->fftDim.data.i / stageRadix->data.i;
 				PfDiv(sc, &sc->tempInt, &sc->sdataID, &temp_int);
@@ -158,7 +160,7 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 			
 			appendRegistersToShared(sc, &sc->sdataID, &sc->temp);
 
-			if (((1 + (int64_t)t) * num_logical_subgroups.data.i) > sc->fftDim.data.i) {
+			if (((1 + (pfINT)t) * num_logical_subgroups.data.i) > sc->fftDim.data.i) {
 				PfIf_end(sc);				
 			}
 		}
@@ -182,11 +184,11 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 	{
 		int locStageRadix = sc->currentRaderContainer->stageRadix[0];
 		int logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		//uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		//pfUINT logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 		int locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
-		//uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
-		//uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
-		PfContainer subLogicalGroupSize;
+		//pfUINT locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
+		//pfUINT logicalGroupSize = (pfUINT)pfceil(locFFTsCombined / (double)logicalStoragePerThread);
+		PfContainer subLogicalGroupSize = VKFFT_ZERO_INIT;
 		subLogicalGroupSize.type = 31;
 		temp_int.data.i = locFFTDim;
 		temp_int1.data.i = logicalStoragePerThread;
@@ -228,12 +230,12 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 	{
 		int locStageRadix = sc->currentRaderContainer->stageRadix[sc->currentRaderContainer->numStages - 1];
 		int logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		//uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		//pfUINT logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 		int locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
-		//uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
-		//uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
+		//pfUINT locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
+		//pfUINT logicalGroupSize = (pfUINT)pfceil(locFFTsCombined / (double)logicalStoragePerThread);
 
-		PfContainer subLogicalGroupSize;
+		PfContainer subLogicalGroupSize = VKFFT_ZERO_INIT;
 		subLogicalGroupSize.type = 31;
 		temp_int.data.i = locFFTDim;
 		temp_int1.data.i = logicalStoragePerThread;
@@ -293,25 +295,25 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 			PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 		}
 	}
-	int64_t locStageSize = 1;
-	int64_t locStageSizeSum = 0;
-	long double locStageAngle = -sc->double_PI;
-	int64_t shift = 0;
+	pfINT locStageSize = 1;
+	pfINT locStageSizeSum = 0;
+	pfLD locStageAngle = -sc->double_PI;
+	pfINT shift = 0;
 	for (int rader_stage = 0; rader_stage < sc->currentRaderContainer->numStages; rader_stage++) {
-		int64_t locStageRadix = sc->currentRaderContainer->stageRadix[rader_stage];
-		int64_t logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		int64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
-		int64_t locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
-		int64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
-		//uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
+		pfINT locStageRadix = sc->currentRaderContainer->stageRadix[rader_stage];
+		pfINT logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		pfINT logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		pfINT locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
+		pfINT locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
+		//pfUINT logicalGroupSize = (pfUINT)pfceil(locFFTsCombined / (double)logicalStoragePerThread);
 
-		PfContainer subLogicalGroupSize;
+		PfContainer subLogicalGroupSize = VKFFT_ZERO_INIT;
 		subLogicalGroupSize.type = 31;
 		temp_int.data.i = locFFTDim;
 		temp_int1.data.i = logicalStoragePerThread;
 		PfDivCeil(sc, &subLogicalGroupSize, &temp_int, &temp_int1);
 
-		int64_t locFFTDimStride = locFFTDim;
+		pfINT locFFTDimStride = locFFTDim;
 		if (shift <= sc->sharedShiftRaderFFT.data.i) locFFTDimStride = locFFTDim + shift;
 		//local radix
 		if ((rader_stage == 0) || (!raderTranspose)) {
@@ -324,7 +326,7 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 			PfMod(sc, &sc->raderIDx2, localInvocationID, &temp_int);
 		}
 
-		for (uint64_t k = 0; k < sc->registerBoost; k++) {
+		for (pfUINT k = 0; k < sc->registerBoost; k++) {
 			if ((rader_stage == 0) || (!raderTranspose)) {
 				temp_int.data.i = sc->currentRaderContainer->containerFFTNum;
 				PfIf_lt_start(sc, &sc->raderIDx2, &temp_int);				
@@ -332,9 +334,9 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 			else {
 				PfIf_lt_start(sc, &sc->raderIDx, &subLogicalGroupSize);				
 			}
-			for (uint64_t j = 0; j < (uint64_t)logicalRegistersPerThread / locStageRadix; j++) {
-				if (subLogicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) continue;
-				if (subLogicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+			for (pfUINT j = 0; j < (pfUINT)logicalRegistersPerThread / locStageRadix; j++) {
+				if (subLogicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) continue;
+				if (subLogicalGroupSize.data.i * ((pfINT)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
 					temp_int.data.i = locFFTDim / locStageRadix - (j + k * logicalRegistersPerThread / locStageRadix) * subLogicalGroupSize.data.i;
 					PfIf_lt_start(sc, &sc->raderIDx, &temp_int);
 				}
@@ -400,7 +402,7 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 						}
 					}
 
-					int64_t id = j + i * logicalRegistersPerThread / locStageRadix;
+					pfINT id = j + i * logicalRegistersPerThread / locStageRadix;
 					id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 					if (!sc->stridedSharedLayout) {
 						if (sc->resolveBankConflictFirstStages == 1) {
@@ -428,19 +430,19 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 
 				PfContainer* regID = (PfContainer*)calloc(locStageRadix, sizeof(PfContainer));
 				if (regID) {
-					for (uint64_t i = 0; i < (uint64_t)locStageRadix; i++) {
-						PfContainer id;
+					for (pfUINT i = 0; i < (pfUINT)locStageRadix; i++) {
+						PfContainer id = VKFFT_ZERO_INIT;
 						id.type = 31;
 						id.data.i = j + k * logicalRegistersPerThread / locStageRadix + i * logicalStoragePerThread / locStageRadix;
 						id.data.i = (id.data.i / logicalRegistersPerThread) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread;
-						PfAllocateContainerFlexible(sc, &regID[i], 50);
 						regID[i].type = sc->regIDs[id.data.i].type;
+						PfAllocateContainerFlexible(sc, &regID[i], 50);
 						PfCopyContainer(sc, &regID[i], &sc->regIDs[id.data.i]);
 					}
 					inlineRadixKernelVkFFT(sc, locStageRadix, locStageSize, locStageSizeSum, locStageAngle, regID);
 
-					for (uint64_t i = 0; i < (uint64_t)locStageRadix; i++) {
-						PfContainer id;
+					for (pfUINT i = 0; i < (pfUINT)locStageRadix; i++) {
+						PfContainer id = VKFFT_ZERO_INIT;
 						id.type = 31;
 						id.data.i = j + k * logicalRegistersPerThread / locStageRadix + i * logicalStoragePerThread / locStageRadix;
 						id.data.i = (id.data.i / logicalRegistersPerThread) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread;
@@ -455,7 +457,7 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 					sc->res = VKFFT_ERROR_MALLOC_FAILED;
 					return;
 				}
-				if (subLogicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+				if (subLogicalGroupSize.data.i * ((pfINT)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
 					PfIf_end(sc);
 				}
 			}
@@ -482,12 +484,12 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 		PfContainer* tempID;
 		tempID = (PfContainer*)calloc(sc->registers_per_thread * sc->registerBoost, sizeof(PfContainer));
 		if (tempID) {
-			for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
-				PfAllocateContainerFlexible(sc, &tempID[i], 50);
+			for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 				tempID[i].type = sc->regIDs[0].type;
+				PfAllocateContainerFlexible(sc, &tempID[i], 50);
 			}
-			for (uint64_t k = 0; k < sc->registerBoost; ++k) {
-				uint64_t t = 0;
+			for (pfUINT k = 0; k < sc->registerBoost; ++k) {
+				pfUINT t = 0;
 
 				if ((rader_stage == 0) || (!raderTranspose)) {
 					temp_int.data.i = sc->currentRaderContainer->containerFFTNum;
@@ -528,9 +530,9 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 						if (shift <= sc->sharedShiftRaderFFT.data.i) locFFTDimStride = locFFTDim + shift;
 					}
 				}
-				for (int64_t j = 0; j < logicalRegistersPerThread / locStageRadix; j++) {
-					if (subLogicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
-						if (subLogicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+				for (pfINT j = 0; j < logicalRegistersPerThread / locStageRadix; j++) {
+					if (subLogicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
+						if (subLogicalGroupSize.data.i * ((pfINT)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
 							temp_int.data.i = locFFTDim / locStageRadix - (j + k * logicalRegistersPerThread / locStageRadix) * subLogicalGroupSize.data.i;
 							PfIf_lt_start(sc, &sc->raderIDx, &temp_int);
 						}
@@ -555,14 +557,14 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 	blockInvocationID = (gl_LocalInvocationID.x + %" PRIu64 ") - stageInvocationID;\n\
 	inoutID = stageInvocationID + blockInvocationID * %" PRIu64 ";\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);*/
 
-					for (uint64_t i = 0; i < (uint64_t)locStageRadix; i++) {
-						PfContainer id;
+					for (pfUINT i = 0; i < (pfUINT)locStageRadix; i++) {
+						PfContainer id = VKFFT_ZERO_INIT;
 						id.type = 31;
 						id.data.i = j + k * logicalRegistersPerThread / locStageRadix + i * logicalStoragePerThread / locStageRadix;
 						id.data.i = (id.data.i / logicalRegistersPerThread) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread;
 						PfCopyContainer(sc, &tempID[t + k * sc->registers_per_thread], &sc->regIDs[id.data.i]);
 						t++;
-						if (subLogicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
+						if (subLogicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
 							temp_int.data.i = i * locStageSize;
 							PfAdd(sc, &sc->combinedID, &sc->inoutID, &temp_int);
 							//last stage - mult rader kernel
@@ -646,25 +648,25 @@ static inline void appendFFTRaderStage(VkFFTSpecializationConstantsLayout* sc, P
 						/*sc->tempLen = sprintf(sc->tempStr, "\
 sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;\n", i * stageSize, sc->regIDs[id], stageNormalization);*/
 					}
-					if (subLogicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
-						if (subLogicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+					if (subLogicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
+						if (subLogicalGroupSize.data.i * ((pfINT)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
 							PfIf_end(sc);
 						}
 					}
 				}
 				PfIf_end(sc);
 				
-				for (uint64_t j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
+				for (pfUINT j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
 					PfCopyContainer(sc, &tempID[t + k * sc->registers_per_thread], &sc->regIDs[t + k * sc->registers_per_thread]);
 					t++;
 				}
 				t = 0;
 			}
 			if (rader_stage != sc->currentRaderContainer->numStages - 1) {
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					PfCopyContainer(sc, &sc->regIDs[i], &tempID[i]);
 				}
-				for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					PfDeallocateContainer(sc, &tempID[i]);
 				}
 			}
@@ -756,19 +758,19 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 	locStageSize = 1;
 	locStageAngle = sc->double_PI;
 	locStageSizeSum = 0;
-	for (int64_t rader_stage = sc->currentRaderContainer->numStages - 1; rader_stage >= 0; rader_stage--) {
-		int64_t locStageRadix = sc->currentRaderContainer->stageRadix[rader_stage];
-		int64_t logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		int64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
-		int64_t locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
-		int64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
-		//uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
-		PfContainer subLogicalGroupSize;
+	for (pfINT rader_stage = sc->currentRaderContainer->numStages - 1; rader_stage >= 0; rader_stage--) {
+		pfINT locStageRadix = sc->currentRaderContainer->stageRadix[rader_stage];
+		pfINT logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		pfINT logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		pfINT locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
+		pfINT locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
+		//pfUINT logicalGroupSize = (pfUINT)pfceil(locFFTsCombined / (double)logicalStoragePerThread);
+		PfContainer subLogicalGroupSize = VKFFT_ZERO_INIT;
 		subLogicalGroupSize.type = 31;
 		temp_int.data.i = locFFTDim;
 		temp_int1.data.i = logicalStoragePerThread;
 		PfDivCeil(sc, &subLogicalGroupSize, &temp_int, &temp_int1);
-		int64_t locFFTDimStride = locFFTDim; //different length due to all -1 cutoffs
+		pfINT locFFTDimStride = locFFTDim; //different length due to all -1 cutoffs
 		if (shift <= sc->sharedShiftRaderFFT.data.i) locFFTDimStride = locFFTDim + shift;
 		//local radix
 		if (!raderTranspose) {
@@ -780,7 +782,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 			PfDiv(sc, &sc->raderIDx, localInvocationID, &temp_int);
 			PfMod(sc, &sc->raderIDx2, localInvocationID, &temp_int);
 		}
-		for (uint64_t k = 0; k < sc->registerBoost; k++) {
+		for (pfUINT k = 0; k < sc->registerBoost; k++) {
 			if (!raderTranspose) {
 				temp_int.data.i = sc->currentRaderContainer->containerFFTNum;
 				PfIf_lt_start(sc, &sc->raderIDx2, &temp_int);
@@ -788,9 +790,9 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 			else {
 				PfIf_lt_start(sc, &sc->raderIDx, &subLogicalGroupSize);
 			}
-			for (uint64_t j = 0; j < (uint64_t)logicalRegistersPerThread / locStageRadix; j++) {
-				if (subLogicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) continue;
-				if (subLogicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+			for (pfUINT j = 0; j < (pfUINT)logicalRegistersPerThread / locStageRadix; j++) {
+				if (subLogicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) continue;
+				if (subLogicalGroupSize.data.i * ((pfINT)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
 					temp_int.data.i = locFFTDim / locStageRadix - (j + k * logicalRegistersPerThread / locStageRadix) * subLogicalGroupSize.data.i;
 					PfIf_lt_start(sc, &sc->raderIDx, &temp_int);				
 				}
@@ -810,9 +812,9 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 					PfMul(sc, &sc->angle, &sc->stageInvocationID, &temp_double, 0);
 				}
 
-				if (rader_stage != (int64_t)sc->currentRaderContainer->numStages - 1) {
-					for (uint64_t i = 0; i < (uint64_t)locStageRadix; i++) {
-						uint64_t id = j + i * logicalRegistersPerThread / locStageRadix;
+				if (rader_stage != (pfINT)sc->currentRaderContainer->numStages - 1) {
+					for (pfUINT i = 0; i < (pfUINT)locStageRadix; i++) {
+						pfUINT id = j + i * logicalRegistersPerThread / locStageRadix;
 						id = (id / logicalRegistersPerThread) * sc->registers_per_thread + id % logicalRegistersPerThread;
 						if (!raderTranspose) {
 							temp_int.data.i = j * subLogicalGroupSize.data.i + i * locFFTDim / locStageRadix + sc->fftDim.data.i / stageRadix->data.i;
@@ -856,19 +858,19 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 				}
 				PfContainer* regID = (PfContainer*)calloc(locStageRadix, sizeof(PfContainer));
 				if (regID) {
-					for (uint64_t i = 0; i < (uint64_t)locStageRadix; i++) {
-						PfContainer id;
+					for (pfUINT i = 0; i < (pfUINT)locStageRadix; i++) {
+						PfContainer id = VKFFT_ZERO_INIT;
 						id.type = 31;
 						id.data.i = j + k * logicalRegistersPerThread / locStageRadix + i * logicalStoragePerThread / locStageRadix;
 						id.data.i = (id.data.i / logicalRegistersPerThread) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread;
-						PfAllocateContainerFlexible(sc, &regID[i], 50);
 						regID[i].type = sc->regIDs[id.data.i].type;
+						PfAllocateContainerFlexible(sc, &regID[i], 50);
 						PfCopyContainer(sc, &regID[i], &sc->regIDs[id.data.i]);
 					}
 					inlineRadixKernelVkFFT(sc, locStageRadix, locStageSize, locStageSizeSum, locStageAngle, regID);
 
-					for (uint64_t i = 0; i < (uint64_t)locStageRadix; i++) {
-						PfContainer id;
+					for (pfUINT i = 0; i < (pfUINT)locStageRadix; i++) {
+						PfContainer id = VKFFT_ZERO_INIT;
 						id.type = 31;
 						id.data.i = j + k * logicalRegistersPerThread / locStageRadix + i * logicalStoragePerThread / locStageRadix;
 						id.data.i = (id.data.i / logicalRegistersPerThread) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread;
@@ -883,7 +885,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 					sc->res = VKFFT_ERROR_MALLOC_FAILED;
 					return;
 				}
-				if (subLogicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+				if (subLogicalGroupSize.data.i * ((pfINT)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
 					PfIf_end(sc);
 				}
 			}
@@ -915,12 +917,12 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 		PfContainer* tempID;
 		tempID = (PfContainer*)calloc(sc->registers_per_thread * sc->registerBoost, sizeof(PfContainer));
 		if (tempID) {
-			for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
-				PfAllocateContainerFlexible(sc, &tempID[i], 50);
+			for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 				tempID[i].type = sc->regIDs[0].type;
+				PfAllocateContainerFlexible(sc, &tempID[i], 50);
 			}
-			for (uint64_t k = 0; k < sc->registerBoost; ++k) {
-				uint64_t t = 0;
+			for (pfUINT k = 0; k < sc->registerBoost; ++k) {
+				pfUINT t = 0;
 				if (!raderTranspose) {
 					temp_int.data.i = sc->currentRaderContainer->containerFFTNum;
 					PfIf_lt_start(sc, &sc->raderIDx2, &temp_int);
@@ -940,7 +942,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 					
 				}
 				if (!sc->stridedSharedLayout) {
-					if (rader_stage != (int64_t)sc->currentRaderContainer->numStages - 1) {
+					if (rader_stage != (pfINT)sc->currentRaderContainer->numStages - 1) {
 						shift = (subLogicalGroupSize.data.i > (locFFTDim % (sc->numSharedBanks / 2))) ? subLogicalGroupSize.data.i - locFFTDim % (sc->numSharedBanks / 2) : 0;
 						if (shift <= sc->sharedShiftRaderFFT.data.i) locFFTDimStride = locFFTDim + shift;
 					}
@@ -949,9 +951,9 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 						if (shift <= sc->sharedShiftRaderFFT.data.i) locFFTDimStride = locFFTDim + shift;
 					}
 				}
-				for (int64_t j = 0; j < logicalRegistersPerThread / locStageRadix; j++) {
-					if (subLogicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
-						if (subLogicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+				for (pfINT j = 0; j < logicalRegistersPerThread / locStageRadix; j++) {
+					if (subLogicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
+						if (subLogicalGroupSize.data.i * ((pfINT)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
 							temp_int.data.i = locFFTDim / locStageRadix - (j + k * logicalRegistersPerThread / locStageRadix) * subLogicalGroupSize.data.i;
 							PfIf_lt_start(sc, &sc->raderIDx, &temp_int);							
 						}
@@ -975,14 +977,14 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 	blockInvocationID = (gl_LocalInvocationID.x + %" PRIu64 ") - stageInvocationID;\n\
 	inoutID = stageInvocationID + blockInvocationID * %" PRIu64 ";\n", j * logicalGroupSize, stageSize, j * logicalGroupSize, stageRadix);*/
 
-					for (uint64_t i = 0; i < (uint64_t)locStageRadix; i++) {
-						PfContainer id;
+					for (pfUINT i = 0; i < (pfUINT)locStageRadix; i++) {
+						PfContainer id = VKFFT_ZERO_INIT;
 						id.type = 31;
 						id.data.i = j + k * logicalRegistersPerThread / locStageRadix + i * logicalStoragePerThread / locStageRadix;
 						id.data.i = (id.data.i / logicalRegistersPerThread) * sc->registers_per_thread + id.data.i % logicalRegistersPerThread;
 						PfCopyContainer(sc, &tempID[t + k * sc->registers_per_thread], &sc->regIDs[id.data.i]);
 						t++;
-						if (subLogicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
+						if (subLogicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
 							temp_int.data.i = i * locStageSize;
 							PfAdd(sc, &sc->combinedID, &sc->inoutID, &temp_int);
 							
@@ -1087,7 +1089,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 							//sprintf(sc->sdataID, "sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "", i * stageSize);
 							if ((((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle->data.d > 0))) && (rader_stage == 0)) {
 								if (normalizationValue.data.i != 1) {
-									PfMul(sc, &sc->regIDs[id.data.i], &sc->regIDs[id.data.i], &stageNormalization, 0);
+									PfMul(sc, &sc->regIDs[id.data.i], &sc->regIDs[id.data.i], &stageNormalization, &sc->temp);
 								}								
 							}
 							appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[id.data.i]);
@@ -1099,24 +1101,24 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 						/*sc->tempLen = sprintf(sc->tempStr, "\
 sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;\n", i * stageSize, sc->regIDs[id], stageNormalization);*/
 					}
-					if (subLogicalGroupSize.data.i * ((int64_t)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
-						if (subLogicalGroupSize.data.i * ((int64_t)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
+					if (subLogicalGroupSize.data.i * ((pfINT)(j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) <= locFFTDim) {
+						if (subLogicalGroupSize.data.i * ((pfINT)(1 + j + k * logicalRegistersPerThread / locStageRadix) * locStageRadix) > locFFTDim) {
 							PfIf_end(sc);
 						}
 					}
 				}
 				PfIf_end(sc);
 
-				for (uint64_t j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
+				for (pfUINT j = logicalRegistersPerThread; j < sc->registers_per_thread; j++) {
 					PfCopyContainer(sc, &tempID[t + k * sc->registers_per_thread], &sc->regIDs[t + k * sc->registers_per_thread]);
 					t++;
 				}
 				t = 0;
 			}
-			for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+			for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 				PfCopyContainer(sc, &sc->regIDs[i], &tempID[i]);
 			}
-			for (uint64_t i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+			for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 				PfDeallocateContainer(sc, &tempID[i]);
 			}
 			free(tempID);
@@ -1125,7 +1127,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 		else
 			sc->res = VKFFT_ERROR_MALLOC_FAILED;
 
-		if (rader_stage < (int64_t)sc->currentRaderContainer->numStages - 1) {
+		if (rader_stage < (pfINT)sc->currentRaderContainer->numStages - 1) {
 			switch (locStageRadix) {
 			case 2:
 				locStageSizeSum += locStageSize;
@@ -1200,13 +1202,13 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 	}
 
 	{
-		uint64_t locStageRadix = sc->currentRaderContainer->stageRadix[sc->currentRaderContainer->numStages - 1];
-		uint64_t logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
-		//uint64_t logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
-		uint64_t locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
-		//uint64_t locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
-		//uint64_t logicalGroupSize = (uint64_t)ceil(locFFTsCombined / (double)logicalStoragePerThread);
-		PfContainer subLogicalGroupSize;
+		pfUINT locStageRadix = sc->currentRaderContainer->stageRadix[sc->currentRaderContainer->numStages - 1];
+		pfUINT logicalStoragePerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix] * sc->registerBoost;// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread * sc->registerBoost : sc->min_registers_per_thread * sc->registerBoost;
+		//pfUINT logicalRegistersPerThread = sc->currentRaderContainer->registers_per_thread_per_radix[locStageRadix];// (sc->registers_per_thread % stageRadix == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
+		pfUINT locFFTDim = sc->currentRaderContainer->containerFFTDim; //different length due to all -1 cutoffs
+		//pfUINT locFFTsCombined = sc->currentRaderContainer->containerFFTNum * locFFTDim;
+		//pfUINT logicalGroupSize = (pfUINT)pfceil(locFFTsCombined / (double)logicalStoragePerThread);
+		PfContainer subLogicalGroupSize = VKFFT_ZERO_INIT;
 		subLogicalGroupSize.type = 31;
 		temp_int.data.i = locFFTDim;
 		temp_int1.data.i = logicalStoragePerThread;
@@ -1253,7 +1255,7 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 
 		if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle->data.d > 0))) {
 			if (normalizationValue.data.i != 1) {
-				PfMul(sc, &sc->x0[1], &sc->x0[1], &stageNormalization, 0);
+				PfMul(sc, &sc->x0[1], &sc->x0[1], &stageNormalization, &sc->temp);
 			}
 		}
 
@@ -1276,24 +1278,27 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, PfContainer* stageSize, PfContainer* stageSizeSum, PfContainer* stageAngle, PfContainer* stageRadix, int stageID) {
 	if (sc->res != VKFFT_SUCCESS) return;
 
-	PfContainer temp_complex;
-	temp_complex.type = 33;
-	PfContainer temp_double;
-	temp_double.type = 32;
-	PfContainer temp_int;
+	PfContainer temp_complex = VKFFT_ZERO_INIT;
+	temp_complex.type = 23;
+	PfAllocateContainerFlexible(sc, &temp_complex, 50);
+	PfContainer temp_double = VKFFT_ZERO_INIT;
+	temp_double.type = 22;
+	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-	PfContainer temp_int1;
+	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	
-	PfContainer stageNormalization;
-	stageNormalization.type = 32;
-	PfContainer normalizationValue;
+	PfContainer stageNormalization = VKFFT_ZERO_INIT;
+	stageNormalization.type = 22;
+	PfContainer normalizationValue = VKFFT_ZERO_INIT;
 	normalizationValue.type = 31;
 	normalizationValue.data.i = 1;
 
 	if ((((sc->actualInverse) && (sc->normalize)) || (sc->convolutionStep && (stageAngle->data.d > 0))) && (stageSize->data.i == 1) && (sc->axis_upload_id == 0) && (!(sc->useBluesteinFFT && (stageAngle->data.d < 0)))) {
-		if ((sc->performDCT) && (sc->actualInverse)) {
-			if (sc->performDCT == 1)
+		if (((sc->performDCT) || (sc->performDST)) && (sc->actualInverse)) {
+			if (sc->performDST == 1)
+				normalizationValue.data.i = (sc->sourceFFTSize.data.i + 1) * 2;
+			else if (sc->performDCT == 1)
 				normalizationValue.data.i = (sc->sourceFFTSize.data.i - 1) * 2;
 			else
 				normalizationValue.data.i = sc->sourceFFTSize.data.i * 2;
@@ -1305,7 +1310,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 		normalizationValue.data.i *= sc->fft_dim_full.data.i;
 	}
 	if (normalizationValue.data.i != 1) {
-		stageNormalization.data.d = 1.0 / (long double)(normalizationValue.data.i);
+		stageNormalization.data.d = pfFPinit("1.0") / (pfLD)(normalizationValue.data.i);
 	}
 	/*char convolutionInverse[10] = "";
 	if (sc->convolutionStep) {
@@ -1323,14 +1328,14 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 		PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 	}
 
-	int64_t num_logical_subgroups = (sc->stridedSharedLayout) ? sc->localSize[1].data.i / ((stageRadix->data.i + 1) / 2) : sc->localSize[0].data.i / ((stageRadix->data.i + 1) / 2);
-	PfContainer num_logical_groups;
+	pfINT num_logical_subgroups = (sc->stridedSharedLayout) ? sc->localSize[1].data.i / ((stageRadix->data.i + 1) / 2) : sc->localSize[0].data.i / ((stageRadix->data.i + 1) / 2);
+	PfContainer num_logical_groups = VKFFT_ZERO_INIT;
 	num_logical_groups.type = 31;
 	temp_int.data.i = sc->fftDim.data.i / stageRadix->data.i;
 	temp_int1.data.i = num_logical_subgroups;
 	PfDivCeil(sc, &num_logical_groups, &temp_int, &temp_int1);
-	int64_t require_cutoff_check = ((sc->fftDim.data.i == (num_logical_subgroups * num_logical_groups.data.i * stageRadix->data.i))) ? 0 : 1;
-	int64_t require_cutoff_check2;
+	pfINT require_cutoff_check = ((sc->fftDim.data.i == (num_logical_subgroups * num_logical_groups.data.i * stageRadix->data.i))) ? 0 : 1;
+	pfINT require_cutoff_check2;
 	
 	PfContainer* localInvocationID = VKFFT_ZERO_INIT;
 
@@ -1351,8 +1356,8 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 	PfMod(sc, &sc->raderIDx, localInvocationID, &temp_int);
 	PfDiv(sc, &sc->raderIDx2, localInvocationID, &temp_int);
 	
-	for (int64_t k = 0; k < sc->registerBoost; k++) {
-		for (int64_t j = 0; j < 1; j++) {
+	for (pfINT k = 0; k < sc->registerBoost; k++) {
+		for (pfINT j = 0; j < 1; j++) {
 			if (stageSize->data.i > 1) {
 				if (require_cutoff_check2) {
 					if (sc->stridedSharedLayout) {
@@ -1364,7 +1369,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 						PfIf_lt_start(sc, &sc->gl_LocalInvocationID_x, &temp_int);
 					}
 				}
-				for (int64_t t = 0; t < num_logical_groups.data.i; t++) {
+				for (pfINT t = 0; t < num_logical_groups.data.i; t++) {
 					if ((require_cutoff_check) && (t == num_logical_groups.data.i - 1)) {
 						temp_int.data.i = sc->fftDim.data.i / stageRadix->data.i - t * num_logical_subgroups;
 						PfIf_lt_start(sc, &sc->raderIDx2, &temp_int);						
@@ -1384,7 +1389,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 					}
 					else {
 						PfMul(sc, &sc->tempInt, &sc->stageInvocationID, &sc->raderIDx, 0);
-						temp_double.data.d = stageAngle->data.d * 2.0 / stageRadix->data.d;
+						temp_double.data.d = stageAngle->data.d * pfFPinit("2.0") / stageRadix->data.d;
 						PfMul(sc, &sc->angle, &sc->tempInt, &temp_double, 0);
 						PfSinCos(sc, &sc->w, &sc->angle);
 					}
@@ -1436,7 +1441,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 						temp_int.data.i = (stageRadix->data.i + 1) / 2;
 						PfAdd(sc, &sc->tempInt, &sc->raderIDx, &temp_int);
 						PfMul(sc, &sc->tempInt, &sc->stageInvocationID, &sc->tempInt, 0);
-						temp_double.data.d = stageAngle->data.d * 2.0 / stageRadix->data.d;
+						temp_double.data.d = stageAngle->data.d * pfFPinit("2.0") / stageRadix->data.d;
 						PfMul(sc, &sc->angle, &sc->tempInt, &temp_double, 0);
 						PfSinCos(sc, &sc->w, &sc->angle);
 					}
@@ -1503,7 +1508,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 				}
 			}
 			//save x0
-			for (uint64_t t = 0; t < (uint64_t)num_logical_groups.data.i; t++) {
+			for (pfUINT t = 0; t < (pfUINT)num_logical_groups.data.i; t++) {
 				if ((require_cutoff_check) && (t == num_logical_groups.data.i - 1)) {
 					temp_int.data.i = sc->fftDim.data.i / stageRadix->data.i - t * num_logical_subgroups;
 					PfIf_lt_start(sc, &sc->raderIDx2, &temp_int);
@@ -1565,7 +1570,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 				PfAppendLine(sc);
 				*/
 			}
-			for (uint64_t t = 0; t < (uint64_t)num_logical_groups.data.i; t++) {
+			for (pfUINT t = 0; t < (pfUINT)num_logical_groups.data.i; t++) {
 				if ((require_cutoff_check) && (t == num_logical_groups.data.i - 1)) {
 					temp_int.data.i = sc->fftDim.data.i / stageRadix->data.i - t * num_logical_subgroups;
 					PfIf_lt_start(sc, &sc->raderIDx2, &temp_int);
@@ -1617,7 +1622,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 				*/
 			}
 
-			for (uint64_t t = 0; t < (uint64_t)num_logical_groups.data.i; t++) {
+			for (pfUINT t = 0; t < (pfUINT)num_logical_groups.data.i; t++) {
 				if ((require_cutoff_check) && (t == num_logical_groups.data.i - 1)) {
 					temp_int.data.i = sc->fftDim.data.i / stageRadix->data.i - t * num_logical_subgroups;
 					PfIf_lt_start(sc, &sc->raderIDx2, &temp_int);
@@ -1662,13 +1667,13 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 			
 			//load deconv kernel
 			if (!sc->inline_rader_kernel) {
-				for (uint64_t t = 0; t < (uint64_t)ceil((stageRadix->data.i - 1) / ((long double)(sc->localSize[0].data.i * sc->localSize[1].data.i))); t++) {
+				for (pfUINT t = 0; t < (pfUINT)pfceil((stageRadix->data.i - 1) / ((pfLD)(sc->localSize[0].data.i * sc->localSize[1].data.i))); t++) {
 					PfMul(sc, &sc->combinedID, &sc->gl_LocalInvocationID_y, &sc->localSize[0], 0);
 					PfAdd(sc, &sc->combinedID, &sc->combinedID, &sc->gl_LocalInvocationID_x);
 					temp_int.data.i = t * sc->localSize[0].data.i * sc->localSize[1].data.i;
 					PfAdd(sc, &sc->combinedID, &sc->combinedID, &temp_int);
 					
-					if (t == ((uint64_t)ceil((stageRadix->data.i - 1) / ((double)(sc->localSize[0].data.i * sc->localSize[1].data.i))) - 1)) {
+					if (t == ((pfUINT)pfceil((stageRadix->data.i - 1) / ((double)(sc->localSize[0].data.i * sc->localSize[1].data.i))) - 1)) {
 						temp_int.data.i = stageRadix->data.i - 1;
 						PfIf_lt_start(sc, &sc->combinedID, &temp_int);
 					}
@@ -1708,7 +1713,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 							PfAppendLine(sc);
 							*/
 						}
-						temp_double.data.d = 2.0 * sc->double_PI / stageRadix->data.i;
+						temp_double.data.d = pfFPinit("2.0") * sc->double_PI / stageRadix->data.i;
 						PfMul(sc, &sc->tempFloat, &temp_double, &sc->sdataID, 0);
 						PfSinCos(sc, &sc->w, &sc->tempFloat);
 						if (!sc->inverse) {
@@ -1718,7 +1723,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 						PfAdd(sc, &sc->tempInt, &sc->combinedID, &sc->RaderKernelOffsetShared[stageID]);
 						appendRegistersToShared(sc, &sc->tempInt, &sc->w);
 					}
-					if (t == ((uint64_t)ceil((stageRadix->data.i - 1) / ((long double)(sc->localSize[0].data.i * sc->localSize[1].data.i))) - 1)) {
+					if (t == ((pfUINT)pfceil((stageRadix->data.i - 1) / ((pfLD)(sc->localSize[0].data.i * sc->localSize[1].data.i))) - 1)) {
 						PfIf_end(sc);
 					}
 				}
@@ -1802,14 +1807,14 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 			}*/
 			//subgroups
 			/* {
-				uint64_t numGroupsQuant = ((((sc->localSize[0] * sc->localSize[1] * sc->localSize[2]) % sc->warpSize) == 0) || (sc->numSubgroups == 1)) ? sc->numSubgroups : sc->numSubgroups - 1;
+				pfUINT numGroupsQuant = ((((sc->localSize[0] * sc->localSize[1] * sc->localSize[2]) % sc->warpSize) == 0) || (sc->numSubgroups == 1)) ? sc->numSubgroups : sc->numSubgroups - 1;
 				if (numGroupsQuant != sc->numSubgroups) {
 					sc->tempLen = sprintf(sc->tempStr, "\
 		if(%s<%" PRIu64 "){\n", sc->gl_SubgroupID, numGroupsQuant);
 					PfAppendLine(sc);
 					
 				}
-				for (uint64_t t = 0; t < (uint64_t)ceil(sc->localSize[1] / (double)numGroupsQuant); t++) {
+				for (pfUINT t = 0; t < (pfUINT)pfceil(sc->localSize[1] / (double)numGroupsQuant); t++) {
 					sc->tempLen = sprintf(sc->tempStr, "\
 		%s.x = 0;\n", sc->regIDs[0]);
 					PfAppendLine(sc);
@@ -1818,15 +1823,15 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 		%s.y = 0;\n", sc->regIDs[0]);
 					PfAppendLine(sc);
 					
-					uint64_t quant = (sc->warpSize < (sc->localSize[0] * sc->localSize[1] * sc->localSize[2])) ? sc->warpSize : (sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
-					for (uint64_t t2 = 0; t2 < (uint64_t)ceil(stageRadix / (double)quant); t2++) {
-						if ((t == (uint64_t)ceil(sc->localSize[1] / (double)numGroupsQuant) - 1) && (sc->localSize[1] > 1) && ((sc->localSize[1] % numGroupsQuant) != 0)) {
+					pfUINT quant = (sc->warpSize < (sc->localSize[0] * sc->localSize[1] * sc->localSize[2])) ? sc->warpSize : (sc->localSize[0] * sc->localSize[1] * sc->localSize[2]);
+					for (pfUINT t2 = 0; t2 < (pfUINT)pfceil(stageRadix / (double)quant); t2++) {
+						if ((t == (pfUINT)pfceil(sc->localSize[1] / (double)numGroupsQuant) - 1) && (sc->localSize[1] > 1) && ((sc->localSize[1] % numGroupsQuant) != 0)) {
 							sc->tempLen = sprintf(sc->tempStr, "\
 		if(%s<%" PRIu64 "){\n", sc->gl_SubgroupID, sc->localSize[1] % numGroupsQuant);
 							PfAppendLine(sc);
 							
 						}
-						if (t2 == (uint64_t)ceil(stageRadix / (double)quant) - 1) {
+						if (t2 == (pfUINT)pfceil(stageRadix / (double)quant) - 1) {
 							sc->tempLen = sprintf(sc->tempStr, "\
 		if(%s<%" PRIu64 "){\n", sc->gl_SubgroupInvocationID, stageRadix % quant);
 							PfAppendLine(sc);
@@ -1849,13 +1854,13 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 						
 						PfAddComplex(sc, sc->regIDs[0], sc->regIDs[0], sc->regIDs[1]);
 						
-						if (t2 == (uint64_t)ceil(stageRadix / (double)quant) - 1) {
+						if (t2 == (pfUINT)pfceil(stageRadix / (double)quant) - 1) {
 							sc->tempLen = sprintf(sc->tempStr, "\
 		}\n");
 							PfAppendLine(sc);
 							
 						}
-						if ((t == (uint64_t)ceil(sc->localSize[1] / (double)numGroupsQuant) - 1) && (sc->localSize[1] > 1) && ((sc->localSize[1] % numGroupsQuant) != 0)) {
+						if ((t == (pfUINT)pfceil(sc->localSize[1] / (double)numGroupsQuant) - 1) && (sc->localSize[1] > 1) && ((sc->localSize[1] % numGroupsQuant) != 0)) {
 							sc->tempLen = sprintf(sc->tempStr, "\
 		}\n");
 							PfAppendLine(sc);
@@ -1866,7 +1871,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 					PfSubgroupAdd(sc, sc->regIDs[0], sc->regIDs[0], 1);
 					
 
-					if ((t == (uint64_t)ceil(sc->localSize[1] / (double)numGroupsQuant) - 1) && (sc->localSize[1] > 1) && ((sc->localSize[1] % numGroupsQuant) != 0)) {
+					if ((t == (pfUINT)pfceil(sc->localSize[1] / (double)numGroupsQuant) - 1) && (sc->localSize[1] > 1) && ((sc->localSize[1] % numGroupsQuant) != 0)) {
 						sc->tempLen = sprintf(sc->tempStr, "\
 		if(%s<%" PRIu64 "){\n", sc->gl_SubgroupID, sc->localSize[1] % numGroupsQuant);
 						PfAppendLine(sc);
@@ -1895,7 +1900,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 		}\n");
 					PfAppendLine(sc);
 					
-					if ((t == (uint64_t)ceil(sc->localSize[1] / (double)numGroupsQuant) - 1) && (sc->localSize[1] > 1) && ((sc->localSize[1] % numGroupsQuant) != 0)) {
+					if ((t == (pfUINT)pfceil(sc->localSize[1] / (double)numGroupsQuant) - 1) && (sc->localSize[1] > 1) && ((sc->localSize[1] % numGroupsQuant) != 0)) {
 						sc->tempLen = sprintf(sc->tempStr, "\
 		}\n");
 						PfAppendLine(sc);
@@ -1913,7 +1918,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 			temp_int.data.i = 0;
 			PfIf_gt_start(sc, &sc->raderIDx, &temp_int);
 			
-			for (uint64_t t = 0; t < (uint64_t)num_logical_groups.data.i; t++) {
+			for (pfUINT t = 0; t < (pfUINT)num_logical_groups.data.i; t++) {
 				if ((require_cutoff_check) && (t == num_logical_groups.data.i - 1)) {
 					temp_int.data.i = sc->fftDim.data.i / stageRadix->data.i - t * num_logical_subgroups;
 					PfIf_lt_start(sc, &sc->raderIDx2, &temp_int);
@@ -1942,13 +1947,13 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 					PfAdd(sc, &sc->combinedID, &sc->sdataID, &temp_int);
 				}
 				
-				PfSub_x(sc, &sc->temp, &sc->regIDs[2 * t], &sc->regIDs[2 * t + 1]);
+				PfSub(sc, &sc->temp.data.c[0], &sc->regIDs[2 * t].data.c[0], &sc->regIDs[2 * t + 1].data.c[0]);
 				
-				PfAdd_x(sc, &sc->regIDs[2 * t], &sc->regIDs[2 * t], &sc->regIDs[2 * t + 1]);
+				PfAdd(sc, &sc->regIDs[2 * t].data.c[0], &sc->regIDs[2 * t].data.c[0], &sc->regIDs[2 * t + 1].data.c[0]);
 				
-				PfAdd_y(sc, &sc->temp, &sc->regIDs[2 * t], &sc->regIDs[2 * t + 1]);
+				PfAdd(sc, &sc->temp.data.c[1], &sc->regIDs[2 * t].data.c[1], &sc->regIDs[2 * t + 1].data.c[1]);
 
-				PfSub_y(sc, &sc->regIDs[2 * t], &sc->regIDs[2 * t], &sc->regIDs[2 * t + 1]);
+				PfSub(sc, &sc->regIDs[2 * t].data.c[1], &sc->regIDs[2 * t].data.c[1], &sc->regIDs[2 * t + 1].data.c[1]);
 
 				appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[2 * t]);
 				appendRegistersToShared(sc, &sc->combinedID, &sc->temp);
@@ -1994,20 +1999,20 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 			temp_int.data.i = (stageRadix->data.i + 1) / 2;
 			PfIf_lt_start(sc, &sc->raderIDx, &temp_int);
 			
-			for (uint64_t t = 0; t < (uint64_t)num_logical_groups.data.i; t++) {
+			for (pfUINT t = 0; t < (pfUINT)num_logical_groups.data.i; t++) {
 				PfSetToZero(sc, &sc->regIDs[2 * t + 1]);
 			}
 			temp_int.data.i = (stageRadix->data.i - 1) / 2;
 			PfIf_eq_start(sc, &sc->raderIDx, &temp_int);
 			
-			temp_complex.data.c[0] = 1;
-			temp_complex.data.c[1] = 0;
+			temp_complex.data.c[0].data.d = 1;
+			temp_complex.data.c[1].data.d = 0;
 
 			PfMov(sc, &sc->w, &temp_complex);
 			
 			PfIf_end(sc);
 			
-			for (uint64_t i = 0; i < (uint64_t)(stageRadix->data.i - 1) / 2; i++) {
+			for (pfUINT i = 0; i < (pfUINT)(stageRadix->data.i - 1) / 2; i++) {
 
 				temp_int.data.i = (stageRadix->data.i - 1) / 2;
 				PfIf_lt_start(sc, &sc->raderIDx, &temp_int);
@@ -2028,7 +2033,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 				PfIf_end(sc);
 				
 
-				for (uint64_t t = 0; t < (uint64_t)num_logical_groups.data.i; t++) {
+				for (pfUINT t = 0; t < (pfUINT)num_logical_groups.data.i; t++) {
 #if(VKFFT_BACKEND != 2) //AMD compiler fix
 					if ((require_cutoff_check) && (t == num_logical_groups.data.i - 1)) {
 						temp_int.data.i = sc->fftDim.data.i / stageRadix->data.i - t * num_logical_subgroups;
@@ -2078,7 +2083,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 					}
 #endif
 #if(VKFFT_BACKEND == 2) //AMD compiler fix
-					if ((uint64_t)ceil((sc->localSize[0].data.i * sc->localSize[1].data.i) / ((long double)sc->warpSize)) * sc->warpSize * (1 + sc->registers_per_thread + sc->usedLocRegs) > 2048) {
+					if ((pfUINT)pfceil((sc->localSize[0].data.i * sc->localSize[1].data.i) / ((pfLD)sc->warpSize)) * sc->warpSize * (1 + sc->registers_per_thread + sc->usedLocRegs) > 2048) {
 						PfIf_end(sc);
 
 						if (require_cutoff_check2) {
@@ -2118,7 +2123,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 #endif
 				}
 #if(VKFFT_BACKEND == 2) //AMD compiler fix
-				if ((uint64_t)ceil((sc->localSize[0].data.i * sc->localSize[1].data.i) / ((double)sc->warpSize)) * sc->warpSize * (1 + sc->registers_per_thread + sc->usedLocRegs) <= 2048) {
+				if ((pfUINT)pfceil((sc->localSize[0].data.i * sc->localSize[1].data.i) / ((double)sc->warpSize)) * sc->warpSize * (1 + sc->registers_per_thread + sc->usedLocRegs) <= 2048) {
 					PfIf_end(sc);
 
 					if (require_cutoff_check2) {
@@ -2156,19 +2161,19 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 				}
 #endif
 			}
-			for (uint64_t t = 0; t < (uint64_t)num_logical_groups.data.i; t++) {
+			for (pfUINT t = 0; t < (pfUINT)num_logical_groups.data.i; t++) {
 				if ((require_cutoff_check) && (t == num_logical_groups.data.i - 1)) {
 					temp_int.data.i = sc->fftDim.data.i / stageRadix->data.i - t * num_logical_subgroups;
 					PfIf_lt_start(sc, &sc->raderIDx2, &temp_int);
 				}
 				
-				PfSub_x(sc, &sc->regIDs[2 * t], &sc->x0[t], &sc->regIDs[2 * t + 1]);
+				PfSub(sc, &sc->regIDs[2 * t].data.c[0], &sc->x0[t].data.c[0], &sc->regIDs[2 * t + 1].data.c[0]);
 
-				PfAdd_y(sc, &sc->regIDs[2 * t], &sc->x0[t], &sc->regIDs[2 * t + 1]);
+				PfAdd(sc, &sc->regIDs[2 * t].data.c[1], &sc->x0[t].data.c[1], &sc->regIDs[2 * t + 1].data.c[1]);
 
-				PfAdd_x(sc, &sc->regIDs[2 * t + 1], &sc->x0[t], &sc->regIDs[2 * t + 1]);
+				PfAdd(sc, &sc->regIDs[2 * t + 1].data.c[0], &sc->x0[t].data.c[0], &sc->regIDs[2 * t + 1].data.c[0]);
 
-				PfSub_y(sc, &sc->regIDs[2 * t + 1], &sc->x0[t], &sc->regIDs[2 * t + 1]);
+				PfSub(sc, &sc->regIDs[2 * t + 1].data.c[1], &sc->x0[t].data.c[1], &sc->regIDs[2 * t + 1].data.c[1]);
 
 
 				if ((require_cutoff_check) && (t == num_logical_groups.data.i - 1)) {
@@ -2241,7 +2246,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 			
 			PfIf_end(sc);
 			
-			for (uint64_t t = 0; t < (uint64_t)num_logical_groups.data.i; t++) {
+			for (pfUINT t = 0; t < (pfUINT)num_logical_groups.data.i; t++) {
 				if ((require_cutoff_check) && (t == num_logical_groups.data.i - 1)) {
 					temp_int.data.i = sc->fftDim.data.i / stageRadix->data.i - t * num_logical_subgroups;
 					PfIf_lt_start(sc, &sc->raderIDx2, &temp_int);
@@ -2274,7 +2279,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 
 				if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle->data.d > 0))) {
 					if (normalizationValue.data.i != 1) {
-						PfMul(sc, &sc->regIDs[2 * t], &sc->regIDs[2 * t], &stageNormalization, 0);
+						PfMul(sc, &sc->regIDs[2 * t], &sc->regIDs[2 * t], &stageNormalization, &sc->temp);
 					}
 				}
 				appendRegistersToShared(sc, &sc->combinedID, &sc->regIDs[2 * t]);
@@ -2308,7 +2313,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 				PfAppendLine(sc);
 				*/
 			}
-			for (uint64_t t = 0; t < (uint64_t)num_logical_groups.data.i; t++) {
+			for (pfUINT t = 0; t < (pfUINT)num_logical_groups.data.i; t++) {
 				if ((require_cutoff_check) && (t == num_logical_groups.data.i - 1)) {
 					temp_int.data.i = sc->fftDim.data.i / stageRadix->data.i - t * num_logical_subgroups;
 					PfIf_lt_start(sc, &sc->raderIDx2, &temp_int);
@@ -2340,7 +2345,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 
 				if (((sc->actualInverse) && (sc->normalize)) || ((sc->convolutionStep || sc->useBluesteinFFT) && (stageAngle->data.d > 0))) {
 					if (normalizationValue.data.i != 1) {
-						PfMul(sc, &sc->regIDs[2 * t+1], &sc->regIDs[2 * t+1], &stageNormalization, 0);
+						PfMul(sc, &sc->regIDs[2 * t+1], &sc->regIDs[2 * t+1], &stageNormalization, &sc->temp);
 					}
 					
 				}
@@ -2364,7 +2369,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 			
 		}
 	}
-
+	PfDeallocateContainer(sc, &temp_complex);
 	return;
 }
 

@@ -25,13 +25,13 @@
 #include "vkFFT/vkFFT_AppManagement/vkFFT_DeleteApp.h"
 
 #if(VKFFT_BACKEND==0)
-static inline VkFFTResult findMemoryType(VkFFTApplication* app, uint64_t memoryTypeBits, uint64_t memorySize, VkMemoryPropertyFlags properties, uint32_t* memoryTypeIndex) {
+static inline VkFFTResult findMemoryType(VkFFTApplication* app, pfUINT memoryTypeBits, pfUINT memorySize, VkMemoryPropertyFlags properties, uint32_t* memoryTypeIndex) {
 	VkPhysicalDeviceMemoryProperties memoryProperties = { 0 };
 
 	vkGetPhysicalDeviceMemoryProperties(app->configuration.physicalDevice[0], &memoryProperties);
 
-	for (uint64_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
-		if ((memoryTypeBits & ((uint64_t)1 << i)) && ((memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) && (memoryProperties.memoryHeaps[memoryProperties.memoryTypes[i].heapIndex].size >= memorySize))
+	for (pfUINT i = 0; i < memoryProperties.memoryTypeCount; ++i) {
+		if ((memoryTypeBits & ((pfUINT)1 << i)) && ((memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) && (memoryProperties.memoryHeaps[memoryProperties.memoryTypes[i].heapIndex].size >= memorySize))
 		{
 			memoryTypeIndex[0] = (uint32_t)i;
 			return VKFFT_SUCCESS;
@@ -65,22 +65,29 @@ static inline VkFFTResult allocateBufferVulkan(VkFFTApplication* app, VkBuffer* 
 }
 #endif
 
-static inline VkFFTResult VkFFT_TransferDataFromCPU(VkFFTApplication* app, void* cpu_arr, void* input_buffer, uint64_t transferSize) {
+static inline VkFFTResult VkFFT_TransferDataFromCPU(VkFFTApplication* app, void* cpu_arr, void* input_buffer, pfUINT transferSize) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkBuffer* buffer = (VkBuffer*)input_buffer;
 	VkDeviceSize bufferSize = transferSize;
 	VkResult res = VK_SUCCESS;
 	VkDeviceSize stagingBufferSize = bufferSize;
-	VkBuffer stagingBuffer = { 0 };
-	VkDeviceMemory stagingBufferMemory = { 0 };
-	resFFT = allocateBufferVulkan(app, &stagingBuffer, &stagingBufferMemory, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBufferSize);
-	if (resFFT != VKFFT_SUCCESS) return resFFT;
+	VkBuffer* stagingBuffer = VKFFT_ZERO_INIT;
+	VkDeviceMemory* stagingBufferMemory = VKFFT_ZERO_INIT;
+	if (!app->configuration.stagingBuffer){
+		stagingBuffer = (VkBuffer*)calloc(1, sizeof(VkBuffer));
+		stagingBufferMemory = (VkDeviceMemory*)calloc(1, sizeof(VkDeviceMemory));
+		resFFT = allocateBufferVulkan(app, stagingBuffer, stagingBufferMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBufferSize);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
+	}else{
+		stagingBuffer = app->configuration.stagingBuffer;
+		stagingBufferMemory = app->configuration.stagingBufferMemory;
+	}
 	void* data;
-	res = vkMapMemory(app->configuration.device[0], stagingBufferMemory, 0, stagingBufferSize, 0, &data);
+	res = vkMapMemory(app->configuration.device[0], stagingBufferMemory[0], 0, stagingBufferSize, 0, &data);
 	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_MAP_MEMORY;
 	memcpy(data, cpu_arr, stagingBufferSize);
-	vkUnmapMemory(app->configuration.device[0], stagingBufferMemory);
+	vkUnmapMemory(app->configuration.device[0], stagingBufferMemory[0]);
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	commandBufferAllocateInfo.commandPool = app->configuration.commandPool[0];
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -96,7 +103,7 @@ static inline VkFFTResult VkFFT_TransferDataFromCPU(VkFFTApplication* app, void*
 	copyRegion.srcOffset = 0;
 	copyRegion.dstOffset = 0;
 	copyRegion.size = stagingBufferSize;
-	vkCmdCopyBuffer(commandBuffer, stagingBuffer, buffer[0], 1, &copyRegion);
+	vkCmdCopyBuffer(commandBuffer, stagingBuffer[0], buffer[0], 1, &copyRegion);
 	res = vkEndCommandBuffer(commandBuffer);
 	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
 	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
@@ -109,9 +116,12 @@ static inline VkFFTResult VkFFT_TransferDataFromCPU(VkFFTApplication* app, void*
 	res = vkResetFences(app->configuration.device[0], 1, app->configuration.fence);
 	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
 	vkFreeCommandBuffers(app->configuration.device[0], app->configuration.commandPool[0], 1, &commandBuffer);
-	vkDestroyBuffer(app->configuration.device[0], stagingBuffer, 0);
-	vkFreeMemory(app->configuration.device[0], stagingBufferMemory, 0);
-	return resFFT;
+	if (!app->configuration.stagingBuffer){
+		vkDestroyBuffer(app->configuration.device[0], stagingBuffer[0], 0);
+		vkFreeMemory(app->configuration.device[0], stagingBufferMemory[0], 0);
+		free(stagingBuffer);
+		free(stagingBufferMemory);
+	}
 #elif(VKFFT_BACKEND==1)
 	cudaError_t res = cudaSuccess;
 	void* buffer = ((void**)input_buffer)[0];
@@ -179,17 +189,24 @@ static inline VkFFTResult VkFFT_TransferDataFromCPU(VkFFTApplication* app, void*
 #endif
 	return resFFT;
 }
-static inline VkFFTResult VkFFT_TransferDataToCPU(VkFFTApplication* app, void* cpu_arr, void* output_buffer, uint64_t transferSize) {
+static inline VkFFTResult VkFFT_TransferDataToCPU(VkFFTApplication* app, void* cpu_arr, void* output_buffer, pfUINT transferSize) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 #if(VKFFT_BACKEND==0)
 	VkBuffer* buffer = (VkBuffer*)output_buffer;
 	VkDeviceSize bufferSize = transferSize;
 	VkResult res = VK_SUCCESS;
-	uint64_t stagingBufferSize = bufferSize;
-	VkBuffer stagingBuffer = { 0 };
-	VkDeviceMemory stagingBufferMemory = { 0 };
-	resFFT = allocateBufferVulkan(app, &stagingBuffer, &stagingBufferMemory, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBufferSize);
-	if (resFFT != VKFFT_SUCCESS) return resFFT;
+	pfUINT stagingBufferSize = bufferSize;
+	VkBuffer* stagingBuffer = VKFFT_ZERO_INIT;
+	VkDeviceMemory* stagingBufferMemory = VKFFT_ZERO_INIT;
+	if (!app->configuration.stagingBuffer){
+		stagingBuffer = (VkBuffer*)calloc(1, sizeof(VkBuffer));
+		stagingBufferMemory = (VkDeviceMemory*)calloc(1, sizeof(VkDeviceMemory));
+		resFFT = allocateBufferVulkan(app, stagingBuffer, stagingBufferMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBufferSize);
+		if (resFFT != VKFFT_SUCCESS) return resFFT;
+	}else{
+		stagingBuffer = app->configuration.stagingBuffer;
+		stagingBufferMemory = app->configuration.stagingBufferMemory;
+	}
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	commandBufferAllocateInfo.commandPool = app->configuration.commandPool[0];
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -205,7 +222,7 @@ static inline VkFFTResult VkFFT_TransferDataToCPU(VkFFTApplication* app, void* c
 	copyRegion.srcOffset = 0;
 	copyRegion.dstOffset = 0;
 	copyRegion.size = stagingBufferSize;
-	vkCmdCopyBuffer(commandBuffer, buffer[0], stagingBuffer, 1, &copyRegion);
+	vkCmdCopyBuffer(commandBuffer, buffer[0], stagingBuffer[0], 1, &copyRegion);
 	res = vkEndCommandBuffer(commandBuffer);
 	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_END_COMMAND_BUFFER;
 	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
@@ -219,12 +236,16 @@ static inline VkFFTResult VkFFT_TransferDataToCPU(VkFFTApplication* app, void* c
 	if (res != VK_SUCCESS) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
 	vkFreeCommandBuffers(app->configuration.device[0], app->configuration.commandPool[0], 1, &commandBuffer);
 	void* data;
-	res = vkMapMemory(app->configuration.device[0], stagingBufferMemory, 0, stagingBufferSize, 0, &data);
+	res = vkMapMemory(app->configuration.device[0], stagingBufferMemory[0], 0, stagingBufferSize, 0, &data);
 	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	memcpy(cpu_arr, data, stagingBufferSize);
-	vkUnmapMemory(app->configuration.device[0], stagingBufferMemory);
-	vkDestroyBuffer(app->configuration.device[0], stagingBuffer, 0);
-	vkFreeMemory(app->configuration.device[0], stagingBufferMemory, 0);
+	vkUnmapMemory(app->configuration.device[0], stagingBufferMemory[0]);
+	if (!app->configuration.stagingBuffer){
+		vkDestroyBuffer(app->configuration.device[0], stagingBuffer[0], 0);
+		vkFreeMemory(app->configuration.device[0], stagingBufferMemory[0], 0);
+		free(stagingBuffer);
+		free(stagingBufferMemory);
+	}
 #elif(VKFFT_BACKEND==1)
 	cudaError_t res = cudaSuccess;
 	void* buffer = ((void**)output_buffer)[0];

@@ -208,7 +208,7 @@ VkFFTResult sample_52_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint
 	convolution_configuration.numberBatches = 1;//one batch - numberKernels convolutions
 	convolution_configuration.numberKernels = configuration.numberBatches;// number of convolutions on a single input
 	//Allocate separate buffer for the input data.
-	uint64_t inputBufferSize = ((uint64_t)convolution_configuration.coordinateFeatures) * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
+	uint64_t inputBufferSize = ((uint64_t)convolution_configuration.coordinateFeatures) * sizeof(float) * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2];;
 	uint64_t bufferSize = convolution_configuration.numberKernels * convolution_configuration.coordinateFeatures * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
 	convolution_configuration.isInputFormatted = true; //if input is a different buffer, it doesn't have to be zeropadded/R2C padded	
 
@@ -282,7 +282,7 @@ VkFFTResult sample_52_convolution_VkFFT_single_2d_batched_r2c(VkGPU* vkGPU, uint
 		for (uint64_t k = 0; k < convolution_configuration.size[2]; k++) {
 			for (uint64_t j = 0; j < convolution_configuration.size[1]; j++) {
 				for (uint64_t i = 0; i < convolution_configuration.size[0]; i++) {
-					buffer_input[i + j * (convolution_configuration.size[0] + 2) + k * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] + v * (convolution_configuration.size[0] + 2) * convolution_configuration.size[1] * convolution_configuration.size[2]] = 1;
+					buffer_input[i + j * (convolution_configuration.size[0]) + k * (convolution_configuration.size[0]) * convolution_configuration.size[1] + v * (convolution_configuration.size[0]) * convolution_configuration.size[1] * convolution_configuration.size[2]] = 1;
 				}
 			}
 		}

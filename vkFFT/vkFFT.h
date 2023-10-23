@@ -71,12 +71,42 @@
 #define VKFFT_MAX_FFT_DIMENSIONS 4
 #endif
 
+#ifdef VKFFT_USE_DOUBLEDOUBLE_FP128
+
+#define VKFFT_USE_QUADMATH_FP128 // for now the only implementation, but defining these functions as mpfr should also be possible
+#include <quadmath.h>
+//#define pfQ __float128
+#define pfLD __float128
+#define pfUINT uint64_t
+#define pfINT int64_t
+#define pfsin sinq
+#define pfcos cosq
+#define pfceil ceilq
+#define pffloor floorq
+#define pfsqrt sqrtq
+
+#define pfFPinit(x) strtoflt128(x, 0)
+
+#else
+#define pfLD long double
+#define pfUINT uint64_t
+#define pfINT int64_t
+#define pfsin sin
+#define pfcos cos
+#define pfceil ceil
+#define pffloor floor
+#define pfsqrt sqrt
+
+#define pfFPinit(x) strtold(x, 0)
+
+#endif
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_AppManagement/vkFFT_RunApp.h"
 #include "vkFFT/vkFFT_AppManagement/vkFFT_InitializeApp.h"
 #include "vkFFT/vkFFT_AppManagement/vkFFT_DeleteApp.h"
 
 static inline int VkFFTGetVersion() {
-	return 10301; //X.XX.XX format
+	return 10302; //X.XX.XX format
 }
 #endif

@@ -30,13 +30,13 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 	if (sc->res != VKFFT_SUCCESS) return;
 	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
-
+	char name[50];
 	//sc->tempLen = sprintf(sc->tempStr, "	uint dum=gl_LocalInvocationID.x;\n");
 	int additional_registers_c2r = 0;
 	if ((sc->mergeSequencesR2C == 1) && (type == 5))
 		additional_registers_c2r = 2;
 
-	int64_t max_coordinate = 1;
+	pfINT max_coordinate = 1;
 	if ((sc->convolutionStep) && (sc->matrixConvolution > 1)) {
 		max_coordinate = sc->matrixConvolution;
 	}
@@ -48,10 +48,11 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 	if (sc->regIDs == 0) sc->res = VKFFT_ERROR_MALLOC_FAILED;
 
 	for (int i = 0; i < logicalStoragePerThread; i++) {
-		PfAllocateContainerFlexible(sc, &sc->regIDs[i], 50);
 		sc->regIDs[i].type = 100 + sc->vecTypeCode;
-		sprintf(sc->regIDs[i].data.s, "temp_%d", i);
-		PfDefine(sc, &sc->regIDs[i]);
+		PfAllocateContainerFlexible(sc, &sc->regIDs[i], 50);
+
+		sprintf(name, "temp_%d", i);
+		PfDefine(sc, &sc->regIDs[i], name);
 		PfSetToZero(sc, &sc->regIDs[i]);
 	}
 	if (sc->convolutionStep) {
@@ -60,10 +61,10 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 			if (sc->regIDs_copy == 0) sc->res = VKFFT_ERROR_MALLOC_FAILED;
 
 			for (int i = 0; i < logicalStoragePerThread; i++) {
-				PfAllocateContainerFlexible(sc, &sc->regIDs_copy[i], 50);
 				sc->regIDs_copy[i].type = 100 + sc->vecTypeCode;
-				sprintf(sc->regIDs_copy[i].data.s, "temp_copy_%d", i);
-				PfDefine(sc, &sc->regIDs_copy[i]);
+				PfAllocateContainerFlexible(sc, &sc->regIDs_copy[i], 50);
+				sprintf(name, "temp_copy_%d", i);
+				PfDefine(sc, &sc->regIDs_copy[i], name);
 				PfSetToZero(sc, &sc->regIDs_copy[i]);
 			}
 		}
@@ -71,75 +72,110 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 		if (sc->temp_conv == 0) sc->res = VKFFT_ERROR_MALLOC_FAILED;
 
 		for (int j = 0; j < sc->matrixConvolution; j++) {
-			PfAllocateContainerFlexible(sc, &sc->temp_conv[j], 50);
 			sc->temp_conv[j].type = 100 + sc->vecTypeCode;
-			sprintf(sc->temp_conv[j].data.s, "temp_conv_%d", j);
-			PfDefine(sc, &sc->temp_conv[j]);
+			PfAllocateContainerFlexible(sc, &sc->temp_conv[j], 50);
+			sprintf(name, "temp_conv_%d", j);
+			PfDefine(sc, &sc->temp_conv[j], name);
 			PfSetToZero(sc, &sc->temp_conv[j]);
 		}
 	}
 
 
-	PfAllocateContainerFlexible(sc, &sc->w, 50);
 	sc->w.type = 100 + sc->vecTypeCode;
-	sprintf(sc->w.data.s, "w");
-	PfDefine(sc, &sc->w);
+	PfAllocateContainerFlexible(sc, &sc->w, 50);
+	sprintf(name, "w");
+	PfDefine(sc, &sc->w, name);
 	PfSetToZero(sc, &sc->w);
+
+	if (((sc->floatTypeCode % 100) / 10) == 3) {
+		sc->tempQuad.type = 100 + sc->vecTypeCode;
+		PfAllocateContainerFlexible(sc, &sc->tempQuad, 50);
+		sprintf(name, "tempQuad");
+		PfDefine(sc, &sc->tempQuad, name);
+		PfSetToZero(sc, &sc->tempQuad);
+
+		sc->tempQuad2.type = 100 + sc->vecTypeCode;
+		PfAllocateContainerFlexible(sc, &sc->tempQuad2, 50);
+		sprintf(name, "tempQuad2");
+		PfDefine(sc, &sc->tempQuad2, name);
+		PfSetToZero(sc, &sc->tempQuad2);
+
+		sc->tempQuad3.type = 100 + sc->vecTypeCode;
+		PfAllocateContainerFlexible(sc, &sc->tempQuad3, 50);
+		sprintf(name, "tempQuad3");
+		PfDefine(sc, &sc->tempQuad3, name);
+		PfSetToZero(sc, &sc->tempQuad3);
+
+		sc->tempIntQuad.type = 100 + sc->uintTypeCode;
+		PfAllocateContainerFlexible(sc, &sc->tempIntQuad, 50);
+		sprintf(name, "tempIntQuad");
+		PfDefine(sc, &sc->tempIntQuad, name);
+		PfSetToZero(sc, &sc->tempIntQuad);
+	}
 
 	int maxNonPow2Radix = sc->maxNonPow2Radix;
 	for (int i = 0; i < sc->usedLocRegs; i++) {
-		PfAllocateContainerFlexible(sc, &sc->locID[i], 50);
 		sc->locID[i].type = 100 + sc->vecTypeCode;
-		sprintf(sc->locID[i].data.s, "loc_%d", i);
-		PfDefine(sc, &sc->locID[i]);
+		PfAllocateContainerFlexible(sc, &sc->locID[i], 50);
+		sprintf(name, "loc_%d", i);
+		PfDefine(sc, &sc->locID[i], name);
 		PfSetToZero(sc, &sc->locID[i]);	
 	}
-	PfAllocateContainerFlexible(sc, &sc->temp, 50);
 	sc->temp.type = 100 + sc->vecTypeCode;
-	sprintf(sc->temp.data.s, "loc_0"); 
-	//PfDefine(sc, &sc->temp);
+	PfAllocateContainerFlexible(sc, &sc->temp, 50);
+	sprintf(name, "loc_0"); 
+	PfSetContainerName(sc, &sc->temp, name);
+	//PfDefineReference(sc, &sc->temp, name);
 	//PfSetToZero(sc, &sc->temp);
 
-	PfAllocateContainerFlexible(sc, &sc->tempFloat, 50);
 	sc->tempFloat.type = 100 + sc->floatTypeCode;
-	sprintf(sc->tempFloat.data.s, "%s.x", sc->temp.data.s);
+	PfAllocateContainerFlexible(sc, &sc->tempFloat, 50);
+	sprintf(name, "loc_0");
+	if (((sc->floatTypeCode % 100) / 10) == 3) {
+		sprintf(sc->tempFloat.data.dd[0].name, "%s.x.x\n", name);
+		sprintf(sc->tempFloat.data.dd[1].name, "%s.x.y\n", name);
+	}
+	else {
+		sprintf(sc->tempFloat.name, "%s.x", sc->temp.name);
+	}
+	//PfDefineReference(sc, &sc->tempFloat, name);
 
-	PfAllocateContainerFlexible(sc, &sc->tempInt, 50);
 	sc->tempInt.type = 100 + sc->uintTypeCode;
-	sprintf(sc->tempInt.data.s, "tempInt");
-	PfDefine(sc, &sc->tempInt);
+	PfAllocateContainerFlexible(sc, &sc->tempInt, 50);
+	sprintf(name, "tempInt");
+	PfDefine(sc, &sc->tempInt, name);
 	PfSetToZero(sc, &sc->tempInt);
 
-	PfAllocateContainerFlexible(sc, &sc->tempInt2, 50);
 	sc->tempInt2.type = 100 + sc->uintTypeCode;
-	sprintf(sc->tempInt2.data.s, "tempInt2");
-	PfDefine(sc, &sc->tempInt2);
+	PfAllocateContainerFlexible(sc, &sc->tempInt2, 50);
+	sprintf(name, "tempInt2");
+	PfDefine(sc, &sc->tempInt2, name);
 	PfSetToZero(sc, &sc->tempInt2);
 
-	PfAllocateContainerFlexible(sc, &sc->shiftX, 50);
 	sc->shiftX.type = 100 + sc->uintTypeCode;
-	sprintf(sc->shiftX.data.s, "shiftX");
-	PfDefine(sc, &sc->shiftX);
+	PfAllocateContainerFlexible(sc, &sc->shiftX, 50);
+	sprintf(name, "shiftX");
+	PfDefine(sc, &sc->shiftX, name);
 	PfSetToZero(sc, &sc->shiftX);
 
-	PfAllocateContainerFlexible(sc, &sc->shiftY, 50);
 	sc->shiftY.type = 100 + sc->uintTypeCode;
-	sprintf(sc->shiftY.data.s, "shiftY");
-	PfDefine(sc, &sc->shiftY);
+	PfAllocateContainerFlexible(sc, &sc->shiftY, 50);
+	sprintf(name, "shiftY");
+	PfDefine(sc, &sc->shiftY, name);
 	PfSetToZero(sc, &sc->shiftY);
 
-	PfAllocateContainerFlexible(sc, &sc->shiftZ, 50);
 	sc->shiftZ.type = 100 + sc->uintTypeCode;
-	sprintf(sc->shiftZ.data.s, "shiftZ");
-	PfDefine(sc, &sc->shiftZ);
+	PfAllocateContainerFlexible(sc, &sc->shiftZ, 50);
+	sprintf(name, "shiftZ");
+	PfDefine(sc, &sc->shiftZ, name);
 	PfSetToZero(sc, &sc->shiftZ);
 
 	if (sc->useRaderFFT) {
 		for (int i = 0; i < 2; i++) {
-			PfAllocateContainerFlexible(sc, &sc->x0[i], 50);
 			sc->x0[i].type = 100 + sc->vecTypeCode;
-			sprintf(sc->x0[i].data.s, "x0_%d", i);
-			PfDefine(sc, &sc->x0[i]);
+			PfAllocateContainerFlexible(sc, &sc->x0[i], 50);
+			sprintf(name, "x0_%d", i);
+			PfDefine(sc, &sc->x0[i], name);
 			PfSetToZero(sc, &sc->x0[i]);
 		}
 	}
@@ -148,22 +184,22 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 		int rader_mult_regs = sc->raderRegisters / 2 - rader_fft_regs;
 		if (rader_mult_regs <= sc->usedLocRegs - 1) {
 			for (int i = 0; i < rader_mult_regs; i++) {
-				PfAllocateContainerFlexible(sc, &sc->x0[i + rader_fft_regs], 50);
 				sc->x0[i + rader_fft_regs].type = 100 + sc->vecTypeCode;
-				sprintf(sc->x0[i + rader_fft_regs].data.s, "%s", sc->locID[i + 1].data.s);
+				PfAllocateContainerFlexible(sc, &sc->x0[i + rader_fft_regs], 50);
+				PfCopyContainer(sc, &sc->x0[i + rader_fft_regs], &sc->locID[i + 1]);
 			}
 		}
 		else {
 			for (int i = 0; i < sc->usedLocRegs - 1; i++) {
-				PfAllocateContainerFlexible(sc, &sc->x0[i + rader_fft_regs], 50);
 				sc->x0[i + rader_fft_regs].type = 100 + sc->vecTypeCode;
-				sprintf(sc->x0[i + rader_fft_regs].data.s, "%s", sc->locID[i + 1].data.s);
+				PfAllocateContainerFlexible(sc, &sc->x0[i + rader_fft_regs], 50);
+				PfCopyContainer(sc, &sc->x0[i + rader_fft_regs], &sc->locID[i + 1]);
 			}
 			for (int i = sc->usedLocRegs - 1; i < rader_mult_regs; i++) {
-				PfAllocateContainerFlexible(sc, &sc->x0[i + rader_fft_regs], 50);
 				sc->x0[i + rader_fft_regs].type = 100 + sc->vecTypeCode;
-				sprintf(sc->x0[i + rader_fft_regs].data.s, "x0_%d", i + rader_fft_regs);	
-				PfDefine(sc, &sc->x0[i + rader_fft_regs]);
+				PfAllocateContainerFlexible(sc, &sc->x0[i + rader_fft_regs], 50);
+				sprintf(name, "x0_%d", i + rader_fft_regs);	
+				PfDefine(sc, &sc->x0[i + rader_fft_regs], name);
 				PfSetToZero(sc, &sc->x0[i + rader_fft_regs]);
 			}
 		}
@@ -176,81 +212,82 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 		if ((sc->stageRadix[i] == 8) || (sc->stageRadix[i] == 16) || (sc->stageRadix[i] == 32) || (sc->useRaderFFT)) useRadix8plus = 1;
 	if (useRadix8plus == 1) {
 		if (maxNonPow2Radix > 1) {
-			PfAllocateContainerFlexible(sc, &sc->iw, 50);
 			sc->iw.type = 100 + sc->vecTypeCode;
-			sprintf(sc->iw.data.s, "%s", sc->locID[1].data.s);
+			PfAllocateContainerFlexible(sc, &sc->iw, 50);
+			sprintf(name, "%s", sc->locID[1].name);
+			PfSetContainerName(sc, &sc->iw, name);
 		}
 		else {
-			PfAllocateContainerFlexible(sc, &sc->iw, 50);
 			sc->iw.type = 100 + sc->vecTypeCode;
-			sprintf(sc->iw.data.s, "iw");
-			PfDefine(sc, &sc->iw);
+			PfAllocateContainerFlexible(sc, &sc->iw, 50);
+			sprintf(name, "iw");
+			PfDefine(sc, &sc->iw, name);
 			PfSetToZero(sc, &sc->iw);
 		}
 	}
 	//sc->tempLen = sprintf(sc->tempStr, "	%s %s;\n", vecType, sc->tempReg);
-	PfAllocateContainerFlexible(sc, &sc->stageInvocationID, 50);
 	sc->stageInvocationID.type = 100 + sc->uintTypeCode;
-	sprintf(sc->stageInvocationID.data.s, "stageInvocationID");
-	PfDefine(sc, &sc->stageInvocationID);
+	PfAllocateContainerFlexible(sc, &sc->stageInvocationID, 50);
+	sprintf(name, "stageInvocationID");
+	PfDefine(sc, &sc->stageInvocationID, name);
 	PfSetToZero(sc, &sc->stageInvocationID);
 
-	PfAllocateContainerFlexible(sc, &sc->blockInvocationID, 50);
 	sc->blockInvocationID.type = 100 + sc->uintTypeCode;
-	sprintf(sc->blockInvocationID.data.s, "blockInvocationID");
-	PfDefine(sc, &sc->blockInvocationID);
+	PfAllocateContainerFlexible(sc, &sc->blockInvocationID, 50);
+	sprintf(name, "blockInvocationID");
+	PfDefine(sc, &sc->blockInvocationID, name);
 	PfSetToZero(sc, &sc->blockInvocationID);
 	
-	PfAllocateContainerFlexible(sc, &sc->sdataID, 50);
 	sc->sdataID.type = 100 + sc->uintTypeCode;
-	sprintf(sc->sdataID.data.s, "sdataID");
-	PfDefine(sc, &sc->sdataID);
+	PfAllocateContainerFlexible(sc, &sc->sdataID, 50);
+	sprintf(name, "sdataID");
+	PfDefine(sc, &sc->sdataID, name);
 	PfSetToZero(sc, &sc->sdataID);
 	
-	PfAllocateContainerFlexible(sc, &sc->combinedID, 50);
 	sc->combinedID.type = 100 + sc->uintTypeCode;
-	sprintf(sc->combinedID.data.s, "combinedID");
-	PfDefine(sc, &sc->combinedID);
+	PfAllocateContainerFlexible(sc, &sc->combinedID, 50);
+	sprintf(name, "combinedID");
+	PfDefine(sc, &sc->combinedID, name);
 	PfSetToZero(sc, &sc->combinedID);
 	
-	PfAllocateContainerFlexible(sc, &sc->inoutID, 50);
 	sc->inoutID.type = 100 + sc->uintTypeCode;
-	sprintf(sc->inoutID.data.s, "inoutID");
-	PfDefine(sc, &sc->inoutID);
+	PfAllocateContainerFlexible(sc, &sc->inoutID, 50);
+	sprintf(name, "inoutID");
+	PfDefine(sc, &sc->inoutID, name);
 	PfSetToZero(sc, &sc->inoutID);
 	
-	PfAllocateContainerFlexible(sc, &sc->inoutID_x, 50);
 	sc->inoutID_x.type = 100 + sc->uintTypeCode;
-	sprintf(sc->inoutID_x.data.s, "inoutID_x");
-	PfDefine(sc, &sc->inoutID_x);
+	PfAllocateContainerFlexible(sc, &sc->inoutID_x, 50);
+	sprintf(name, "inoutID_x");
+	PfDefine(sc, &sc->inoutID_x, name);
 	PfSetToZero(sc, &sc->inoutID_x);
 
-	PfAllocateContainerFlexible(sc, &sc->inoutID_y, 50);
 	sc->inoutID_y.type = 100 + sc->uintTypeCode;
-	sprintf(sc->inoutID_y.data.s, "inoutID_y");
-	PfDefine(sc, &sc->inoutID_y);
+	PfAllocateContainerFlexible(sc, &sc->inoutID_y, 50);
+	sprintf(name, "inoutID_y");
+	PfDefine(sc, &sc->inoutID_y, name);
 	PfSetToZero(sc, &sc->inoutID_y);
 
 	if ((sc->fftDim.data.i < sc->fft_dim_full.data.i) || (type == 1) || (type == 111) || (type == 121) || (type == 131) || (type == 143) || (type == 145) || (type == 2) || (sc->performZeropaddingFull[0]) || (sc->performZeropaddingFull[1]) || (sc->performZeropaddingFull[2])) {
-		PfAllocateContainerFlexible(sc, &sc->disableThreads, 50);
 		sc->disableThreads.type = 101;
-		sprintf(sc->disableThreads.data.s, "disableThreads");
-		PfDefine(sc, &sc->disableThreads);
+		PfAllocateContainerFlexible(sc, &sc->disableThreads, 50);
+		sprintf(name, "disableThreads");
+		PfDefine(sc, &sc->disableThreads, name);
 		temp_int.data.i = 1;
 		PfMov(sc, &sc->disableThreads, &temp_int);
 	}
 	//initialize subgroups ids
 	if (sc->useRader) {
-		PfAllocateContainerFlexible(sc, &sc->raderIDx, 50);
 		sc->raderIDx.type = 100 + sc->uintTypeCode;
-		sprintf(sc->raderIDx.data.s, "raderIDx");
-		PfDefine(sc, &sc->raderIDx);
+		PfAllocateContainerFlexible(sc, &sc->raderIDx, 50);
+		sprintf(name, "raderIDx");
+		PfDefine(sc, &sc->raderIDx, name);
 		PfSetToZero(sc, &sc->raderIDx);
 		
-		PfAllocateContainerFlexible(sc, &sc->raderIDx2, 50);
 		sc->raderIDx2.type = 100 + sc->uintTypeCode;
-		sprintf(sc->raderIDx2.data.s, "raderIDx2");
-		PfDefine(sc, &sc->raderIDx2);
+		PfAllocateContainerFlexible(sc, &sc->raderIDx2, 50);
+		sprintf(name, "raderIDx2");
+		PfDefine(sc, &sc->raderIDx2, name);
 		PfSetToZero(sc, &sc->raderIDx2);
 		
 		/*#if((VKFFT_BACKEND==1)||(VKFFT_BACKEND==2))
@@ -275,32 +312,32 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 		#endif*/
 	}
 	if (sc->LUT) {
-		PfAllocateContainerFlexible(sc, &sc->LUTId, 50);
 		sc->LUTId.type = 100 + sc->uintTypeCode;
-		sprintf(sc->LUTId.data.s, "LUTId");
-		PfDefine(sc, &sc->LUTId);
+		PfAllocateContainerFlexible(sc, &sc->LUTId, 50);
+		sprintf(name, "LUTId");
+		PfDefine(sc, &sc->LUTId, name);
 		PfSetToZero(sc, &sc->LUTId);
 		
 		if ((!sc->LUT_4step)&&(sc->numAxisUploads>1)) {
-			PfAllocateContainerFlexible(sc, &sc->angle, 50);
 			sc->angle.type = 100 + sc->floatTypeCode;
-			sprintf(sc->angle.data.s, "angle");
-			PfDefine(sc, &sc->angle);
+			PfAllocateContainerFlexible(sc, &sc->angle, 50);
+			sprintf(name, "angle");
+			PfDefine(sc, &sc->angle, name);
 			PfSetToZero(sc, &sc->angle);
 		}
 	}
 	else {
-		PfAllocateContainerFlexible(sc, &sc->angle, 50);
 		sc->angle.type = 100 + sc->floatTypeCode;
-		sprintf(sc->angle.data.s, "angle");
-		PfDefine(sc, &sc->angle);
+		PfAllocateContainerFlexible(sc, &sc->angle, 50);
+		sprintf(name, "angle");
+		PfDefine(sc, &sc->angle, name);
 		PfSetToZero(sc, &sc->angle);
 	}
-	if (((sc->stageStartSize.data.i > 1) && (!((sc->stageStartSize.data.i > 1) && (!sc->reorderFourStep) && (sc->inverse)))) || (((sc->stageStartSize.data.i > 1) && (!sc->reorderFourStep) && (sc->inverse))) || (sc->performDCT)) {
-		PfAllocateContainerFlexible(sc, &sc->mult, 50);
+	if (((sc->stageStartSize.data.i > 1) && (!((sc->stageStartSize.data.i > 1) && (!sc->reorderFourStep) && (sc->inverse)))) || (((sc->stageStartSize.data.i > 1) && (!sc->reorderFourStep) && (sc->inverse))) || (sc->performDCT) || (sc->performDST)) {
 		sc->mult.type = 100 + sc->vecTypeCode;
-		sprintf(sc->mult.data.s, "mult");
-		PfDefine(sc, &sc->mult);
+		PfAllocateContainerFlexible(sc, &sc->mult, 50);
+		sprintf(name, "mult");
+		PfDefine(sc, &sc->mult, name);
 		PfSetToZero(sc, &sc->mult);
 	}
 	return;
@@ -311,84 +348,111 @@ static inline void appendRegisterInitialization_R2C(VkFFTSpecializationConstants
 	if (sc->res != VKFFT_SUCCESS) return;
 	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
+	char name[50];
 
 	sc->regIDs = (PfContainer*)calloc(sc->registers_per_thread, sizeof(PfContainer));
 
 	for (int i = 0; i < sc->registers_per_thread; i++) {
-		PfAllocateContainerFlexible(sc, &sc->regIDs[i], 50);
 		sc->regIDs[i].type = 100 + sc->vecTypeCode;
-		sprintf(sc->regIDs[i].data.s, "temp_%d", i);
-		PfDefine(sc, &sc->regIDs[i]);
+		PfAllocateContainerFlexible(sc, &sc->regIDs[i], 50);
+		sprintf(name, "temp_%d", i);
+		PfDefine(sc, &sc->regIDs[i], name);
 		PfSetToZero(sc, &sc->regIDs[i]);
 	}
 	
-	PfAllocateContainerFlexible(sc, &sc->w, 50);
 	sc->w.type = 100 + sc->vecTypeCode;
-	sprintf(sc->w.data.s, "w");
-	PfDefine(sc, &sc->w);
+	PfAllocateContainerFlexible(sc, &sc->w, 50);
+	sprintf(name, "w");
+	PfDefine(sc, &sc->w, name);
 	PfSetToZero(sc, &sc->w);
 
-	PfAllocateContainerFlexible(sc, &sc->tempInt, 50);
+	if (((sc->floatTypeCode % 100) / 10) == 3) {
+		sc->tempQuad.type = 100 + sc->vecTypeCode;
+		PfAllocateContainerFlexible(sc, &sc->tempQuad, 50);
+		sprintf(name, "tempQuad");
+		PfDefine(sc, &sc->tempQuad, name);
+		PfSetToZero(sc, &sc->tempQuad);
+
+		sc->tempQuad2.type = 100 + sc->vecTypeCode;
+		PfAllocateContainerFlexible(sc, &sc->tempQuad2, 50);
+		sprintf(name, "tempQuad2");
+		PfDefine(sc, &sc->tempQuad2, name);
+		PfSetToZero(sc, &sc->tempQuad2);
+
+		sc->tempQuad3.type = 100 + sc->vecTypeCode;
+		PfAllocateContainerFlexible(sc, &sc->tempQuad3, 50);
+		sprintf(name, "tempQuad3");
+		PfDefine(sc, &sc->tempQuad3, name);
+		PfSetToZero(sc, &sc->tempQuad3);
+
+		sc->tempIntQuad.type = 100 + sc->uintTypeCode;
+		PfAllocateContainerFlexible(sc, &sc->tempIntQuad, 50);
+		sprintf(name, "tempIntQuad");
+		PfDefine(sc, &sc->tempIntQuad, name);
+		PfSetToZero(sc, &sc->tempIntQuad);
+	}
+
 	sc->tempInt.type = 100 + sc->uintTypeCode;
-	sprintf(sc->tempInt.data.s, "tempInt");
-	PfDefine(sc, &sc->tempInt);
+	PfAllocateContainerFlexible(sc, &sc->tempInt, 50);
+	sprintf(name, "tempInt");
+	PfDefine(sc, &sc->tempInt, name);
 	PfSetToZero(sc, &sc->tempInt);
 
-	PfAllocateContainerFlexible(sc, &sc->tempInt2, 50);
 	sc->tempInt2.type = 100 + sc->uintTypeCode;
-	sprintf(sc->tempInt2.data.s, "tempInt2");
-	PfDefine(sc, &sc->tempInt2);
+	PfAllocateContainerFlexible(sc, &sc->tempInt2, 50);
+	sprintf(name, "tempInt2");
+	PfDefine(sc, &sc->tempInt2, name);
 	PfSetToZero(sc, &sc->tempInt2);
 
-	PfAllocateContainerFlexible(sc, &sc->shiftX, 50);
 	sc->shiftX.type = 100 + sc->uintTypeCode;
-	sprintf(sc->shiftX.data.s, "shiftX");
-	PfDefine(sc, &sc->shiftX);
+	PfAllocateContainerFlexible(sc, &sc->shiftX, 50);
+	sprintf(name, "shiftX");
+	PfDefine(sc, &sc->shiftX, name);
 	PfSetToZero(sc, &sc->shiftX);
 
-	PfAllocateContainerFlexible(sc, &sc->shiftY, 50);
 	sc->shiftY.type = 100 + sc->uintTypeCode;
-	sprintf(sc->shiftY.data.s, "shiftY");
-	PfDefine(sc, &sc->shiftY);
+	PfAllocateContainerFlexible(sc, &sc->shiftY, 50);
+	sprintf(name, "shiftY");
+	PfDefine(sc, &sc->shiftY, name);
 	PfSetToZero(sc, &sc->shiftY);
 
-	PfAllocateContainerFlexible(sc, &sc->shiftZ, 50);
 	sc->shiftZ.type = 100 + sc->uintTypeCode;
-	sprintf(sc->shiftZ.data.s, "shiftZ");
-	PfDefine(sc, &sc->shiftZ);
+	PfAllocateContainerFlexible(sc, &sc->shiftZ, 50);
+	sprintf(name, "shiftZ");
+	PfDefine(sc, &sc->shiftZ, name);
 	PfSetToZero(sc, &sc->shiftZ);
 
-	PfAllocateContainerFlexible(sc, &sc->inoutID, 50);
 	sc->inoutID.type = 100 + sc->uintTypeCode;
-	sprintf(sc->inoutID.data.s, "inoutID");
-	PfDefine(sc, &sc->inoutID);
+	PfAllocateContainerFlexible(sc, &sc->inoutID, 50);
+	sprintf(name, "inoutID");
+	PfDefine(sc, &sc->inoutID, name);
 	PfSetToZero(sc, &sc->inoutID);
 
-	PfAllocateContainerFlexible(sc, &sc->inoutID_x, 50);
 	sc->inoutID_x.type = 100 + sc->uintTypeCode;
-	sprintf(sc->inoutID_x.data.s, "inoutID_x");
-	PfDefine(sc, &sc->inoutID_x);
+	PfAllocateContainerFlexible(sc, &sc->inoutID_x, 50);
+	sprintf(name, "inoutID_x");
+	PfDefine(sc, &sc->inoutID_x, name);
 	PfSetToZero(sc, &sc->inoutID_x);
 
-	PfAllocateContainerFlexible(sc, &sc->inoutID_y, 50);
 	sc->inoutID_y.type = 100 + sc->uintTypeCode;
-	sprintf(sc->inoutID_y.data.s, "inoutID_y");
-	PfDefine(sc, &sc->inoutID_y);
+	PfAllocateContainerFlexible(sc, &sc->inoutID_y, 50);
+	sprintf(name, "inoutID_y");
+	PfDefine(sc, &sc->inoutID_y, name);
 	PfSetToZero(sc, &sc->inoutID_y);
 
 	if (sc->LUT) {
-		PfAllocateContainerFlexible(sc, &sc->LUTId, 50);
 		sc->LUTId.type = 100 + sc->uintTypeCode;
-		sprintf(sc->LUTId.data.s, "LUTId");
-		PfDefine(sc, &sc->LUTId);
+		PfAllocateContainerFlexible(sc, &sc->LUTId, 50);
+		sprintf(name, "LUTId");
+		PfDefine(sc, &sc->LUTId, name);
 		PfSetToZero(sc, &sc->LUTId);
 
 	}
 	else {
-		PfAllocateContainerFlexible(sc, &sc->angle, 50);
 		sc->angle.type = 100 + sc->floatTypeCode;
-		sprintf(sc->angle.data.s, "angle");
-		PfDefine(sc, &sc->angle);
+		PfAllocateContainerFlexible(sc, &sc->angle, 50);
+		sprintf(name, "angle");
+		PfDefine(sc, &sc->angle, name);
 		PfSetToZero(sc, &sc->angle);
 	}
 
@@ -401,11 +465,19 @@ static inline void freeRegisterInitialization(VkFFTSpecializationConstantsLayout
 	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 
-	//sc->tempLen = sprintf(sc->tempStr, "	uint dum=gl_LocalInvocationID.x;\n");
-	int logicalStoragePerThread = sc->registers_per_thread * sc->registerBoost;
+	int additional_registers_c2r = 0;
+	if ((sc->mergeSequencesR2C == 1) && (type == 5))
+		additional_registers_c2r = 2;
+
+	pfINT max_coordinate = 1;
+	if ((sc->convolutionStep) && (sc->matrixConvolution > 1)) {
+		max_coordinate = sc->matrixConvolution;
+	}
+
+	int logicalStoragePerThread = (sc->registers_per_thread + additional_registers_c2r) * sc->registerBoost * (int)max_coordinate;
 	int logicalRegistersPerThread = sc->registers_per_thread;
 
-	for (uint64_t i = 0; i < logicalStoragePerThread; i++) {
+	for (pfUINT i = 0; i < logicalStoragePerThread; i++) {
 		PfDeallocateContainer(sc, &sc->regIDs[i]);
 	}
 
@@ -428,9 +500,9 @@ static inline void freeRegisterInitialization(VkFFTSpecializationConstantsLayout
 	//sc->tempLen = sprintf(sc->tempStr, "	dum=dum/gl_LocalInvocationID.x-1;\n");
 	//sc->tempLen = sprintf(sc->tempStr, "	dummy=dummy/gl_LocalInvocationID.x-1;\n");
 	if (sc->registerBoost > 1) {
-		/*for (uint64_t i = 1; i < sc->registerBoost; i++) {
+		/*for (pfUINT i = 1; i < sc->registerBoost; i++) {
 			//sc->tempLen = sprintf(sc->tempStr, "	%s temp%" PRIu64 "[%" PRIu64 "];\n", vecType, i, logicalRegistersPerThread);
-			for (uint64_t j = 0; j < sc->registers_per_thread; j++) {
+			for (pfUINT j = 0; j < sc->registers_per_thread; j++) {
 				sc->tempLen = sprintf(sc->tempStr, "	%s temp_%" PRIu64 ";\n", vecType, j + i * sc->registers_per_thread);
 				PfAppendLine(sc);
 
@@ -445,13 +517,20 @@ static inline void freeRegisterInitialization(VkFFTSpecializationConstantsLayout
 	}
 	PfDeallocateContainer(sc, &sc->w);
 	
-	uint64_t maxNonPow2Radix = sc->maxNonPow2Radix;
-	for (uint64_t i = 0; i < sc->usedLocRegs; i++) {
+	pfUINT maxNonPow2Radix = sc->maxNonPow2Radix;
+	for (pfUINT i = 0; i < sc->usedLocRegs; i++) {
 		PfDeallocateContainer(sc, &sc->locID[i]);
 	}
+
 	PfDeallocateContainer(sc, &sc->temp);
 	PfDeallocateContainer(sc, &sc->tempFloat);
 
+	if (((sc->floatTypeCode % 100) / 10) == 3) {
+		PfDeallocateContainer(sc, &sc->tempQuad);
+		PfDeallocateContainer(sc, &sc->tempQuad2);
+		PfDeallocateContainer(sc, &sc->tempQuad3);
+		PfDeallocateContainer(sc, &sc->tempIntQuad);
+	}
 	PfDeallocateContainer(sc, &sc->tempInt);
 
 	PfDeallocateContainer(sc, &sc->tempInt2);
@@ -543,7 +622,7 @@ static inline void freeRegisterInitialization(VkFFTSpecializationConstantsLayout
 	else {
 		PfDeallocateContainer(sc, &sc->angle);
 	}
-	if (((sc->stageStartSize.data.i > 1) && (!((sc->stageStartSize.data.i > 1) && (!sc->reorderFourStep) && (sc->inverse)))) || (((sc->stageStartSize.data.i > 1) && (!sc->reorderFourStep) && (sc->inverse))) || (sc->performDCT)) {
+	if (((sc->stageStartSize.data.i > 1) && (!((sc->stageStartSize.data.i > 1) && (!sc->reorderFourStep) && (sc->inverse)))) || (((sc->stageStartSize.data.i > 1) && (!sc->reorderFourStep) && (sc->inverse))) || (sc->performDCT) || (sc->performDST)) {
 		PfDeallocateContainer(sc, &sc->mult);
 	}
 	return;
@@ -563,6 +642,12 @@ static inline void freeRegisterInitialization_R2C(VkFFTSpecializationConstantsLa
 
 	PfDeallocateContainer(sc, &sc->w);
 	
+	if (((sc->floatTypeCode % 100) / 10) == 3) {
+		PfDeallocateContainer(sc, &sc->tempQuad);
+		PfDeallocateContainer(sc, &sc->tempQuad2);
+		PfDeallocateContainer(sc, &sc->tempQuad3);
+		PfDeallocateContainer(sc, &sc->tempIntQuad);
+	}
 	PfDeallocateContainer(sc, &sc->tempInt);
 	
 	PfDeallocateContainer(sc, &sc->tempInt2);

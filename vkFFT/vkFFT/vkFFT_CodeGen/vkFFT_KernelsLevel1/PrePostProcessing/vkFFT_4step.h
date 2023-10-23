@@ -35,8 +35,8 @@ static inline void appendReorder4Step(VkFFTSpecializationConstantsLayout* sc, in
 	PfContainer temp_int1 = VKFFT_ZERO_INIT;
 	temp_int1.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
-	uint64_t logicalRegistersPerThread;
+	temp_double.type = 22;
+	pfUINT logicalRegistersPerThread;
 	if (readWrite==0)
 		logicalRegistersPerThread = (sc->rader_generator[0] > 0) ? sc->min_registers_per_thread : sc->registers_per_thread_per_radix[sc->stageRadix[0]];// (sc->registers_per_thread % sc->stageRadix[sc->numStages - 1] == 0) ? sc->registers_per_thread : sc->min_registers_per_thread;
 	else
@@ -59,12 +59,12 @@ static inline void appendReorder4Step(VkFFTSpecializationConstantsLayout* sc, in
 			else {
 				PfMod(sc, &sc->inoutID, &sc->shiftX, &sc->stageStartSize);
 			}
-			for (uint64_t i = 0; i < (uint64_t)temp_int1.data.i; i++) {
+			for (pfUINT i = 0; i < (pfUINT)temp_int1.data.i; i++) {
 				PfMod(sc, &temp_int, &sc->fftDim, &sc->localSize[1]);
 				if ((temp_int.data.i != 0) && (i == (temp_int1.data.i - 1))) {
 					PfIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &temp_int);				
 				}
-				uint64_t id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
+				pfUINT id = (i / logicalRegistersPerThread) * sc->registers_per_thread + i % logicalRegistersPerThread;
 
 				if ((sc->LUT) && (sc->LUT_4step)) {
 					temp_int.data.i = i * sc->localSize[1].data.i;
@@ -83,7 +83,7 @@ static inline void appendReorder4Step(VkFFTSpecializationConstantsLayout* sc, in
 					temp_int.data.i = i * sc->localSize[1].data.i;
 					PfAdd(sc, &sc->tempInt, &sc->gl_LocalInvocationID_y, &temp_int);
 					PfMul(sc, &sc->tempInt, &sc->inoutID, &sc->tempInt, 0);
-					temp_double.data.d = 2 * sc->double_PI/ (long double)(sc->stageStartSize.data.i * sc->fftDim.data.i);
+					temp_double.data.d = pfFPinit("2.0") * sc->double_PI/ (pfLD)(sc->stageStartSize.data.i * sc->fftDim.data.i);
 					PfMul(sc, &sc->angle, &sc->tempInt, &temp_double, 0);
 					PfSinCos(sc, &sc->mult, &sc->angle);
 					if ((!sc->inverse) && (readWrite == 1)) {

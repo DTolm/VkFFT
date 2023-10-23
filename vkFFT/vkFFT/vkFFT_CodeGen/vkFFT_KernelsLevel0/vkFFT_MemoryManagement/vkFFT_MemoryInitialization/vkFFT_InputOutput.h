@@ -38,10 +38,10 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 				if (sc->performPostCompilationInputOffset) {
 					locOffset.type = 1001;
 					if (sc->inputType < 1000) {
-						locOffset.data.s = sc->inputOffset.data.s;
+						locOffset.name = sc->inputOffset.name;
 					}
 					else {
-						locOffset.data.s = sc->kernelOffset.data.s;
+						locOffset.name = sc->kernelOffset.name;
 					}
 				}
 			}
@@ -88,7 +88,7 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 			}
 		}
 		char shiftCoordinate[500] = "";
-		uint64_t maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
+		pfUINT maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
 		if (sc->numCoordinates * sc->matrixConvolution > 1) {
 			sprintf(shiftCoordinate, " + ((%s / %" PRIu64 ") %% %" PRIu64 ") * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->dispatchZactualFFTSize, maxCoordinate, sc->inputStride[3]);
 		}
@@ -148,7 +148,7 @@ static inline VkFFTResult indexInputVkFFT(VkFFTSpecializationConstantsLayout* sc
 			}
 		}
 		char shiftCoordinate[500] = "";
-		uint64_t maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
+		pfUINT maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
 		if (sc->numCoordinates * sc->matrixConvolution > 1) {
 			sprintf(shiftCoordinate, " + ((%s / %" PRIu64 ") %% %" PRIu64 ") * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->dispatchZactualFFTSize, maxCoordinate, sc->inputStride[3]);
 		}
@@ -194,7 +194,7 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 		else
 			sprintf(shiftX, "(%s) * %" PRIu64 "", index_x, sc->outputStride[0]);
 		char shiftY[500] = "";
-		uint64_t mult = (sc->mergeSequencesR2C) ? 2 : 1;
+		pfUINT mult = (sc->mergeSequencesR2C) ? 2 : 1;
 		if (sc->size[1] > 1) {
 			if (sc->numAxisUploads == 1) {
 				if (sc->axisSwapped) {
@@ -233,7 +233,7 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 			}
 		}
 		char shiftCoordinate[500] = "";
-		uint64_t maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
+		pfUINT maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
 		if (sc->numCoordinates * sc->matrixConvolution > 1) {
 			sprintf(shiftCoordinate, " + ((%s / %" PRIu64 ") %% %" PRIu64 ") * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->dispatchZactualFFTSize, maxCoordinate, sc->outputStride[3]);
 		}
@@ -291,7 +291,7 @@ static inline VkFFTResult indexOutputVkFFT(VkFFTSpecializationConstantsLayout* s
 			}
 		}
 		char shiftCoordinate[500] = "";
-		uint64_t maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
+		pfUINT maxCoordinate = sc->numCoordinates * sc->matrixConvolution;
 		if (sc->numCoordinates * sc->matrixConvolution > 1) {
 			sprintf(shiftCoordinate, " + ((%s / %" PRIu64 ") %% %" PRIu64 ") * %" PRIu64 "", sc->gl_GlobalInvocationID_z, sc->dispatchZactualFFTSize, maxCoordinate, sc->outputStride[3]);
 		}

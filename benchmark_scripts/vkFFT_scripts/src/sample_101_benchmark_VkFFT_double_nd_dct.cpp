@@ -196,7 +196,7 @@ VkFFTResult sample_101_benchmark_VkFFT_double_nd_dct(VkGPU* vkGPU, uint64_t file
 			}
 			//Initialize applications. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
 			resFFT = initializeVkFFT(&app, configuration);
-			if (resFFT == VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_DCT) {
+			if (resFFT == VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2R) {
 				if (r == num_runs - 1) {
 					omitted_systems++;
 					if (file_output)

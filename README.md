@@ -10,7 +10,7 @@ VkFFT is an efficient GPU-accelerated multidimensional Fast Fourier Transform li
   - Radix-2/3/4/5/7/8/11/13 FFT. Sequences using radix 3, 5, 7, 11 and 13 have comparable performance to that of powers of 2.
   - Rader's FFT algorithm for primes from 17 up to max shared memory length (~10000). Inlined and done without additional memory transfers.
   - Bluestein's FFT algorithm for all other sequences. Full coverage of C2C range, single upload (2^12, 2^12, 2^12) for R2C/C2R/R2R. Optimized to have as few memory transfers as possible by using zero padding and merged convolution support of VkFFT.
-  - Single, double and half precision support. Double precision uses CPU-generated LUT tables. Half precision still does all computations in single and only uses half precision to store data.
+  - Single, double, half and quad (double-double) precision support. Double and quad precision uses CPU-generated LUT tables. Half precision still does all computations in single and only uses half precision to store data.
   - All transformations are performed in-place with no performance loss. Out-of-place transforms are supported by selecting different input/output buffers.
   - No additional transposition uploads. Note: Data can be reshuffled after the Four Step FFT algorithm with an additional buffer (for big sequences). Doesn't matter for convolutions - they return to the input ordering (saves memory).
   - Complex to complex (C2C), real to complex (R2C), complex to real (C2R) transformations and real to real (R2R) Discrete Cosine Transformations of types I, II, III and IV. R2R, R2C and C2R are optimized to run up to 2x times faster than C2C and take 2x less memory.
@@ -33,19 +33,19 @@ Include the vkFFT.h file and glslang compiler. Provide the library with correctl
 For single and double precision, Vulkan 1.0 is required. For half precision, Vulkan 1.1 is required.
 
 CUDA/HIP:
-Include the vkFFT.h file and make sure your system has NVRTC/HIPRTC built. Provide the library with correctly chosen VKFFT_BACKEND definition. Only single/double precision for now.\
+Include the vkFFT.h file and make sure your system has NVRTC/HIPRTC built. Provide the library with correctly chosen VKFFT_BACKEND definition.\
 To build CUDA/HIP version of the benchmark, replace VKFFT_BACKEND in CMakeLists (line 5) with the correct one and optionally enable FFTW. VKFFT_BACKEND=1 for CUDA, VKFFT_BACKEND=2 for HIP.
 
 OpenCL:
-Include the vkFFT.h file. Provide the library with correctly chosen VKFFT_BACKEND definition. Only single/double precision for now.\
+Include the vkFFT.h file. Provide the library with correctly chosen VKFFT_BACKEND definition.\
 To build OpenCL version of the benchmark, replace VKFFT_BACKEND in CMakeLists (line 5) with the value 3 and optionally enable FFTW.
 
 Level Zero:
-Include the vkFFT.h file. Provide the library with correctly chosen VKFFT_BACKEND definition. Clang and llvm-spirv must be valid system calls. Only single/double precision for now.\
+Include the vkFFT.h file. Provide the library with correctly chosen VKFFT_BACKEND definition. Clang and llvm-spirv must be valid system calls.\
 To build Level Zero version of the benchmark, replace VKFFT_BACKEND in CMakeLists (line 5) with the value 4 and optionally enable FFTW.
 
 Metal:
-Include the vkFFT.h file. Provide the library with correctly chosen VKFFT_BACKEND definition. VkFFT uses metal-cpp as a C++ bindings to Apple's libraries - Foundation.hpp, QuartzCore.hpp and Metal.hpp. Only single precision.\
+Include the vkFFT.h file. Provide the library with correctly chosen VKFFT_BACKEND definition. VkFFT uses metal-cpp as a C++ bindings to Apple's libraries - Foundation.hpp, QuartzCore.hpp and Metal.hpp.\
 To build Metal version of the benchmark, replace VKFFT_BACKEND in CMakeLists (line 5) with the value 5 and optionally enable FFTW.
 
 ## Command-line interface

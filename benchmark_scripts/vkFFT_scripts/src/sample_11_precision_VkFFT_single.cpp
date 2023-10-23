@@ -75,18 +75,18 @@ VkFFTResult sample_11_precision_VkFFT_single(VkGPU* vkGPU, uint64_t file_output,
 	const int num_benchmark_samples = 63;
 	const int num_runs = 1;
 
-	uint64_t benchmark_dimensions[num_benchmark_samples][4] = {  {(uint64_t)pow(2,5), 1, 1, 1}, {(uint64_t)pow(2,6), 1, 1, 1},{(uint64_t)pow(2,7), 1, 1, 1},{(uint64_t)pow(2,8), 1, 1, 1},{(uint64_t)pow(2,9), 1, 1, 1},{(uint64_t)pow(2,10), 1, 1, 1},
-		{(uint64_t)pow(2,11), 1, 1, 1},{(uint64_t)pow(2,12), 1, 1, 1},{(uint64_t)pow(2,13), 1, 1, 1},{(uint64_t)pow(2,14), 1, 1, 1},{(uint64_t)pow(2,15), 1, 1, 1},{(uint64_t)pow(2,16), 1, 1, 1},{(uint64_t)pow(2,17), 1, 1, 1},{(uint64_t)pow(2,18), 1, 1, 1},
-		{(uint64_t)pow(2,19), 1, 1, 1},{(uint64_t)pow(2,20), 1, 1, 1},{(uint64_t)pow(2,21), 1, 1, 1},{(uint64_t)pow(2,22), 1, 1, 1},{(uint64_t)pow(2,23), 1, 1, 1},{(uint64_t)pow(2,24), 1, 1, 1},{(uint64_t)pow(2,25), 1, 1, 1},{(uint64_t)pow(2,26), 1, 1, 1},
+	uint64_t benchmark_dimensions[num_benchmark_samples][5] = {  {(uint64_t)pow(2,5), 1, 1, 1, 1}, {(uint64_t)pow(2,6), 1, 1, 1, 1},{(uint64_t)pow(2,7), 1, 1, 1, 1},{(uint64_t)pow(2,8), 1, 1, 1, 1},{(uint64_t)pow(2,9), 1, 1, 1, 1},{(uint64_t)pow(2,10), 1, 1, 1, 1},
+		{(uint64_t)pow(2,11), 1, 1, 1, 1},{(uint64_t)pow(2,12), 1, 1, 1, 1},{(uint64_t)pow(2,13), 1, 1, 1, 1},{(uint64_t)pow(2,14), 1, 1, 1, 1},{(uint64_t)pow(2,15), 1, 1, 1, 1},{(uint64_t)pow(2,16), 1, 1, 1, 1},{(uint64_t)pow(2,17), 1, 1, 1, 1},{(uint64_t)pow(2,18), 1, 1, 1, 1},
+		{(uint64_t)pow(2,19), 1, 1, 1, 1},{(uint64_t)pow(2,20), 1, 1, 1, 1},{(uint64_t)pow(2,21), 1, 1, 1, 1},{(uint64_t)pow(2,22), 1, 1, 1, 1},{(uint64_t)pow(2,23), 1, 1, 1, 1},{(uint64_t)pow(2,24), 1, 1, 1, 1},{(uint64_t)pow(2,25), 1, 1, 1, 1},{(uint64_t)pow(2,26), 1, 1, 1, 1},
 
-		{8, (uint64_t)pow(2,3), 1, 2},{8, (uint64_t)pow(2,4), 1, 2},{8, (uint64_t)pow(2,5), 1, 2},{8, (uint64_t)pow(2,6), 1, 2},{8, (uint64_t)pow(2,7), 1, 2},{8, (uint64_t)pow(2,8), 1, 2},{8, (uint64_t)pow(2,9), 1, 2},{8, (uint64_t)pow(2,10), 1, 2},
-		{8, (uint64_t)pow(2,11), 1, 2},{8, (uint64_t)pow(2,12), 1, 2},{8, (uint64_t)pow(2,13), 1, 2},{8, (uint64_t)pow(2,14), 1, 2},{8, (uint64_t)pow(2,15), 1, 2},{8, (uint64_t)pow(2,16), 1, 2},{8, (uint64_t)pow(2,17), 1, 2},{8, (uint64_t)pow(2,18), 1, 2},
-		{8, (uint64_t)pow(2,19), 1, 2},{8, (uint64_t)pow(2,20), 1, 2},{8, (uint64_t)pow(2,21), 1, 2},{8, (uint64_t)pow(2,22), 1, 2},{8, (uint64_t)pow(2,23), 1, 2},{8, (uint64_t)pow(2,24), 1, 2},
+		{8, (uint64_t)pow(2,3), 1, 1, 2},{8, (uint64_t)pow(2,4), 1, 1, 2},{8, (uint64_t)pow(2,5), 1, 1, 2},{8, (uint64_t)pow(2,6), 1, 1, 2},{8, (uint64_t)pow(2,7), 1, 1, 2},{8, (uint64_t)pow(2,8), 1, 1, 2},{8, (uint64_t)pow(2,9), 1, 1, 2},{8, (uint64_t)pow(2,10), 1, 1, 2},
+		{8, (uint64_t)pow(2,11), 1, 1, 2},{8, (uint64_t)pow(2,12), 1, 1, 2},{8, (uint64_t)pow(2,13), 1, 1, 2},{8, (uint64_t)pow(2,14), 1, 1, 2},{8, (uint64_t)pow(2,15), 1, 1, 2},{8, (uint64_t)pow(2,16), 1, 1, 2},{8, (uint64_t)pow(2,17), 1, 1, 2},{8, (uint64_t)pow(2,18), 1, 1, 2},
+		{8, (uint64_t)pow(2,19), 1, 1, 2},{8, (uint64_t)pow(2,20), 1, 1, 2},{8, (uint64_t)pow(2,21), 1, 1, 2},{8, (uint64_t)pow(2,22), 1, 1, 2},{8, (uint64_t)pow(2,23), 1, 1, 2},{8, (uint64_t)pow(2,24), 1, 1, 2},
 
-		{ (uint64_t)pow(2,3), (uint64_t)pow(2,3), 1, 2},{ (uint64_t)pow(2,4), (uint64_t)pow(2,4), 1, 2},{ (uint64_t)pow(2,5), (uint64_t)pow(2,5), 1, 2},{ (uint64_t)pow(2,6), (uint64_t)pow(2,6), 1, 2},{ (uint64_t)pow(2,7), (uint64_t)pow(2,7), 1, 2},{ (uint64_t)pow(2,8), (uint64_t)pow(2,8), 1, 2},{ (uint64_t)pow(2,9), (uint64_t)pow(2,9), 1, 2},
-		{ (uint64_t)pow(2,10), (uint64_t)pow(2,10), 1, 2},{ (uint64_t)pow(2,11), (uint64_t)pow(2,11), 1, 2},{ (uint64_t)pow(2,12), (uint64_t)pow(2,12), 1, 2},{ (uint64_t)pow(2,13), (uint64_t)pow(2,13), 1, 2},{ (uint64_t)pow(2,14), (uint64_t)pow(2,13), 1, 2},
+		{ (uint64_t)pow(2,3), (uint64_t)pow(2,3), 1, 1, 2},{ (uint64_t)pow(2,4), (uint64_t)pow(2,4), 1, 1, 2},{ (uint64_t)pow(2,5), (uint64_t)pow(2,5), 1, 1, 2},{ (uint64_t)pow(2,6), (uint64_t)pow(2,6), 1, 1, 2},{ (uint64_t)pow(2,7), (uint64_t)pow(2,7), 1, 1, 2},{ (uint64_t)pow(2,8), (uint64_t)pow(2,8), 1, 1, 2},{ (uint64_t)pow(2,9), (uint64_t)pow(2,9), 1, 1, 2},
+		{ (uint64_t)pow(2,10), (uint64_t)pow(2,10), 1, 1, 2},{ (uint64_t)pow(2,11), (uint64_t)pow(2,11), 1, 1, 2},{ (uint64_t)pow(2,12), (uint64_t)pow(2,12), 1, 1, 2},{ (uint64_t)pow(2,13), (uint64_t)pow(2,13), 1, 1, 2},{ (uint64_t)pow(2,14), (uint64_t)pow(2,13), 1, 1, 2},
 
-		{ (uint64_t)pow(2,3), (uint64_t)pow(2,3), (uint64_t)pow(2,3), 3},{ (uint64_t)pow(2,4), (uint64_t)pow(2,4), (uint64_t)pow(2,4), 3},{ (uint64_t)pow(2,5), (uint64_t)pow(2,5), (uint64_t)pow(2,5), 3},{ (uint64_t)pow(2,6), (uint64_t)pow(2,6), (uint64_t)pow(2,6), 3},{ (uint64_t)pow(2,7), (uint64_t)pow(2,7), (uint64_t)pow(2,7), 3},{ (uint64_t)pow(2,8), (uint64_t)pow(2,8), (uint64_t)pow(2,8), 3},{ (uint64_t)pow(2,9), (uint64_t)pow(2,9), (uint64_t)pow(2,9), 3},
+		{ (uint64_t)pow(2,3), (uint64_t)pow(2,3), (uint64_t)pow(2,3), 1, 3},{ (uint64_t)pow(2,4), (uint64_t)pow(2,4), (uint64_t)pow(2,4), 1, 3},{ (uint64_t)pow(2,5), (uint64_t)pow(2,5), (uint64_t)pow(2,5), 1, 3},{ (uint64_t)pow(2,6), (uint64_t)pow(2,6), (uint64_t)pow(2,6), 1, 3},{ (uint64_t)pow(2,7), (uint64_t)pow(2,7), (uint64_t)pow(2,7), 1, 3},{ (uint64_t)pow(2,8), (uint64_t)pow(2,8), (uint64_t)pow(2,8), 1, 3},{ (uint64_t)pow(2,9), (uint64_t)pow(2,9), (uint64_t)pow(2,9), 1, 3},
 	};
 
 	double benchmark_result = 0;//averaged result = sum(system_size/iteration_time)/num_benchmark_samples
@@ -117,7 +117,7 @@ VkFFTResult sample_11_precision_VkFFT_single(VkGPU* vkGPU, uint64_t file_output,
 
 			fftw_complex* output_FFTW = (fftw_complex*)(malloc(sizeof(fftw_complex) * dims[0] * dims[1] * dims[2]));
 			if (!output_FFTW) return VKFFT_ERROR_MALLOC_FAILED;
-			switch (benchmark_dimensions[n][3]) {
+			switch (benchmark_dimensions[n][4]) {
 			case 1:
 				p = fftw_plan_dft_1d((int)benchmark_dimensions[n][0], inputC_double, output_FFTW, -1, FFTW_ESTIMATE);
 				break;
@@ -148,7 +148,7 @@ VkFFTResult sample_11_precision_VkFFT_single(VkGPU* vkGPU, uint64_t file_output,
 
 			VkFFTConfiguration configuration = {};
 			VkFFTApplication app = {};
-			configuration.FFTdim = benchmark_dimensions[n][3]; //FFT dimension, 1D, 2D or 3D (default 1).
+			configuration.FFTdim = benchmark_dimensions[n][4]; //FFT dimension, 1D, 2D or 3D (default 1).
 			configuration.size[0] = benchmark_dimensions[n][0]; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z.   
 			configuration.size[1] = benchmark_dimensions[n][1];
 			configuration.size[2] = benchmark_dimensions[n][2];

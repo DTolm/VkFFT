@@ -34,7 +34,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 #elif(VKFFT_BACKEND==1)
 	if (app->configuration.num_streams > 1) {
 		cudaError_t res_t = cudaSuccess;
-		for (uint64_t i = 0; i < app->configuration.num_streams; i++) {
+		for (pfUINT i = 0; i < app->configuration.num_streams; i++) {
 			if (app->configuration.stream_event[i] != 0) {
 				res_t = cudaEventDestroy(app->configuration.stream_event[i]);
 				if (res_t == cudaSuccess) app->configuration.stream_event[i] = 0;
@@ -48,7 +48,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 #elif(VKFFT_BACKEND==2)
 	if (app->configuration.num_streams > 1) {
 		hipError_t res_t = hipSuccess;
-		for (uint64_t i = 0; i < app->configuration.num_streams; i++) {
+		for (pfUINT i = 0; i < app->configuration.num_streams; i++) {
 			if (app->configuration.stream_event[i] != 0) {
 				res_t = hipEventDestroy(app->configuration.stream_event[i]);
 				if (res_t == hipSuccess) app->configuration.stream_event[i] = 0;
@@ -61,7 +61,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 	}
 #endif
 	if (app->numRaderFFTPrimes) {
-		for (uint64_t i = 0; i < app->numRaderFFTPrimes; i++) {
+		for (pfUINT i = 0; i < app->numRaderFFTPrimes; i++) {
 			free(app->raderFFTkernel[i]);
 			app->raderFFTkernel[i] = 0;
 		}
@@ -117,9 +117,9 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 			app->configuration.tempBufferSize = 0;
 		}
 	}
-	for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
+	for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
 		if (app->configuration.useRaderUintLUT) {
-			for (uint64_t j = 0; j < 4; j++) {
+			for (pfUINT j = 0; j < 4; j++) {
 				if (app->bufferRaderUintLUT[i][j]) {
 #if(VKFFT_BACKEND==0)
 					vkDestroyBuffer(app->configuration.device[0], app->bufferRaderUintLUT[i][j], 0);
@@ -255,14 +255,19 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 	}
 	if (!app->configuration.makeInversePlanOnly) {
 		if (app->localFFTPlan != 0) {
-			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
+			for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
 				if (app->localFFTPlan->numAxisUploads[i] > 0) {
-					for (uint64_t j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
-						deleteAxis(app, &app->localFFTPlan->axes[i][j]);
+					for (pfUINT j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
+						deleteAxis(app, &app->localFFTPlan->axes[i][j], 0);
+				}
+				if (app->useBluesteinFFT[i] && (app->localFFTPlan->numAxisUploads[i] > 1)) {
+					for (pfUINT j = 1; j < app->localFFTPlan->numAxisUploads[i]; j++) {
+						deleteAxis(app, &app->localFFTPlan->inverseBluesteinAxes[i][j], 1);
+					}
 				}
 			}
 			if (app->localFFTPlan->multiUploadR2C) {
-				deleteAxis(app, &app->localFFTPlan->R2Cdecomposition);
+				deleteAxis(app, &app->localFFTPlan->R2Cdecomposition, 0);
 			}
 			if (app->localFFTPlan != 0) {
 				free(app->localFFTPlan);
@@ -272,14 +277,19 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 	}
 	if (!app->configuration.makeForwardPlanOnly) {
 		if (app->localFFTPlan_inverse != 0) {
-			for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
+			for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
 				if (app->localFFTPlan_inverse->numAxisUploads[i] > 0) {
-					for (uint64_t j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
-						deleteAxis(app, &app->localFFTPlan_inverse->axes[i][j]);
+					for (pfUINT j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
+						deleteAxis(app, &app->localFFTPlan_inverse->axes[i][j], 0);
+				}
+				if (app->useBluesteinFFT[i] && (app->localFFTPlan_inverse->numAxisUploads[i] > 1)) {
+					for (pfUINT j = 1; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
+						deleteAxis(app, &app->localFFTPlan_inverse->inverseBluesteinAxes[i][j], 1);
+					}
 				}
 			}
 			if (app->localFFTPlan_inverse->multiUploadR2C) {
-				deleteAxis(app, &app->localFFTPlan_inverse->R2Cdecomposition);
+				deleteAxis(app, &app->localFFTPlan_inverse->R2Cdecomposition, 0);
 			}
 			if (app->localFFTPlan_inverse != 0) {
 				free(app->localFFTPlan_inverse);
@@ -292,7 +302,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 			free(app->saveApplicationString);
 			app->saveApplicationString = 0;
 		}
-		for (uint64_t i = 0; i < app->configuration.FFTdim; i++) {
+		for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
 			if (app->applicationBluesteinString[i] != 0) {
 				free(app->applicationBluesteinString[i]);
 				app->applicationBluesteinString[i] = 0;
@@ -309,5 +319,6 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 			app->configuration.paddedSizes = 0;
 		}
 	}
+	memset(app, 0, sizeof(VkFFTApplication));
 }
 #endif

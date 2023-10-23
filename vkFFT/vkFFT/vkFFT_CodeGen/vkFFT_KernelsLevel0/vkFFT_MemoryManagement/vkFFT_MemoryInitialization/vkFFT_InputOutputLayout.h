@@ -46,14 +46,14 @@ static inline void appendInputLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc
 			sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) buffer DataIn{\n\
 	%s inputs[%" PRIu64 "];\n\
-};\n\n", id, vecTypeInputMemory->data.s, sc->inputBufferBlockSize);
+};\n\n", id, vecTypeInputMemory->name, sc->inputBufferBlockSize / sc->complexSize);
 			PfAppendLine(sc);
 		}
 		else {
 			sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) buffer DataIn{\n\
 	%s inputs[%" PRIu64 "];\n\
-} inputBlocks[%" PRIu64 "];\n\n", id, vecTypeInputMemory->data.s, sc->inputBufferBlockSize, sc->inputBufferBlockNum);
+} inputBlocks[%" PRIu64 "];\n\n", id, vecTypeInputMemory->name, sc->inputBufferBlockSize / sc->complexSize, sc->inputBufferBlockNum);
 			PfAppendLine(sc);
 		}
 #elif(VKFFT_BACKEND==1)
@@ -72,14 +72,14 @@ layout(std430, binding = %d) buffer DataIn{\n\
 			sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) buffer DataIn{\n\
 	%s inputs[%" PRIu64 "];\n\
-};\n\n", id, floatTypeInputMemory->data.s, 2 * sc->inputBufferBlockSize);
+};\n\n", id, floatTypeInputMemory->name, sc->inputBufferBlockSize / (sc->complexSize / 2));
 			PfAppendLine(sc);
 	}
 		else {
 			sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) buffer DataIn{\n\
 	%s inputs[%" PRIu64 "];\n\
-} inputBlocks[%" PRIu64 "];\n\n", id, floatTypeInputMemory->data.s, 2 * sc->inputBufferBlockSize, sc->inputBufferBlockNum);
+} inputBlocks[%" PRIu64 "];\n\n", id, floatTypeInputMemory->name, sc->inputBufferBlockSize / (sc->complexSize / 2), sc->inputBufferBlockNum);
 			PfAppendLine(sc);
 		}
 #elif(VKFFT_BACKEND==1)
@@ -103,14 +103,14 @@ static inline void appendOutputLayoutVkFFT(VkFFTSpecializationConstantsLayout* s
 			sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) buffer DataOut{\n\
 	%s outputs[%" PRIu64 "];\n\
-};\n\n", id, vecTypeOutputMemory->data.s, sc->outputBufferBlockSize);
+};\n\n", id, vecTypeOutputMemory->name, sc->outputBufferBlockSize / sc->complexSize);
 			PfAppendLine(sc);
 	}
 		else {
 			sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) buffer DataOut{\n\
 	%s outputs[%" PRIu64 "];\n\
-} outputBlocks[%" PRIu64 "];\n\n", id, vecTypeOutputMemory->data.s, sc->outputBufferBlockSize, sc->outputBufferBlockNum);
+} outputBlocks[%" PRIu64 "];\n\n", id, vecTypeOutputMemory->name, sc->outputBufferBlockSize / sc->complexSize, sc->outputBufferBlockNum);
 			PfAppendLine(sc);
 		}
 #elif(VKFFT_BACKEND==1)
@@ -129,14 +129,14 @@ layout(std430, binding = %d) buffer DataOut{\n\
 			sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) buffer DataOut{\n\
 	%s outputs[%" PRIu64 "];\n\
-};\n\n", id, floatTypeOutputMemory->data.s, 2 * sc->outputBufferBlockSize);
+};\n\n", id, floatTypeOutputMemory->name, sc->outputBufferBlockSize / (sc->complexSize / 2));
 			PfAppendLine(sc);
 		}
 		else {
 			sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) buffer DataOut{\n\
 	%s outputs[%" PRIu64 "];\n\
-} outputBlocks[%" PRIu64 "];\n\n", id, floatTypeOutputMemory->data.s, 2 * sc->outputBufferBlockSize, sc->outputBufferBlockNum);
+} outputBlocks[%" PRIu64 "];\n\n", id, floatTypeOutputMemory->name, sc->outputBufferBlockSize / (sc->complexSize / 2), sc->outputBufferBlockNum);
 			PfAppendLine(sc);
 		}
 #elif(VKFFT_BACKEND==1)
@@ -159,14 +159,14 @@ static inline void appendKernelLayoutVkFFT(VkFFTSpecializationConstantsLayout* s
 		sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) buffer Kernel_FFT{\n\
 	%s kernel_obj[%" PRIu64 "];\n\
-};\n\n", id, vecType->data.s, sc->kernelBlockSize);
+};\n\n", id, vecType->name, sc->kernelBlockSize / sc->complexSize);
 		PfAppendLine(sc);
 	}
 	else {
 		sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) buffer Kernel_FFT{\n\
 	%s kernel_obj[%" PRIu64 "];\n\
-} kernelBlocks[%" PRIu64 "];\n\n", id, vecType->data.s, sc->kernelBlockSize, sc->kernelBlockNum);
+} kernelBlocks[%" PRIu64 "];\n\n", id, vecType->name, sc->kernelBlockSize / sc->complexSize, sc->kernelBlockNum);
 		PfAppendLine(sc);
 		
 	}
@@ -186,7 +186,7 @@ static inline void appendLUTLayoutVkFFT(VkFFTSpecializationConstantsLayout* sc, 
 	sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) readonly buffer DataLUT {\n\
 %s twiddleLUT[];\n\
-};\n", id, vecType->data.s);
+};\n", id, vecType->name);
 	PfAppendLine(sc);
 	
 #elif(VKFFT_BACKEND==1)
@@ -205,7 +205,7 @@ static inline void appendRaderUintLUTLayoutVkFFT(VkFFTSpecializationConstantsLay
 	sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) readonly buffer DataRaderUintLUT {\n\
 %s g_pow[];\n\
-};\n", id, uintType32->data.s);
+};\n", id, uintType32->name);
 	PfAppendLine(sc);
 	
 #elif(VKFFT_BACKEND==1)
@@ -226,7 +226,7 @@ static inline void appendBluesteinLayoutVkFFT(VkFFTSpecializationConstantsLayout
 		sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) readonly buffer DataBluesteinConvolutionKernel {\n\
 %s BluesteinConvolutionKernel[];\n\
-};\n", loc_id, vecType->data.s);
+};\n", loc_id, vecType->name);
 		PfAppendLine(sc);
 		loc_id++;
 	}
@@ -234,7 +234,7 @@ layout(std430, binding = %d) readonly buffer DataBluesteinConvolutionKernel {\n\
 		sc->tempLen = sprintf(sc->tempStr, "\
 layout(std430, binding = %d) readonly buffer DataBluesteinMultiplication {\n\
 %s BluesteinMultiplication[];\n\
-};\n", loc_id, vecType->data.s);
+};\n", loc_id, vecType->name);
 		PfAppendLine(sc);
 		loc_id++;
 	}

@@ -68,7 +68,7 @@ static inline void appendExtensions(VkFFTSpecializationConstantsLayout* sc) {
 	//PfAppendLine(sc);
 	//
 
-	if ((((sc->floatTypeCode/10)%10) == 2) || (sc->useUint64)) {
+	if ((((sc->floatTypeCode/10)%10) == 2) || (((sc->floatTypeCode/10)%10) == 3) ||(sc->useUint64)) {
 		sc->tempLen = sprintf(sc->tempStr, "\
 #extension GL_ARB_gpu_shader_fp64 : enable\n\
 #extension GL_ARB_gpu_shader_int64 : enable\n\n");
@@ -96,7 +96,7 @@ static inline void appendExtensions(VkFFTSpecializationConstantsLayout* sc) {
 		PfAppendLine(sc);
 	}
 #elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
-	if ((((sc->floatTypeCode / 10) % 10) == 2) || (sc->useUint64)) {
+	if ((((sc->floatTypeCode / 10) % 10) == 2) || (((sc->floatTypeCode/10)%10) == 3) || (sc->useUint64)) {
 		sc->tempLen = sprintf(sc->tempStr, "\
 #pragma OPENCL EXTENSION cl_khr_fp64 : enable\n\n");
 		PfAppendLine(sc);
@@ -114,7 +114,35 @@ using namespace metal;\n");
 #endif
 	return;
 }
-
+static inline void appendQuadDoubleDoubleStruct(VkFFTSpecializationConstantsLayout* sc) {
+#if(VKFFT_BACKEND==0)	
+	/*sc->tempLen = sprintf(sc->tempStr, "\
+struct pf_quad {\n\
+%s x;\n\
+%s y;\n\
+};\n", sc->doubleDef.name, sc->doubleDef.name);
+	PfAppendLine(sc);*/
+	sc->tempLen = sprintf(sc->tempStr, "\
+struct pf_quad2 {\n\
+%s x;\n\
+%s y;\n\
+};\n", sc->quadDef.name, sc->quadDef.name);
+	PfAppendLine(sc);
+#else	
+	/*sc->tempLen = sprintf(sc->tempStr, "\
+typedef struct pf_quad {\n\
+%s x;\n\
+%s y;\n\
+};\n", sc->doubleDef.name, sc->doubleDef.name);
+	PfAppendLine(sc);*/
+	sc->tempLen = sprintf(sc->tempStr, "\
+typedef struct pf_quad2 {\n\
+%s x;\n\
+%s y;\n\
+};\n", sc->quadDef.name, sc->quadDef.name);
+	PfAppendLine(sc);
+#endif
+}
 static inline void appendSinCos20(VkFFTSpecializationConstantsLayout* sc) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	PfContainer* vecType;
@@ -122,46 +150,46 @@ static inline void appendSinCos20(VkFFTSpecializationConstantsLayout* sc) {
 	PfContainer* floatType;
 	PfGetTypeFromCode(sc, sc->floatTypeCode, &floatType);
 	PfContainer temp_double;
-	temp_double.type = 32;
-	PfContainer temp_name;
-	PfAllocateContainerFlexible(sc, &temp_name, 50);
+	temp_double.type = 22;
+	PfContainer temp_name = VKFFT_ZERO_INIT;
 	temp_name.type = 100 + sc->floatTypeCode;
+	PfAllocateContainerFlexible(sc, &temp_name, 50);
 #if(VKFFT_BACKEND==0)
-	temp_double.data.d = 0.63661977236758134307553505349006l;
-	sprintf(temp_name.data.s, "loc_2_PI");
+	temp_double.data.d = pfFPinit("0.63661977236758134307553505349006");
+	sprintf(temp_name.name, "loc_2_PI");
 	PfDefineConstant(sc, &temp_name, &temp_double);
-	temp_double.data.d = 1.5707963267948966192313216916398l;
-	sprintf(temp_name.data.s, "loc_PI_2"); 
+	temp_double.data.d = pfFPinit("1.5707963267948966192313216916398");
+	sprintf(temp_name.name, "loc_PI_2"); 
 	PfDefineConstant(sc, &temp_name, &temp_double); 
-	temp_double.data.d = 0.99999999999999999999962122687403772l;
-	sprintf(temp_name.data.s, "a1");
+	temp_double.data.d = pfFPinit("0.99999999999999999999962122687403772");
+	sprintf(temp_name.name, "a1");
 	PfDefineConstant(sc, &temp_name, &temp_double);
-	temp_double.data.d = -0.166666666666666666637194166219637268l;
-	sprintf(temp_name.data.s, "a3");
+	temp_double.data.d = pfFPinit("-0.166666666666666666637194166219637268");
+	sprintf(temp_name.name, "a3");
 	PfDefineConstant(sc, &temp_name, &temp_double);
-	temp_double.data.d = 0.00833333333333333295212653322266277182l;
-	sprintf(temp_name.data.s, "a5");
+	temp_double.data.d = pfFPinit("0.00833333333333333295212653322266277182");
+	sprintf(temp_name.name, "a5");
 	PfDefineConstant(sc, &temp_name, &temp_double);
-	temp_double.data.d = -0.000198412698412696489459896530659927773l;
-	sprintf(temp_name.data.s, "a7");
+	temp_double.data.d = pfFPinit("-0.000198412698412696489459896530659927773");
+	sprintf(temp_name.name, "a7");
 	PfDefineConstant(sc, &temp_name, &temp_double);
-	temp_double.data.d = 2.75573192239364018847578909205399262e-6l;
-	sprintf(temp_name.data.s, "a9");
+	temp_double.data.d = pfFPinit("2.75573192239364018847578909205399262e-6");
+	sprintf(temp_name.name, "a9");
 	PfDefineConstant(sc, &temp_name, &temp_double);
-	temp_double.data.d = -2.50521083781017605729370231280411712e-8l;
-	sprintf(temp_name.data.s, "a11");
+	temp_double.data.d = pfFPinit("-2.50521083781017605729370231280411712e-8");
+	sprintf(temp_name.name, "a11");
 	PfDefineConstant(sc, &temp_name, &temp_double);
-	temp_double.data.d = 1.60590431721336942356660057796782021e-10l;
-	sprintf(temp_name.data.s, "a13");
+	temp_double.data.d = pfFPinit("1.60590431721336942356660057796782021e-10");
+	sprintf(temp_name.name, "a13");
 	PfDefineConstant(sc, &temp_name, &temp_double);
-	temp_double.data.d = -7.64712637907716970380859898835680587e-13l;
-	sprintf(temp_name.data.s, "a15");
+	temp_double.data.d = pfFPinit("-7.64712637907716970380859898835680587e-13");
+	sprintf(temp_name.name, "a15");
 	PfDefineConstant(sc, &temp_name, &temp_double);
-	temp_double.data.d = 2.81018528153898622636194976499656274e-15l;
-	sprintf(temp_name.data.s, "a17");
+	temp_double.data.d = pfFPinit("2.81018528153898622636194976499656274e-15");
+	sprintf(temp_name.name, "a17");
 	PfDefineConstant(sc, &temp_name, &temp_double);
-	temp_double.data.d = -7.97989713648499642889739108679114937e-18l;
-	sprintf(temp_name.data.s, "ab");
+	temp_double.data.d = pfFPinit("-7.97989713648499642889739108679114937e-18");
+	sprintf(temp_name.name, "ab");
 	PfDefineConstant(sc, &temp_name, &temp_double);
 
 	sc->tempLen = sprintf(sc->tempStr, "\
@@ -180,7 +208,7 @@ static inline void appendSinCos20(VkFFTSpecializationConstantsLayout* sc) {
 	r = x < 0 ? -r : r;\n\
 	cos_sin.y = (quadrant & 2) != 0 ? -r : r;\n\
 	return cos_sin;\n\
-}\n\n", sc->functionDef.data.s, vecType->data.s, vecType->data.s);
+}\n\n", sc->functionDef.name, vecType->name, vecType->name);
 	PfAppendLine(sc);
 #endif
 	PfDeallocateContainer(sc, &temp_name);
@@ -205,29 +233,69 @@ static inline void appendConversion(VkFFTSpecializationConstantsLayout* sc) {
 		PfGetTypeFromCode(sc, sc->vecTypeOutputMemoryCode, &vecTypeDifferent);
 		PfGetTypeFromCode(sc, sc->floatTypeOutputMemoryCode, &floatTypeDifferent);
 	}
+	if (((sc->vecTypeCode % 100) / 10) == 3) {
+		sc->tempLen = sprintf(sc->tempStr, "\
+%s%s conv_%s_to_pf_quad(%s input)\n\
+{\n\
+	%s ret_val;\n\
+	ret_val.x = (%s) input;\n\
+	ret_val.y = (%s) 0;\n\
+	return ret_val;\n\
+}\n\n", sc->functionDef.name, sc->quadDef.name, sc->doubleDef.name, sc->doubleDef.name, sc->quadDef.name, sc->doubleDef.name, sc->doubleDef.name);
+		PfAppendLine(sc);
+		sc->tempLen = sprintf(sc->tempStr, "\
+%s%s conv_pf_quad_to_%s(%s input)\n\
+{\n\
+	%s ret_val;\n\
+	ret_val = (%s) input.x;\n\
+	return ret_val;\n\
+}\n\n", sc->functionDef.name, sc->doubleDef.name, sc->doubleDef.name, sc->quadDef.name, sc->doubleDef.name, sc->doubleDef.name);
+		PfAppendLine(sc);
 
+		sc->tempLen = sprintf(sc->tempStr, "\
+%s%s conv_%s_to_%s(%s input)\n\
+{\n\
+	%s ret_val;\n\
+	ret_val.x.x = (%s) input.x;\n\
+	ret_val.y.x = (%s) input.y;\n\
+	ret_val.x.y = (%s) 0;\n\
+	ret_val.y.y = (%s) 0;\n\
+	return ret_val;\n\
+}\n\n", sc->functionDef.name, sc->quad2Def.name, sc->double2Def.name, sc->quad2Def.name, sc->double2Def.name, sc->quad2Def.name, sc->doubleDef.name, sc->doubleDef.name, sc->doubleDef.name, sc->doubleDef.name);
+		PfAppendLine(sc);
+		sc->tempLen = sprintf(sc->tempStr, "\
+%s%s conv_%s_to_%s(%s input)\n\
+{\n\
+	%s ret_val;\n\
+	ret_val.x = (%s) input.x.x;\n\
+	ret_val.y = (%s) input.y.x;\n\
+	return ret_val;\n\
+}\n\n", sc->functionDef.name, sc->double2Def.name, sc->quad2Def.name, sc->double2Def.name, sc->quad2Def.name, sc->double2Def.name, sc->doubleDef.name, sc->doubleDef.name);
+		PfAppendLine(sc);
+	}
+	else {
 #if(VKFFT_BACKEND==0)
 #else
-	sc->tempLen = sprintf(sc->tempStr, "\
+		sc->tempLen = sprintf(sc->tempStr, "\
 %s%s conv_%s(%s input)\n\
 {\n\
 	%s ret_val;\n\
 	ret_val.x = (%s) input.x;\n\
 	ret_val.y = (%s) input.y;\n\
 	return ret_val;\n\
-}\n\n", sc->functionDef.data.s, vecType->data.s, vecType->data.s, vecTypeDifferent->data.s, vecType->data.s, floatType->data.s, floatType->data.s);
-	PfAppendLine(sc);
-	sc->tempLen = sprintf(sc->tempStr, "\
+}\n\n", sc->functionDef.name, vecType->name, vecType->name, vecTypeDifferent->name, vecType->name, floatType->name, floatType->name);
+		PfAppendLine(sc);
+		sc->tempLen = sprintf(sc->tempStr, "\
 %s%s conv_%s(%s input)\n\
 {\n\
 	%s ret_val;\n\
 	ret_val.x = (%s) input.x;\n\
 	ret_val.y = (%s) input.y;\n\
 	return ret_val;\n\
-}\n\n", sc->functionDef.data.s, vecTypeDifferent->data.s, vecTypeDifferent->data.s, vecType->data.s, vecTypeDifferent->data.s, floatTypeDifferent->data.s, floatTypeDifferent->data.s);
-	PfAppendLine(sc);
+}\n\n", sc->functionDef.name, vecTypeDifferent->name, vecTypeDifferent->name, vecType->name, vecTypeDifferent->name, floatTypeDifferent->name, floatTypeDifferent->name);
+		PfAppendLine(sc);
 #endif
-	
+	}
 	return;
 }
 

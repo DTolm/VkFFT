@@ -39,10 +39,10 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 	char* code0 = axis->specializationConstants.code0;
 #if(VKFFT_BACKEND==0)
 	uint32_t* code;
-	uint64_t codeSize;
+	pfUINT codeSize;
 	if (app->configuration.loadApplicationFromString) {
 		char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-		memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
+		memcpy(&codeSize, localStrPointer, sizeof(pfUINT));
 		code = (uint32_t*)malloc(codeSize);
 		if (!code) {
 			free(code0);
@@ -50,8 +50,8 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
-		memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
-		app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
+		memcpy(code, localStrPointer + sizeof(pfUINT), codeSize);
+		app->currentApplicationStringPos += codeSize + sizeof(pfUINT);
 	}
 	else
 	{
@@ -298,10 +298,10 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 	}
 #elif(VKFFT_BACKEND==1)
 	char* code;
-	uint64_t codeSize;
+	pfUINT codeSize;
 	if (app->configuration.loadApplicationFromString) {
 		char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-		memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
+		memcpy(&codeSize, localStrPointer, sizeof(pfUINT));
 		code = (char*)malloc(codeSize);
 		if (!code) {
 			free(code0);
@@ -309,8 +309,8 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
-		memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
-		app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
+		memcpy(code, localStrPointer + sizeof(pfUINT), codeSize);
+		app->currentApplicationStringPos += codeSize + sizeof(pfUINT);
 	}
 	else {
 		nvrtcProgram prog;
@@ -329,6 +329,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM;
 		}
+		int numOpts = 1;
 		char* opts[5];
 		opts[0] = (char*)malloc(sizeof(char) * 50);
 		if (!opts[0]) {
@@ -342,12 +343,27 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 #else
 		sprintf(opts[0], "--gpu-architecture=compute_%" PRIu64 "%" PRIu64 "", app->configuration.computeCapabilityMajor, app->configuration.computeCapabilityMinor);
 #endif
+		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
+			opts[1] = (char*)malloc(sizeof(char) * 50);
+			if (!opts[1]) {
+				free(code0);
+				code0 = 0;
+				deleteVkFFT(app);
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+			numOpts++;
+			sprintf(opts[1], "-fmad=false");
+		}
 		//result = nvrtcAddNameExpression(prog, "&consts");
 		//if (result != NVRTC_SUCCESS) printf("1.5 error: %s\n", nvrtcGetErrorString(result));
 		result = nvrtcCompileProgram(prog,  // prog
-			1,     // numOptions
+			numOpts,     // numOptions
 			(const char* const*)opts); // options
+
 		free(opts[0]);
+		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
+			free(opts[1]);
+
 		if (result != NVRTC_SUCCESS) {
 			printf("nvrtcCompileProgram error: %s\n", nvrtcGetErrorString(result));
 			char* log = (char*)malloc(sizeof(char) * 4000000);
@@ -444,7 +460,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		deleteVkFFT(app);
 		return VKFFT_ERROR_FAILED_TO_GET_FUNCTION;
 	}
-	if ((uint64_t)axis->specializationConstants.usedSharedMemory.data.i > app->configuration.sharedMemorySizeStatic) {
+	if ((pfUINT)axis->specializationConstants.usedSharedMemory.data.i > app->configuration.sharedMemorySizeStatic) {
 		result2 = cuFuncSetAttribute(axis->VkFFTKernel, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, (int)axis->specializationConstants.usedSharedMemory.data.i);
 		if (result2 != CUDA_SUCCESS) {
 			printf("cuFuncSetAttribute error: %d\n", result2);
@@ -475,10 +491,10 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 	}
 #elif(VKFFT_BACKEND==2)
 	uint32_t* code;
-	uint64_t codeSize;
+	pfUINT codeSize;
 	if (app->configuration.loadApplicationFromString) {
 		char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-		memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
+		memcpy(&codeSize, localStrPointer, sizeof(pfUINT));
 		code = (uint32_t*)malloc(codeSize);
 		if (!code) {
 			free(code0);
@@ -486,8 +502,8 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
-		memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
-		app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
+		memcpy(code, localStrPointer + sizeof(pfUINT), codeSize);
+		app->currentApplicationStringPos += codeSize + sizeof(pfUINT);
 	}
 	else
 	{
@@ -515,10 +531,26 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 				return VKFFT_ERROR_FAILED_TO_ADD_NAME_EXPRESSION;
 			}
 		}
+		int numOpts = 0;
+		char* opts[5];
+		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
+			opts[0] = (char*)malloc(sizeof(char) * 50);
+			if (!opts[0]) {
+				free(code0);
+				code0 = 0;
+				deleteVkFFT(app);
+				return VKFFT_ERROR_MALLOC_FAILED;
+			}
+			numOpts++;
+			sprintf(opts[0], "-ffp-contract=off");
+		}
 
 		result = hiprtcCompileProgram(prog,  // prog
-			0,     // numOptions
-			0); // options
+			numOpts,     // numOptions
+			(const char**)opts); // options
+
+		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
+			free(opts[0]);	
 		if (result != HIPRTC_SUCCESS) {
 			printf("hiprtcCompileProgram error: %s\n", hiprtcGetErrorString(result));
 			char* log = (char*)malloc(sizeof(char) * 100000);
@@ -601,7 +633,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		deleteVkFFT(app);
 		return VKFFT_ERROR_FAILED_TO_GET_FUNCTION;
 	}
-	if ((uint64_t)axis->specializationConstants.usedSharedMemory.data.i > app->configuration.sharedMemorySizeStatic) {
+	if ((pfUINT)axis->specializationConstants.usedSharedMemory.data.i > app->configuration.sharedMemorySizeStatic) {
 		result2 = hipFuncSetAttribute(axis->VkFFTKernel, hipFuncAttributeMaxDynamicSharedMemorySize, (int)axis->specializationConstants.usedSharedMemory.data.i);
 		//result2 = hipFuncSetCacheConfig(axis->VkFFTKernel, hipFuncCachePreferShared);
 		if (result2 != hipSuccess) {
@@ -634,9 +666,9 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 #elif(VKFFT_BACKEND==3)
 	if (app->configuration.loadApplicationFromString) {
 		char* code;
-		uint64_t codeSize;
+		pfUINT codeSize;
 		char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-		memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
+		memcpy(&codeSize, localStrPointer, sizeof(pfUINT));
 		size_t codeSize_size_t = (size_t)codeSize;
 		code = (char*)malloc(codeSize);
 		if (!code) {
@@ -645,8 +677,8 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
-		memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
-		app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
+		memcpy(code, localStrPointer + sizeof(pfUINT), codeSize);
+		app->currentApplicationStringPos += codeSize + sizeof(pfUINT);
 		const unsigned char* temp_code = (const unsigned char*)code;
 		axis->program = clCreateProgramWithBinary(app->configuration.context[0], 1, app->configuration.device, &codeSize_size_t, (const unsigned char**)(&temp_code), 0, &res);
 		if (res != CL_SUCCESS) {
@@ -703,7 +735,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_COMPILE_PROGRAM;
 		}
-		axis->binarySize = (uint64_t)codeSize;
+		axis->binarySize = (pfUINT)codeSize;
 		axis->binary = (char*)malloc(axis->binarySize);
 		if (!axis->binary) {
 			free(code0);
@@ -736,10 +768,10 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 	}
 #elif(VKFFT_BACKEND==4)
 	uint32_t* code;
-	uint64_t codeSize;
+	pfUINT codeSize;
 	if (app->configuration.loadApplicationFromString) {
 		char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-		memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
+		memcpy(&codeSize, localStrPointer, sizeof(pfUINT));
 		code = (uint32_t*)malloc(codeSize);
 		if (!code) {
 			free(code0);
@@ -747,8 +779,8 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
-		memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
-		app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
+		memcpy(code, localStrPointer + sizeof(pfUINT), codeSize);
+		app->currentApplicationStringPos += codeSize + sizeof(pfUINT);
 
 		const char* pBuildFlags = (app->configuration.useUint64) ? "-ze-opt-greater-than-4GB-buffer-required" : 0;
 		ze_module_desc_t moduleDesc = {
@@ -774,7 +806,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 	}
 	else {
 		size_t codelen = strlen(code0);
-		uint64_t successOpen = 0;
+		pfUINT successOpen = 0;
 		FILE* temp;
 		char fname_cl[100];
 		char fname_bc[100];
@@ -803,7 +835,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		system(system_call);
 		temp = fopen(fname_spv, "rb");
 		fseek(temp, 0L, SEEK_END);
-		uint64_t spv_size = ftell(temp);
+		pfUINT spv_size = ftell(temp);
 		rewind(temp);
 
 		uint8_t* spv_binary = (uint8_t*)malloc(spv_size);
@@ -889,9 +921,9 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 	NS::Error* error;
 	if (app->configuration.loadApplicationFromString) {
 		char* code;
-		uint64_t codeSize;
+		pfUINT codeSize;
 		char* localStrPointer = (char*)app->configuration.loadApplicationString + app->currentApplicationStringPos;
-		memcpy(&codeSize, localStrPointer, sizeof(uint64_t));
+		memcpy(&codeSize, localStrPointer, sizeof(pfUINT));
 		size_t codeSize_size_t = (size_t)codeSize;
 		code = (char*)malloc(codeSize);
 		if (!code) {
@@ -900,8 +932,8 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
-		memcpy(code, localStrPointer + sizeof(uint64_t), codeSize);
-		app->currentApplicationStringPos += codeSize + sizeof(uint64_t);
+		memcpy(code, localStrPointer + sizeof(pfUINT), codeSize);
+		app->currentApplicationStringPos += codeSize + sizeof(pfUINT);
 		dispatch_data_t data = dispatch_data_create(code, codeSize, 0, 0);
 		axis->library = app->configuration.device->newLibrary(data, &error);
 		free(code);

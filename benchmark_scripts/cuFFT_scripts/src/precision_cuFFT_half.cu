@@ -33,7 +33,7 @@ void launch_precision_cuFFT_half(void* inputC, void* output_cuFFT, int device_id
 	cufftResult res = cufftCreate(&planHalf);
 	size_t ws = 0;
 	long long local_dims[3];
-	switch (dims[3]) {
+	switch (dims[4]) {
 	case 1:
 		local_dims[0] = (long long)dims[0];
 		local_dims[1] = (long long)dims[1];
