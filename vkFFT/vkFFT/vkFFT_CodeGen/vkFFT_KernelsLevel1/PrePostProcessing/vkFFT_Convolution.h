@@ -258,7 +258,7 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 			temp_int.data.i = sc->fftDim.data.i - i * localSize.data.i;
 			PfIf_lt_start(sc, localInvocationID, &temp_int);
 		}
-		switch (strideType) {
+		switch (strideType % 10) {
 		case 0:
 		{
 			if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {

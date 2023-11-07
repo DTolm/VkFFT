@@ -60,9 +60,9 @@ static inline VkFFTResult shaderGen_R2C_even_decomposition(VkFFTSpecializationCo
 	appendPushConstants(sc);
 
 	int id = 0;
-	appendInputLayoutVkFFT(sc, id, type);
+	appendInputLayoutVkFFT(sc, id);
 	id++;
-	appendOutputLayoutVkFFT(sc, id, type);
+	appendOutputLayoutVkFFT(sc, id);
 	id++;
 	if (sc->LUT) {
 		appendLUTLayoutVkFFT(sc, id);

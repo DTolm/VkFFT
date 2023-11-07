@@ -44,7 +44,7 @@ void launch_precision_rocFFT_r2c(void* inputC, void* output_rocFFT, int device_i
 	}
 	hipDeviceSynchronize();
 	hipfftDestroy(planR2C);
-	switch (dims[3]) {
+	switch (dims[4]) {
 	case 1:
 		hipfftPlan1d(&planR2C, dims[0], HIPFFT_C2R, 1);
 		break;

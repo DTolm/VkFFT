@@ -201,12 +201,12 @@ typedef struct {
 	pfUINT numberBatches;// N - used to perform multiple batches of initial data. Default 1
 	pfUINT useUint64;// use 64-bit addressing mode in generated kernels
 	pfUINT omitDimension[VKFFT_MAX_FFT_DIMENSIONS];//disable FFT for this dimension (0 - FFT enabled, 1 - FFT disabled). Default 0. Doesn't work for R2C dimension 0 for now. Doesn't work with convolutions.
-	pfUINT performBandwidthBoost;//try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise 
+	int performBandwidthBoost;//try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT, 2 for Bluestein's algorithm (or -1 if DCT), 0 otherwise 
 	pfUINT groupedBatch[VKFFT_MAX_FFT_DIMENSIONS];// try to force this many FFTs to be perfromed by one threadblock for each dimension
 
 	pfUINT doublePrecision; //perform calculations in double precision (0 - off, 1 - on).
-	pfUINT quadDoubleDoublePrecision; //perform calculations in double-double emulation of quad precision (0 - off, 1 - on).
-	pfUINT quadDoubleDoublePrecisionDoubleMemory; //perform calculations in double-double emulation of quad precision, while all memory storage is done in FP64.
+	pfUINT quadDoubleDoublePrecision; //perform calculations in double-double quad precision (0 - off, 1 - on).
+	pfUINT quadDoubleDoublePrecisionDoubleMemory; //perform calculations in double-double quad precision, while all memory storage is done in FP64.
 	pfUINT halfPrecision; //perform calculations in half precision (0 - off, 1 - on)
 	pfUINT halfPrecisionMemoryOnly; //use half precision only as input/output buffer. Input/Output have to be allocated as half, buffer/tempBuffer have to be allocated as float (out of place mode only). Specify isInputFormatted and isOutputFormatted to use (0 - off, 1 - on)
 	pfUINT doublePrecisionFloatMemory; //use FP64 precision for all calculations, while all memory storage is done in FP32.
@@ -215,6 +215,8 @@ typedef struct {
 	pfUINT performDCT; //perform DCT transformation (X - DCT type, 1-4)
 	pfUINT performDST; //perform DST transformation (X - DCT type, 1-4)
 	pfUINT disableMergeSequencesR2C; //disable merging of two real sequences to reduce calculations (0 - off, 1 - on)
+	pfUINT forceCallbackVersionRealTransforms; //force callback version of R2C and R2R algorithms for all usecases (0 - off, 1 - on)
+
 	pfUINT normalize; //normalize inverse transform (0 - off, 1 - on)
 	pfUINT disableReorderFourStep; // disables unshuffling of Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on)
 	pfINT useLUT; //switches from calculating sincos to using precomputed LUT tables (-1 - off, 0 - auto, 1 - on). Configured by initialization routine
@@ -411,6 +413,7 @@ typedef enum VkFFTResult {
 	VKFFT_ERROR_EMPTY_applicationString = 2013,
 	VKFFT_ERROR_EMPTY_useCustomBluesteinPaddingPattern_arrays = 2014,
 	VKFFT_ERROR_EMPTY_app = 2015,
+	VKFFT_ERROR_INVALID_user_tempBuffer_too_small = 2016,
 	VKFFT_ERROR_UNSUPPORTED_RADIX = 3001,
 	VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH = 3002,
 	VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C = 3003,
@@ -547,6 +550,8 @@ static inline const char* getVkFFTErrorString(VkFFTResult result)
 		return "VKFFT_ERROR_EMPTY_useCustomBluesteinPaddingPattern_arrays";
 	case VKFFT_ERROR_EMPTY_app:
 		return "VKFFT_ERROR_EMPTY_app";
+	case VKFFT_ERROR_INVALID_user_tempBuffer_too_small:
+		return "VKFFT_ERROR_INVALID_user_tempBuffer_too_small";
 	case VKFFT_ERROR_UNSUPPORTED_RADIX:
 		return "VKFFT_ERROR_UNSUPPORTED_RADIX";
 	case VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH:
@@ -749,6 +754,7 @@ typedef struct {
 	PfContainer startDCT4LUT;
 	int performR2C;
 	int performR2CmultiUpload;
+	int performR2RmultiUpload;
 	int performDCT;
 	int performDST; 
 	int performBandwidthBoost;
@@ -827,6 +833,7 @@ typedef struct {
 	int axisSwapped;
 	int stridedSharedLayout;
 	int mergeSequencesR2C;
+	int forceCallbackVersionRealTransforms;
 
 	int numBuffersBound[10];
 	int convolutionBindingID;
@@ -874,6 +881,7 @@ typedef struct {
 	PfContainer* disableThreadsEnd;
 	PfContainer sdataID;
 	PfContainer inoutID;
+	PfContainer inoutID2;
 	PfContainer inoutID_x;
 	PfContainer inoutID_y;
 	PfContainer combinedID;
@@ -1113,7 +1121,9 @@ typedef struct {
 	pfUINT axisSplit[VKFFT_MAX_FFT_DIMENSIONS][4];
 	VkFFTAxis axes[VKFFT_MAX_FFT_DIMENSIONS][4];
 
-	pfUINT multiUploadR2C;
+	pfUINT bigSequenceEvenR2C;
+	//pfUINT multiUploadR2R;
+	
 	pfUINT actualPerformR2CPerAxis[VKFFT_MAX_FFT_DIMENSIONS]; // automatically specified, shows if R2C is actually performed or inside FFT or as a separate step
 	VkFFTAxis R2Cdecomposition;
 	VkFFTAxis inverseBluesteinAxes[VKFFT_MAX_FFT_DIMENSIONS][4];

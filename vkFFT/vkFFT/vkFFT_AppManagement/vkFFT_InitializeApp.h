@@ -1304,10 +1304,10 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (inputLaunchConfiguration.performDST != 0) {
 		app->configuration.performDST = inputLaunchConfiguration.performDST;
 	}
-	if (inputLaunchConfiguration.disableMergeSequencesR2C != 0) {
-		app->configuration.disableMergeSequencesR2C = inputLaunchConfiguration.disableMergeSequencesR2C;
+	if (inputLaunchConfiguration.forceCallbackVersionRealTransforms != 0)  app->configuration.forceCallbackVersionRealTransforms = inputLaunchConfiguration.forceCallbackVersionRealTransforms; 
+	if ((inputLaunchConfiguration.disableMergeSequencesR2C != 0) || app->configuration.forceCallbackVersionRealTransforms) {
+		app->configuration.disableMergeSequencesR2C = 1;
 	}
-
 	app->configuration.normalize = 0;
 	if (inputLaunchConfiguration.normalize != 0)	app->configuration.normalize = inputLaunchConfiguration.normalize;
 	if (inputLaunchConfiguration.makeForwardPlanOnly != 0)	app->configuration.makeForwardPlanOnly = inputLaunchConfiguration.makeForwardPlanOnly;
@@ -1415,7 +1415,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (inputLaunchConfiguration.halfThreads != 0)	app->configuration.halfThreads = inputLaunchConfiguration.halfThreads;
 	if (inputLaunchConfiguration.swapTo2Stage4Step != 0)	app->configuration.swapTo2Stage4Step = inputLaunchConfiguration.swapTo2Stage4Step;
 	if (inputLaunchConfiguration.swapTo3Stage4Step != 0)	app->configuration.swapTo3Stage4Step = inputLaunchConfiguration.swapTo3Stage4Step;
-	if ((app->configuration.performDCT > 0) || (app->configuration.performDST > 0)) app->configuration.performBandwidthBoost = -1;
 	if (inputLaunchConfiguration.performBandwidthBoost != 0)	app->configuration.performBandwidthBoost = inputLaunchConfiguration.performBandwidthBoost;
 #if(VKFFT_BACKEND==0)	
 	if (inputLaunchConfiguration.stagingBuffer != 0)	app->configuration.stagingBuffer = inputLaunchConfiguration.stagingBuffer;
@@ -1519,7 +1518,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 						}
 					}
 				}
-				if ((app->localFFTPlan_inverse->multiUploadR2C) && (i == 0)) {
+				if ((app->localFFTPlan_inverse->bigSequenceEvenR2C) && (i == 0)) {
 					resFFT = VkFFTPlanR2CMultiUploadDecomposition(app, app->localFFTPlan_inverse, 1);
 					if (resFFT != VKFFT_SUCCESS) {
 						deleteVkFFT(app);
@@ -1578,7 +1577,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 						}
 					}
 				}
-				if ((app->localFFTPlan->multiUploadR2C) && (i == 0)) {
+				if ((app->localFFTPlan->bigSequenceEvenR2C) && (i == 0)) {
 					resFFT = VkFFTPlanR2CMultiUploadDecomposition(app, app->localFFTPlan, 0);
 					if (resFFT != VKFFT_SUCCESS) {
 						deleteVkFFT(app);
@@ -1591,6 +1590,86 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
+	}
+
+	if (app->configuration.allocateTempBuffer && (app->configuration.tempBuffer == 0)) {
+#if(VKFFT_BACKEND==0)
+		VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+		cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+		hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+		cl_int res = CL_SUCCESS;
+#elif(VKFFT_BACKEND==4)
+		ze_result_t res = ZE_RESULT_SUCCESS;
+#elif(VKFFT_BACKEND==5)
+#endif
+#if(VKFFT_BACKEND==0)
+		app->configuration.tempBuffer = (VkBuffer*)malloc(sizeof(VkBuffer));
+		if (!app->configuration.tempBuffer) {
+			deleteVkFFT(app);
+			return VKFFT_ERROR_MALLOC_FAILED;
+		}
+		resFFT = allocateBufferVulkan(app, app->configuration.tempBuffer, &app->configuration.tempBufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, app->configuration.tempBufferSize[0]);
+		if (resFFT != VKFFT_SUCCESS) {
+			deleteVkFFT(app);
+			return resFFT;
+		}
+#elif(VKFFT_BACKEND==1)
+		app->configuration.tempBuffer = (void**)malloc(sizeof(void*));
+		if (!app->configuration.tempBuffer) {
+			deleteVkFFT(app);
+			return VKFFT_ERROR_MALLOC_FAILED;
+		}
+		res = cudaMalloc(app->configuration.tempBuffer, app->configuration.tempBufferSize[0]);
+		if (res != cudaSuccess) {
+			deleteVkFFT(app);
+			return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+		}
+#elif(VKFFT_BACKEND==2)
+		app->configuration.tempBuffer = (void**)malloc(sizeof(void*));
+		if (!app->configuration.tempBuffer) {
+			deleteVkFFT(app);
+			return VKFFT_ERROR_MALLOC_FAILED;
+		}
+		res = hipMalloc(app->configuration.tempBuffer, app->configuration.tempBufferSize[0]);
+		if (res != hipSuccess) {
+			deleteVkFFT(app);
+			return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+		}
+#elif(VKFFT_BACKEND==3)
+		app->configuration.tempBuffer = (cl_mem*)malloc(sizeof(cl_mem));
+		if (!app->configuration.tempBuffer) {
+			deleteVkFFT(app);
+			return VKFFT_ERROR_MALLOC_FAILED;
+		}
+		app->configuration.tempBuffer[0] = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_WRITE, app->configuration.tempBufferSize[0], 0, &res);
+		if (res != CL_SUCCESS) {
+			deleteVkFFT(app);
+			return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+		}
+#elif(VKFFT_BACKEND==4)
+		app->configuration.tempBuffer = (void**)malloc(sizeof(void*));
+		if (!app->configuration.tempBuffer) {
+			deleteVkFFT(app);
+			return VKFFT_ERROR_MALLOC_FAILED;
+		}
+		ze_device_mem_alloc_desc_t device_desc = VKFFT_ZERO_INIT;
+		device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+		res = zeMemAllocDevice(app->configuration.context[0], &device_desc, app->configuration.tempBufferSize[0], sizeof(float), app->configuration.device[0], app->configuration.tempBuffer);
+		if (res != ZE_RESULT_SUCCESS) {
+			deleteVkFFT(app);
+			return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+		}
+#elif(VKFFT_BACKEND==5)
+		app->configuration.tempBuffer = (MTL::Buffer**)malloc(sizeof(MTL::Buffer*));
+		if (!app->configuration.tempBuffer) {
+			deleteVkFFT(app);
+			return VKFFT_ERROR_MALLOC_FAILED;
+		}
+		app->configuration.tempBuffer[0] = app->configuration.device->newBuffer(app->configuration.tempBufferSize[0], MTL::ResourceStorageModePrivate);
+#endif
 	}
 	for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
 		if (app->useBluesteinFFT[i]) {
@@ -1617,7 +1696,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 						totalBinarySize += app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binarySize + sizeof(pfUINT);
 					}
 				}
-				if ((app->localFFTPlan_inverse->multiUploadR2C) && (i == 0)) {
+				if ((app->localFFTPlan_inverse->bigSequenceEvenR2C) && (i == 0)) {
 					totalBinarySize += app->localFFTPlan_inverse->R2Cdecomposition.binarySize + sizeof(pfUINT);
 				}
 			}
@@ -1632,7 +1711,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 						totalBinarySize += app->localFFTPlan->inverseBluesteinAxes[i][j].binarySize + sizeof(pfUINT);
 					}
 				}
-				if ((app->localFFTPlan->multiUploadR2C) && (i == 0)) {
+				if ((app->localFFTPlan->bigSequenceEvenR2C) && (i == 0)) {
 					totalBinarySize += app->localFFTPlan->R2Cdecomposition.binarySize + sizeof(pfUINT);
 				}
 			}
@@ -1674,7 +1753,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 						currentPos += app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].binarySize;
 					}
 				}
-				if ((app->localFFTPlan_inverse->multiUploadR2C) && (i == 0)) {
+				if ((app->localFFTPlan_inverse->bigSequenceEvenR2C) && (i == 0)) {
 					memcpy(localApplicationStringCast + currentPos, &app->localFFTPlan_inverse->R2Cdecomposition.binarySize, sizeof(pfUINT));
 					currentPos += sizeof(pfUINT);
 					memcpy(localApplicationStringCast + currentPos, app->localFFTPlan_inverse->R2Cdecomposition.binary, app->localFFTPlan_inverse->R2Cdecomposition.binarySize);
@@ -1698,7 +1777,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 						currentPos += app->localFFTPlan->inverseBluesteinAxes[i][j].binarySize;
 					}
 				}
-				if ((app->localFFTPlan->multiUploadR2C) && (i == 0)) {
+				if ((app->localFFTPlan->bigSequenceEvenR2C) && (i == 0)) {
 					memcpy(localApplicationStringCast + currentPos, &app->localFFTPlan->R2Cdecomposition.binarySize, sizeof(pfUINT));
 					currentPos += sizeof(pfUINT);
 					memcpy(localApplicationStringCast + currentPos, app->localFFTPlan->R2Cdecomposition.binary, app->localFFTPlan->R2Cdecomposition.binarySize);

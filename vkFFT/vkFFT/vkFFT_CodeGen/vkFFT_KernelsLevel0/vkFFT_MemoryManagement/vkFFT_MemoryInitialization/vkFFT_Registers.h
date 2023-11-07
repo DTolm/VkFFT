@@ -33,7 +33,7 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 	char name[50];
 	//sc->tempLen = sprintf(sc->tempStr, "	uint dum=gl_LocalInvocationID.x;\n");
 	int additional_registers_c2r = 0;
-	if ((sc->mergeSequencesR2C == 1) && (type == 5))
+	if ((sc->mergeSequencesR2C == 1) && (type == 500))
 		additional_registers_c2r = 2;
 
 	pfINT max_coordinate = 1;
@@ -256,6 +256,14 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 	PfDefine(sc, &sc->inoutID, name);
 	PfSetToZero(sc, &sc->inoutID);
 	
+	if (((type/10)  == 121) || ((type/10)  == 131) || ((type/10) == 141) || ((type/10)  == 143)) {
+		sc->inoutID2.type = 100 + sc->uintTypeCode;
+		PfAllocateContainerFlexible(sc, &sc->inoutID2, 50);
+		sprintf(name, "inoutID2");
+		PfDefine(sc, &sc->inoutID2, name);
+		PfSetToZero(sc, &sc->inoutID2);
+	}
+
 	sc->inoutID_x.type = 100 + sc->uintTypeCode;
 	PfAllocateContainerFlexible(sc, &sc->inoutID_x, 50);
 	sprintf(name, "inoutID_x");
@@ -268,7 +276,7 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 	PfDefine(sc, &sc->inoutID_y, name);
 	PfSetToZero(sc, &sc->inoutID_y);
 
-	if ((sc->fftDim.data.i < sc->fft_dim_full.data.i) || (type == 1) || (type == 111) || (type == 121) || (type == 131) || (type == 143) || (type == 145) || (type == 2) || (sc->performZeropaddingFull[0]) || (sc->performZeropaddingFull[1]) || (sc->performZeropaddingFull[2])) {
+	if ((sc->fftDim.data.i < sc->fft_dim_full.data.i) || ((type % 10) == 1) || ((type%10) == 2) || (sc->performZeropaddingFull[0]) || (sc->performZeropaddingFull[1]) || (sc->performZeropaddingFull[2])) {
 		sc->disableThreads.type = 101;
 		PfAllocateContainerFlexible(sc, &sc->disableThreads, 50);
 		sprintf(name, "disableThreads");
@@ -466,7 +474,7 @@ static inline void freeRegisterInitialization(VkFFTSpecializationConstantsLayout
 	temp_int.type = 31;
 
 	int additional_registers_c2r = 0;
-	if ((sc->mergeSequencesR2C == 1) && (type == 5))
+	if ((sc->mergeSequencesR2C == 1) && (type == 500))
 		additional_registers_c2r = 2;
 
 	pfINT max_coordinate = 1;
@@ -579,6 +587,8 @@ static inline void freeRegisterInitialization(VkFFTSpecializationConstantsLayout
 	PfDeallocateContainer(sc, &sc->sdataID);
 	PfDeallocateContainer(sc, &sc->combinedID);
 	PfDeallocateContainer(sc, &sc->inoutID);
+	if (((type/10)  == 121) || ((type/10)  == 131) || ((type/10) == 141) || ((type/10)  == 143)) 
+		PfDeallocateContainer(sc, &sc->inoutID2);
 	PfDeallocateContainer(sc, &sc->inoutID_x);
 	PfDeallocateContainer(sc, &sc->inoutID_y);
 

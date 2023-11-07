@@ -107,6 +107,6 @@
 #include "vkFFT/vkFFT_AppManagement/vkFFT_DeleteApp.h"
 
 static inline int VkFFTGetVersion() {
-	return 10302; //X.XX.XX format
+	return 10303; //X.XX.XX format
 }
 #endif

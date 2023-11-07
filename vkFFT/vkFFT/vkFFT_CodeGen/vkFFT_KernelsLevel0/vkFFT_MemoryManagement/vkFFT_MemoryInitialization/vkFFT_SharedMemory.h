@@ -41,8 +41,8 @@ static inline void appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLayout* s
 		additionalR2Cshared = (sc->fftDim.data.i % 2 == 0) ? 2 : 1;
 		if ((sc->performDCT == 2) || (sc->performDST == 2) || (sc->performDCT == 3) || (sc->performDST == 3) || (((sc->performDCT == 4) || (sc->performDST == 4)) && ((sc->fftDim.data.i % 2) != 0))) additionalR2Cshared = 1;
 	}
-	switch (type) {
-	case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144://single_c2c + single_r2c
+	switch (type % 10) {
+	case 0: //single_c2c + single_r2c
 	{
 		sc->resolveBankConflictFirstStages = 0;
 		sc->sharedStrideBankConflictFirstStages.type = 31;
@@ -155,7 +155,7 @@ static inline void appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLayout* s
 		}
 		break;
 				}
-	case 1: case 2: case 111: case 121: case 131: case 141: case 143: case 145://grouped_c2c + single_c2c_strided
+	case 1: case 2: //grouped_c2c + single_c2c_strided
 	{
 		pfUINT shift = (sc->fftDim.data.i < (sc->numSharedBanks / 2)) ? (sc->numSharedBanks / 2) / sc->fftDim.data.i : 1;
 		sc->sharedStrideReadWriteConflict.type = 31;
