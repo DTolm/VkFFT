@@ -1415,6 +1415,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (inputLaunchConfiguration.halfThreads != 0)	app->configuration.halfThreads = inputLaunchConfiguration.halfThreads;
 	if (inputLaunchConfiguration.swapTo2Stage4Step != 0)	app->configuration.swapTo2Stage4Step = inputLaunchConfiguration.swapTo2Stage4Step;
 	if (inputLaunchConfiguration.swapTo3Stage4Step != 0)	app->configuration.swapTo3Stage4Step = inputLaunchConfiguration.swapTo3Stage4Step;
+	if ((app->configuration.performDCT > 0) || (app->configuration.performDST > 0)) app->configuration.performBandwidthBoost = -1;
 	if (inputLaunchConfiguration.performBandwidthBoost != 0)	app->configuration.performBandwidthBoost = inputLaunchConfiguration.performBandwidthBoost;
 #if(VKFFT_BACKEND==0)	
 	if (inputLaunchConfiguration.stagingBuffer != 0)	app->configuration.stagingBuffer = inputLaunchConfiguration.stagingBuffer;
@@ -1670,6 +1671,49 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 		}
 		app->configuration.tempBuffer[0] = app->configuration.device->newBuffer(app->configuration.tempBufferSize[0], MTL::ResourceStorageModePrivate);
 #endif
+
+		if (!app->configuration.makeInversePlanOnly) {
+			for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
+				for (pfUINT j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++) {
+					app->localFFTPlan->axes[i][j].specializationConstants.performBufferSetUpdate = 1;
+					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, &app->localFFTPlan->axes[i][j], i, j, 1);
+					if (resFFT != VKFFT_SUCCESS) return resFFT;
+				}
+				if (app->useBluesteinFFT[i] && (app->localFFTPlan->numAxisUploads[i] > 1)) {
+					for (pfUINT j = 1; j < app->localFFTPlan->numAxisUploads[i]; j++) {
+						app->localFFTPlan->inverseBluesteinAxes[i][j].specializationConstants.performBufferSetUpdate = 1;
+						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, &app->localFFTPlan->inverseBluesteinAxes[i][j], i, j, 0);
+						if (resFFT != VKFFT_SUCCESS) return resFFT;
+					}
+				}
+			}
+			if (app->localFFTPlan->bigSequenceEvenR2C) {
+				app->localFFTPlan->R2Cdecomposition.specializationConstants.performBufferSetUpdate = 1;
+				resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan, &app->localFFTPlan->R2Cdecomposition, 0, 0, 0);
+                if (resFFT != VKFFT_SUCCESS) return resFFT;
+			}
+		}
+		if (!app->configuration.makeForwardPlanOnly) {
+			for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
+				for (pfUINT j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
+					app->localFFTPlan_inverse->axes[i][j].specializationConstants.performBufferSetUpdate = 1;
+					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, &app->localFFTPlan_inverse->axes[i][j], i, j, 1);
+					if (resFFT != VKFFT_SUCCESS) return resFFT;
+				}
+				if (app->useBluesteinFFT[i] && (app->localFFTPlan_inverse->numAxisUploads[i] > 1)) {
+					for (pfUINT j = 1; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
+						app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].specializationConstants.performBufferSetUpdate = 1;
+						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, &app->localFFTPlan_inverse->inverseBluesteinAxes[i][j], i, j, 1);
+                        if (resFFT != VKFFT_SUCCESS) return resFFT;
+					}
+				}
+			}
+			if (app->localFFTPlan_inverse->bigSequenceEvenR2C) {
+				app->localFFTPlan_inverse->R2Cdecomposition.specializationConstants.performBufferSetUpdate = 1;
+				resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan_inverse, &app->localFFTPlan_inverse->R2Cdecomposition, 0, 0, 1);
+                if (resFFT != VKFFT_SUCCESS) return resFFT;
+			}
+		}
 	}
 	for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
 		if (app->useBluesteinFFT[i]) {
