@@ -141,17 +141,15 @@ static inline void appendBluesteinMultiplication(VkFFTSpecializationConstantsLay
 		}
 		
 		if ((sc->zeropadBluestein[0]) && (pre_or_post_multiplication == 0)) {
-			PfMod(sc, &sc->tempInt, &sc->inoutID, &sc->fft_dim_full);
 			temp_int.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i;
 			if (sc->performDCT == 1) temp_int.data.i = 2 * temp_int.data.i - 2;
 			if (sc->performDST == 1) temp_int.data.i = 2 * temp_int.data.i + 2;
-			PfIf_lt_start(sc, &sc->tempInt, &temp_int);
+			PfIf_lt_start(sc, &sc->inoutID, &temp_int);
 		}
 		if ((sc->zeropadBluestein[1]) && (pre_or_post_multiplication == 1)) {
-			PfMod(sc, &sc->tempInt, &sc->inoutID, &sc->fft_dim_full);
 			temp_int.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i;
 			if (sc->performDST == 1) temp_int.data.i += 1;
-			PfIf_lt_start(sc, &sc->tempInt, &temp_int);		
+			PfIf_lt_start(sc, &sc->inoutID, &temp_int);		
 		}
 
 		appendGlobalToRegisters(sc, &sc->w, &sc->BluesteinStruct, &sc->inoutID);

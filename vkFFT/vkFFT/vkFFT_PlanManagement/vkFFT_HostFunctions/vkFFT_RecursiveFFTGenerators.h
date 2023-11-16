@@ -33,7 +33,7 @@
 static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfiguration inputLaunchConfiguration);
 
 static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFTPlan* FFTPlan, pfUINT axis_id) {
-	//generate two arrays used for Blueestein convolution and post-convolution multiplication
+	//generate two arrays used for Bluestein convolution and post-convolution multiplication
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 	pfUINT bufferSize = (pfUINT)sizeof(float) * 2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 	if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) bufferSize *= sizeof(double) / sizeof(float);
