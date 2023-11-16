@@ -72,9 +72,6 @@ VkFFTResult sample_15_precision_VkFFT_single_r2c(VkGPU* vkGPU, uint64_t file_out
 		fprintf(output, "15 - VkFFT / FFTW R2C+C2R precision test in single precision\n");
 	printf("15 - VkFFT / FFTW R2C+C2R precision test in single precision\n");
 
-	const int num_benchmark_samples = 277;
-	const int num_runs = 1;
-
 	const int num_benchmark_samples = 318;
 	const int num_runs = 1;
 
