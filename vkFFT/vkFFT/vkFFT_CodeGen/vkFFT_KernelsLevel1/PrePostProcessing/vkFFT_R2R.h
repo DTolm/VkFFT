@@ -210,7 +210,7 @@ static inline void appendDCTII_read_III_write_get_inoutID (VkFFTSpecializationCo
 	else {
 		fftDim.data.i = sc->fft_dim_full.data.i;
 	}
-	if (((readWrite == 0) && ((sc->performDCT == 2) || (sc->performDST == 2))) || ((readWrite == 1) && ((sc->performDCT == 3) || (sc->performDST == 3)))) {
+	if (((readWrite == 0) && ((((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 0)) || (((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 1)))) || ((readWrite == 1) && ((((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 1)) || (((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 0))))) {
 		PfIf_lt_start(sc, inoutID, &fftDim);
 		temp_int.data.i = 2;
 		PfDivCeil(sc, &temp_int, &fftDim, &temp_int);
@@ -247,7 +247,7 @@ static inline void appendDCTII_read_III_write_set_inoutID (VkFFTSpecializationCo
 	else {
 		fftDim.data.i = sc->fft_dim_full.data.i;
 	}
-	if (((readWrite == 0) && ((sc->performDCT == 2) || (sc->performDST == 2))) || ((readWrite == 1) && ((sc->performDCT == 3) || (sc->performDST == 3)))) {
+	if (((readWrite == 0) && ((((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 0)) || (((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 1)))) || ((readWrite == 1) && ((((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 1)) || (((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 0))))) {
 		PfSwapContainers(sc, tempInt, inoutID);
 		PfIf_end(sc);
 	}
@@ -274,34 +274,15 @@ static inline void appendDCTII_write_III_read_get_inoutID (VkFFTSpecializationCo
 	else {
 		fftDim.data.i = sc->fft_dim_full.data.i;
 	}
-	if ((readWrite == 1) && (sc->performDCT == 2)) {
-		/*temp_int.data.i = fftDim.data.i;
-		PfIf_lt_start(sc, inoutID, &temp_int);
-		temp_int.data.i = 2;
-		PfMod(sc, tempInt, inoutID, &temp_int);
-
-		temp_int.data.i = 2;
-		PfMul(sc, tempInt2, tempInt, &temp_int, 0);
-		temp_int.data.i = 2;
-		PfDiv(sc, &sc->tempInt, inoutID, &temp_int);
-
-		PfMul(sc, tempInt2, tempInt2, &sc->tempInt, 0);
-
-		temp_int.data.i = fftDim.data.i - 1;
-		PfMul(sc, tempInt, tempInt, &temp_int, 0);
-		PfAdd(sc, tempInt, tempInt, &sc->tempInt);
-		PfSub(sc, tempInt, tempInt, tempInt2);
-
-		PfSwapContainers(sc, tempInt, inoutID);*/
-	}
-	if ((readWrite == 1) && (sc->performDST == 2)) {
+	
+	if ((readWrite == 1) && (((sc->performDST == 2) && (sc->actualInverse == 0)) || ((sc->performDST == 3) && (sc->actualInverse == 1)))) {
 		temp_int.data.i = fftDim.data.i;
 		PfIf_lt_start(sc, inoutID, &temp_int);
 		temp_int.data.i = fftDim.data.i - 1;
 		PfSub(sc, tempInt, &temp_int, inoutID);
 		PfSwapContainers(sc, tempInt, inoutID);
 	}
-	if ((readWrite == 0) && (sc->performDST == 3)) {
+	if ((readWrite == 0) && (((sc->performDST == 2) && (sc->actualInverse == 1)) || ((sc->performDST == 3) && (sc->actualInverse == 0)))) {
 		temp_int.data.i = fftDim.data.i;
 		PfIf_lt_start(sc, inoutID, &temp_int);
 		temp_int.data.i = fftDim.data.i - 1;
@@ -326,7 +307,7 @@ static inline void appendDCTII_write_III_read_get_inoutID (VkFFTSpecializationCo
 
 		PfSwapContainers(sc, tempInt, inoutID);
 	}
-	if ((readWrite == 0) && (sc->performDCT == 3)) {
+	if ((readWrite == 0) && (((sc->performDCT == 2) && (sc->actualInverse == 1)) || ((sc->performDCT == 3) && (sc->actualInverse == 0)))) {
 		temp_int.data.i = fftDim.data.i;
 		PfIf_lt_start(sc, inoutID, &temp_int);
 		
@@ -366,15 +347,12 @@ static inline void appendDCTII_write_III_read_set_inoutID (VkFFTSpecializationCo
 	else {
 		fftDim.data.i = sc->fft_dim_full.data.i;
 	}
-	if ((readWrite == 1) && (sc->performDCT == 2)) {
-		//PfSwapContainers(sc, tempInt, inoutID);
-		//PfIf_end(sc);
-	}
-	if (((readWrite == 1) && (sc->performDST == 2)) || ((readWrite == 0) && (sc->performDST == 3))) {
+
+	if (((readWrite == 1) && (((sc->performDST == 2) && (sc->actualInverse == 0)) || ((sc->performDST == 3) && (sc->actualInverse == 1)))) || ((readWrite == 0) && (((sc->performDST == 2) && (sc->actualInverse == 1)) || ((sc->performDST == 3) && (sc->actualInverse == 0))))) {
 		PfSwapContainers(sc, tempInt, inoutID);
 		PfIf_end(sc);
 	}
-	if ((readWrite == 0) && (sc->performDCT == 3)) {
+	if ((readWrite == 0) && (((sc->performDCT == 2) && (sc->actualInverse == 1)) || ((sc->performDCT == 3) && (sc->actualInverse == 0)))) {
 		//PfSwapContainers(sc, tempInt, inoutID);
 		PfIf_end(sc);
 	}
@@ -777,7 +755,7 @@ static inline void appendDCTII_read_III_write_processing (VkFFTSpecializationCon
 	else {
 		fftDim.data.i = sc->fft_dim_full.data.i;
 	}
-	if (((readWrite == 0) && (sc->performDST == 2)) || ((readWrite == 1) && (sc->performDST == 3))) {
+	if (((readWrite == 0) && (((sc->performDST == 2) && (sc->actualInverse == 0)) || ((sc->performDST == 3) && (sc->actualInverse == 1)))) || ((readWrite == 1) && (((sc->performDST == 2) && (sc->actualInverse == 1)) || ((sc->performDST == 3) && (sc->actualInverse == 0))))) {
 		PfIf_lt_start(sc, inoutID, &fftDim);
 		temp_int.data.i = 2;
 		PfMod(sc, &sc->tempInt, inoutID, &temp_int);
@@ -814,7 +792,7 @@ static inline void appendDCTII_write_III_read_processing (VkFFTSpecializationCon
 	else {
 		fftDim.data.i = sc->fft_dim_full.data.i;
 	}
-	if (((readWrite == 1) && ((sc->performDCT == 2) || (sc->performDST == 2))) || ((readWrite == 0) && ((sc->performDCT == 3) || (sc->performDST == 3)))) {
+	if (((readWrite == 1) && ((((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 0)) || (((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 1)))) || ((readWrite == 0) && ((((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 1)) || (((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 0))))) {
 		if (sc->performDST)
 			PfSwapContainers(sc, inoutID, &sc->stageInvocationID);
 		PfIf_lt_start(sc, inoutID, &fftDim);
@@ -1657,7 +1635,7 @@ static inline void appendDCTII_read_III_write(VkFFTSpecializationConstantsLayout
 			temp_int.data.i = 2;
 			PfMod(sc, &sc->sdataID, &sc->tempInt, &temp_int);
 		}
-		if (sc->performDST == 2)  {
+		if (((sc->performDST == 2) && (sc->actualInverse == 0)) || ((sc->performDST == 3) && (sc->actualInverse == 1))) {
 			temp_int.data.i = 1;
 			PfIf_eq_start(sc, &sc->sdataID, &temp_int);
 			PfMovNeg(sc, &sc->regIDs[i], &sc->regIDs[i]);
@@ -1700,7 +1678,7 @@ static inline void appendDCTII_read_III_write(VkFFTSpecializationConstantsLayout
 		else
 			appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[i]);
 
-		if (sc->performDST == 3)  {
+		if (((sc->performDST == 2) && (sc->actualInverse == 1)) || ((sc->performDST == 3) && (sc->actualInverse == 0)))  {
 			if (sc->axis_id > 0){
 				temp_int.data.i = 2;
 				PfMod(sc, &sc->sdataID, &sc->combinedID, &temp_int);
@@ -1791,7 +1769,7 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 		fftDim.data.i = sc->fftDim.data.i;
 	}
 
-	if (sc->performDST == 3) {
+	if (((sc->performDST == 2) && (sc->actualInverse == 1)) || ((sc->performDST == 3) && (sc->actualInverse == 0))) {
 		appendBarrierVkFFT(sc);
 		if (sc->stridedSharedLayout) {
 			PfDivCeil(sc, &used_registers, &fftDim, &sc->localSize[1]);
@@ -2163,7 +2141,7 @@ static inline void appendDCTII_write_III_read(VkFFTSpecializationConstantsLayout
 	if (sc->useDisableThreads) {
 		PfIf_end(sc);
 	}
-	if (sc->performDST == 2) {
+	if (((sc->performDST == 2) && (sc->actualInverse == 0)) || ((sc->performDST == 3) && (sc->actualInverse == 1))) {
 		appendBarrierVkFFT(sc);
 		if (sc->stridedSharedLayout) {
 			PfDivCeil(sc, &used_registers, &fftDim, &sc->localSize[1]);

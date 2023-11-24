@@ -884,7 +884,7 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 						if (sc->readToRegisters) {
 							appendGlobalToRegisters_x(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID);
 
-							if (((sc->performDCT == 3) || (sc->performDST == 3)) && ((type / 10) == 131)) {
+							if (((((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 0)) || (((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 1))) && ((type / 10) == 131)) {
 								if (recalculateAtEveryStep_inoutID) {
 									checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID2);
 									if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {
@@ -914,7 +914,7 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 						else {
 							appendGlobalToRegisters_x(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
 
-							if (((sc->performDCT == 3) || (sc->performDST == 3)) && ((type / 10) == 131)) {
+							if (((((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 0)) || (((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 1))) && ((type / 10) == 131)) {
 								if (recalculateAtEveryStep_inoutID) {
 									checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID2);
 									if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {
@@ -1584,7 +1584,7 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 							if (recalculateAtEveryStep_inoutID)
 								checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
 
-							if (((sc->performDCT == 3) || (sc->performDST == 3)) && ((type / 10) == 131)) {
+							if (((((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 0)) || (((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 1))) && ((type / 10) == 131)) {
 								if (recalculateAtEveryStep_inoutID) {
 									checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID2);
 									if (sc->axis_id > 0) {
@@ -1609,7 +1609,7 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 							appendGlobalToRegisters_x(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
 							if (recalculateAtEveryStep_inoutID)
 								checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
-							if (((sc->performDCT == 3) || (sc->performDST == 3)) && ((type / 10) == 131)) {
+							if (((((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 0)) || (((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 1))) && ((type / 10) == 131)) {
 								if (recalculateAtEveryStep_inoutID) {
 									checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID2);
 									if (sc->axis_id > 0) {
