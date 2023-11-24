@@ -1676,7 +1676,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
 				for (pfUINT j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++) {
 					app->localFFTPlan->axes[i][j].specializationConstants.performBufferSetUpdate = 1;
-					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, &app->localFFTPlan->axes[i][j], i, j, 1);
+					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, &app->localFFTPlan->axes[i][j], i, j, 0);
 					if (resFFT != VKFFT_SUCCESS) return resFFT;
 				}
 				if (app->useBluesteinFFT[i] && (app->localFFTPlan->numAxisUploads[i] > 1)) {
