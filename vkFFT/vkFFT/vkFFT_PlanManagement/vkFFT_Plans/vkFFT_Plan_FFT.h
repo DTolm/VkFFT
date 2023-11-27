@@ -178,6 +178,9 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			if ((app->configuration.performDCT == 4) || (app->configuration.performDST == 4)) {
 				axis->specializationConstants.inverseBluestein = 1;
 			}
+			else if ((app->configuration.performDCT == 1) || (app->configuration.performDST == 1)) {
+				axis->specializationConstants.inverseBluestein = 0;
+			}
 			else {
 				axis->specializationConstants.inverseBluestein = (int)inverse;
 			}
