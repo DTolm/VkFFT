@@ -159,7 +159,11 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			axis->specializationConstants.actualInverse = (int)inverse;
 			axis->specializationConstants.inverse = 1;
 		}
-		else {
+		else if ((app->configuration.performDCT == 1) || (app->configuration.performDST == 1)) {
+			axis->specializationConstants.actualInverse = (int)inverse;
+			axis->specializationConstants.inverse = 0;
+		}
+		else{
 			axis->specializationConstants.actualInverse = (int)inverse;
 			axis->specializationConstants.inverse = (int)inverse;
 		}

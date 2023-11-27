@@ -2257,7 +2257,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	if (app->configuration.coordinateFeatures > 0) max_rhs *= app->configuration.coordinateFeatures;
 	if (app->configuration.numberKernels > 0) max_rhs *= app->configuration.numberKernels;
 
-	FFTPlan->actualPerformR2CPerAxis[axis_id] = app->configuration.performR2C;
+	FFTPlan->actualPerformR2CPerAxis[axis_id] = (axis_id == 0) ? app->configuration.performR2C : 0;
 	if ((axis_id == 0) && (app->configuration.performR2C) && (app->configuration.size[axis_id] > maxSingleSizeNonStrided) && ((app->configuration.size[axis_id] % 2) == 0) && (!app->configuration.forceCallbackVersionRealTransforms)) {
 		FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
 		FFTPlan->actualPerformR2CPerAxis[axis_id] = 0;
