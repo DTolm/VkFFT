@@ -712,8 +712,8 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", &sc->fftDim, &sc->gl_WorkGroupID_y, shiftY, &sc->localSize[0], &sc->size[&sc->axis_id + 1]);
 					if ((sc->mergeSequencesR2C) && (sc->size[1].data.i % 2) && (readWrite == 0)) {
 						PfIf_ge_start(sc, &sc->inoutID_y, &sc->size[1]);
-						PfSetToZero(sc, &sc->inoutID_x);
-						PfSetToZero(sc, &sc->inoutID_y);
+						temp_int.data.i = sc->size[1].data.i - 1;
+						PfMov(sc, &sc->inoutID_y, &temp_int);
 						PfIf_end(sc);
 					}
 					else {
@@ -721,7 +721,13 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 					}
 #else
 					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(!(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 ")) %s = 0; {\n", &sc->fftDim, &sc->gl_WorkGroupID_y, shiftY, &sc->localSize[0], &sc->size[&sc->axis_id + 1], &sc->inoutID);
-					if (readWrite == 0) {
+					if ((sc->mergeSequencesR2C) && (sc->size[1].data.i % 2) && (readWrite == 0)) {
+						PfIf_ge_start(sc, &sc->inoutID_y, &sc->size[1]);
+						temp_int.data.i = sc->size[1].data.i - 1;
+						PfMov(sc, &sc->inoutID_y, &temp_int);
+						PfIf_end(sc);
+					}
+					else if (readWrite == 0) {
 						PfIf_ge_start(sc, &sc->inoutID_y, &sc->size[1]);
 						PfSetToZero(sc, &sc->inoutID_x);
 						PfSetToZero(sc, &sc->inoutID_y);
