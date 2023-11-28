@@ -203,13 +203,13 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 	axis->specializationConstants.performR2C = (int)FFTPlan->actualPerformR2CPerAxis[axis_id];
 	axis->specializationConstants.performR2CmultiUpload = ((axis->specializationConstants.performR2C || (FFTPlan->bigSequenceEvenR2C)) && (axis->specializationConstants.numAxisUploads > 1)) ? 1 : 0;
-	axis->specializationConstants.performR2RmultiUpload = (((axis->specializationConstants.performDCT>0) || (axis->specializationConstants.performDST>0)) && axis->specializationConstants.numAxisUploads > 1) ? 1 : 0;
-
+	
 	if (app->configuration.performDCT > 0)
 		axis->specializationConstants.performDCT = (int)app->configuration.performDCT;
 	if (app->configuration.performDST > 0)
 		axis->specializationConstants.performDST = (int)app->configuration.performDST;
 
+	axis->specializationConstants.performR2RmultiUpload = (((axis->specializationConstants.performDCT>0) || (axis->specializationConstants.performDST>0)) && (axis->specializationConstants.numAxisUploads > 1)) ? 1 : 0;
 	if (axis->specializationConstants.performR2C || axis->specializationConstants.performDCT || axis->specializationConstants.performDST) axis->specializationConstants.forceCallbackVersionRealTransforms = app->configuration.forceCallbackVersionRealTransforms;
 	if (((axis->specializationConstants.performR2C && (!FFTPlan->bigSequenceEvenR2C)) || axis->specializationConstants.performDCT || axis->specializationConstants.performDST) && (axis->specializationConstants.numAxisUploads > 1)) axis->specializationConstants.forceCallbackVersionRealTransforms = 1;
 	//if ((axis->specializationConstants.performR2CmultiUpload) && (app->configuration.size[0] % 2 != 0)) return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
