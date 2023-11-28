@@ -1109,6 +1109,14 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 						if (recalculateAtEveryStep_inoutID)
 							checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);
 						append_processing_multiupload_R2R(sc, &sc->inoutID_x, &sc->regIDs[k * sc->registers_per_thread + i], readWrite, type, 0, 0);
+
+						if ((sc->fftDim.data.i == 1) && (sc->normalize) && (sc->actualInverse)){ //workaround for DCT/DST-IV of size 2 that has no FFT stages (where normalization typically happens). 
+							PfContainer temp_double = VKFFT_ZERO_INIT;
+							temp_double.type = 22;
+							temp_double.data.d = pfFPinit("0.25");
+							PfMul(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->regIDs[k * sc->registers_per_thread + i], &temp_double, 0);
+						}
+
 						appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[k * sc->registers_per_thread + i]);
 						if (recalculateAtEveryStep_inoutID)
 							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
@@ -1781,7 +1789,14 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 						if (recalculateAtEveryStep_inoutID)
 							checkZeropadStart_currentFFTAxis(sc, readWrite, type, local_inoutID);
 						append_processing_multiupload_R2R(sc, local_inoutID, &sc->regIDs[k * sc->registers_per_thread + i], readWrite, type, 0, 0);
-						
+
+						if ((sc->fftDim.data.i == 1) && (sc->normalize) && (sc->actualInverse)){ //workaround for DCT/DST-IV of size 2 that has no FFT stages (where normalization typically happens). 
+							PfContainer temp_double = VKFFT_ZERO_INIT;
+							temp_double.type = 22;
+							temp_double.data.d = pfFPinit("0.25");
+							PfMul(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->regIDs[k * sc->registers_per_thread + i], &temp_double, 0);
+						}
+
 						appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[k * sc->registers_per_thread + i]);
 						if (recalculateAtEveryStep_inoutID)
 							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);

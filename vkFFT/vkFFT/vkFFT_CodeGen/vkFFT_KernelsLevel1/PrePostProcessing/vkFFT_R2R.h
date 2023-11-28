@@ -705,7 +705,7 @@ static inline void appendDCTI_processing (VkFFTSpecializationConstantsLayout* sc
 	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
@@ -738,7 +738,7 @@ static inline void appendDCTII_read_III_write_processing (VkFFTSpecializationCon
 	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
@@ -775,7 +775,7 @@ static inline void appendDCTII_write_III_read_processing (VkFFTSpecializationCon
 	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
@@ -852,7 +852,7 @@ static inline void appendDCTIV_even_read_processing (VkFFTSpecializationConstant
 	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
@@ -913,7 +913,7 @@ static inline void appendDCTIV_odd_read_processing (VkFFTSpecializationConstants
 	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
@@ -966,7 +966,7 @@ static inline void appendDCTIV_even_write_processing (VkFFTSpecializationConstan
 	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
@@ -1023,7 +1023,7 @@ static inline void appendDCTIV_odd_write_processing (VkFFTSpecializationConstant
 	PfContainer temp_int = VKFFT_ZERO_INIT;
 	temp_int.type = 31;
 	PfContainer temp_double = VKFFT_ZERO_INIT;
-	temp_double.type = 32;
+	temp_double.type = 22;
 
 	PfContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
