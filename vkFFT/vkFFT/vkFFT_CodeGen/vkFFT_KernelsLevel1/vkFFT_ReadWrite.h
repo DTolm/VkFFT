@@ -1610,6 +1610,7 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 							
 						}
 						else {
+							PfSetToZero(sc, &sc->temp);
 							if (recalculateAtEveryStep_inoutID)
 								checkZeropadStart_currentFFTAxis(sc, readWrite, type, local_inoutID);
 							appendGlobalToRegisters_x(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
