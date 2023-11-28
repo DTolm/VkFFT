@@ -1336,6 +1336,12 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.registerBoost4Step = 1;
 	}
 
+	if ((app->configuration.performDCT != 0) || (app->configuration.performDST != 0)) {
+		app->configuration.registerBoost = 1;
+		app->configuration.registerBoostNonPow2 = 0;
+		app->configuration.registerBoost4Step = 1;
+	}
+
 	app->configuration.coordinateFeatures = 1;
 	app->configuration.numberBatches = 1;
 	if (inputLaunchConfiguration.coordinateFeatures != 0)	app->configuration.coordinateFeatures = inputLaunchConfiguration.coordinateFeatures;
