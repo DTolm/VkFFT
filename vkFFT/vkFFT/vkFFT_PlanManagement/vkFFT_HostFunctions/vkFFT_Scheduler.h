@@ -2237,7 +2237,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			else
 				complexSize = (2 * sizeof(float));
 	}
-	int usedSharedMemory = ((app->configuration.size[axis_id] & (app->configuration.size[axis_id] - 1)) == 0) ? (int)app->configuration.sharedMemorySizePow2 : (int)app->configuration.sharedMemorySize;
+	int usedSharedMemory = (((app->configuration.size[axis_id] & (app->configuration.size[axis_id] - 1)) == 0) && (!app->configuration.performDCT) && (!app->configuration.performDST)) ? (int)app->configuration.sharedMemorySizePow2 : (int)app->configuration.sharedMemorySize;
 	int maxSequenceLengthSharedMemory = usedSharedMemory / complexSize;
 	int maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
 

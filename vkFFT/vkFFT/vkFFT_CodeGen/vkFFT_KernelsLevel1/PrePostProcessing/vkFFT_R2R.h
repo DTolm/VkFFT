@@ -280,6 +280,9 @@ static inline void appendDCTII_write_III_read_get_inoutID (VkFFTSpecializationCo
 		PfIf_lt_start(sc, inoutID, &temp_int);
 		temp_int.data.i = fftDim.data.i - 1;
 		PfSub(sc, tempInt, &temp_int, inoutID);
+		PfIf_eq_start(sc, inoutID, &temp_int);
+		PfSetToZero(sc, tempInt);
+		PfIf_end(sc);
 		PfSwapContainers(sc, tempInt, inoutID);
 	}
 	if ((readWrite == 0) && (((sc->performDST == 2) && (sc->actualInverse == 1)) || ((sc->performDST == 3) && (sc->actualInverse == 0)))) {
@@ -287,6 +290,9 @@ static inline void appendDCTII_write_III_read_get_inoutID (VkFFTSpecializationCo
 		PfIf_lt_start(sc, inoutID, &temp_int);
 		temp_int.data.i = fftDim.data.i - 1;
 		PfSub(sc, tempInt, &temp_int, inoutID);
+		PfIf_eq_start(sc, inoutID, &temp_int);
+		PfSetToZero(sc, tempInt);
+		PfIf_end(sc);
 
 		if (sc->axis_id > 0) {
 			PfSub(sc, &sc->inoutID2, &fftDim, inoutID);
@@ -381,7 +387,9 @@ static inline void appendDCTIV_even_read_get_inoutID (VkFFTSpecializationConstan
 		}
 		else
 			temp_int.data.i = 2*sc->fft_dim_full.data.i - 1;
+		PfIf_le_start(sc, tempInt, &temp_int);
 		PfSub(sc, &sc->inoutID2, &temp_int, tempInt);
+		PfIf_end(sc);
 		PfSwapContainers(sc, tempInt, inoutID);
 	}
 	return;
