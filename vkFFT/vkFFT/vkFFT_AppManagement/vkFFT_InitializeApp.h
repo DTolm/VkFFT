@@ -1316,7 +1316,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.reorderFourStep = 1;
 	if (inputLaunchConfiguration.disableReorderFourStep != 0) {
 		app->configuration.reorderFourStep = 0;
-		if ((app->configuration.swapTo3Stage4Step < 1048576) && (!app->configuration.quadDoubleDoublePrecision) && (!app->configuration.quadDoubleDoublePrecisionDoubleMemory)) app->configuration.swapTo3Stage4Step = 1048576;
+		//if ((app->configuration.swapTo3Stage4Step < 1048576) && (!app->configuration.quadDoubleDoublePrecision) && (!app->configuration.quadDoubleDoublePrecisionDoubleMemory)) app->configuration.swapTo3Stage4Step = 1048576;
 	}
 	if (inputLaunchConfiguration.frequencyZeroPadding != 0) app->configuration.frequencyZeroPadding = inputLaunchConfiguration.frequencyZeroPadding;
 	for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
