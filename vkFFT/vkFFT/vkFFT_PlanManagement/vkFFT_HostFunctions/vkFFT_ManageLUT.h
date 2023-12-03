@@ -551,7 +551,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 							}
 						}
 					}
-					if (checkRadixOrder && (axis->specializationConstants.axis_id >= 1) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] > 1))) && ((axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[0][0].specializationConstants.fft_dim_full.data.i) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] == 1) && (axis->specializationConstants.fft_dim_full.data.i < axis->specializationConstants.maxSingleSizeStrided.data.i / axis->specializationConstants.registerBoost)) && (((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[0]))) {
+					if (checkRadixOrder && (!disableReferenceLUT_DCT) && (axis->specializationConstants.axis_id >= 1) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] > 1))) && ((axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[0][0].specializationConstants.fft_dim_full.data.i) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] == 1) && (axis->specializationConstants.fft_dim_full.data.i < axis->specializationConstants.maxSingleSizeStrided.data.i / axis->specializationConstants.registerBoost)) && (((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[0]))) {
 						axis->bufferLUT = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUT;
 #if(VKFFT_BACKEND==0)
 						axis->bufferLUTDeviceMemory = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
@@ -574,7 +574,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
                                         }
                                     }
                                 }
-                                if (checkRadixOrder && (axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[p][0].specializationConstants.fft_dim_full.data.i) && (((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[p]))) {
+                                if (checkRadixOrder && (!disableReferenceLUT_DCT) && (axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[p][0].specializationConstants.fft_dim_full.data.i) && (((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[p]))) {
                                     axis->bufferLUT = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUT;
 #if(VKFFT_BACKEND==0)
                                     axis->bufferLUTDeviceMemory = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
@@ -849,7 +849,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 							}
 						}
 					}
-					if (checkRadixOrder && (axis->specializationConstants.axis_id >= 1) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] > 1))) && ((axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[0][0].specializationConstants.fft_dim_full.data.i) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] == 1) && (axis->specializationConstants.fft_dim_full.data.i < axis->specializationConstants.maxSingleSizeStrided.data.i / axis->specializationConstants.registerBoost)) && ((((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[0]))) {
+					if (checkRadixOrder && (!disableReferenceLUT_DCT) && (axis->specializationConstants.axis_id >= 1) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] > 1))) && ((axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[0][0].specializationConstants.fft_dim_full.data.i) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] == 1) && (axis->specializationConstants.fft_dim_full.data.i < axis->specializationConstants.maxSingleSizeStrided.data.i / axis->specializationConstants.registerBoost)) && ((((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[0]))) {
 						axis->bufferLUT = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUT;
 #if(VKFFT_BACKEND==0)
 						axis->bufferLUTDeviceMemory = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
@@ -872,7 +872,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
                                         }
                                     }
                                 }
-                                if (checkRadixOrder && (axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[p][0].specializationConstants.fft_dim_full.data.i) && (((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[p]))) {
+                                if (checkRadixOrder && (!disableReferenceLUT_DCT) && (axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[p][0].specializationConstants.fft_dim_full.data.i) && (((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[p]))) {
                                     axis->bufferLUT = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUT;
 #if(VKFFT_BACKEND==0)
                                     axis->bufferLUTDeviceMemory = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
@@ -1146,7 +1146,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 							}
 						}
 					}
-					if (checkRadixOrder && (axis->specializationConstants.axis_id >= 1) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] > 1))) && ((axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[0][0].specializationConstants.fft_dim_full.data.i) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] == 1) && (axis->specializationConstants.fft_dim_full.data.i < axis->specializationConstants.maxSingleSizeStrided.data.i / axis->specializationConstants.registerBoost)) && ((((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[0]))) {
+					if (checkRadixOrder && (!disableReferenceLUT_DCT) && (axis->specializationConstants.axis_id >= 1) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] > 1))) && ((axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[0][0].specializationConstants.fft_dim_full.data.i) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] == 1) && (axis->specializationConstants.fft_dim_full.data.i < axis->specializationConstants.maxSingleSizeStrided.data.i / axis->specializationConstants.registerBoost)) && ((((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[0]))) {
 						axis->bufferLUT = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUT;
 #if(VKFFT_BACKEND==0)
 						axis->bufferLUTDeviceMemory = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
@@ -1169,7 +1169,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
                                         }
                                     }
                                 }
-                                if (checkRadixOrder && (axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[p][0].specializationConstants.fft_dim_full.data.i) && (((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[p]))) {
+                                if (checkRadixOrder && (!disableReferenceLUT_DCT) && (axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[p][0].specializationConstants.fft_dim_full.data.i) && (((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[p]))) {
                                     axis->bufferLUT = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUT;
 #if(VKFFT_BACKEND==0)
                                     axis->bufferLUTDeviceMemory = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
