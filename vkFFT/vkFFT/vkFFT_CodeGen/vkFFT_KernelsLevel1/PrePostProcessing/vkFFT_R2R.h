@@ -389,7 +389,10 @@ static inline void appendDCTIV_even_read_get_inoutID (VkFFTSpecializationConstan
 			temp_int.data.i = 2*sc->fft_dim_full.data.i - 1;
 		PfIf_le_start(sc, tempInt, &temp_int);
 		PfSub(sc, &sc->inoutID2, &temp_int, tempInt);
-		PfIf_end(sc);
+		PfIf_else(sc);
+		temp_int.data.i += 1;
+        PfMov(sc, &sc->inoutID2, &temp_int);
+        PfIf_end(sc);
 		PfSwapContainers(sc, tempInt, inoutID);
 	}
 	return;

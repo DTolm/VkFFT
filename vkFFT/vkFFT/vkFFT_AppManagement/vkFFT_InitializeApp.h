@@ -35,7 +35,7 @@ static inline VkFFTResult initializeBluesteinAutoPadding(VkFFTApplication* app) 
 		switch (app->configuration.vendorID) {
 		case 0x10DE://NVIDIA
 			if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
-				app->configuration.autoCustomBluesteinPaddingPattern = 48;
+				app->configuration.autoCustomBluesteinPaddingPattern = 49;
 			}
 			else {
 				app->configuration.autoCustomBluesteinPaddingPattern = 45;
@@ -150,9 +150,11 @@ static inline VkFFTResult initializeBluesteinAutoPadding(VkFFTApplication* app) 
 				app->configuration.primeSizes[45] = 3001;
 				app->configuration.paddedSizes[45] = 6048;
 				app->configuration.primeSizes[46] = 3026;
-				app->configuration.paddedSizes[46] = 6561;
-				app->configuration.primeSizes[47] = 3282;
-				app->configuration.paddedSizes[47] = 8192;
+				app->configuration.paddedSizes[46] = 6144;
+				app->configuration.primeSizes[47] = 3073;
+				app->configuration.paddedSizes[47] = 6561;
+				app->configuration.primeSizes[48] = 3282;
+				app->configuration.paddedSizes[48] = 8192;
 			}
 			else {
 				app->configuration.primeSizes[0] = 17;
