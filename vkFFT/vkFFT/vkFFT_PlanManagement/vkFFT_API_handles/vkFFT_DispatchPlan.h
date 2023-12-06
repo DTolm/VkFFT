@@ -183,8 +183,11 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 					args[args_id] = &app->bufferBluestein[axis->specializationConstants.axis_id];
 					args_id++;
 				}
-				//args[args_id] = &axis->pushConstants;
-				if (axis->updatePushConstants) {
+				if (axis->pushConstants.structSize > 0) {
+					args[args_id] = &axis->pushConstants.data;
+					args_id++;
+				}
+				/*if (axis->updatePushConstants) {
 					axis->updatePushConstants = 0;
 					if (axis->pushConstants.structSize > 0) {
 						result = cuMemcpyHtoD(axis->consts_addr, axis->pushConstants.data, axis->pushConstants.structSize);
@@ -193,7 +196,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 							return VKFFT_ERROR_FAILED_TO_COPY;
 						}
 					}
-				}
+				}*/
 				if (app->configuration.num_streams >= 1) {
 					result = cuLaunchKernel(axis->VkFFTKernel,
 						(unsigned int)dispatchSize[0], (unsigned int)dispatchSize[1], (unsigned int)dispatchSize[2],     // grid dim
@@ -249,8 +252,11 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 					args[args_id] = &app->bufferBluestein[axis->specializationConstants.axis_id];
 					args_id++;
 				}
-				//args[args_id] = &axis->pushConstants;
-				if (axis->updatePushConstants) {
+				if (axis->pushConstants.structSize > 0) {
+					args[args_id] = &axis->pushConstants.data;
+					args_id++;
+				}
+				/*if (axis->updatePushConstants) {
 					axis->updatePushConstants = 0;
 					if (axis->pushConstants.structSize > 0) {
 						result = hipMemcpyHtoD(axis->consts_addr, axis->pushConstants.data, axis->pushConstants.structSize);
@@ -259,7 +265,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 							return VKFFT_ERROR_FAILED_TO_COPY;
 						}
 					}
-				}
+				}*/
 				//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n",maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
 				if (app->configuration.num_streams >= 1) {
 					result = hipModuleLaunchKernel(axis->VkFFTKernel,

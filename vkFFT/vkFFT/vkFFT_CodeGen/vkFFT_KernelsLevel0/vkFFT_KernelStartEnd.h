@@ -76,9 +76,13 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, int
 		sc->tempLen = sprintf(sc->tempStr, ", %s* BluesteinMultiplication", vecType->name);
 		PfAppendLine(sc);
 	}
+	if (sc->pushConstantsStructSize > 0) {
+		sc->tempLen = sprintf(sc->tempStr, ", PushConsts consts");
+		PfAppendLine(sc);
+	}
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
+	
 	appendSharedMemoryVkFFT(sc, (int)locType);
 	
 #elif(VKFFT_BACKEND==2)
@@ -139,9 +143,13 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, int
 		sc->tempLen = sprintf(sc->tempStr, ", const Inputs<%s> BluesteinMultiplication", vecType->name);
 		PfAppendLine(sc);
 	}
+	if (sc->pushConstantsStructSize > 0) {
+		sc->tempLen = sprintf(sc->tempStr, ", PushConsts consts");
+		PfAppendLine(sc);
+	}
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
+	
 	appendSharedMemoryVkFFT(sc, (int)locType);
 #elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
 	sc->tempLen = sprintf(sc->tempStr, "__kernel __attribute__((reqd_work_group_size(%" PRIi64 ", %" PRIi64 ", %" PRIi64 "))) void VkFFT_main ", sc->localSize[0].data.i, sc->localSize[1].data.i, sc->localSize[2].data.i);
@@ -240,7 +248,6 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, int
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
 	
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
 	appendSharedMemoryVkFFT(sc, (int)locType);
 #endif
 	return;
@@ -266,6 +273,7 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 #if(VKFFT_BACKEND==0)
 	sc->tempLen = sprintf(sc->tempStr, "void main() {\n");
 	PfAppendLine(sc);
+	
 #elif(VKFFT_BACKEND==1)
 	
 	sc->tempLen = sprintf(sc->tempStr, "extern \"C\" __global__ void __launch_bounds__(%" PRIi64 ") VkFFT_main_R2C ", sc->localSize[0].data.i * sc->localSize[1].data.i * sc->localSize[2].data.i);
@@ -278,9 +286,13 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 		sc->tempLen = sprintf(sc->tempStr, ", %s* twiddleLUT", vecType->name);
 		PfAppendLine(sc);
 	}
+	if (sc->pushConstantsStructSize > 0) {
+		sc->tempLen = sprintf(sc->tempStr, ", PushConsts consts");
+		PfAppendLine(sc);
+	}
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
+
 #elif(VKFFT_BACKEND==2)
 	if (!sc->useUint64 && sc->useStrict32BitAddress > 0) {
 		// These wrappers help hipcc to generate faster code for load and store operations where
@@ -322,9 +334,13 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 		sc->tempLen = sprintf(sc->tempStr, ", const Inputs<%s> twiddleLUT", vecType->name);
 		PfAppendLine(sc);
 	}
+	if (sc->pushConstantsStructSize > 0) {
+		sc->tempLen = sprintf(sc->tempStr, ", PushConsts consts");
+		PfAppendLine(sc);
+	}
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
+	
 #elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
 	sc->tempLen = sprintf(sc->tempStr, "__kernel __attribute__((reqd_work_group_size(%" PRIi64 ", %" PRIi64 ", %" PRIi64 "))) void VkFFT_main_R2C ", sc->localSize[0].data.i, sc->localSize[1].data.i, sc->localSize[2].data.i);
 	PfAppendLine(sc);
@@ -342,7 +358,7 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 	}
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
+
 #elif(VKFFT_BACKEND==5)
 	sc->tempLen = sprintf(sc->tempStr, "kernel void VkFFT_main_R2C ");
 	PfAppendLine(sc);
@@ -375,7 +391,6 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
 
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
 #endif
 	return;
 }

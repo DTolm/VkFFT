@@ -1307,6 +1307,9 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.performDST = inputLaunchConfiguration.performDST;
 	}
 	if (inputLaunchConfiguration.forceCallbackVersionRealTransforms != 0)  app->configuration.forceCallbackVersionRealTransforms = inputLaunchConfiguration.forceCallbackVersionRealTransforms; 
+	
+	if ((app->configuration.vendorID == 0x1027f00) && (app->configuration.size[0] = 13000) && (app->configuration.performR2C)) app->configuration.forceCallbackVersionRealTransforms = 1; //fix for m1 13000 r2c issue 
+	
 	if ((inputLaunchConfiguration.disableMergeSequencesR2C != 0) || app->configuration.forceCallbackVersionRealTransforms) {
 		app->configuration.disableMergeSequencesR2C = 1;
 	}
