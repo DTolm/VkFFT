@@ -2259,9 +2259,14 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 
 	FFTPlan->actualPerformR2CPerAxis[axis_id] = (axis_id == 0) ? app->configuration.performR2C : 0;
 	if ((axis_id == 0) && (app->configuration.performR2C) && (app->configuration.size[axis_id] > maxSingleSizeNonStrided) && ((app->configuration.size[axis_id] % 2) == 0) && (!app->configuration.forceCallbackVersionRealTransforms)) {
-		FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
-		FFTPlan->actualPerformR2CPerAxis[axis_id] = 0;
-		FFTPlan->bigSequenceEvenR2C = 1;
+		if (app->configuration.vendorID == 0x1027f00){
+			app->configuration.forceCallbackVersionRealTransforms = 1;
+		} //fix for m1 r2c issue 
+		else{
+			FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
+			FFTPlan->actualPerformR2CPerAxis[axis_id] = 0;
+			FFTPlan->bigSequenceEvenR2C = 1;
+		}
 	}
 	if (app->configuration.performDCT == 1) {
 		FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = 2 * app->configuration.size[axis_id] - 2; // now in actualFFTSize - modified dimension size for R2C/DCT
@@ -2387,9 +2392,14 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
 		//check once again for R2C
 		if ((axis_id == 0) && (app->configuration.performR2C) && (tempSequence == 1) && ((app->configuration.size[axis_id] > maxSingleSizeNonStrided) || forceRaderTwoUpload) && ((app->configuration.size[axis_id] % 2) == 0) && (!app->configuration.forceCallbackVersionRealTransforms)) {
-			FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
-			FFTPlan->actualPerformR2CPerAxis[axis_id] = 0;
-			FFTPlan->bigSequenceEvenR2C = 1;
+			if (app->configuration.vendorID == 0x1027f00){
+				app->configuration.forceCallbackVersionRealTransforms = 1;
+			} //fix for m1 r2c issue 
+			else{
+				FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
+				FFTPlan->actualPerformR2CPerAxis[axis_id] = 0;
+				FFTPlan->bigSequenceEvenR2C = 1;
+			}
 		}
 	}
 	//initial Bluestein check
@@ -2476,9 +2486,14 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = tempSequence;
 		//check if padded system still single upload for r2c - else redo the optimization
 		if ((axis_id == 0) && (app->configuration.performR2C) && (!FFTPlan->bigSequenceEvenR2C) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] > maxSingleSizeNonStrided) && ((app->configuration.size[axis_id] % 2) == 0) && (!app->configuration.forceCallbackVersionRealTransforms)) {
-			FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
-			FFTPlan->actualPerformR2CPerAxis[axis_id] = 0;
-			FFTPlan->bigSequenceEvenR2C = 1;
+			if (app->configuration.vendorID == 0x1027f00){
+				app->configuration.forceCallbackVersionRealTransforms = 1;
+			} //fix for m1 r2c issue 
+			else{
+				FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
+				FFTPlan->actualPerformR2CPerAxis[axis_id] = 0;
+				FFTPlan->bigSequenceEvenR2C = 1;
+			}
 			tempSequence = 2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1;
 			FFTSizeSelected = 0;
 			if (((app->configuration.useCustomBluesteinPaddingPattern > 0) || (app->configuration.autoCustomBluesteinPaddingPattern)) && (!app->configuration.fixMaxRadixBluestein)) {
