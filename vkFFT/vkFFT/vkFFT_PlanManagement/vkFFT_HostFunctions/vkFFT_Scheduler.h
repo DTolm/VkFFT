@@ -2493,79 +2493,79 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 				FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
 				FFTPlan->actualPerformR2CPerAxis[axis_id] = 0;
 				FFTPlan->bigSequenceEvenR2C = 1;
-			}
-			tempSequence = 2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1;
-			FFTSizeSelected = 0;
-			if (((app->configuration.useCustomBluesteinPaddingPattern > 0) || (app->configuration.autoCustomBluesteinPaddingPattern)) && (!app->configuration.fixMaxRadixBluestein)) {
-				int arr_limit = (app->configuration.useCustomBluesteinPaddingPattern) ? (int)app->configuration.useCustomBluesteinPaddingPattern : (int)app->configuration.autoCustomBluesteinPaddingPattern;
-				for (int i = 0; i < arr_limit; i++) {
-					if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] >= app->configuration.primeSizes[i]) {
-						if (i != (arr_limit - 1)) {
-							if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < app->configuration.primeSizes[i + 1]) {
-								tempSequence = app->configuration.paddedSizes[i];
-								FFTSizeSelected = 1;
+				tempSequence = 2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1;
+				FFTSizeSelected = 0;
+				if (((app->configuration.useCustomBluesteinPaddingPattern > 0) || (app->configuration.autoCustomBluesteinPaddingPattern)) && (!app->configuration.fixMaxRadixBluestein)) {
+					int arr_limit = (app->configuration.useCustomBluesteinPaddingPattern) ? (int)app->configuration.useCustomBluesteinPaddingPattern : (int)app->configuration.autoCustomBluesteinPaddingPattern;
+					for (int i = 0; i < arr_limit; i++) {
+						if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] >= app->configuration.primeSizes[i]) {
+							if (i != (arr_limit - 1)) {
+								if (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < app->configuration.primeSizes[i + 1]) {
+									tempSequence = app->configuration.paddedSizes[i];
+									FFTSizeSelected = 1;
+								}
 							}
-						}
-						else {
-							if ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) <= app->configuration.paddedSizes[i]) {
-								tempSequence = app->configuration.paddedSizes[i];
-								FFTSizeSelected = 1;
+							else {
+								if ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) <= app->configuration.paddedSizes[i]) {
+									tempSequence = app->configuration.paddedSizes[i];
+									FFTSizeSelected = 1;
+								}
 							}
 						}
 					}
 				}
-			}
-			if (app->configuration.fixMaxRadixBluestein > 0) {
-				while (!FFTSizeSelected) {
-					pfUINT testSequence = tempSequence;
-					for (int i = 0; i < 33; i++) {
-						multipliers[i] = 0;
-					}
-					for (int i = 2; i < app->configuration.fixMaxRadixBluestein + 1; i++) {
-						if (testSequence % i == 0) {
-							testSequence /= i;
-							multipliers[i]++;
-							i--;
+				if (app->configuration.fixMaxRadixBluestein > 0) {
+					while (!FFTSizeSelected) {
+						pfUINT testSequence = tempSequence;
+						for (int i = 0; i < 33; i++) {
+							multipliers[i] = 0;
 						}
-					}
-					if (testSequence == 1) FFTSizeSelected = 1;
-					else tempSequence++;
-				}
-			}
-			else {
-				while (!FFTSizeSelected) {
-					if (axis_id == nonStridedAxisId) {
-						if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)pfceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)pfceil(log2(tempSequence))) <= maxSequenceLengthSharedMemory) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemory))))  tempSequence = (int)pow(2, (int)pfceil(log2(tempSequence)));
-					}
-					else {
-						int maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / ((int)app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
-						if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)pfceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)pfceil(log2(tempSequence))) <= maxSequenceLengthSharedMemoryStrided_temp) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemoryStrided_temp))))  tempSequence = (int)pow(2, (int)pfceil(log2(tempSequence)));
-					}
-					pfUINT testSequence = tempSequence;
-					for (int i = 0; i < 33; i++) {
-						multipliers[i] = 0;
-					}
-					for (int i = 2; i < 8; i++) {
-						if (testSequence % i == 0) {
-							testSequence /= i;
-							multipliers[i]++;
-							i--;
+						for (int i = 2; i < app->configuration.fixMaxRadixBluestein + 1; i++) {
+							if (testSequence % i == 0) {
+								testSequence /= i;
+								multipliers[i]++;
+								i--;
+							}
 						}
-					}
-					if (testSequence != 1) tempSequence++;
-					else {
-						int registers_per_thread_per_radix[33];
-						int registers_per_thread = 0;
-						int min_registers_per_thread = 10000000;
-						int isGoodSequence = 0;
-						res = VkFFTGetRegistersPerThread(app, (int)tempSequence, 0, max_rhs / tempSequence, axes->specializationConstants.useRader, multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
-						if (res != VKFFT_SUCCESS) return res;
-						if (isGoodSequence) FFTSizeSelected = 1;
+						if (testSequence == 1) FFTSizeSelected = 1;
 						else tempSequence++;
 					}
 				}
+				else {
+					while (!FFTSizeSelected) {
+						if (axis_id == nonStridedAxisId) {
+							if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)pfceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)pfceil(log2(tempSequence))) <= maxSequenceLengthSharedMemory) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemory))))  tempSequence = (int)pow(2, (int)pfceil(log2(tempSequence)));
+						}
+						else {
+							int maxSequenceLengthSharedMemoryStrided_temp = (app->configuration.coalescedMemory > complexSize) ? usedSharedMemory / ((int)app->configuration.coalescedMemory) : usedSharedMemory / complexSize;
+							if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] < 128) || ((((int)pow(2, (int)pfceil(log2(tempSequence))) * 0.75) <= tempSequence) && (((int)pow(2, (int)pfceil(log2(tempSequence))) <= maxSequenceLengthSharedMemoryStrided_temp) || ((2 * FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] - 1) > maxSequenceLengthSharedMemoryStrided_temp))))  tempSequence = (int)pow(2, (int)pfceil(log2(tempSequence)));
+						}
+						pfUINT testSequence = tempSequence;
+						for (int i = 0; i < 33; i++) {
+							multipliers[i] = 0;
+						}
+						for (int i = 2; i < 8; i++) {
+							if (testSequence % i == 0) {
+								testSequence /= i;
+								multipliers[i]++;
+								i--;
+							}
+						}
+						if (testSequence != 1) tempSequence++;
+						else {
+							int registers_per_thread_per_radix[33];
+							int registers_per_thread = 0;
+							int min_registers_per_thread = 10000000;
+							int isGoodSequence = 0;
+							res = VkFFTGetRegistersPerThread(app, (int)tempSequence, 0, max_rhs / tempSequence, axes->specializationConstants.useRader, multipliers, registers_per_thread_per_radix, &registers_per_thread, &min_registers_per_thread, &isGoodSequence);
+							if (res != VKFFT_SUCCESS) return res;
+							if (isGoodSequence) FFTSizeSelected = 1;
+							else tempSequence++;
+						}
+					}
+				}
+				FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = tempSequence;
 			}
-			FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = tempSequence;
 		}
 
 		if (app->configuration.forceBluesteinSequenceSize) FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.forceBluesteinSequenceSize;

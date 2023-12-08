@@ -558,13 +558,30 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
         pfUINT tempSize[3];
 
 		if (axis_id == 0) {
-			if (axis_upload_id == 0)
-				tempSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] / axis->specializationConstants.fftDim.data.i / axis->axisBlock[1];
-			else
-				tempSize[0] = FFTPlan->actualFFTSizePerAxis[axis_id][0] / axis->specializationConstants.fftDim.data.i / axis->axisBlock[0];
-            tempSize[1] = FFTPlan->actualFFTSizePerAxis[axis_id][1];
+			if (axis_upload_id == 0) {
+				pfUINT batchingSize = (axis->specializationConstants.axisSwapped) ? axis->axisBlock[0] : axis->axisBlock[1];
+                if (FFTPlan->numAxisUploads[0] > 2) {
+                    tempSize[0] = (pfUINT)pfceil((pfUINT)pfceil(FFTPlan->actualFFTSizePerAxis[0][0] / axis->specializationConstants.fftDim.data.i / (double)batchingSize) / (double)FFTPlan->axisSplit[0][1]) * FFTPlan->axisSplit[0][1];
+                    tempSize[1] = FFTPlan->actualFFTSizePerAxis[0][1];
+                }
+                else {
+                    if (FFTPlan->numAxisUploads[0] > 1) {
+                        tempSize[0] = (pfUINT)pfceil((pfUINT)pfceil(FFTPlan->actualFFTSizePerAxis[0][0] / axis->specializationConstants.fftDim.data.i / (double)batchingSize));
+                        tempSize[1] = FFTPlan->actualFFTSizePerAxis[0][1];
+                    }
+                    else {
+                        tempSize[0] = FFTPlan->actualFFTSizePerAxis[0][0] / axis->specializationConstants.fftDim.data.i;
+                        tempSize[1] = (pfUINT)pfceil(FFTPlan->actualFFTSizePerAxis[0][1] / (double)batchingSize);
+                    }
+                }
+            }
+            else {
+				pfUINT fftDimensionSize = (axis->specializationConstants.axisSwapped) ? axis->axisBlock[1] : axis->axisBlock[0];
+
+                tempSize[0] = (pfUINT)pfceil(FFTPlan->actualFFTSizePerAxis[0][0] / axis->specializationConstants.fftDim.data.i / (double)fftDimensionSize);
+                tempSize[1] = FFTPlan->actualFFTSizePerAxis[0][1];
+            }
 			if ((FFTPlan->actualPerformR2CPerAxis[axis_id] == 1) && (axis->specializationConstants.mergeSequencesR2C)) tempSize[1] = (pfUINT)pfceil(tempSize[1] / 2.0);
-            
 			//if (app->configuration.performZeropadding[1]) tempSize[1] = (pfUINT)pfceil(tempSize[1] / 2.0);
 			//if (app->configuration.performZeropadding[2]) tempSize[2] = (pfUINT)pfceil(tempSize[2] / 2.0);
         }else{
