@@ -1343,6 +1343,10 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.registerBoost = 1;
 		app->configuration.registerBoostNonPow2 = 0;
 		app->configuration.registerBoost4Step = 1;
+		if (app->configuration.sharedMemorySize > 163840) {
+			app->configuration.sharedMemorySize = 163840; // H100 fix - register file probably can't keep up with shared memory size 
+			app->configuration.sharedMemorySizePow2 = (pfUINT)pow(2, (pfUINT)log2(app->configuration.sharedMemorySize));
+		}
 	}
 
 	app->configuration.coordinateFeatures = 1;
