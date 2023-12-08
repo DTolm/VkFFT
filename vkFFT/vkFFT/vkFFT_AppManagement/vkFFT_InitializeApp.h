@@ -490,7 +490,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.maxComputeWorkGroupSize[2] = physicalDeviceProperties.limits.maxComputeWorkGroupSize[2];
 	//if ((physicalDeviceProperties.vendorID == 0x8086) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
 	app->configuration.sharedMemorySize = physicalDeviceProperties.limits.maxComputeSharedMemorySize;
-	app->configuration.sharedMemorySizePow2 = (pfUINT)pow(2, (pfUINT)log2(physicalDeviceProperties.limits.maxComputeSharedMemorySize));
 	app->configuration.vendorID = physicalDeviceProperties.vendorID;
 	if (inputLaunchConfiguration.pipelineCache != 0)	app->configuration.pipelineCache = inputLaunchConfiguration.pipelineCache;
 	app->configuration.useRaderUintLUT = 1;
@@ -626,7 +625,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	}
 	app->configuration.useLUT_4step = (value <= 4) ? -1 : 1;
 	//we don't need this in CUDA
-	app->configuration.sharedMemorySizePow2 = (pfUINT)pow(2, (pfUINT)log2(app->configuration.sharedMemorySize));
 	app->configuration.useRaderUintLUT = 0;
 	if (app->configuration.num_streams > 1) {
 		app->configuration.stream_event = (cudaEvent_t*)malloc(app->configuration.num_streams * sizeof(cudaEvent_t));
@@ -732,7 +730,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
 	}
 	app->configuration.warpSize = value;
-	app->configuration.sharedMemorySizePow2 = (pfUINT)pow(2, (pfUINT)log2(app->configuration.sharedMemorySize));
 	app->configuration.useRaderUintLUT = 0;
 	if (app->configuration.num_streams > 1) {
 		app->configuration.stream_event = (hipEvent_t*)malloc(app->configuration.num_streams * sizeof(hipEvent_t));
@@ -816,7 +813,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
 	}
 	app->configuration.sharedMemorySize = sharedMemorySize;
-	app->configuration.sharedMemorySizePow2 = (pfUINT)pow(2, (pfUINT)log2(sharedMemorySize));
 	app->configuration.vendorID = vendorID;
 	app->configuration.useRaderUintLUT = 1;
 	switch (vendorID) {
@@ -829,7 +825,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.registerBoost4Step = 1;
 		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 4194305 : 4194305;
 		app->configuration.sharedMemorySize -= 0x10;//reserved by system
-		app->configuration.sharedMemorySizePow2 = (pfUINT)pow(2, (pfUINT)log2(app->configuration.sharedMemorySize));
 		break;
 	case 0x8086://INTEL
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
@@ -894,7 +889,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.maxComputeWorkGroupCount[2] = compute_properties.maxGroupCountZ;
 	//if ((vendorID == 0x8086) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
 	app->configuration.sharedMemorySize = compute_properties.maxSharedLocalMemory;
-	app->configuration.sharedMemorySizePow2 = (pfUINT)pow(2, (pfUINT)log2(app->configuration.sharedMemorySize));
 
 	app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
 	app->configuration.useLUT = 1;
@@ -954,7 +948,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 
 	app->configuration.warpSize = dummy_state->threadExecutionWidth();
 
-	app->configuration.sharedMemorySizePow2 = (pfUINT)pow(2, (pfUINT)log2(app->configuration.sharedMemorySize));
 	app->configuration.useRaderUintLUT = 1;
 
 	app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;//the coalesced memory is equal to 64 bytes between L2 and VRAM.
@@ -1343,12 +1336,13 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.registerBoost = 1;
 		app->configuration.registerBoostNonPow2 = 0;
 		app->configuration.registerBoost4Step = 1;
-		if (app->configuration.sharedMemorySize > 163840) {
-			app->configuration.sharedMemorySize = 163840; // H100 fix - register file probably can't keep up with shared memory size 
-			app->configuration.sharedMemorySizePow2 = (pfUINT)pow(2, (pfUINT)log2(app->configuration.sharedMemorySize));
+		if (app->configuration.sharedMemorySize > 167936) {
+			app->configuration.sharedMemorySize = 167936; // H100 fix - register file probably can't keep up with shared memory size 
 		}
 	}
-
+	if (inputLaunchConfiguration.sharedMemorySize != 0)	app->configuration.sharedMemorySize = inputLaunchConfiguration.sharedMemorySize;
+	app->configuration.sharedMemorySizePow2 = (pfUINT)pow(2, (pfUINT)log2(app->configuration.sharedMemorySize));
+	
 	app->configuration.coordinateFeatures = 1;
 	app->configuration.numberBatches = 1;
 	if (inputLaunchConfiguration.coordinateFeatures != 0)	app->configuration.coordinateFeatures = inputLaunchConfiguration.coordinateFeatures;

@@ -256,6 +256,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		kernelPreparationConfiguration.fixMaxRaderPrimeMult = 17;
 		kernelPreparationConfiguration.saveApplicationToString = app->configuration.saveApplicationToString;
 		kernelPreparationConfiguration.loadApplicationFromString = app->configuration.loadApplicationFromString;
+		kernelPreparationConfiguration.sharedMemorySize = app->configuration.sharedMemorySize;
 		if (kernelPreparationConfiguration.loadApplicationFromString) {
 			kernelPreparationConfiguration.loadApplicationString = (void*)((char*)app->configuration.loadApplicationString + app->currentApplicationStringPos);
 		}
