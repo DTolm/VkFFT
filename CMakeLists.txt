@@ -135,7 +135,7 @@ elseif(${VKFFT_BACKEND} EQUAL 4)
 		LevelZero_INCLUDES
 		NAMES "ze_api.h"
 		PATHS ${LevelZero_INCLUDE_DIR}
-		PATH_SUFFIXES "include" 
+		PATH_SUFFIXES "include" "level_zero"
 		NO_DEFAULT_PATH
 	  )
 	target_include_directories(${PROJECT_NAME} PUBLIC ${LevelZero_INCLUDES})
