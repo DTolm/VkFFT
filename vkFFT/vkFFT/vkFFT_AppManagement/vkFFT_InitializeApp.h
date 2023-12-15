@@ -1452,6 +1452,8 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	}
 	//temporary set:
 	app->configuration.registerBoost4Step = 1;
+	if (inputLaunchConfiguration.sharedMemorySize != 0) app->configuration.sharedMemorySize = inputLaunchConfiguration.sharedMemorySize;
+	if (inputLaunchConfiguration.sharedMemorySizePow2 != 0) app->configuration.sharedMemorySizePow2 = inputLaunchConfiguration.sharedMemorySizePow2;
 #if(VKFFT_BACKEND==0) 
 	app->configuration.useUint64 = 0; //No physical addressing mode in Vulkan shaders. Use multiple-buffer support to achieve emulation of physical addressing.
 #endif
