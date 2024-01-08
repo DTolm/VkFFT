@@ -24,6 +24,156 @@
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
+static inline void append_inoutID_preprocessing_multiupload_R2C(VkFFTSpecializationConstantsLayout* sc, PfContainer* inoutID, int readWrite, int type, PfContainer* tempInt, PfContainer* tempInt2) {
+	if (sc->res != VKFFT_SUCCESS) return;
+	if ((sc->performR2C == 1) && (sc->axis_id == 0) && ((type/10) == 80) && ((sc->inputMemoryCode % 10) == 3) && (sc->actualInverse) && (!((sc->useBluesteinFFT && (sc->reverseBluesteinMultiUpload == 1)))) && (sc->axis_upload_id == (sc->numAxisUploads - 1))) {
+		PfContainer temp_int = VKFFT_ZERO_INIT;
+		temp_int.type = 31;
+
+		PfContainer fftDim = VKFFT_ZERO_INIT;
+		fftDim.type = 31;
+		PfContainer fftDim_half = VKFFT_ZERO_INIT;
+		fftDim_half.type = 31;
+
+		if (sc->zeropadBluestein[readWrite]) {
+			if (readWrite) {
+				fftDim_half.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i / 2 + 1;
+				fftDim.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i;
+			}
+			else {
+				fftDim_half.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i / 2 + 1;
+				fftDim.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i;
+			}
+		}
+		else {
+			fftDim_half.data.i = sc->fft_dim_full.data.i / 2 + 1;
+			fftDim.data.i = sc->fft_dim_full.data.i;
+		}
+		if (readWrite == 0) {
+			PfIf_ge_start(sc, inoutID, &fftDim_half);
+			//temp_int.data.i = (2 * fftDim.data.i - 1);
+			if (sc->numAxisUploads > 1) {
+				PfIf_lt_start(sc, inoutID, &fftDim);
+				PfSub(sc, tempInt, &fftDim, inoutID);
+				PfIf_else(sc);
+				PfMov(sc, tempInt, inoutID);
+				PfIf_end(sc);
+			}else
+				PfSub(sc, tempInt, &fftDim, inoutID);
+			PfIf_else(sc);
+			PfMov(sc, tempInt, inoutID);
+			PfIf_end(sc);
+			PfSwapContainers(sc, tempInt, inoutID);
+		}
+	}
+	if ((sc->performR2C == 1) && (sc->axis_id == 0) && ((type/10) == 70) && ((sc->outputMemoryCode % 10) == 3) && (!sc->actualInverse) && ((sc->useBluesteinFFT && (((sc->reverseBluesteinMultiUpload == 1) && (sc->axis_upload_id == (sc->numAxisUploads - 1))) || (sc->numAxisUploads == 1))) || ((!sc->useBluesteinFFT) && (sc->axis_upload_id == 0)))) {
+		PfContainer temp_int = VKFFT_ZERO_INIT;
+		temp_int.type = 31;
+
+		PfContainer fftDim = VKFFT_ZERO_INIT;
+		fftDim.type = 31;
+
+
+		if (sc->zeropadBluestein[readWrite]) {
+			if (readWrite) {
+				fftDim.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i / 2 + 1;
+			}
+			else {
+				fftDim.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i / 2 + 1;
+			}
+		}
+		else {
+			fftDim.data.i = sc->fft_dim_full.data.i / 2 + 1;
+		}
+		if (readWrite == 1) {
+			PfIf_lt_start(sc, inoutID, &fftDim);
+		}
+	}
+	
+	return;
+}
+
+static inline void append_inoutID_processing_multiupload_R2C(VkFFTSpecializationConstantsLayout* sc, PfContainer* inoutID, PfContainer* regID, int readWrite, int type, PfContainer* tempInt, PfContainer* tempInt2) {
+	if (sc->res != VKFFT_SUCCESS) return;
+	if ((sc->performR2C == 1) && (sc->axis_id == 0) && ((type/10) == 80) && ((sc->inputMemoryCode % 10) == 3) && (sc->actualInverse) && (!((sc->useBluesteinFFT && (sc->reverseBluesteinMultiUpload == 1)))) && (sc->axis_upload_id == (sc->numAxisUploads - 1))) {
+		PfContainer temp_int = VKFFT_ZERO_INIT;
+		temp_int.type = 31;
+
+		PfContainer fftDim = VKFFT_ZERO_INIT;
+		fftDim.type = 31;
+
+
+		if (sc->zeropadBluestein[readWrite]) {
+			if (readWrite) {
+				fftDim.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i / 2 + 1;
+			}
+			else {
+				fftDim.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i / 2 + 1;
+			}
+		}
+		else {
+			fftDim.data.i = sc->fft_dim_full.data.i / 2 + 1;
+		}
+		if (readWrite == 0) {
+			PfIf_neq_start(sc, inoutID, tempInt);
+			PfMovNeg(sc, &regID->data.c[1], &regID->data.c[1]);
+			PfIf_end(sc);
+		}
+	}
+	
+	return;
+}
+
+static inline void append_inoutID_postprocessing_multiupload_R2C(VkFFTSpecializationConstantsLayout* sc, PfContainer* inoutID, int readWrite, int type, PfContainer* tempInt) {
+	if (sc->res != VKFFT_SUCCESS) return;
+	if ((sc->performR2C == 1) && (sc->axis_id == 0) && ((type/10) == 80) && ((sc->inputMemoryCode % 10) == 3) && (sc->actualInverse) && (!((sc->useBluesteinFFT && (sc->reverseBluesteinMultiUpload == 1)))) && (sc->axis_upload_id == (sc->numAxisUploads - 1))) {
+		PfContainer temp_int = VKFFT_ZERO_INIT;
+		temp_int.type = 31;
+
+		PfContainer fftDim = VKFFT_ZERO_INIT;
+		fftDim.type = 31;
+
+
+		if (sc->zeropadBluestein[readWrite]) {
+			if (readWrite) {
+				fftDim.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i / 2 + 1;
+			}
+			else {
+				fftDim.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i / 2 + 1;
+			}
+		}
+		else {
+			fftDim.data.i = sc->fft_dim_full.data.i / 2 + 1;
+		}
+		if (readWrite == 0) {
+			PfSwapContainers(sc, tempInt, inoutID);
+		}
+	}
+	if ((sc->performR2C == 1) && (sc->axis_id == 0) && ((type/10) == 70) && ((sc->outputMemoryCode % 10) == 3) && (!sc->actualInverse) && ((sc->useBluesteinFFT && (((sc->reverseBluesteinMultiUpload == 1) && (sc->axis_upload_id == (sc->numAxisUploads - 1))) || (sc->numAxisUploads == 1))) || ((!sc->useBluesteinFFT) && (sc->axis_upload_id == 0)))) {
+		PfContainer temp_int = VKFFT_ZERO_INIT;
+		temp_int.type = 31;
+
+		PfContainer fftDim = VKFFT_ZERO_INIT;
+		fftDim.type = 31;
+
+
+		if (sc->zeropadBluestein[readWrite]) {
+			if (readWrite) {
+				fftDim.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i / 2 + 1;
+			}
+			else {
+				fftDim.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i / 2 + 1;
+			}
+		}
+		else {
+			fftDim.data.i = sc->fft_dim_full.data.i / 2 + 1;
+		}
+		if (readWrite == 1) {
+			PfIf_end(sc);
+		}
+	}
+	return;
+}
 
 static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int type, int readWrite) {
 	if (sc->res != VKFFT_SUCCESS) return;
@@ -64,7 +214,7 @@ static inline void appendC2R_read(VkFFTSpecializationConstantsLayout* sc, int ty
 		batchingInvocationID = &sc->gl_LocalInvocationID_y;
 	}
 
-	if ((type == 6) && (readWrite == 0)) {
+	if ((type == 600) && (readWrite == 0)) {
 		if (sc->zeropadBluestein[readWrite]) {
 			fftDim.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i;
 		}
@@ -339,7 +489,7 @@ static inline void appendR2C_write(VkFFTSpecializationConstantsLayout* sc, int t
 		batchingInvocationID = &sc->gl_LocalInvocationID_y;
 	}
 
-	if ((type == 5) && (readWrite == 1)) {
+	if ((type == 500) && (readWrite == 1)) {
 		if (sc->zeropadBluestein[readWrite]) {
 			fftDim.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i;
 		}
@@ -355,7 +505,7 @@ static inline void appendR2C_write(VkFFTSpecializationConstantsLayout* sc, int t
 	else
 		mult.data.i = 1;
 
-	if ((type == 5) && (readWrite == 1)) {
+	if ((type == 500) && (readWrite == 1)) {
 		PfMul(sc, &used_registers, &fftDim_half, &mult, 0);
 		PfDivCeil(sc, &used_registers, &used_registers, &localSize);
 

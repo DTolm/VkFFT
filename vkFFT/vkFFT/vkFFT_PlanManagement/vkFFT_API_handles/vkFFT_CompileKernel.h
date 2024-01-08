@@ -472,7 +472,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			return VKFFT_ERROR_FAILED_TO_SET_DYNAMIC_SHARED_MEMORY;
 		}
 	}
-	if (axis->pushConstants.structSize) {
+	/*if (axis->pushConstants.structSize) {
 		size_t size = axis->pushConstants.structSize;
 		result2 = cuModuleGetGlobal(&axis->consts_addr, &size, axis->VkFFTModule, "consts");
 		if (result2 != CUDA_SUCCESS) {
@@ -484,7 +484,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_MODULE_GET_GLOBAL;
 		}
-	}
+	}*/
 	if (!app->configuration.saveApplicationToString) {
 		free(code);
 		code = 0;
@@ -521,7 +521,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM;
 		}
-		if (axis->pushConstants.structSize) {
+		/*if (axis->pushConstants.structSize) {
 			result = hiprtcAddNameExpression(prog, "&consts");
 			if (result != HIPRTC_SUCCESS) {
 				printf("hiprtcAddNameExpression error: %s\n", hiprtcGetErrorString(result));
@@ -530,7 +530,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 				deleteVkFFT(app);
 				return VKFFT_ERROR_FAILED_TO_ADD_NAME_EXPRESSION;
 			}
-		}
+		}*/
 		int numOpts = 0;
 		char* opts[5];
 		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
@@ -646,7 +646,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			return VKFFT_ERROR_FAILED_TO_SET_DYNAMIC_SHARED_MEMORY;
 		}
 	}
-	if (axis->pushConstants.structSize) {
+	/*if (axis->pushConstants.structSize) {
 		size_t size = axis->pushConstants.structSize;
 		result2 = hipModuleGetGlobal(&axis->consts_addr, &size, axis->VkFFTModule, "consts");
 		if (result2 != hipSuccess) {
@@ -658,7 +658,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_MODULE_GET_GLOBAL;
 		}
-	}
+	}*/
 	if (!app->configuration.saveApplicationToString) {
 		free(code);
 		code = 0;

@@ -67,7 +67,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 		}
 	}
 	if (!app->configuration.userTempBuffer) {
-		if (app->configuration.allocateTempBuffer) {
+		if (app->configuration.allocateTempBuffer && (app->configuration.tempBuffer != 0)) {
 			app->configuration.allocateTempBuffer = 0;
 #if(VKFFT_BACKEND==0)
 			if (app->configuration.tempBuffer[0] != 0) {
@@ -266,7 +266,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 					}
 				}
 			}
-			if (app->localFFTPlan->multiUploadR2C) {
+			if (app->localFFTPlan->bigSequenceEvenR2C) {
 				deleteAxis(app, &app->localFFTPlan->R2Cdecomposition, 0);
 			}
 			if (app->localFFTPlan != 0) {
@@ -288,7 +288,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 					}
 				}
 			}
-			if (app->localFFTPlan_inverse->multiUploadR2C) {
+			if (app->localFFTPlan_inverse->bigSequenceEvenR2C) {
 				deleteAxis(app, &app->localFFTPlan_inverse->R2Cdecomposition, 0);
 			}
 			if (app->localFFTPlan_inverse != 0) {

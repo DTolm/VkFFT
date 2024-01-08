@@ -25,7 +25,7 @@
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
 
-static inline void checkZeropadStart(VkFFTSpecializationConstantsLayout* sc, PfContainer* location, int axisCheck) {
+static inline void checkZeropadStart_otherAxes(VkFFTSpecializationConstantsLayout* sc, PfContainer* location, int axisCheck) {
 	//return if sequence is full of zeros from the start
 	if (sc->res != VKFFT_SUCCESS) return;
 	PfContainer temp_int = VKFFT_ZERO_INIT;
@@ -56,7 +56,7 @@ static inline void checkZeropadStart(VkFFTSpecializationConstantsLayout* sc, PfC
 	}
 	return;
 }
-static inline void checkZeropadEnd(VkFFTSpecializationConstantsLayout* sc, int axisCheck) {
+static inline void checkZeropadEnd_otherAxes(VkFFTSpecializationConstantsLayout* sc, int axisCheck) {
 	//return if sequence is full of zeros from the start
 	if (sc->res != VKFFT_SUCCESS) return;
 	PfContainer temp_int = VKFFT_ZERO_INIT;
@@ -88,7 +88,7 @@ static inline void checkZeropadEnd(VkFFTSpecializationConstantsLayout* sc, int a
 	return;
 }
 
-static inline void checkZeropad(VkFFTSpecializationConstantsLayout* sc, PfContainer* location, int axisCheck) {
+static inline void checkZeropad_otherAxes(VkFFTSpecializationConstantsLayout* sc, PfContainer* location, int axisCheck) {
 	//return if sequence is full of zeros from the start
 	if (sc->res != VKFFT_SUCCESS) return;
 	PfContainer temp_int = VKFFT_ZERO_INIT;
@@ -128,6 +128,66 @@ static inline void checkZeropad(VkFFTSpecializationConstantsLayout* sc, PfContai
         }
     }
 	return;
+}
+
+static inline void checkZeropadStart_currentFFTAxis(VkFFTSpecializationConstantsLayout* sc, int readWrite, int type, PfContainer* inoutID) {
+	PfContainer temp_int = VKFFT_ZERO_INIT;
+	temp_int.type = 31;
+	PfContainer temp_int1 = VKFFT_ZERO_INIT;
+	temp_int1.type = 31;
+	if ((sc->zeropad[readWrite]) || ((sc->numAxisUploads > 1) && (sc->zeropadBluestein[readWrite]))) {
+		//sc->tempLen = sprintf(sc->tempStr, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
+		PfSetToZero(sc, &sc->tempInt);
+
+		//PfMod(sc, &sc->combinedID, &sc->inoutID_x, &sc->fft_dim_full);
+
+		if (sc->zeropad[readWrite]) {
+			if (readWrite)
+				PfIf_lt_start(sc, inoutID, &sc->fft_zeropad_left_write[sc->axis_id]);
+			else
+				PfIf_lt_start(sc, inoutID, &sc->fft_zeropad_left_read[sc->axis_id]);
+			temp_int.data.i = 1;
+			PfMov(sc, &sc->tempInt, &temp_int);
+			PfIf_else(sc);
+
+			if (readWrite) {
+				PfIf_ge_start(sc, inoutID, &sc->fft_zeropad_right_write[sc->axis_id]);
+			}
+			else {
+				PfIf_ge_start(sc, inoutID, &sc->fft_zeropad_right_read[sc->axis_id]);
+			}
+			temp_int.data.i = 1;
+			PfMov(sc, &sc->tempInt, &temp_int);
+			PfIf_end(sc);
+
+			PfIf_end(sc);
+		}
+
+		if (sc->numAxisUploads > 1) {
+			if (sc->zeropadBluestein[readWrite]) {
+				if (readWrite)
+					PfIf_lt_start(sc, inoutID, &sc->fft_zeropad_Bluestein_left_write[sc->axis_id]);
+				else
+					PfIf_lt_start(sc, inoutID, &sc->fft_zeropad_Bluestein_left_read[sc->axis_id]);
+				temp_int.data.i = 1;
+				PfMov(sc, &sc->tempInt, &temp_int);
+				PfIf_end(sc);
+			}
+		}
+		temp_int.data.i = 0;
+		PfIf_gt_start(sc, &sc->tempInt, &temp_int);
+	}
+
+}
+static inline void checkZeropadEnd_currentFFTAxis(VkFFTSpecializationConstantsLayout* sc, int readWrite, int type) {
+	PfContainer temp_int = VKFFT_ZERO_INIT;
+	temp_int.type = 31;
+	PfContainer temp_int1 = VKFFT_ZERO_INIT;
+	temp_int1.type = 31;
+	if ((sc->zeropad[readWrite]) || ((sc->numAxisUploads > 1) && (sc->zeropadBluestein[readWrite]))) {
+		PfIf_end(sc);
+	}
+
 }
 
 #endif

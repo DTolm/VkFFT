@@ -202,7 +202,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
                     if (resFFT != VKFFT_SUCCESS) return resFFT;
                 }
             }
-            if (app->localFFTPlan->multiUploadR2C) {
+            if (app->localFFTPlan->bigSequenceEvenR2C) {
                 VkFFTAxis* axis = &app->localFFTPlan->R2Cdecomposition;
                 resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan, axis, 0, 0, 0);
                 if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -352,7 +352,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
                     if (resFFT != VKFFT_SUCCESS) return resFFT;
                 }
             }
-            if ((app->localFFTPlan_inverse->multiUploadR2C)&&(i==1)) {
+            if ((app->localFFTPlan_inverse->bigSequenceEvenR2C)&&(i==1)) {
                 //app->configuration.size[0] /= 2;
                 VkFFTAxis* axis = &app->localFFTPlan_inverse->R2Cdecomposition;
                 resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan_inverse, axis, 0, 0, 1);
@@ -526,7 +526,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
             }
         }
         if (!app->configuration.omitDimension[0]) {
-            if (app->localFFTPlan_inverse->multiUploadR2C) {
+            if (app->localFFTPlan_inverse->bigSequenceEvenR2C) {
                 //app->configuration.size[0] /= 2;
                 VkFFTAxis* axis = &app->localFFTPlan_inverse->R2Cdecomposition;
                 resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan_inverse, axis, 0, 0, 1);
@@ -646,7 +646,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
                 }
             }
         }
-        //if (app->localFFTPlan_inverse->multiUploadR2C) app->configuration.size[0] *= 2;
+        //if (app->localFFTPlan_inverse->bigSequenceEvenR2C) app->configuration.size[0] *= 2;
 
     }
     return resFFT;

@@ -28,12 +28,14 @@
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel0/vkFFT_KernelUtils.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel0/vkFFT_Zeropad.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel0/vkFFT_MemoryManagement/vkFFT_MemoryTransfers/vkFFT_Transfers.h"
+#include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel1/PrePostProcessing/vkFFT_R2R.h"
+#include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel1/PrePostProcessing/vkFFT_R2C.h"
 static inline void setReadToRegisters(VkFFTSpecializationConstantsLayout* sc, int readType) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	switch (readType) {
+	switch (readType % 10) {
 	case 0: //single_c2c
 	{
-		if ((sc->localSize[1].data.i > 1) || ((sc->performR2C) && (sc->actualInverse)) || ((sc->fftDim.data.i>1)&&((sc->localSize[0].data.i * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim.data.i) || (sc->rader_generator[0] > 0))))
+		if ((sc->localSize[1].data.i > 1) || ((sc->performR2C) && (sc->actualInverse) && (sc->numAxisUploads == 1) && (!sc->forceCallbackVersionRealTransforms)) || ((sc->fftDim.data.i>1)&&((sc->localSize[0].data.i * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim.data.i) || (sc->rader_generator[0] > 0))))
 			sc->readToRegisters = 0;
 		else
 			sc->readToRegisters = 1;
@@ -55,52 +57,60 @@ static inline void setReadToRegisters(VkFFTSpecializationConstantsLayout* sc, in
 			sc->readToRegisters = 1;
 		break;
 	}
-	case 5://single_r2c
-	{
-		if ((sc->stridedSharedLayout) || (sc->localSize[1].data.i > 1) || (sc->fftDim.data.i == 1) || ((sc->fftDim.data.i>1)&&((sc->localSize[0].data.i * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim.data.i) || (sc->rader_generator[0] > 0))))
-			sc->readToRegisters = 0;
-		else
-			sc->readToRegisters = 1;
-		break;
 	}
-	case 6: //single_c2r
-	{
-		sc->readToRegisters = 0;
-		/*if ((sc->rader_generator[0] > 0) || ((sc->fftDim.data.i % sc->localSize[0].data.i) && (!sc->stridedSharedLayout)) || ((sc->fftDim.data.i % sc->localSize[1].data.i) && (sc->stridedSharedLayout)))
-			sc->readToRegisters = 0;
-		else
-			sc->readToRegisters = 1;*/
-		break;
-	}
-	case 110: case 111: case 130: case 131: case 140: case 141: case 144: case 145:
-	{
-		sc->readToRegisters = 0;
-		break;
-	}
-	case 142: case 143:
-	{
-		if (sc->performDST == 4)
-			sc->readToRegisters = 1;
-		else {
-#if(((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4)||(VKFFT_BACKEND==5)))
-			sc->readToRegisters = 1;
-#else
-			sc->readToRegisters = 0;
-#endif
+	if (sc->axis_id == 0) {
+		switch (readType / 10) {
+		case 50://single_r2c
+		{
+			if ((sc->stridedSharedLayout) || (sc->localSize[1].data.i > 1) || (sc->fftDim.data.i == 1) || ((sc->fftDim.data.i > 1) && ((sc->localSize[0].data.i * sc->stageRadix[0] * (sc->registers_per_thread_per_radix[sc->stageRadix[0]] / sc->stageRadix[0]) > sc->fftDim.data.i) || (sc->rader_generator[0] > 0))))
+				sc->readToRegisters = 0;
+			else
+				sc->readToRegisters = 1;
+			break;
 		}
-		break;
+		case 60: //single_c2r
+		{
+			sc->readToRegisters = 0;
+			/*if ((sc->rader_generator[0] > 0) || ((sc->fftDim.data.i % sc->localSize[0].data.i) && (!sc->stridedSharedLayout)) || ((sc->fftDim.data.i % sc->localSize[1].data.i) && (sc->stridedSharedLayout)))
+				sc->readToRegisters = 0;
+			else
+				sc->readToRegisters = 1;*/
+			break;
+		}
+		}
 	}
-	case 120: case 121:
-	{
-		sc->readToRegisters = 1;
-		break;
-	}
+	if (sc->numAxisUploads == 1) {
+		switch (readType / 10) {
+		case 110: case 130: case 142:
+		{
+			sc->readToRegisters = 0;
+			break;
+		}
+		case 140:
+		{
+			if (sc->performDST == 4)
+				sc->readToRegisters = 1;
+			else {
+#if(((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4)||(VKFFT_BACKEND==5)))
+				sc->readToRegisters = 1;
+#else
+				sc->readToRegisters = 0;
+#endif
+			}
+			break;
+		}
+		case 120:
+		{
+			sc->readToRegisters = 1;
+			break;
+		}
+		}
 	}
 	return;
 }
 static inline void setWriteFromRegisters(VkFFTSpecializationConstantsLayout* sc, int writeType) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	switch (writeType) {
+	switch (writeType % 10) {
 	case 0: //single_c2c
 	{
 		if ((sc->localSize[1].data.i > 1) || ((sc->fftDim.data.i>1)&&((sc->localSize[0].data.i * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim.data.i) || (sc->rader_generator[sc->numStages - 1] > 0)))) {
@@ -128,25 +138,33 @@ static inline void setWriteFromRegisters(VkFFTSpecializationConstantsLayout* sc,
 			sc->writeFromRegisters = 1;
 		break;
 	}
-	case 5://single_r2c
-	{
-		sc->writeFromRegisters = 0;
-		break;
 	}
-	case 6: //single_c2r
-	{
-		if ((sc->stridedSharedLayout) || (sc->localSize[1].data.i > 1) || (sc->fftDim.data.i==1) || ((sc->fftDim.data.i>1)&&((sc->localSize[0].data.i * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim.data.i) || (sc->rader_generator[sc->numStages - 1] > 0)))) {
+	if (sc->axis_id == 0) {
+		switch (writeType / 10) {
+		case 50://single_r2c
+		{
 			sc->writeFromRegisters = 0;
+			break;
 		}
-		else
-			sc->writeFromRegisters = 1;
-		break;
+		case 60: //single_c2r
+		{
+			if ((sc->stridedSharedLayout) || (sc->localSize[1].data.i > 1) || (sc->fftDim.data.i == 1) || ((sc->fftDim.data.i > 1) && ((sc->localSize[0].data.i * sc->stageRadix[sc->numStages - 1] * (sc->registers_per_thread_per_radix[sc->stageRadix[sc->numStages - 1]] / sc->stageRadix[sc->numStages - 1]) > sc->fftDim.data.i) || (sc->rader_generator[sc->numStages - 1] > 0)))) {
+				sc->writeFromRegisters = 0;
+			}
+			else
+				sc->writeFromRegisters = 1;
+			break;
+		}
+		}
 	}
-	case 110: case 111: case 120: case 121: case 130: case 131: case 140: case 141: case 142: case 143: case 144: case 145:
-	{
-		sc->writeFromRegisters = 0;
-		break;
-	}
+	if (sc->numAxisUploads == 1) {
+		switch (writeType / 10) {
+		case 110: case 120: case 130: case 140: case 142:
+		{
+			sc->writeFromRegisters = 0;
+			break;
+		}
+		}
 	}
 	return;
 }
@@ -188,7 +206,7 @@ static inline void appendOffset(VkFFTSpecializationConstantsLayout* sc, int read
         for (int i = 1; i < sc->numFFTdims; i++){
             if (((i != sc->axis_id)&&(sc->axis_id > 0)) || ((i>1) && (sc->axis_id == 0))) {
                 PfMod(sc, &sc->inoutID_y, &sc->tempInt, &sc->size[i]);
-                checkZeropad(sc, &sc->inoutID_y, i);
+                checkZeropad_otherAxes(sc, &sc->inoutID_y, i);
                 PfMul(sc, &sc->inoutID_y, &sc->inoutID_y, &bufferStride[locStrideOrder], 0);
                 PfAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->inoutID_y);
 				if ((i!=(sc->numFFTdims-1) && (sc->axis_id != (sc->numFFTdims-1))) || ((i!=(sc->numFFTdims-2)) && (sc->axis_id == (sc->numFFTdims-1))))
@@ -341,7 +359,7 @@ static inline void appendKernelOffset(VkFFTSpecializationConstantsLayout* sc, in
         for (int i = 1; i < sc->numFFTdims; i++){
             if (((i != sc->axis_id)&&(sc->axis_id > 0)) || ((i>1) && (sc->axis_id == 0))) {
                 PfMod(sc, &sc->inoutID_y, &sc->tempInt, &sc->size[i]);
-                checkZeropad(sc, &sc->inoutID_y, i);
+                checkZeropad_otherAxes(sc, &sc->inoutID_y, i);
                 PfMul(sc, &sc->inoutID_y, &sc->inoutID_y, &bufferStride[locStrideOrder], 0);
                 PfAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->inoutID_y);
 				if ((i!=(sc->numFFTdims-1) && (sc->axis_id != (sc->numFFTdims-1))) || ((i!=(sc->numFFTdims-2)) && (sc->axis_id == (sc->numFFTdims-1))))
@@ -389,6 +407,7 @@ static inline void appendKernelOffset(VkFFTSpecializationConstantsLayout* sc, in
 	}
 	return;
 }
+
 static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConstantsLayout* sc, int readWrite, int type) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	//&sc->tempIntLen = sprintf(&sc->tempIntStr, "	return;\n");
@@ -434,24 +453,33 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 
 	PfContainer* bufferStride = (readWrite) ? sc->outputStride : sc->inputStride;
 
+	int recalculateAtEveryStep_inoutID = 0;
+	if ((sc->zeropad[readWrite]) || ((sc->numAxisUploads > 1) && (sc->zeropadBluestein[readWrite])) || ((type / 10) == 111) || ((type / 10) == 121) || ((type / 10) == 131) || ((type / 10) == 141) || ((type / 10) == 143) || ((type / 10) == 70) || ((type / 10) == 80)) {
+		recalculateAtEveryStep_inoutID = 1;
+	}
+
 	PfContainer mult = VKFFT_ZERO_INIT;
 	mult.type = 31;
 
 	PfContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
-
+	if (((sc->zeropad[readWrite]) || ((sc->zeropadBluestein[readWrite])) || (((type / 10) == 111)&&(sc->performDST == 1))) && (!readWrite)) {
+		if (sc->readToRegisters == 0) {
+			appendSetSMToZero(sc);
+			appendBarrierVkFFT(sc);
+		}
+	}
 	if (sc->zeropadBluestein[readWrite]) {
 		if (sc->numAxisUploads == 1) {
 			if (readWrite) {
 				fftDim.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i;
 			}
 			else {
-				if (sc->readToRegisters == 0) {
-					appendSetSMToZero(sc);
-					appendBarrierVkFFT(sc);
-				}
 				fftDim.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i;
 			}
+			if ((type / 10) == 141) fftDim.data.i /= 2;
+			if (((type / 10) == 111)&&(sc->performDCT == 1)) fftDim.data.i = 2 * fftDim.data.i - 2;
+			if (((type / 10) == 111)&&(sc->performDST == 1)) fftDim.data.i = 2 * fftDim.data.i + 2;
 		}
 		else {
 			fftDim.data.i = sc->fftDim.data.i;
@@ -460,20 +488,21 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 	else
 		fftDim.data.i = sc->fftDim.data.i;
 
-	if (((type == 6) && (readWrite == 0)) || ((type == 5) && (readWrite == 1))) {
+	if ((((type / 10) == 60) && (readWrite == 0)) || (((type / 10) == 50) && (readWrite == 1))) {
 		temp_int.data.i = 2;
 		PfDiv(sc, &fftDim, &fftDim, &temp_int);
 		PfInc(sc, &fftDim);
 	}
-	else if (type == 110) {
+	else if (((type / 10) == 110) && (!(sc->zeropadBluestein[readWrite] && (sc->numAxisUploads == 1))))  {
 		if(sc->performDST > 0)
 			fftDim.data.i = (fftDim.data.i - 2) / 2;
 		else
 			fftDim.data.i = (fftDim.data.i + 2) / 2;
 	}
-	else if ((type == 142) && (readWrite == 0)) {
+	else if (((type / 10) == 140) && (readWrite == 0)) {
 		fftDim.data.i = 2 * fftDim.data.i;
 	}
+
 	if (sc->mergeSequencesR2C)
 		mult.data.i = 2;
 	else
@@ -493,27 +522,27 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 					PfAdd(sc, &sc->shiftY, &sc->gl_WorkGroupID_y, &sc->workGroupShiftY);
 					temp_int.data.i = mult.data.i * batching_localSize.data.i;
 					PfMul(sc, &sc->shiftY, &sc->shiftY, &temp_int, 0);
-					checkZeropad(sc, &sc->shiftY, 1);
+					checkZeropad_otherAxes(sc, &sc->shiftY, 1);
 				}
 				else {
 					PfMov(sc, &sc->shiftY, &sc->gl_WorkGroupID_y);
 					temp_int.data.i = mult.data.i * batching_localSize.data.i;
 					PfMul(sc, &sc->shiftY, &sc->shiftY, &temp_int, 0);
-					checkZeropad(sc, &sc->shiftY, 1);
+					checkZeropad_otherAxes(sc, &sc->shiftY, 1);
 				}
 				PfSetToZero(sc, &sc->shiftZ);
 			}
 			else {
 				if (sc->performWorkGroupShift[1]) {
 					PfAdd(sc, &sc->shiftY, &sc->gl_WorkGroupID_y, &sc->workGroupShiftY);
-					checkZeropad(sc, &sc->shiftY, 1);
+					checkZeropad_otherAxes(sc, &sc->shiftY, 1);
 					temp_int.data.i = sc->inputStride[1].data.i;
 					PfMul(sc, &sc->shiftZ, &sc->shiftY, &temp_int, 0);
 				}
 				else
 				{
 					PfMov(sc, &sc->shiftY, &sc->gl_WorkGroupID_y);
-					checkZeropad(sc, &sc->shiftY, 1);
+					checkZeropad_otherAxes(sc, &sc->shiftY, 1);
 					temp_int.data.i = sc->inputStride[1].data.i;
 					PfMul(sc, &sc->shiftZ, &sc->shiftY, &temp_int, 0);
 				}
@@ -551,7 +580,7 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 		}
 	}
 
-	if (((type == 6) && (readWrite == 0)) || ((type == 5) && (readWrite == 1))) {
+	if ((((type / 10) == 60) && (readWrite == 0)) || (((type / 10) == 50) && (readWrite == 1))) {
 		PfMul(sc, &used_registers, &fftDim, &mult, 0);
 		mult.data.i = 1;
 	}
@@ -670,7 +699,7 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 					PfMul(sc, &sc->inoutID_y, &sc->inoutID_y, &mult, 0);
 				}
 				PfAdd(sc, &sc->inoutID_y, &sc->inoutID_y, &sc->shiftY);
-				checkZeropadStart(sc, &sc->inoutID_y, 1);
+				checkZeropadStart_otherAxes(sc, &sc->inoutID_y, 1);
 				//PfMul(sc, &sc->tempInt, &batching_localSize, &sc->shiftY,0);
 				//PfAdd(sc, &sc->inoutID_y, &sc->inoutID_y, &sc->tempInt);
 				temp_int.data.i = batching_localSize.data.i;
@@ -683,8 +712,8 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", &sc->fftDim, &sc->gl_WorkGroupID_y, shiftY, &sc->localSize[0], &sc->size[&sc->axis_id + 1]);
 					if ((sc->mergeSequencesR2C) && (sc->size[1].data.i % 2) && (readWrite == 0)) {
 						PfIf_ge_start(sc, &sc->inoutID_y, &sc->size[1]);
-						PfSetToZero(sc, &sc->inoutID_x);
-						PfSetToZero(sc, &sc->inoutID_y);
+						temp_int.data.i = sc->size[1].data.i - 1;
+						PfMov(sc, &sc->inoutID_y, &temp_int);
 						PfIf_end(sc);
 					}
 					else {
@@ -692,7 +721,13 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 					}
 #else
 					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(!(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 ")) %s = 0; {\n", &sc->fftDim, &sc->gl_WorkGroupID_y, shiftY, &sc->localSize[0], &sc->size[&sc->axis_id + 1], &sc->inoutID);
-					if (readWrite == 0) {
+					if ((sc->mergeSequencesR2C) && (sc->size[1].data.i % 2) && (readWrite == 0)) {
+						PfIf_ge_start(sc, &sc->inoutID_y, &sc->size[1]);
+						temp_int.data.i = sc->size[1].data.i - 1;
+						PfMov(sc, &sc->inoutID_y, &temp_int);
+						PfIf_end(sc);
+					}
+					else if (readWrite == 0) {
 						PfIf_ge_start(sc, &sc->inoutID_y, &sc->size[1]);
 						PfSetToZero(sc, &sc->inoutID_x);
 						PfSetToZero(sc, &sc->inoutID_y);
@@ -761,8 +796,14 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 			if ((sc->mergeSequencesR2C) && (mult.data.i == 1))
 				temp_int.data.i *= 2;
 
+			if (!recalculateAtEveryStep_inoutID)
+				checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);
+
+			append_inoutID_preprocessing_multiupload_R2R(sc, &sc->inoutID_x, readWrite, type, &sc->stageInvocationID, &sc->sdataID);
+			append_inoutID_preprocessing_multiupload_R2C(sc, &sc->inoutID_x, readWrite, type, &sc->stageInvocationID, &sc->sdataID);
+
 #if (VKFFT_BACKEND!=2) //AMD compiler fix
-			if ((bufferStride[1].data.i == fftDim.data.i) && (!(((size1.data.i % temp_int.data.i) != 0) && (sc->mergeSequencesR2C) && (sc->size[1].data.i % 2) && (readWrite == 0))) && (!sc->mergeSequencesR2C)) {
+			if ((bufferStride[1].data.i == fftDim.data.i) && (!(((size1.data.i % temp_int.data.i) != 0) && (sc->mergeSequencesR2C) && (sc->size[1].data.i % 2) && (readWrite == 0))) && (!sc->mergeSequencesR2C) && (!recalculateAtEveryStep_inoutID)) {
 #else
 			if ((bufferStride[1].data.i == fftDim.data.i) && (!(((size1.data.i % temp_int.data.i) != 0) && (readWrite == 0))) && (!sc->mergeSequencesR2C)) {
 #endif
@@ -773,13 +814,13 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 			}
 			else {
 				PfMov(sc, &sc->inoutID, &sc->inoutID_x);
-
 				if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {
 					PfMul(sc, &sc->tempInt, &sc->inoutID_y, &bufferStride[1], 0);
 					PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->tempInt);
 				}
 				PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->shiftZ);
 			}
+
 			if ((sc->readToRegisters && (readWrite == 0)) || (sc->writeFromRegisters && (readWrite == 1))) {
 				//no need to calculate register addresses
 			}
@@ -799,7 +840,7 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 							temp_int.data.i *= 2;
 						PfMod(sc, &sc->sdataID, &sc->combinedID, &temp_int);
 
-						if ((type == 142) && (!sc->readToRegisters) && (readWrite == 0)) {
+						if (((type / 10) == 140) && (!sc->readToRegisters) && (readWrite == 0)) {
 							temp_int1.data.i = 2;
 							PfDiv(sc, &sc->sdataID, &sc->sdataID, &temp_int1);
 						}
@@ -808,7 +849,7 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 						PfDiv(sc, &sc->tempInt, &sc->combinedID, &temp_int);
 						PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
 					}
-					if (sc->performDST == 1) 
+					if ((sc->performDST == 1) && (!sc->forceCallbackVersionRealTransforms))
 						PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride);
 				}
 				else {
@@ -826,7 +867,7 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 							temp_int.data.i *= 2;
 						PfMod(sc, &sc->sdataID, &sc->combinedID, &temp_int);
 
-						if ((type == 142) && (!sc->readToRegisters) && (readWrite == 0)) {
+						if (((type / 10) == 140) && (!sc->readToRegisters) && (readWrite == 0)) {
 							temp_int1.data.i = 2;
 							PfDiv(sc, &sc->sdataID, &sc->sdataID, &temp_int1);
 						}
@@ -835,186 +876,311 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 						PfMul(sc, &sc->tempInt, &sc->tempInt, &sc->sharedStride, 0);
 						PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
 					}
-					if (sc->performDST == 1) 
+					if ((sc->performDST == 1) && (!sc->forceCallbackVersionRealTransforms))
 						PfInc(sc, &sc->sdataID);
 				}
 			}
-			if ((sc->zeropad[readWrite]) || ((sc->numAxisUploads > 1) && (sc->zeropadBluestein[readWrite]))) {
-				//sc->tempLen = sprintf(sc->tempStr, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
-				PfSetToZero(sc, &sc->tempInt);
-
-				//PfMod(sc, &sc->combinedID, &sc->inoutID_x, &sc->fft_dim_full);
-
-				if (sc->zeropad[readWrite]) {
-					if (readWrite)
-						PfIf_lt_start(sc, &sc->inoutID_x, &sc->fft_zeropad_left_write[sc->axis_id]);
-					else
-						PfIf_lt_start(sc, &sc->inoutID_x, &sc->fft_zeropad_left_read[sc->axis_id]);
-					temp_int.data.i = 1;
-					PfMov(sc, &sc->tempInt, &temp_int);
-					PfIf_else(sc);
-
-					if (readWrite) {
-						PfIf_ge_start(sc, &sc->inoutID_x, &sc->fft_zeropad_right_write[sc->axis_id]);
-					}
-					else {
-						PfIf_ge_start(sc, &sc->inoutID_x, &sc->fft_zeropad_right_read[sc->axis_id]);
-					}
-					temp_int.data.i = 1;
-					PfMov(sc, &sc->tempInt, &temp_int);
-					PfIf_end(sc);
-
-					PfIf_end(sc);
-				}
-
-				if (sc->numAxisUploads > 1) {
-					if (sc->zeropadBluestein[readWrite]) {
-						if (readWrite)
-							PfIf_lt_start(sc, &sc->inoutID_x, &sc->fft_zeropad_Bluestein_left_write[sc->axis_id]);
-						else
-							PfIf_lt_start(sc, &sc->inoutID_x, &sc->fft_zeropad_Bluestein_left_read[sc->axis_id]);
-						temp_int.data.i = 1;
-						PfMov(sc, &sc->tempInt, &temp_int);
-						PfIf_end(sc);
-					}
-				}
-				temp_int.data.i = 0;
-				PfIf_gt_start(sc, &sc->tempInt, &temp_int);
-			}
+			
 			if (readWrite == 0) {
-				if ((type == 5) || (type == 110) || (type == 120) || (type == 130) || (type == 144)) {
-					if (sc->readToRegisters) {
-						appendGlobalToRegisters_x(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID);
-						if (sc->mergeSequencesR2C) {
-							if ((sc->size[1].data.i % 2) != 0) {
-								temp_int.data.i = sc->size[1].data.i - 1;
-								PfIf_lt_start(sc, &sc->inoutID_y, &temp_int);
-							}
-							PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->inputStride[1]);
-							if ((sc->size[1].data.i % 2) != 0) {
-								PfIf_end(sc);
-							}
-							appendGlobalToRegisters_y(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID);
-						}
-					}
-					else {
-						appendGlobalToRegisters_x(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
-						if (sc->mergeSequencesR2C) {
-							if ((sc->size[1].data.i % 2) != 0) {
-								temp_int.data.i = sc->size[1].data.i - 1;
-								PfIf_lt_start(sc, &sc->inoutID_y, &temp_int);
-							}
-							PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->inputStride[1]);
-							if ((sc->size[1].data.i % 2) != 0) {
-								PfIf_end(sc);
-							}
-							appendGlobalToRegisters_y(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
-						}
-						appendRegistersToShared(sc, &sc->sdataID, &sc->temp);
-					}
-				}
-				else  if (type == 142) {
-					if (sc->readToRegisters) {
-						if (i < used_registers.data.i / 2) {
+				if ((sc->inputMemoryCode % 10) == 2) {
+					if (((type / 10) == 50) || ((type / 10) == 70) || ((type / 10) == 110) || ((type / 10) == 111) || ((type / 10) == 120) || ((type / 10) == 121) || ((type / 10) == 130) || ((type / 10) == 131) || ((type / 10) == 142) || ((type / 10) == 143)) {
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);
+							
+						if (sc->readToRegisters) {
 							appendGlobalToRegisters_x(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID);
+
+							if (((((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 0)) || (((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 1))) && ((type / 10) == 131)) {
+								if (recalculateAtEveryStep_inoutID) {
+									checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID2);
+									if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {
+										PfMul(sc, &sc->tempInt, &sc->inoutID_y, &bufferStride[1], 0);
+										PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->tempInt);
+									}
+									PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->shiftZ);
+								}
+								appendGlobalToRegisters_y(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID2);
+								if (recalculateAtEveryStep_inoutID)
+									checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+							}
+
+							append_processing_multiupload_R2R(sc, &sc->inoutID_x, &sc->regIDs[k * sc->registers_per_thread + i], readWrite, type, 0, 0);
+							if (sc->mergeSequencesR2C) {
+								if ((sc->size[1].data.i % 2) != 0) {
+									temp_int.data.i = sc->size[1].data.i - 1;
+									PfIf_lt_start(sc, &sc->inoutID_y, &temp_int);
+								}
+								PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->inputStride[1]);
+								if ((sc->size[1].data.i % 2) != 0) {
+									PfIf_end(sc);
+								}
+								appendGlobalToRegisters_y(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID);
+							}
 						}
 						else {
-							appendGlobalToRegisters_y(sc, &sc->regIDs[k * sc->registers_per_thread + i - used_registers.data.i / 2], &sc->inputsStruct, &sc->inoutID);
+							appendGlobalToRegisters_x(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
+
+							if (((((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 0)) || (((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 1))) && ((type / 10) == 131)) {
+								if (recalculateAtEveryStep_inoutID) {
+									checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID2);
+									if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {
+										PfMul(sc, &sc->tempInt, &sc->inoutID_y, &bufferStride[1], 0);
+										PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->tempInt);
+									}
+									PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->shiftZ);
+								}
+
+								appendGlobalToRegisters_y(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID2);
+								if (recalculateAtEveryStep_inoutID)
+									checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+							}
+
+							append_processing_multiupload_R2R(sc, &sc->inoutID_x, &sc->temp, readWrite, type, 0, 0);
+							if (sc->mergeSequencesR2C) {
+								if ((sc->size[1].data.i % 2) != 0) {
+									temp_int.data.i = sc->size[1].data.i - 1;
+									PfIf_lt_start(sc, &sc->inoutID_y, &temp_int);
+								}
+								PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->inputStride[1]);
+								if ((sc->size[1].data.i % 2) != 0) {
+									PfIf_end(sc);
+								}
+								appendGlobalToRegisters_y(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
+							}
+							appendRegistersToShared(sc, &sc->sdataID, &sc->temp);
 						}
+
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+						
 					}
-					else {
-						PfMod(sc, &sc->tempInt, &sc->combinedID, &fftDim);
-						temp_int.data.i = 2;
-						PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+					else  if ((type / 10) == 140) {
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);	
+						if (sc->readToRegisters) {
+							if (i < used_registers.data.i / 2) {
+								appendGlobalToRegisters_x(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID);
+							}
+							else {
+								appendGlobalToRegisters_y(sc, &sc->regIDs[k * sc->registers_per_thread + i - used_registers.data.i / 2], &sc->inputsStruct, &sc->inoutID);
+							}
+						}
+						else {
+							PfMod(sc, &sc->tempInt, &sc->combinedID, &fftDim);
+							temp_int.data.i = 2;
+							PfMod(sc, &sc->tempInt, &sc->tempInt, &temp_int);
+					
+							appendGlobalToRegisters_x(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
+							
+							temp_int.data.i = 0;
+							PfIf_eq_start(sc, &sc->tempInt, &temp_int);
+							appendRegistersToShared_x_x(sc, &sc->sdataID, &sc->temp);
+							PfIf_else(sc);
+							appendRegistersToShared_y_x(sc, &sc->sdataID, &sc->temp);
+							PfIf_end(sc);
+						}
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+					}
+					else  if ((type / 10) == 141) {
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);
 
-						appendGlobalToRegisters_x(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
+						appendGlobalToRegisters_x(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID);
+								
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
 
-						temp_int.data.i = 0;
-						PfIf_eq_start(sc, &sc->tempInt, &temp_int);
-						appendRegistersToShared_x_x(sc, &sc->sdataID, &sc->temp);
-						PfIf_else(sc);
-						appendRegistersToShared_y_x(sc, &sc->sdataID, &sc->temp);
-						PfIf_end(sc);
+						if (recalculateAtEveryStep_inoutID) {
+							checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID2);
+									
+							if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {
+								PfMul(sc, &sc->tempInt, &sc->inoutID_y, &bufferStride[1], 0);
+								PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->tempInt);
+							}
+							PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->shiftZ);
+						}
+						appendGlobalToRegisters_y(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID2);
+
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+						append_processing_multiupload_R2R(sc, &sc->inoutID_x, &sc->regIDs[k * sc->registers_per_thread + i], readWrite, type, 0, 0);
+						if (!sc->readToRegisters) {
+							appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[k * sc->registers_per_thread + i]);
+						}
 					}
 				}
 				else {
+					if (recalculateAtEveryStep_inoutID)
+						checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);
+							
 					if (sc->readToRegisters) {
 						appendGlobalToRegisters(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID);
+						append_inoutID_processing_multiupload_R2C(sc, &sc->inoutID_x, &sc->regIDs[k * sc->registers_per_thread + i], readWrite, type, &sc->stageInvocationID, 0);	
 					}
 					else {
-						appendGlobalToShared(sc, &sc->sdataID, &sc->inputsStruct, &sc->inoutID);
+						if (sc->performR2C) {
+							appendGlobalToRegisters(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
+							append_inoutID_processing_multiupload_R2C(sc, &sc->inoutID_x, &sc->temp, readWrite, type, &sc->stageInvocationID, 0);	
+							appendRegistersToShared(sc, &sc->sdataID, &sc->temp);
+						}
+						else
+							appendGlobalToShared(sc, &sc->sdataID, &sc->inputsStruct, &sc->inoutID);
 					}
-				}
-				if ((sc->zeropad[readWrite]) || ((sc->numAxisUploads > 1) && (sc->zeropadBluestein[readWrite]))) {
-					PfIf_else(sc);
-					if (sc->readToRegisters) {
-						PfSetToZero(sc, &sc->regIDs[k * sc->registers_per_thread + i]);
-					}
-					else {
-						PfSetToZeroShared(sc, &sc->sdataID);
-					}
+					if (recalculateAtEveryStep_inoutID)
+						checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
 				}
 			}
 			else {
-				if ((type == 6) || (type == 110) || (type == 120) || (type == 130) || (type == 144)) {
-					if (sc->writeFromRegisters) {
-						appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[k * sc->registers_per_thread + i]);
-						if (sc->mergeSequencesR2C) {
-							if ((sc->size[1].data.i % 2) != 0) {
-								temp_int.data.i = sc->size[1].data.i - 1;
-								PfIf_lt_start(sc, &sc->inoutID_y, &temp_int);
+				if ((sc->outputMemoryCode % 10) == 2) {
+					if ((type / 10) == 111) {
+						if (sc->zeropadBluestein[readWrite]) {
+							if (readWrite) {
+								temp_int.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i;
 							}
-							PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->outputStride[1]);
-							appendRegistersToGlobal_y(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[k * sc->registers_per_thread + i]);
-							if ((sc->size[1].data.i % 2) != 0) {
-								PfIf_end(sc);
+							else {
+								//appendSetSMToZero(sc);
+								temp_int.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i;
 							}
 						}
+						else {
+							temp_int.data.i = sc->fft_dim_full.data.i;
+							if(sc->performDCT)
+								temp_int.data.i = (temp_int.data.i+2)/2;
+							if(sc->performDST)
+								temp_int.data.i = (temp_int.data.i-2)/2;
+						}
+						PfIf_lt_start(sc, &sc->inoutID_x, &temp_int);
 					}
-					else {
-						appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
-						if (sc->performDST == 1){
-							PfMovNeg(sc, &sc->temp.data.c[1], &sc->temp.data.c[1]);
-							appendRegistersToGlobal_y(sc, &sc->outputsStruct, &sc->inoutID, &sc->temp);
-						}else
-							appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->temp);
-						if (sc->mergeSequencesR2C) {
-							if ((sc->size[1].data.i % 2) != 0) {
-								temp_int.data.i = sc->size[1].data.i - 1;
-								PfIf_lt_start(sc, &sc->inoutID_y, &temp_int);
+					if (((type / 10) == 60) || ((type / 10) == 80) || ((type / 10) == 110) || ((type / 10) == 111) || ((type / 10) == 120) || ((type / 10) == 121) || ((type / 10) == 130) || ((type / 10) == 131) || ((type / 10) == 142) || ((type / 10) == 143)) {
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);
+						if (sc->writeFromRegisters) {
+							append_processing_multiupload_R2R(sc, &sc->inoutID_x, &sc->regIDs[k * sc->registers_per_thread + i], readWrite, type, 0, 0);
+							if (sc->performDST == 1) {
+								PfMovNeg(sc, &sc->regIDs[k * sc->registers_per_thread + i].data.c[1], &sc->regIDs[k * sc->registers_per_thread + i].data.c[1]);
+								appendRegistersToGlobal_y(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[k * sc->registers_per_thread + i]);
 							}
-							PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->outputStride[1]);
-							if (sc->performDST == 1)
-								appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->temp);
 							else
-								appendRegistersToGlobal_y(sc, &sc->outputsStruct, &sc->inoutID, &sc->temp);
-							if ((sc->size[1].data.i % 2) != 0) {
-								PfIf_end(sc);
+								appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[k * sc->registers_per_thread + i]);
+							if (sc->mergeSequencesR2C) {
+								if ((sc->size[1].data.i % 2) != 0) {
+									temp_int.data.i = sc->size[1].data.i - 1;
+									PfIf_lt_start(sc, &sc->inoutID_y, &temp_int);
+								}
+								PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->outputStride[1]);
+								appendRegistersToGlobal_y(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[k * sc->registers_per_thread + i]);
+								if ((sc->size[1].data.i % 2) != 0) {
+									PfIf_end(sc);
+								}
 							}
 						}
+						else {
+							appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
+							append_processing_multiupload_R2R(sc, &sc->inoutID_x, &sc->temp, readWrite, type, 0, 0);
+							if (sc->performDST == 1) {
+								PfMovNeg(sc, &sc->temp.data.c[1], &sc->temp.data.c[1]);
+								appendRegistersToGlobal_y(sc, &sc->outputsStruct, &sc->inoutID, &sc->temp);
+							}
+							else
+								appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->temp);
+							if (sc->mergeSequencesR2C) {
+								if ((sc->size[1].data.i % 2) != 0) {
+									temp_int.data.i = sc->size[1].data.i - 1;
+									PfIf_lt_start(sc, &sc->inoutID_y, &temp_int);
+								}
+								PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->outputStride[1]);
+								if (sc->performDST == 1)
+									appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->temp);
+								else
+									appendRegistersToGlobal_y(sc, &sc->outputsStruct, &sc->inoutID, &sc->temp);
+								if ((sc->size[1].data.i % 2) != 0) {
+									PfIf_end(sc);
+								}
+							}
+						}
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
 					}
-				}
-				else  if (type == 142) {
-					if (sc->writeFromRegisters) {
+					else  if (((type / 10) == 140) || ((type / 10) == 141)) {
+						if (!sc->writeFromRegisters) {
+							appendSharedToRegisters(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->sdataID);
+						}
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);
+						append_processing_multiupload_R2R(sc, &sc->inoutID_x, &sc->regIDs[k * sc->registers_per_thread + i], readWrite, type, 0, 0);
+
+						if ((sc->fftDim.data.i == 1) && (sc->normalize) && (sc->actualInverse)){ //workaround for DCT/DST-IV of size 2 that has no FFT stages (where normalization typically happens). 
+							PfContainer temp_double = VKFFT_ZERO_INIT;
+							temp_double.type = 22;
+							temp_double.data.d = pfFPinit("0.25");
+							PfMul(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->regIDs[k * sc->registers_per_thread + i], &temp_double, 0);
+						}
+
 						appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[k * sc->registers_per_thread + i]);
-						PfAdd(sc, &sc->inoutID, &sc->inoutID, &fftDim);
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+
+						if (sc->zeropadBluestein[readWrite]) {
+							if (readWrite) {
+								temp_int.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i;
+							}
+							else {
+								//appendSetSMToZero(sc);
+								temp_int.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i;
+							}
+							if ((type / 10) == 141) temp_int.data.i /= 2;
+						}
+						else {
+							temp_int.data.i = sc->fft_dim_full.data.i;
+						}
+						
+						if (recalculateAtEveryStep_inoutID) {
+							if ((type / 10) == 141) {
+								temp_int.data.i = 2*temp_int.data.i - 1;
+								PfSub(sc, &sc->sdataID, &temp_int, &sc->inoutID_x);
+							}
+							else
+								PfAdd(sc, &sc->sdataID, &sc->inoutID_x, &temp_int);
+							checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->sdataID);
+							if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {
+								PfMul(sc, &sc->tempInt, &sc->inoutID_y, &bufferStride[1], 0);
+								PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->tempInt);
+							}
+							PfAdd(sc, &sc->inoutID, &sc->sdataID, &sc->shiftZ);
+							checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->sdataID);
+						}
+						else {
+							PfAdd(sc, &sc->inoutID, &sc->inoutID, &temp_int);
+						}
 						appendRegistersToGlobal_y(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[k * sc->registers_per_thread + i]);
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
 					}
-					else {
+					if ((type / 10) == 111) {
+						PfIf_end(sc);
 					}
 				}
 				else {
+					if (recalculateAtEveryStep_inoutID)
+						checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);
 					if (sc->writeFromRegisters) {
 						appendRegistersToGlobal(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[k * sc->registers_per_thread + i]);
 					}
 					else {
 						appendSharedToGlobal(sc, &sc->outputsStruct, &sc->inoutID, &sc->sdataID);
 					}
+					if (recalculateAtEveryStep_inoutID)
+						checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
 				}
 			}
-			if ((sc->zeropad[readWrite]) || ((sc->numAxisUploads > 1) && (sc->zeropadBluestein[readWrite]))) {
-				PfIf_end(sc);
-			}
+
+			append_inoutID_postprocessing_multiupload_R2R(sc, &sc->inoutID_x, readWrite, type, &sc->stageInvocationID);
+			append_inoutID_postprocessing_multiupload_R2C(sc, &sc->inoutID_x, readWrite, type, &sc->stageInvocationID);
+
+			if (!recalculateAtEveryStep_inoutID)
+				checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+
 			if ((sc->fftDim.data.i != sc->fft_dim_full.data.i) && (!((sc->reorderFourStep) && (readWrite == 1)))) {
 				PfIf_end(sc);
 			}
@@ -1031,7 +1197,7 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 				}
 			}
 			if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {
-				checkZeropadEnd(sc, 1);
+				checkZeropadEnd_otherAxes(sc, 1);
 				temp_int.data.i = batching_localSize.data.i;
 				//we switched to reading 2x more data, but we still need to check out of bounds for odd size1
 				if ((sc->mergeSequencesR2C) && (mult.data.i == 1))
@@ -1082,6 +1248,16 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 
 	PfContainer* bufferStride = (readWrite) ? sc->outputStride : sc->inputStride;
 
+	PfContainer* local_inoutID;
+	if (sc->axis_id > 0)
+		local_inoutID = &sc->inoutID_y;
+	else
+		local_inoutID = &sc->inoutID_x;
+
+	int recalculateAtEveryStep_inoutID = 0;
+	if ((sc->zeropad[readWrite]) || ((sc->numAxisUploads > 1) && (sc->zeropadBluestein[readWrite])) || ((type / 10) == 111) || ((type / 10) == 121) || ((type / 10) == 131) || ((type / 10) == 141) || ((type / 10) == 143) || ((type / 10) == 70) || ((type / 10) == 80)) {
+		recalculateAtEveryStep_inoutID = 1;
+	}
 	if ((!sc->writeFromRegisters) && (readWrite == 1))
 		appendBarrierVkFFT(sc);
 	//char shiftX[500] = "";
@@ -1089,19 +1265,23 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 	//	sprintf(shiftX, " + consts.workGroupShiftX * %s ", &sc->gl_WorkGroupSize_x);
 	PfContainer fftDim = VKFFT_ZERO_INIT;
 	fftDim.type = 31;
-
+	if (((sc->zeropad[readWrite]) || ((sc->zeropadBluestein[readWrite])) || (((type / 10) == 111)&&(sc->performDST == 1))) && (!readWrite)) {
+		if (sc->readToRegisters == 0) {
+			appendSetSMToZero(sc);
+			appendBarrierVkFFT(sc);
+		}
+	}
 	if (sc->zeropadBluestein[readWrite]) {
 		if (sc->numAxisUploads == 1) {
 			if (readWrite) {
 				fftDim.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i;
 			}
 			else {
-				if (sc->readToRegisters == 0) {
-					appendSetSMToZero(sc);
-					appendBarrierVkFFT(sc);
-				}
 				fftDim.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i;
 			}
+			if ((type / 10) == 141) fftDim.data.i /= 2;
+			if (((type / 10) == 111)&&(sc->performDCT == 1)) fftDim.data.i = 2 * fftDim.data.i - 2;
+			if (((type / 10) == 111)&&(sc->performDST == 1)) fftDim.data.i = 2 * fftDim.data.i + 2;
 		}
 		else {
 			fftDim.data.i = sc->fftDim.data.i;
@@ -1110,16 +1290,15 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 	else
 		fftDim.data.i = sc->fftDim.data.i;
 
-	if (type == 111) {
+	if (((type / 10) == 110) && (!(sc->zeropadBluestein[readWrite] && (sc->numAxisUploads == 1)))) {
 		if(sc->performDST > 0)
 			fftDim.data.i = (fftDim.data.i - 2) / 2;
 		else
 			fftDim.data.i = (fftDim.data.i + 2) / 2;
 	}
-	else if ((type == 143) && (readWrite == 0)) {
+	else if (((type/10) == 140) && (readWrite == 0)) {
 		fftDim.data.i = 2 * fftDim.data.i;
 	}
-
 	if (readWrite == 0) {
 		if (sc->performWorkGroupShift[0]) {
 			PfMul(sc, &sc->shiftX, &sc->workGroupShiftX, &sc->gl_WorkGroupSize_x, 0);
@@ -1132,14 +1311,14 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 			if (sc->size[1].data.i > 1) {
 				if (sc->performWorkGroupShift[1]) {
 					PfAdd(sc, &sc->shiftY, &sc->gl_WorkGroupID_y, &sc->workGroupShiftY);
-					checkZeropad(sc, &sc->shiftY, 1);
+					checkZeropad_otherAxes(sc, &sc->shiftY, 1);
 					temp_int.data.i = sc->inputStride[1].data.i;
 					PfMul(sc, &sc->shiftZ, &sc->shiftY, &temp_int, 0);
 				}
 				else
 				{
 					PfMov(sc, &sc->shiftY, &sc->gl_WorkGroupID_y);
-					checkZeropad(sc, &sc->shiftY, 1);
+					checkZeropad_otherAxes(sc, &sc->shiftY, 1);
 					temp_int.data.i = sc->inputStride[1].data.i;
 					PfMul(sc, &sc->shiftZ, &sc->shiftY, &temp_int, 0);
 				}
@@ -1155,7 +1334,7 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 		appendOffset(sc, readWrite, type);
 		if (sc->axis_id > 0) {
 			PfMod(sc, &sc->inoutID_x, &sc->shiftX, &sc->fft_dim_x);
-			checkZeropad(sc, &sc->inoutID_x, 0);
+			checkZeropad_otherAxes(sc, &sc->inoutID_x, 0);
 			//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		disableThreads = (((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 ") < %" PRIu64 ") ? 1 : 0;\n", &sc->gl_GlobalInvocationID_x, shiftX, &sc->fft_dim_x, &sc->stageStartSize, &sc->gl_GlobalInvocationID_x, shiftX, &sc->fft_dim_x * &sc->stageStartSize, &sc->fftDim * &sc->stageStartSize, &sc->size[&sc->axis_id]);
 
 			PfDiv(sc, &sc->tempInt2, &sc->shiftX, &sc->fft_dim_x);
@@ -1174,7 +1353,11 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 				PfIf_lt_start(sc, &sc->tempInt2, &sc->fft_dim_full);
 			}
 			else {
-				PfIf_lt_start(sc, &sc->tempInt2, &sc->sourceFFTSize);
+				if ((type / 10) == 141) {
+					temp_int.data.i = sc->sourceFFTSize.data.i / 2;
+					PfIf_lt_start(sc, &sc->tempInt2, &temp_int);
+				}else
+					PfIf_lt_start(sc, &sc->tempInt2, &sc->sourceFFTSize);	
 			}
 		}
 		else {
@@ -1245,7 +1428,11 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 					PfIf_lt_start(sc, &sc->tempInt2, &sc->fft_dim_full);
 				}
 				else {
-					PfIf_lt_start(sc, &sc->tempInt2, &sc->sourceFFTSize);
+					if ((type / 10) == 141) {
+						temp_int.data.i = sc->sourceFFTSize.data.i / 2;
+						PfIf_lt_start(sc, &sc->tempInt2, &temp_int);
+					}else
+						PfIf_lt_start(sc, &sc->tempInt2, &sc->sourceFFTSize);					
 				}
 			}
 			else {
@@ -1288,14 +1475,15 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 
 		PfAdd(sc, &sc->inoutID_x, &sc->inoutID_x, &sc->tempInt2);
 	}
-	PfMov(sc, &sc->inoutID, &sc->inoutID_x);
+	if (!recalculateAtEveryStep_inoutID) {
+		PfMov(sc, &sc->inoutID, &sc->inoutID_x);
 
-	if (sc->axis_id > 0) {
-		PfMul(sc, &sc->tempInt, &sc->inoutID_y, &bufferStride[1], 0);
-		PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->tempInt);
+		if (sc->axis_id > 0) {
+			PfMul(sc, &sc->tempInt, &sc->inoutID_y, &bufferStride[1], 0);
+			PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->tempInt);
+		}
+		PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->shiftZ);
 	}
-	PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->shiftZ);
-
 	//for (pfUINT k = 0; k < &sc->registerBoost; k++) {
 	for (int k = 0; k < sc->registerBoost; k++) {
 		//for (pfUINT i = 0; i < used_registers; i++) {
@@ -1320,53 +1508,7 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 			}
 
 			PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->shiftZ);*/
-			if ((i > 0) || (k > 0)) {
-				if (sc->axis_id > 0) {
-					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		inoutID = (%" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 "));\n", &sc->stageStartSize, &sc->gl_LocalInvocationID_y, (i + k * used_registers) * &sc->localSize[1], &sc->gl_GlobalInvocationID_x, shiftX, &sc->fft_dim_x, &sc->stageStartSize, &sc->gl_GlobalInvocationID_x, shiftX, &sc->fft_dim_x * &sc->stageStartSize, &sc->fftDim * &sc->stageStartSize);
-					if ((readWrite == 1) && (sc->reorderFourStep) && (sc->stageStartSize.data.i == 1) && (sc->numAxisUploads > 1)) {
-						temp_int1.data.i = sc->fft_dim_full.data.i / fftDim.data.i * bufferStride[1].data.i * sc->localSize[1].data.i;
-						PfAdd(sc, &sc->inoutID, &sc->inoutID, &temp_int1);
-					}
-					else {
-						temp_int1.data.i = sc->stageStartSize.data.i * bufferStride[1].data.i * sc->localSize[1].data.i;
-						PfAdd(sc, &sc->inoutID, &sc->inoutID, &temp_int1);
-					}
-
-				}
-				else {
-					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		inoutID = (%s%s) %% (%" PRIu64 ") + %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") * (%" PRIu64 ");\n", &sc->gl_GlobalInvocationID_x, shiftX, &sc->stageStartSize, &sc->stageStartSize, &sc->gl_LocalInvocationID_y, (i + k * used_registers) * &sc->localSize[1], &sc->gl_GlobalInvocationID_x, shiftX, &sc->stageStartSize, &sc->stageStartSize * &sc->fftDim);
-					temp_int1.data.i = sc->stageStartSize.data.i * sc->localSize[1].data.i;
-					PfAdd(sc, &sc->inoutID, &sc->inoutID, &temp_int1);
-				}
-			}
-
-			temp_int.data.i = (k * used_registers.data.i + i) * sc->localSize[1].data.i;
-
-			if ((sc->readToRegisters && (readWrite == 0)) || (sc->writeFromRegisters && (readWrite == 1))) {
-				//if (&sc->inputBufferBlockNum == 1)
-				//	&sc->tempIntLen = sprintf(&sc->tempIntStr, "			%s=%s%s[%s]%s;\n", &sc->regIDs[i + k * &sc->registers_per_thread], convTypeLeft, &inputsStruct, &sc->inoutID, convTypeRight);
-				//else
-				//	&sc->tempIntLen = sprintf(&sc->tempIntStr, "			%s=%sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", &sc->regIDs[i + k * &sc->registers_per_thread], convTypeLeft, &sc->inoutID, &sc->inputBufferBlockSize, &inputsStruct, &sc->inoutID, &sc->inputBufferBlockSize, convTypeRight);
-			}
-			else {
-				//if (&sc->inputBufferBlockNum == 1)
-				//	&sc->tempIntLen = sprintf(&sc->tempIntStr, "			sdata[%s*(%s+%" PRIu64 ")+%s]=%s%s[%s]%s;\n", &sc->sharedStride, &sc->gl_LocalInvocationID_y, (i + k * used_registers) * &sc->localSize[1], &sc->gl_LocalInvocationID_x, convTypeLeft, &inputsStruct, &sc->inoutID, convTypeRight);
-				//else
-				//	&sc->tempIntLen = sprintf(&sc->tempIntStr, "			sdata[%s*(%s+%" PRIu64 ")+%s]=%sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", &sc->sharedStride, &sc->gl_LocalInvocationID_y, (i + k * used_registers) * &sc->localSize[1], &sc->gl_LocalInvocationID_x, convTypeLeft, &sc->inoutID, &sc->inputBufferBlockSize, &inputsStruct, &sc->inoutID, &sc->inputBufferBlockSize, convTypeRight);
-				PfAdd(sc, &sc->sdataID, &sc->gl_LocalInvocationID_y, &temp_int);
-				if ((type == 143) && (!sc->readToRegisters) && (readWrite == 0)) {
-					temp_int1.data.i = 2;
-					PfDiv(sc, &sc->sdataID, &sc->sdataID, &temp_int1);
-				}
-				PfMul(sc, &sc->sdataID, &sc->sharedStride, &sc->sdataID, 0);
-				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
-				if (sc->performDST == 1) 
-					PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride);
-			}
-			if ((sc->zeropad[readWrite]) || ((sc->numAxisUploads > 1) && (sc->zeropadBluestein[readWrite]))) {
-				//sc->tempLen = sprintf(sc->tempStr, "		if((inoutID %% %" PRIu64 " < %" PRIu64 ")||(inoutID %% %" PRIu64 " >= %" PRIu64 ")){\n", sc->fft_dim_full, sc->fft_zeropad_left_read[sc->axis_id], sc->fft_dim_full, sc->fft_zeropad_right_read[sc->axis_id]);
-				temp_int.data.i = 1;
-				PfSetToZero(sc, &sc->tempInt);
+			if (recalculateAtEveryStep_inoutID) {
 				if ((i > 0) && (k == 0)) {
 					if (sc->axis_id > 0) {
 						//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		inoutID = (%" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 "));\n", &sc->stageStartSize, &sc->gl_LocalInvocationID_y, (i + k * used_registers) * &sc->localSize[1], &sc->gl_GlobalInvocationID_x, shiftX, &sc->fft_dim_x, &sc->stageStartSize, &sc->gl_GlobalInvocationID_x, shiftX, &sc->fft_dim_x * &sc->stageStartSize, &sc->fftDim * &sc->stageStartSize);
@@ -1386,135 +1528,343 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 						PfAdd(sc, &sc->inoutID_x, &sc->inoutID_x, &temp_int1);
 					}
 				}
-				if (sc->axis_id > 0)
-					PfMod(sc, &sc->combinedID, &sc->inoutID_y, &sc->fft_dim_full);
-				else
-					PfMod(sc, &sc->combinedID, &sc->inoutID_x, &sc->fft_dim_full);
+				
+				append_inoutID_preprocessing_multiupload_R2R(sc, local_inoutID, readWrite, type, &sc->stageInvocationID, &sc->sdataID);
+				append_inoutID_preprocessing_multiupload_R2C(sc, local_inoutID, readWrite, type, &sc->stageInvocationID, &sc->sdataID);
 
-				if (sc->zeropad[readWrite]) {
-					if (readWrite)
-						PfIf_lt_start(sc, &sc->combinedID, &sc->fft_zeropad_left_write[sc->axis_id]);
-					else
-						PfIf_lt_start(sc, &sc->combinedID, &sc->fft_zeropad_left_read[sc->axis_id]);
-					PfMov(sc, &sc->tempInt, &temp_int);
-					PfIf_else(sc);
+				PfMov(sc, &sc->inoutID, &sc->inoutID_x);
 
-					if (readWrite)
-						PfIf_ge_start(sc, &sc->combinedID, &sc->fft_zeropad_right_write[sc->axis_id]);
-					else
-						PfIf_ge_start(sc, &sc->combinedID, &sc->fft_zeropad_right_read[sc->axis_id]);
-					PfMov(sc, &sc->tempInt, &temp_int);
-					PfIf_end(sc);
-
-					PfIf_end(sc);
+				if (sc->axis_id > 0) {
+					PfMul(sc, &sc->tempInt, &sc->inoutID_y, &bufferStride[1], 0);
+					PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->tempInt);
 				}
-				if (sc->numAxisUploads > 1) {
-					if (sc->zeropadBluestein[readWrite]) {
-						if (readWrite)
-							PfIf_lt_start(sc, &sc->combinedID, &sc->fft_zeropad_Bluestein_left_write[sc->axis_id]);
-						else
-							PfIf_lt_start(sc, &sc->combinedID, &sc->fft_zeropad_Bluestein_left_read[sc->axis_id]);
-						PfMov(sc, &sc->tempInt, &temp_int);
-						PfIf_end(sc);
+				PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->shiftZ);
+			}
+			else {
+				if ((i > 0) || (k > 0)) {
+					if (sc->axis_id > 0) {
+						//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		inoutID = (%" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") %% (%" PRIu64 ")+((%s%s) / %" PRIu64 ") * (%" PRIu64 "));\n", &sc->stageStartSize, &sc->gl_LocalInvocationID_y, (i + k * used_registers) * &sc->localSize[1], &sc->gl_GlobalInvocationID_x, shiftX, &sc->fft_dim_x, &sc->stageStartSize, &sc->gl_GlobalInvocationID_x, shiftX, &sc->fft_dim_x * &sc->stageStartSize, &sc->fftDim * &sc->stageStartSize);
+						if ((readWrite == 1) && (sc->reorderFourStep) && (sc->stageStartSize.data.i == 1) && (sc->numAxisUploads > 1)) {
+							temp_int1.data.i = sc->fft_dim_full.data.i / fftDim.data.i * bufferStride[1].data.i * sc->localSize[1].data.i;
+							PfAdd(sc, &sc->inoutID, &sc->inoutID, &temp_int1);
+						}
+						else {
+							temp_int1.data.i = sc->stageStartSize.data.i * bufferStride[1].data.i * sc->localSize[1].data.i;
+							PfAdd(sc, &sc->inoutID, &sc->inoutID, &temp_int1);
+						}
+
+					}
+					else {
+						//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		inoutID = (%s%s) %% (%" PRIu64 ") + %" PRIu64 " * (%s + %" PRIu64 ") + ((%s%s) / %" PRIu64 ") * (%" PRIu64 ");\n", &sc->gl_GlobalInvocationID_x, shiftX, &sc->stageStartSize, &sc->stageStartSize, &sc->gl_LocalInvocationID_y, (i + k * used_registers) * &sc->localSize[1], &sc->gl_GlobalInvocationID_x, shiftX, &sc->stageStartSize, &sc->stageStartSize * &sc->fftDim);
+						temp_int1.data.i = sc->stageStartSize.data.i * sc->localSize[1].data.i;
+						PfAdd(sc, &sc->inoutID, &sc->inoutID, &temp_int1);
 					}
 				}
-				temp_int.data.i = 0;
-				PfIf_gt_start(sc, &sc->tempInt, &temp_int);
+			}
+			temp_int.data.i = (k * used_registers.data.i + i) * sc->localSize[1].data.i;
+
+			if ((sc->readToRegisters && (readWrite == 0)) || (sc->writeFromRegisters && (readWrite == 1))) {
+				//if (&sc->inputBufferBlockNum == 1)
+				//	&sc->tempIntLen = sprintf(&sc->tempIntStr, "			%s=%s%s[%s]%s;\n", &sc->regIDs[i + k * &sc->registers_per_thread], convTypeLeft, &inputsStruct, &sc->inoutID, convTypeRight);
+				//else
+				//	&sc->tempIntLen = sprintf(&sc->tempIntStr, "			%s=%sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", &sc->regIDs[i + k * &sc->registers_per_thread], convTypeLeft, &sc->inoutID, &sc->inputBufferBlockSize, &inputsStruct, &sc->inoutID, &sc->inputBufferBlockSize, convTypeRight);
+			}
+			else {
+				//if (&sc->inputBufferBlockNum == 1)
+				//	&sc->tempIntLen = sprintf(&sc->tempIntStr, "			sdata[%s*(%s+%" PRIu64 ")+%s]=%s%s[%s]%s;\n", &sc->sharedStride, &sc->gl_LocalInvocationID_y, (i + k * used_registers) * &sc->localSize[1], &sc->gl_LocalInvocationID_x, convTypeLeft, &inputsStruct, &sc->inoutID, convTypeRight);
+				//else
+				//	&sc->tempIntLen = sprintf(&sc->tempIntStr, "			sdata[%s*(%s+%" PRIu64 ")+%s]=%sinputBlocks[%s / %" PRIu64 "]%s[%s %% %" PRIu64 "]%s;\n", &sc->sharedStride, &sc->gl_LocalInvocationID_y, (i + k * used_registers) * &sc->localSize[1], &sc->gl_LocalInvocationID_x, convTypeLeft, &sc->inoutID, &sc->inputBufferBlockSize, &inputsStruct, &sc->inoutID, &sc->inputBufferBlockSize, convTypeRight);
+				PfAdd(sc, &sc->sdataID, &sc->gl_LocalInvocationID_y, &temp_int);
+				if (((type/10) == 140) && (!sc->readToRegisters) && (readWrite == 0)) {
+					temp_int1.data.i = 2;
+					PfDiv(sc, &sc->sdataID, &sc->sdataID, &temp_int1);
+				}
+				PfMul(sc, &sc->sdataID, &sc->sharedStride, &sc->sdataID, 0);
+				PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->gl_LocalInvocationID_x);
+				if ((sc->performDST == 1) && (!sc->forceCallbackVersionRealTransforms))
+					PfAdd(sc, &sc->sdataID, &sc->sdataID, &sc->sharedStride);
 			}
 
 			temp_int1.data.i = k * used_registers.data.i + i;
 
 			if (readWrite == 0) {
-				if ((type == 111) || (type == 121) || (type == 131) || (type == 145)) {
-					if (sc->readToRegisters) {
-						appendGlobalToRegisters_x(sc, &sc->regIDs[temp_int1.data.i], &sc->inputsStruct, &sc->inoutID);
-					}
-					else {
-						appendGlobalToRegisters_x(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
-						appendRegistersToShared(sc, &sc->sdataID, &sc->temp);
-					}
-				}
-				else  if (type == 143) {
-					if (sc->readToRegisters) {
-						if (i < used_registers.data.i / 2) {
-							appendGlobalToRegisters_x(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID);
+				if ((sc->inputMemoryCode % 10) == 2) {
+					if (((type/10) == 70) || ((type/10) == 110) || ((type/10) == 111) || ((type/10) == 120) || ((type/10) == 121) || ((type/10) == 130) || ((type/10) == 131) || ((type/10) == 142) || ((type/10) == 143)) {
+						if (sc->readToRegisters) {
+							if (recalculateAtEveryStep_inoutID)
+								checkZeropadStart_currentFFTAxis(sc, readWrite, type, local_inoutID);
+
+							appendGlobalToRegisters_x(sc, &sc->regIDs[temp_int1.data.i], &sc->inputsStruct, &sc->inoutID);
+							if (recalculateAtEveryStep_inoutID)
+								checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+
+							if (((((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 0)) || (((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 1))) && ((type / 10) == 131)) {
+								if (recalculateAtEveryStep_inoutID) {
+									checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID2);
+									if (sc->axis_id > 0) {
+										PfMul(sc, &sc->inoutID2, &sc->inoutID2, &bufferStride[1], 0);
+										PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->inoutID_x);
+										PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->shiftZ);
+									}
+									else {
+										PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->shiftZ);
+									}
+								}
+								appendGlobalToRegisters_y(sc, &sc->regIDs[temp_int1.data.i], &sc->inputsStruct, &sc->inoutID2);
+								if (recalculateAtEveryStep_inoutID)
+									checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+							}
+							append_processing_multiupload_R2R(sc, local_inoutID, &sc->regIDs[temp_int1.data.i], readWrite, type, 0, 0);
+							
 						}
 						else {
-							appendGlobalToRegisters_y(sc, &sc->regIDs[k * sc->registers_per_thread + i - used_registers.data.i / 2], &sc->inputsStruct, &sc->inoutID);
+							PfSetToZero(sc, &sc->temp);
+							if (recalculateAtEveryStep_inoutID)
+								checkZeropadStart_currentFFTAxis(sc, readWrite, type, local_inoutID);
+							appendGlobalToRegisters_x(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
+							if (recalculateAtEveryStep_inoutID)
+								checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+							if (((((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 0)) || (((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 1))) && ((type / 10) == 131)) {
+								if (recalculateAtEveryStep_inoutID) {
+									checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID2);
+									if (sc->axis_id > 0) {
+										PfMul(sc, &sc->inoutID2, &sc->inoutID2, &bufferStride[1], 0);
+										PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->inoutID_x);
+										PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->shiftZ);
+									}
+									else {
+										PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->shiftZ);
+									}
+								}
+								appendGlobalToRegisters_y(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID2);
+								if (recalculateAtEveryStep_inoutID)
+									checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+							}
+							append_processing_multiupload_R2R(sc, local_inoutID, &sc->temp, readWrite, type, 0, 0);
+							appendRegistersToShared(sc, &sc->sdataID, &sc->temp);
 						}
 					}
+					else  if ((type/10) == 140) {
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadStart_currentFFTAxis(sc, readWrite, type, local_inoutID);
+						if (sc->readToRegisters) {
+							if (i < used_registers.data.i / 2) {
+								appendGlobalToRegisters_x(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID);
+							}
+							else {
+								appendGlobalToRegisters_y(sc, &sc->regIDs[k * sc->registers_per_thread + i - used_registers.data.i / 2], &sc->inputsStruct, &sc->inoutID);
+							}
+						}
+						else {
+							PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_y, &temp_int);
+							temp_int.data.i = 2;
+							PfMod(sc, &sc->tempInt, &sc->combinedID, &temp_int);
+
+							appendGlobalToRegisters_x(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
+
+							temp_int.data.i = 0;
+							PfIf_eq_start(sc, &sc->tempInt, &temp_int);
+							appendRegistersToShared_x_x(sc, &sc->sdataID, &sc->temp);
+							PfIf_else(sc);
+							appendRegistersToShared_y_x(sc, &sc->sdataID, &sc->temp);
+							PfIf_end(sc);
+						}
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+					}
+					else  if ((type / 10) == 141) {
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadStart_currentFFTAxis(sc, readWrite, type, local_inoutID);
+
+						appendGlobalToRegisters_x(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID);
+								
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+
+						if (recalculateAtEveryStep_inoutID) {
+							checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID2);
+									
+							if (sc->axis_id > 0) {
+								PfMul(sc, &sc->inoutID2, &sc->inoutID2, &bufferStride[1], 0);
+								PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->inoutID_x);
+								PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->shiftZ);
+							}
+							else {
+								PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->shiftZ);
+							}
+						}
+						appendGlobalToRegisters_y(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID2);
+
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+						append_processing_multiupload_R2R(sc, local_inoutID, &sc->regIDs[k * sc->registers_per_thread + i], readWrite, type, 0, 0);
+						if (!sc->readToRegisters) {
+							appendRegistersToShared(sc, &sc->sdataID, &sc->regIDs[k * sc->registers_per_thread + i]);
+						}
+					}
+				}
+				else {
+					if (recalculateAtEveryStep_inoutID)
+						checkZeropadStart_currentFFTAxis(sc, readWrite, type, local_inoutID);
+						
+					if (sc->readToRegisters) {
+						appendGlobalToRegisters(sc, &sc->regIDs[temp_int1.data.i], &sc->inputsStruct, &sc->inoutID);
+						append_inoutID_processing_multiupload_R2C(sc, &sc->inoutID_x, &sc->regIDs[temp_int1.data.i], readWrite, type, &sc->stageInvocationID, 0);				
+					}
 					else {
-						PfAdd(sc, &sc->combinedID, &sc->gl_LocalInvocationID_y, &temp_int);
-						temp_int.data.i = 2;
-						PfMod(sc, &sc->tempInt, &sc->combinedID, &temp_int);
+						if (sc->performR2C) {
+							appendGlobalToRegisters(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
+							append_inoutID_processing_multiupload_R2C(sc, &sc->inoutID_x, &sc->temp, readWrite, type, &sc->stageInvocationID, 0);	
+							appendRegistersToShared(sc, &sc->sdataID, &sc->temp);
+						}
+						else
+							appendGlobalToShared(sc, &sc->sdataID, &sc->inputsStruct, &sc->inoutID);
+					}
 
-						appendGlobalToRegisters_x(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
+					if (recalculateAtEveryStep_inoutID)
+						checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+				}
+				if (recalculateAtEveryStep_inoutID) {
+					append_inoutID_postprocessing_multiupload_R2R(sc, local_inoutID, readWrite, type, &sc->stageInvocationID);
+					append_inoutID_postprocessing_multiupload_R2C(sc, local_inoutID, readWrite, type, &sc->stageInvocationID);
+				}
+			}
+			else {
+				if ((sc->outputMemoryCode % 10) == 2) {
+					if ((type / 10) == 111) {
+						if (sc->zeropadBluestein[readWrite]) {
+							if (readWrite) {
+								temp_int.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i;
+							}
+							else {
+								temp_int.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i;
+							}
+						}
+						else {
+							temp_int.data.i = sc->fft_dim_full.data.i;
+							if(sc->performDCT)
+								temp_int.data.i = (temp_int.data.i+2)/2;
+							if(sc->performDST)
+								temp_int.data.i = (temp_int.data.i-2)/2;
+						}
+						PfIf_lt_start(sc, local_inoutID, &temp_int);
+					}
+					if (((type/10) == 80) || ((type/10) == 110) || ((type/10) == 111) || ((type/10) == 120) || ((type/10) == 121) || ((type/10) == 130) || ((type/10) == 131) || ((type/10) == 142) || ((type/10) == 143)) {
+						if (sc->writeFromRegisters) {
+							append_processing_multiupload_R2R(sc, local_inoutID, &sc->regIDs[temp_int1.data.i], readWrite, type, 0, 0);
+							if (recalculateAtEveryStep_inoutID)
+								checkZeropadStart_currentFFTAxis(sc, readWrite, type, local_inoutID);
+					
+							if (sc->performDST == 1) {
+								PfMovNeg(sc, &sc->regIDs[temp_int1.data.i].data.c[1], &sc->regIDs[temp_int1.data.i].data.c[1]);
+								appendRegistersToGlobal_y(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[temp_int1.data.i]);
+							}
+							else
+								appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[temp_int1.data.i]);
 
-						temp_int.data.i = 0;
-						PfIf_eq_start(sc, &sc->tempInt, &temp_int);
-						appendRegistersToShared_x_x(sc, &sc->sdataID, &sc->temp);
-						PfIf_else(sc);
-						appendRegistersToShared_y_x(sc, &sc->sdataID, &sc->temp);
+							if (recalculateAtEveryStep_inoutID)
+								checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+						}
+						else {
+							appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
+							append_processing_multiupload_R2R(sc, local_inoutID, &sc->temp, readWrite, type, 0, 0);
+							if (recalculateAtEveryStep_inoutID)
+								checkZeropadStart_currentFFTAxis(sc, readWrite, type, local_inoutID);
+					
+							if (sc->performDST == 1) {
+								PfMovNeg(sc, &sc->temp.data.c[1], &sc->temp.data.c[1]);
+								appendRegistersToGlobal_y(sc, &sc->outputsStruct, &sc->inoutID, &sc->temp);
+							}
+							else
+								appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->temp);
+
+							if (recalculateAtEveryStep_inoutID)
+								checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+						}
+					}
+					else  if (((type/10) == 140) || ((type/10) == 141)) {
+						if (!sc->writeFromRegisters) {
+							appendSharedToRegisters(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->sdataID);
+						}
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadStart_currentFFTAxis(sc, readWrite, type, local_inoutID);
+						append_processing_multiupload_R2R(sc, local_inoutID, &sc->regIDs[k * sc->registers_per_thread + i], readWrite, type, 0, 0);
+
+						if ((sc->fftDim.data.i == 1) && (sc->normalize) && (sc->actualInverse)){ //workaround for DCT/DST-IV of size 2 that has no FFT stages (where normalization typically happens). 
+							PfContainer temp_double = VKFFT_ZERO_INIT;
+							temp_double.type = 22;
+							temp_double.data.d = pfFPinit("0.25");
+							PfMul(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->regIDs[k * sc->registers_per_thread + i], &temp_double, 0);
+						}
+
+						appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[k * sc->registers_per_thread + i]);
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+
+						if (sc->zeropadBluestein[readWrite]) {
+							if (readWrite) {
+								temp_int.data.i = sc->fft_zeropad_Bluestein_left_write[sc->axis_id].data.i;
+							}
+							else {
+								//appendSetSMToZero(sc);
+								temp_int.data.i = sc->fft_zeropad_Bluestein_left_read[sc->axis_id].data.i;
+							}
+							if ((type / 10) == 141) temp_int.data.i /= 2;
+						}
+						else {
+							temp_int.data.i = sc->fft_dim_full.data.i;
+						}
+
+						if (recalculateAtEveryStep_inoutID) {
+							if ((type / 10) == 141) {
+								temp_int.data.i = 2 * temp_int.data.i - 1;
+								PfSub(sc, &sc->sdataID, &temp_int, local_inoutID);
+							}
+							else
+								PfAdd(sc, &sc->sdataID, local_inoutID, &temp_int);
+							checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->sdataID);
+							if (sc->axis_id > 0) {
+								PfMul(sc, &sc->tempInt, &sc->sdataID, &bufferStride[1], 0);
+								PfAdd(sc, &sc->tempInt, &sc->tempInt, &sc->inoutID_x);
+
+								PfAdd(sc, &sc->tempInt, &sc->tempInt, &sc->shiftZ);
+							}
+							else {
+								PfAdd(sc, &sc->tempInt, &sc->sdataID, &sc->shiftZ);
+							}
+						}
+						else {
+							temp_int.data.i = fftDim.data.i * bufferStride[1].data.i;
+							PfAdd(sc, &sc->tempInt, &sc->inoutID, &temp_int);
+						}
+						appendRegistersToGlobal_y(sc, &sc->outputsStruct, &sc->tempInt, &sc->regIDs[k * sc->registers_per_thread + i]);
+						if (recalculateAtEveryStep_inoutID)
+							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+					}
+					if ((type / 10) == 111) {
 						PfIf_end(sc);
 					}
 				}
 				else {
-					if (sc->readToRegisters) {
-						appendGlobalToRegisters(sc, &sc->regIDs[temp_int1.data.i], &sc->inputsStruct, &sc->inoutID);
-					}
-					else {
-						appendGlobalToShared(sc, &sc->sdataID, &sc->inputsStruct, &sc->inoutID);
-					}
-				}
-				if ((sc->zeropad[readWrite]) || ((sc->numAxisUploads > 1) && (sc->zeropadBluestein[readWrite]))) {
-					PfIf_else(sc);
+					if (recalculateAtEveryStep_inoutID)
+						checkZeropadStart_currentFFTAxis(sc, readWrite, type, local_inoutID);
 
-					if (sc->readToRegisters) {
-						PfSetToZero(sc, &sc->regIDs[temp_int1.data.i]);
-					}
-					else {
-						PfSetToZeroShared(sc, &sc->sdataID);
-					}
-				}
-			}
-			else {
-				if ((type == 111) || (type == 121) || (type == 131) || (type == 145)) {
-					if (sc->writeFromRegisters) {
-						appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[temp_int1.data.i]);
-					}
-					else {
-						appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
-						if (sc->performDST == 1){
-							PfMovNeg(sc, &sc->temp.data.c[1], &sc->temp.data.c[1]);
-							appendRegistersToGlobal_y(sc, &sc->outputsStruct, &sc->inoutID, &sc->temp);
-						}else
-							appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->temp);
-					}
-				}
-				else  if (type == 143) {
-					if (sc->writeFromRegisters) {
-						appendRegistersToGlobal_x(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[k * sc->registers_per_thread + i]);
-						temp_int.data.i = fftDim.data.i * bufferStride[1].data.i;
-						PfAdd(sc, &sc->tempInt, &sc->inoutID, &temp_int);
-						appendRegistersToGlobal_y(sc, &sc->outputsStruct, &sc->tempInt, &sc->regIDs[k * sc->registers_per_thread + i]);
-					}
-					else {
-					}
-				}
-				else {
 					if (sc->writeFromRegisters) {
 						appendRegistersToGlobal(sc, &sc->outputsStruct, &sc->inoutID, &sc->regIDs[temp_int1.data.i]);
 					}
 					else {
 						appendSharedToGlobal(sc, &sc->outputsStruct, &sc->inoutID, &sc->sdataID);
 					}
+
+					if (recalculateAtEveryStep_inoutID)
+						checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
+				}
+				if (recalculateAtEveryStep_inoutID) {
+					append_inoutID_postprocessing_multiupload_R2R(sc, local_inoutID, readWrite, type, &sc->stageInvocationID);
+					append_inoutID_postprocessing_multiupload_R2C(sc, local_inoutID, readWrite, type, &sc->stageInvocationID);
 				}
 			}
-			if ((sc->zeropad[readWrite]) || ((sc->numAxisUploads > 1) && (sc->zeropadBluestein[readWrite]))) {
-				PfIf_end(sc);
-			}
-
-
+			
 			temp_int1.data.i = (k * used_registers.data.i + i + 1) * sc->localSize[1].data.i;
 			if (temp_int1.data.i > fftDim.data.i) {
 				//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		}\n");
@@ -1535,11 +1885,11 @@ static inline void appendReadWriteDataVkFFT_strided(VkFFTSpecializationConstants
 
 static inline void appendReadDataVkFFT(VkFFTSpecializationConstantsLayout* sc, int type) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	switch (type) {
-	case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144:
+	switch (type % 10) {
+	case 0: 
 		appendReadWriteDataVkFFT_nonstrided(sc, 0, type);
 		break;
-	case 1: case 2: case 111: case 121: case 131: case 141: case 143: case 145://grouped_c2c + single_c2c_strided
+	case 1: case 2: //grouped_c2c + single_c2c_strided
 		appendReadWriteDataVkFFT_strided(sc, 0, type);
 		break;
 	}
@@ -1547,11 +1897,11 @@ static inline void appendReadDataVkFFT(VkFFTSpecializationConstantsLayout* sc, i
 }
 static inline void appendWriteDataVkFFT(VkFFTSpecializationConstantsLayout* sc, int type) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	switch (type) {
-	case 0: case 5: case 6: case 110: case 120: case 130: case 140: case 142: case 144:
+	switch (type % 10) {
+	case 0: 
 		appendReadWriteDataVkFFT_nonstrided(sc, 1, type);
 		break;
-	case 1: case 2: case 111: case 121: case 131: case 141: case 143: case 145://grouped_c2c + single_c2c_strided
+	case 1: case 2: //grouped_c2c + single_c2c_strided
 		appendReadWriteDataVkFFT_strided(sc, 1, type);
 		break;
 	}

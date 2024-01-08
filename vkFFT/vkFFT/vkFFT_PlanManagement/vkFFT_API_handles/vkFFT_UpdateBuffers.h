@@ -721,7 +721,7 @@ static inline VkFFTResult VkFFTCheckUpdateBufferSet(VkFFTApplication* app, VkFFT
 							app->localFFTPlan->inverseBluesteinAxes[i][j].specializationConstants.performBufferSetUpdate = 1;
 					}
 				}
-				if (app->localFFTPlan->multiUploadR2C) {
+				if (app->localFFTPlan->bigSequenceEvenR2C) {
 					app->localFFTPlan->R2Cdecomposition.specializationConstants.performBufferSetUpdate = 1;
 				}
 			}
@@ -734,7 +734,7 @@ static inline VkFFTResult VkFFTCheckUpdateBufferSet(VkFFTApplication* app, VkFFT
 							app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].specializationConstants.performBufferSetUpdate = 1;
 					}
 				}
-				if (app->localFFTPlan_inverse->multiUploadR2C) {
+				if (app->localFFTPlan_inverse->bigSequenceEvenR2C) {
 					app->localFFTPlan_inverse->R2Cdecomposition.specializationConstants.performBufferSetUpdate = 1;
 				}
 			}
@@ -752,7 +752,7 @@ static inline VkFFTResult VkFFTCheckUpdateBufferSet(VkFFTApplication* app, VkFFT
 							app->localFFTPlan->inverseBluesteinAxes[i][j].specializationConstants.performOffsetUpdate = 1;
 					}
 				}
-				if (app->localFFTPlan->multiUploadR2C) {
+				if (app->localFFTPlan->bigSequenceEvenR2C) {
 					app->localFFTPlan->R2Cdecomposition.specializationConstants.performOffsetUpdate = 1;
 				}
 			}
@@ -765,7 +765,7 @@ static inline VkFFTResult VkFFTCheckUpdateBufferSet(VkFFTApplication* app, VkFFT
 							app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].specializationConstants.performOffsetUpdate = 1;
 					}
 				}
-				if (app->localFFTPlan_inverse->multiUploadR2C) {
+				if (app->localFFTPlan_inverse->bigSequenceEvenR2C) {
 					app->localFFTPlan_inverse->R2Cdecomposition.specializationConstants.performOffsetUpdate = 1;
 				}
 			}
@@ -851,7 +851,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 							pfUINT bufferId = 0;
 							pfUINT offset = j;
 							if (((axis->specializationConstants.reorderFourStep == 1) || (app->useBluesteinFFT[axis_id])) && (FFTPlan->numAxisUploads[axis_id] > 1)) {
-								if ((((axis->specializationConstants.reorderFourStep == 1) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) || (app->useBluesteinFFT[axis_id] && (axis->specializationConstants.reverseBluesteinMultiUpload == 0) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1))) && (!((axis_id == 0) && (axis->specializationConstants.performR2CmultiUpload) && (axis->specializationConstants.reorderFourStep == 1) && (inverse == 1)))) {
+								if ((((axis->specializationConstants.reorderFourStep == 1) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1)) || (app->useBluesteinFFT[axis_id] && (axis->specializationConstants.reverseBluesteinMultiUpload == 0) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1))) && (!((axis_id == 0) && (FFTPlan->bigSequenceEvenR2C) && (axis->specializationConstants.reorderFourStep == 1) && (inverse == 1)))) {
 									if (axis->specializationConstants.performBufferSetUpdate) {
 										if (app->configuration.bufferSize)
 										{

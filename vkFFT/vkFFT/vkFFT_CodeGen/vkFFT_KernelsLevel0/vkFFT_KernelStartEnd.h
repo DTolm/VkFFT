@@ -24,27 +24,19 @@
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel0/vkFFT_MemoryManagement/vkFFT_MemoryInitialization/vkFFT_SharedMemory.h"
-static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, pfINT type) {
+static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, int locType) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	pfUINT locType = (((type == 0) || (type == 5) || (type == 6) || (type == 110) || (type == 120) || (type == 130) || (type == 140) || (type == 142) || (type == 144)) && (sc->axisSwapped)) ? 1 : type;
 	PfContainer* floatType;
-	PfGetTypeFromCode(sc, sc->floatTypeCode, &floatType); 
-	PfContainer* floatTypeInputMemory;
-	PfGetTypeFromCode(sc, sc->floatTypeInputMemoryCode, &floatTypeInputMemory);
-	PfContainer* floatTypeOutputMemory;
-	PfGetTypeFromCode(sc, sc->floatTypeOutputMemoryCode, &floatTypeOutputMemory);
-	PfContainer* floatTypeKernelMemory;
-	PfGetTypeFromCode(sc, sc->floatTypeKernelMemoryCode, &floatTypeKernelMemory);
-
+	PfGetTypeFromCode(sc, sc->floatTypeCode, &floatType);
 	PfContainer* vecType;
 	PfGetTypeFromCode(sc, sc->vecTypeCode, &vecType);
-	PfContainer* vecTypeInputMemory;
-	PfGetTypeFromCode(sc, sc->vecTypeInputMemoryCode, &vecTypeInputMemory);
-	PfContainer* vecTypeOutputMemory;
-	PfGetTypeFromCode(sc, sc->vecTypeOutputMemoryCode, &vecTypeOutputMemory);
-	PfContainer* vecTypeKernelMemory;
-	PfGetTypeFromCode(sc, sc->vecTypeKernelMemoryCode, &vecTypeKernelMemory);
+	
+	PfContainer* inputMemoryType;
+	PfGetTypeFromCode(sc, sc->inputMemoryCode, &inputMemoryType);
+	PfContainer* outputMemoryType;
+	PfGetTypeFromCode(sc, sc->outputMemoryCode, &outputMemoryType);
 
+	
 	PfContainer* uintType;
 	PfGetTypeFromCode(sc, sc->uintTypeCode, &uintType);
 
@@ -60,28 +52,8 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, pfI
 	
 	sc->tempLen = sprintf(sc->tempStr, "extern \"C\" __global__ void __launch_bounds__(%" PRIi64 ") VkFFT_main ", sc->localSize[0].data.i * sc->localSize[1].data.i * sc->localSize[2].data.i);
 	PfAppendLine(sc);
-	switch (type) {
-	case 5:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory->name, vecTypeOutputMemory->name);
-		break;
-	}
-	case 6:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", vecTypeInputMemory->name, floatTypeOutputMemory->name);
-		break;
-	}
-	case 110:case 111:case 120:case 121:case 130:case 131:case 140:case 141:case 142:case 143:case 144:case 145:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", floatTypeInputMemory->name, floatTypeOutputMemory->name);
-		break;
-	}
-	default:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", vecTypeInputMemory->name, vecTypeOutputMemory->name);
-		break;
-	}
-	}
+	sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", inputMemoryType->name, outputMemoryType->name);
+		
 	PfAppendLine(sc);
 
 	if (sc->convolutionStep) {
@@ -104,9 +76,13 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, pfI
 		sc->tempLen = sprintf(sc->tempStr, ", %s* BluesteinMultiplication", vecType->name);
 		PfAppendLine(sc);
 	}
+	if (sc->pushConstantsStructSize > 0) {
+		sc->tempLen = sprintf(sc->tempStr, ", PushConsts consts");
+		PfAppendLine(sc);
+	}
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
+	
 	appendSharedMemoryVkFFT(sc, (int)locType);
 	
 #elif(VKFFT_BACKEND==2)
@@ -144,28 +120,8 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, pfI
 	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, "extern \"C\" __launch_bounds__(%" PRIi64 ") __global__ void VkFFT_main ", sc->localSize[0].data.i * sc->localSize[1].data.i * sc->localSize[2].data.i);
 	PfAppendLine(sc);
-	switch (type) {
-	case 5:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory->name, vecTypeOutputMemory->name);
-		break;
-	}
-	case 6:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", vecTypeInputMemory->name, floatTypeOutputMemory->name);
-		break;
-	}
-	case 110:case 111:case 120:case 121:case 130:case 131:case 140:case 141:case 142:case 143:case 144:case 145:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", floatTypeInputMemory->name, floatTypeOutputMemory->name);
-		break;
-	}
-	default:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", vecTypeInputMemory->name, vecTypeOutputMemory->name);
-		break;
-	}
-	}
+
+	sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", inputMemoryType->name, outputMemoryType->name);
 	PfAppendLine(sc);
 	if (sc->convolutionStep) {
 		sc->tempLen = sprintf(sc->tempStr, ", const Inputs<%s> kernel_obj", vecType->name);
@@ -187,35 +143,19 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, pfI
 		sc->tempLen = sprintf(sc->tempStr, ", const Inputs<%s> BluesteinMultiplication", vecType->name);
 		PfAppendLine(sc);
 	}
+	if (sc->pushConstantsStructSize > 0) {
+		sc->tempLen = sprintf(sc->tempStr, ", PushConsts consts");
+		PfAppendLine(sc);
+	}
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
+	
 	appendSharedMemoryVkFFT(sc, (int)locType);
 #elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
 	sc->tempLen = sprintf(sc->tempStr, "__kernel __attribute__((reqd_work_group_size(%" PRIi64 ", %" PRIi64 ", %" PRIi64 "))) void VkFFT_main ", sc->localSize[0].data.i, sc->localSize[1].data.i, sc->localSize[2].data.i);
 	PfAppendLine(sc);
-	switch (type) {
-	case 5:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", floatTypeInputMemory->name, vecTypeOutputMemory->name);
-		break;
-	}
-	case 6:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", vecTypeInputMemory->name, floatTypeOutputMemory->name);
-		break;
-	}
-	case 110:case 111:case 120:case 121:case 130:case 131:case 140:case 141:case 142:case 143:case 144:case 145:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", floatTypeInputMemory->name, floatTypeOutputMemory->name);
-		break;
-	}
-	default:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", vecTypeInputMemory->name, vecTypeOutputMemory->name);
-		break;
-	}
-	}
+
+	sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", inputMemoryType->name, outputMemoryType->name);	
 	PfAppendLine(sc);
 	int args_id = 2;
 	if (sc->convolutionStep) {
@@ -270,28 +210,8 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, pfI
 		sc->tempLen = sprintf(sc->tempStr, "threadgroup %s* sdata [[threadgroup(0)]], ", vecType->name);
 		PfAppendLine(sc);
 	}
-	switch (type) {
-	case 5:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "device %s* inputs[[buffer(0)]], device %s* outputs[[buffer(1)]]", floatTypeInputMemory->name, vecTypeOutputMemory->name);
-		break;
-	}
-	case 6:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "device %s* inputs[[buffer(0)]], device %s* outputs[[buffer(1)]]", vecTypeInputMemory->name, floatTypeOutputMemory->name);
-		break;
-	}
-	case 110:case 111:case 120:case 121:case 130:case 131:case 140:case 141:case 142:case 143:case 144:case 145:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "device %s* inputs[[buffer(0)]], device %s* outputs[[buffer(1)]]", floatTypeInputMemory->name, floatTypeOutputMemory->name);
-		break;
-	}
-	default:
-	{
-		sc->tempLen = sprintf(sc->tempStr, "device %s* inputs[[buffer(0)]], device %s* outputs[[buffer(1)]]", vecTypeInputMemory->name, vecTypeOutputMemory->name);
-		break;
-	}
-	}
+
+	sc->tempLen = sprintf(sc->tempStr, "device %s* inputs[[buffer(0)]], device %s* outputs[[buffer(1)]]", inputMemoryType->name, outputMemoryType->name);
 	PfAppendLine(sc);
 	int args_id = 2;
 	if (sc->convolutionStep) {
@@ -328,32 +248,22 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, pfI
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
 	
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
 	appendSharedMemoryVkFFT(sc, (int)locType);
 #endif
 	return;
 }
 
-static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc, pfINT type) {
+static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc, int locType) {
 	if (sc->res != VKFFT_SUCCESS) return;
-	pfUINT locType = (((type == 0) || (type == 5) || (type == 6) || (type == 110) || (type == 120) || (type == 130) || (type == 140) || (type == 142) || (type == 144)) && (sc->axisSwapped)) ? 1 : type;
 	PfContainer* floatType;
 	PfGetTypeFromCode(sc, sc->floatTypeCode, &floatType);
-	PfContainer* floatTypeInputMemory;
-	PfGetTypeFromCode(sc, sc->floatTypeInputMemoryCode, &floatTypeInputMemory);
-	PfContainer* floatTypeOutputMemory;
-	PfGetTypeFromCode(sc, sc->floatTypeOutputMemoryCode, &floatTypeOutputMemory);
-	PfContainer* floatTypeKernelMemory;
-	PfGetTypeFromCode(sc, sc->floatTypeKernelMemoryCode, &floatTypeKernelMemory);
-
 	PfContainer* vecType;
 	PfGetTypeFromCode(sc, sc->vecTypeCode, &vecType);
-	PfContainer* vecTypeInputMemory;
-	PfGetTypeFromCode(sc, sc->vecTypeInputMemoryCode, &vecTypeInputMemory);
-	PfContainer* vecTypeOutputMemory;
-	PfGetTypeFromCode(sc, sc->vecTypeOutputMemoryCode, &vecTypeOutputMemory);
-	PfContainer* vecTypeKernelMemory;
-	PfGetTypeFromCode(sc, sc->vecTypeKernelMemoryCode, &vecTypeKernelMemory);
+	
+	PfContainer* inputMemoryType;
+	PfGetTypeFromCode(sc, sc->inputMemoryCode, &inputMemoryType);
+	PfContainer* outputMemoryType;
+	PfGetTypeFromCode(sc, sc->outputMemoryCode, &outputMemoryType);
 
 	PfContainer* uintType;
 	PfGetTypeFromCode(sc, sc->uintTypeCode, &uintType);
@@ -363,21 +273,26 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 #if(VKFFT_BACKEND==0)
 	sc->tempLen = sprintf(sc->tempStr, "void main() {\n");
 	PfAppendLine(sc);
+	
 #elif(VKFFT_BACKEND==1)
 	
 	sc->tempLen = sprintf(sc->tempStr, "extern \"C\" __global__ void __launch_bounds__(%" PRIi64 ") VkFFT_main_R2C ", sc->localSize[0].data.i * sc->localSize[1].data.i * sc->localSize[2].data.i);
 	PfAppendLine(sc);
 
-	sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", vecTypeInputMemory->name, vecTypeOutputMemory->name);
+	sc->tempLen = sprintf(sc->tempStr, "(%s* inputs, %s* outputs", inputMemoryType->name, outputMemoryType->name);
 	PfAppendLine(sc);
 
 	if (sc->LUT) {
 		sc->tempLen = sprintf(sc->tempStr, ", %s* twiddleLUT", vecType->name);
 		PfAppendLine(sc);
 	}
+	if (sc->pushConstantsStructSize > 0) {
+		sc->tempLen = sprintf(sc->tempStr, ", PushConsts consts");
+		PfAppendLine(sc);
+	}
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
+
 #elif(VKFFT_BACKEND==2)
 	if (!sc->useUint64 && sc->useStrict32BitAddress > 0) {
 		// These wrappers help hipcc to generate faster code for load and store operations where
@@ -412,20 +327,24 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 	sc->tempLen = sprintf(sc->tempStr, "extern \"C\" __launch_bounds__(%" PRIi64 ") __global__ void VkFFT_main_R2C ", sc->localSize[0].data.i * sc->localSize[1].data.i * sc->localSize[2].data.i);
 	PfAppendLine(sc);
 	
-	sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", vecTypeInputMemory->name, vecTypeOutputMemory->name);
+	sc->tempLen = sprintf(sc->tempStr, "(const Inputs<%s> inputs, Outputs<%s> outputs", inputMemoryType->name, outputMemoryType->name);
 	PfAppendLine(sc);
 	
 	if (sc->LUT) {
 		sc->tempLen = sprintf(sc->tempStr, ", const Inputs<%s> twiddleLUT", vecType->name);
 		PfAppendLine(sc);
 	}
+	if (sc->pushConstantsStructSize > 0) {
+		sc->tempLen = sprintf(sc->tempStr, ", PushConsts consts");
+		PfAppendLine(sc);
+	}
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
+	
 #elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
 	sc->tempLen = sprintf(sc->tempStr, "__kernel __attribute__((reqd_work_group_size(%" PRIi64 ", %" PRIi64 ", %" PRIi64 "))) void VkFFT_main_R2C ", sc->localSize[0].data.i, sc->localSize[1].data.i, sc->localSize[2].data.i);
 	PfAppendLine(sc);
-	sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", vecTypeInputMemory->name, vecTypeOutputMemory->name);
+	sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", inputMemoryType->name, outputMemoryType->name);
 	PfAppendLine(sc);
 	int args_id = 2;
 	if (sc->LUT) {
@@ -439,7 +358,7 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 	}
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
+
 #elif(VKFFT_BACKEND==5)
 	sc->tempLen = sprintf(sc->tempStr, "kernel void VkFFT_main_R2C ");
 	PfAppendLine(sc);
@@ -453,7 +372,7 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 	sc->tempLen = sprintf(sc->tempStr, "%s3 thread_position_in_threadgroup [[thread_position_in_threadgroup]], ", uintType->name);
 	PfAppendLine(sc);
 
-	sc->tempLen = sprintf(sc->tempStr, "device %s* inputs[[buffer(0)]], device %s* outputs[[buffer(1)]]", vecTypeInputMemory->name, vecTypeOutputMemory->name);
+	sc->tempLen = sprintf(sc->tempStr, "device %s* inputs[[buffer(0)]], device %s* outputs[[buffer(1)]]", inputMemoryType->name, outputMemoryType->name);
 	PfAppendLine(sc);
 	int args_id = 2;
 	
@@ -472,7 +391,6 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
 
-	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
 #endif
 	return;
 }
