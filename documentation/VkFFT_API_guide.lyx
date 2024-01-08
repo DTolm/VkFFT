@@ -192,7 +192,7 @@ vspace{1cm}
 
 {
 \backslash
-large October 2023, version 1.3.2
+large January 2024, version 1.3.3
 \backslash
 par} 
 \end_layout
@@ -467,12 +467,12 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC -DVK_API_VERSION=11)#10
 \begin_layout Plain Layout
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/gl
-slang-master/glslang/Include/) 
+slang-main/glslang/Include/) 
 \end_layout
 
 \begin_layout Plain Layout
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-master)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-main)
 \end_layout
 
 \begin_layout Plain Layout
@@ -556,8 +556,8 @@ enable_language(CUDA)
 
 \begin_layout Plain Layout
 
-set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 35 60 70
- 75 80 86) 	
+set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURESs 60 70 75
+ 80 86) 	
 \end_layout
 
 \begin_layout Plain Layout
@@ -919,6 +919,14 @@ find_path(
 \begin_layout Plain Layout
 
 	PATH_SUFFIXES "include" 
+\begin_inset Quotes eld
+\end_inset
+
+level_zero
+\begin_inset Quotes erd
+\end_inset
+
+
 \end_layout
 
 \begin_layout Plain Layout
@@ -1733,6 +1741,12 @@ For even sequences there exists an easy mapping between R2C/C2R FFTs and
  is applied.
 \end_layout
 
+\begin_layout Standard
+VkFFt also implements a general R2C/C2R algorithm that computes R2C as a
+ C2C of the same length with imaginary part set to zero.
+ The memory layout of it is optimized to reduce memory footprint.
+\end_layout
+
 \begin_layout Subsubsection
 R2R Discrete Cosine/Sine Transforms
 \end_layout
@@ -1740,8 +1754,8 @@ R2R Discrete Cosine/Sine Transforms
 \begin_layout Standard
 There exist many different mappings between DCT and FFT.
  DSTs are reformulated as DCTs inside the VkFFT, so they use the same algorithms.
- As of now, VkFFT has the following algorithms implemented (all single-upload
- for now):
+ As of now, VkFFT has the following algorithms implemented (both single
+ and multiple uploads):
 \end_layout
 
 \begin_layout Itemize
@@ -1765,6 +1779,16 @@ DCT-IV - for even sizes, mapping between R2R and C2C sequence of half-length.
  For odd sizes mapping to the FFT of the same length (for non-strided axis
  can use an optimization similar to the R2C/C2R multidimensional case (setting
  the imaginary part to the next FFT sequence)).
+\end_layout
+
+\begin_layout Standard
+The single upload versions (that can fit in shared memory) of these algorithms
+ have all mappings done in shared memory of the compute unit.
+ For multiple upload sequence sizes, special callback versions of these
+ algorithms are created that work similar to callbacks in CUDA (though more
+ sophisticated as these algorithms can use multiple input values).
+ The callback functionality has not been yet exposed to the user for general
+ applications and its design is open to discussion.
 \end_layout
 
 \begin_layout Subsubsection
@@ -2552,6 +2576,12 @@ VKFFT_ERROR_EMPTY_app = 2015,	// app pointer is zero
 
 \begin_layout Plain Layout
 
+VKFFT_ERROR_INVALID_user_tempBuffer_too_small = 2016,	// user provided tempBuffe
+r is not sufficient for VkFFT intermediate calculations
+\end_layout
+
+\begin_layout Plain Layout
+
 VKFFT_ERROR_UNSUPPORTED_RADIX = 3001,	// VkFFT has encountered unsupported
  radix (more than 13) during decomposition and Bluestein's FFT fallback
  did not work
@@ -2566,13 +2596,13 @@ VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH = 3002,	// VkFFT can not do this sequence
 \begin_layout Plain Layout
 
 VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C = 3003,	// VkFFT can not do this
- sequence length currently - odd multi-upload R2C/C2R FFTs
+ sequence length currently - should no longer be thrown
 \end_layout
 
 \begin_layout Plain Layout
 
 VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2R = 3004,	// VkFFT can not do this
- sequence length currently - multi-upload R2R transforms
+ sequence length currently - should no longer be thrown
 \end_layout
 
 \begin_layout Plain Layout
@@ -3874,7 +3904,7 @@ pfUINT omitDimension[VKFFT_MAX_FFT_DIMENSIONS];	// Disable FFT for this
 
 \begin_layout Plain Layout
 
-pfUINT performBandwidthBoost; // Try to reduce coalsesced number by a factor
+int performBandwidthBoost; // Try to reduce coalsesced number by a factor
  of X to get bigger sequence in one upload for strided axes.
  Default: -1 for DCT/DST, 2 for Bluestein's algorithm (or -1 if DCT/DST),
  0 otherwise  
@@ -3946,7 +3976,17 @@ pfUINT performDST;	// Perform DST transformation (X - DST type, 1-4)
 \begin_layout Plain Layout
 
 pfUINT disableMergeSequencesR2C;	// Disable merging of two real sequences
- to reduce calculations (0 - off, 1 - on) 
+ to reduce calculations (0 - off, 1 - on)
+\end_layout
+
+\begin_layout Plain Layout
+
+pfUINT forceCallbackVersionRealTransforms;	// Force callback version of
+ R2C and R2R algorithms for all usecases (0 - off, 1 - on) 
+\end_layout
+
+\begin_layout Plain Layout
+
 \end_layout
 
 \begin_layout Plain Layout
@@ -5057,7 +5097,7 @@ uint64_t useUint64 - forces 64-bit addressing in generated kernels.
 \end_layout
 
 \begin_layout Standard
-uint64_t performBandwidthBoost - try to reduce coalsesced number by a factor
+int performBandwidthBoost - try to reduce coalsesced number by a factor
  of X to get bigger sequence in one upload for strided axes.
  Default: -1(inf) for DCT and DST, 2 for Bluestein's algorithm (or -1 if
  DCT and DST), 0 otherwise 
@@ -5070,6 +5110,11 @@ uint64_t disableMergeSequencesR2C - disable the optimization that performs
  component to zero.
  Default 0, set to 1 to enable.
  Optional parameter.
+\end_layout
+
+\begin_layout Standard
+uint64_t forceCallbackVersionRealTransforms - force callback version of
+ R2C and R2R algorithms for all usecases (0 - off, 1 - on) 
 \end_layout
 
 \begin_layout Standard

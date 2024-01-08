@@ -1,4 +1,4 @@
-%% LyX 2.3.7 created this file.  For more info, see http://www.lyx.org/.
+%% LyX 2.3.4.3 created this file.  For more info, see http://www.lyx.org/.
 %% Do not edit unless you really know what you are doing.
 \documentclass[12pt,english]{article}
 \usepackage{amsmath}
@@ -44,7 +44,7 @@
 {\Large Dmitrii Tolmachev\par} 	
 	
 \vspace{1cm} 	
-{\large October 2023, version 1.3.2\par} 
+{\large January 2024, version 1.3.3\par} 
 \end{titlepage}
 
 \newpage{}
@@ -118,8 +118,8 @@ the available Vulkan version. Sample CMakeLists can look like this:\begin{mdfram
 \begin{minted}[tabsize=4,obeytabs,breaklines]{cmake}
 find_package(Vulkan REQUIRED)
 target_compile_definitions(${PROJECT_NAME} PUBLIC -DVK_API_VERSION=11)#10 - Vulkan 1.0, 11 - Vulkan 1.1, 12 - Vulkan 1.2 
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glslang-master/glslang/Include/) 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-master)
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glslang-main/glslang/Include/) 
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-main)
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/)
 add_library(VkFFT INTERFACE)
@@ -132,7 +132,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC SPIRV glslang Vulkan::Vulkan VkFFT)
 \begin{minted}[tabsize=4,obeytabs,breaklines]{cmake}
 find_package(CUDA 9.0 REQUIRED) 	
 enable_language(CUDA) 	
-set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 35 60 70 75 80 86) 	
+set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURESs 60 70 75 80 86) 	
 target_compile_options(${PROJECT_NAME} PUBLIC "$<$<COMPILE_LANGUAGE:CUDA>:SHELL: 	
 	-DVKFFT_BACKEND=${VKFFT_BACKEND} 	
 	-gencode arch=compute_60,code=compute_60
@@ -193,7 +193,7 @@ find_path(
 	LevelZero_INCLUDES
 	NAMES "ze_api.h"
 	PATHS ${LevelZero_INCLUDE_DIR}
-	PATH_SUFFIXES "include" 
+	PATH_SUFFIXES "include" "level_zero"
 	NO_DEFAULT_PATH
   )
 target_include_directories(${PROJECT_NAME} PUBLIC ${LevelZero_INCLUDES})
@@ -572,12 +572,16 @@ indices are read as the imaginary values. This C2C sequence can be
 done with the help of the Four-Step FFT algorithm. When FFT is done,
 separate post-processing for R2C/pre-processing for C2R is applied.
 
+VkFFt also implements a general R2C/C2R algorithm that computes R2C
+as a C2C of the same length with imaginary part set to zero. The memory
+layout of it is optimized to reduce memory footprint.
+
 \subsubsection{R2R Discrete Cosine/Sine Transforms}
 
 There exist many different mappings between DCT and FFT. DSTs are
 reformulated as DCTs inside the VkFFT, so they use the same algorithms.
-As of now, VkFFT has the following algorithms implemented (all single-upload
-for now):
+As of now, VkFFT has the following algorithms implemented (both single
+and multiple uploads):
 \begin{itemize}
 \item DCT-I - mapping between R2R and C2C of the $2N-2$ length. For non-strided
 axis can use an optimization similar to the R2C/C2R multidimensional
@@ -590,6 +594,13 @@ For odd sizes mapping to the FFT of the same length (for non-strided
 axis can use an optimization similar to the R2C/C2R multidimensional
 case (setting the imaginary part to the next FFT sequence)).
 \end{itemize}
+The single upload versions (that can fit in shared memory) of these
+algorithms have all mappings done in shared memory of the compute
+unit. For multiple upload sequence sizes, special callback versions
+of these algorithms are created that work similar to callbacks in
+CUDA (though more sophisticated as these algorithms can use multiple
+input values). The callback functionality has not been yet exposed
+to the user for general applications and its design is open to discussion.
 
 \subsubsection{Register overutilization}
 
@@ -973,10 +984,11 @@ VKFFT_ERROR_EMPTY_kernel = 2012,	// Same error as VKFFT_ERROR_EMPTY_buffer if pe
 VKFFT_ERROR_EMPTY_applicationString = 2013,	// loadApplicationString is zero when loadApplicationFromString is enabled
 VKFFT_ERROR_EMPRY_useCustomBluesteinPaddingPattern_arrays = 2014,	// pointers to primeSizes or paddedSizes arrays are zero when useCustomBluesteinPaddingPattern is enabled	
 VKFFT_ERROR_EMPTY_app = 2015,	// app pointer is zero
+VKFFT_ERROR_INVALID_user_tempBuffer_too_small = 2016,	// user provided tempBuffer is not sufficient for VkFFT intermediate calculations
 VKFFT_ERROR_UNSUPPORTED_RADIX = 3001,	// VkFFT has encountered unsupported radix (more than 13) during decomposition and Bluestein's FFT fallback did not work
 VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH = 3002,	// VkFFT can not do this sequence length currently - it requires mor than three-upload Four step FFT
-VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C = 3003,	// VkFFT can not do this sequence length currently - odd multi-upload R2C/C2R FFTs
-VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2R = 3004,	// VkFFT can not do this sequence length currently - multi-upload R2R transforms
+VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C = 3003,	// VkFFT can not do this sequence length currently - should no longer be thrown
+VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2R = 3004,	// VkFFT can not do this sequence length currently - should no longer be thrown
 VKFFT_ERROR_UNSUPPORTED_FFT_OMIT = 3005,	// VkFFT can not omit sequences in convolution calculations and R2C/C2R case
 VKFFT_ERROR_FAILED_TO_ALLOCATE = 4001,	// VkFFT failed to allocate GPU memory
 VKFFT_ERROR_FAILED_TO_MAP_MEMORY = 4002,	// 4002-4052 are handlers for errors of used backend APIs. They may indicate a driver failure. If they are thrown - report to the GitHub repo
@@ -1266,7 +1278,7 @@ pfUINT inverseReturnToInputBuffer;	// return data to the input buffer in inverse
 pfUINT numberBatches;	// N - used to perform multiple batches of initial data. Default 1
 pfUINT useUint64;	// Use 64-bit addressing mode in generated kernels
 pfUINT omitDimension[VKFFT_MAX_FFT_DIMENSIONS];	// Disable FFT for this dimension (0 - FFT enabled, 1 - FFT disabled). Default 0. Doesn't work for R2C first axis for now. Doesn't work with convolutions.
-pfUINT performBandwidthBoost; // Try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT/DST, 2 for Bluestein's algorithm (or -1 if DCT/DST), 0 otherwise  
+int performBandwidthBoost; // Try to reduce coalsesced number by a factor of X to get bigger sequence in one upload for strided axes. Default: -1 for DCT/DST, 2 for Bluestein's algorithm (or -1 if DCT/DST), 0 otherwise  
 
 pfUINT doublePrecision;	// Perform calculations in double precision (0 - off, 1 - on).
 pfUINT quadDoubleDoublePrecision; // Perform calculations in double-double emulation of quad precision (0 - off, 1 - on).
@@ -1278,7 +1290,9 @@ pfUINT doublePrecisionFloatMemory;	// Use FP64 precision for all calculations, w
 pfUINT performR2C;	// Perform R2C/C2R decomposition (0 - off, 1 - on)
 pfUINT performDCT;	// Perform DCT transformation (X - DCT type, 1-4)
 pfUINT performDST;	// Perform DST transformation (X - DST type, 1-4)
-pfUINT disableMergeSequencesR2C;	// Disable merging of two real sequences to reduce calculations (0 - off, 1 - on) 
+pfUINT disableMergeSequencesR2C;	// Disable merging of two real sequences to reduce calculations (0 - off, 1 - on)
+pfUINT forceCallbackVersionRealTransforms;	// Force callback version of R2C and R2R algorithms for all usecases (0 - off, 1 - on) 
+
 pfUINT normalize;	// Normalize inverse transform (0 - off, 1 - on)
 pfUINT disableReorderFourStep;	// Disables unshuffling of Four step algorithm. Requires tempbuffer allocation (0 - off, 1 - on)
 pfINT useLUT;	// Switches from calculating sincos to using precomputed LUT tables (0 - off, 1 - on). Configured by initialization routine
@@ -1645,16 +1659,19 @@ but it is better to have an option to force it as a failsafe. Doesn't
 work in Vulkan API (use multiple buffer binding). Default 0, set to
 1 to enable. Optional parameter.
 
-uint64\_t performBandwidthBoost - try to reduce coalsesced number
-by a factor of X to get bigger sequence in one upload for strided
-axes. Default: -1(inf) for DCT and DST, 2 for Bluestein's algorithm
-(or -1 if DCT and DST), 0 otherwise 
+int performBandwidthBoost - try to reduce coalsesced number by a factor
+of X to get bigger sequence in one upload for strided axes. Default:
+-1(inf) for DCT and DST, 2 for Bluestein's algorithm (or -1 if DCT
+and DST), 0 otherwise 
 
 uint64\_t disableMergeSequencesR2C - disable the optimization that
 performs merging of two real sequences to reduce calculations (in
 R2C/C2R and R2R). If enabled, calculations will be performed by simply
 setting the imaginary component to zero. Default 0, set to 1 to enable.
 Optional parameter.
+
+uint64\_t forceCallbackVersionRealTransforms - force callback version
+of R2C and R2R algorithms for all usecases (0 - off, 1 - on) 
 
 uint64\_t disableReorderFourStep - disables unshuffling of the Four
 Step FFT algorithm (last transposition of data). With this option
