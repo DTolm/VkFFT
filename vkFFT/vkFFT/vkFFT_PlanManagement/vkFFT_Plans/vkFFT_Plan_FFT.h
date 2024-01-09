@@ -287,7 +287,10 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
         
 		if (axis_id == 0) {
             for (int i = 1; i < app->configuration.FFTdim; i++){
-                axisStride[i].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][i-1];
+				if (FFTPlan->bigSequenceEvenR2C && (i == 1))
+					axisStride[i].data.i = prevStride * (FFTPlan->actualFFTSizePerAxis[axis_id][i-1]+1);
+				else
+					axisStride[i].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][i-1];
                 prevStride = axisStride[i].data.i;
             }
         }else{
@@ -359,7 +362,10 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
         
         if (axis_id == 0) {
             for (int i = 1; i < app->configuration.FFTdim; i++){
-                axisStride[i].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][i-1];
+                if (FFTPlan->bigSequenceEvenR2C && (i == 1))
+					axisStride[i].data.i = prevStride * (FFTPlan->actualFFTSizePerAxis[axis_id][i-1]+1);
+				else
+					axisStride[i].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][i-1];
                 prevStride = axisStride[i].data.i;
             }
         }else{

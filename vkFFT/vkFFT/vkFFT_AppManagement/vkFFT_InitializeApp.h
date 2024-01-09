@@ -1683,42 +1683,30 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
 				for (pfUINT j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++) {
 					app->localFFTPlan->axes[i][j].specializationConstants.performBufferSetUpdate = 1;
-					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, &app->localFFTPlan->axes[i][j], i, j, 0);
-					if (resFFT != VKFFT_SUCCESS) return resFFT;
 				}
 				if (app->useBluesteinFFT[i] && (app->localFFTPlan->numAxisUploads[i] > 1)) {
 					for (pfUINT j = 1; j < app->localFFTPlan->numAxisUploads[i]; j++) {
 						app->localFFTPlan->inverseBluesteinAxes[i][j].specializationConstants.performBufferSetUpdate = 1;
-						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan, &app->localFFTPlan->inverseBluesteinAxes[i][j], i, j, 0);
-						if (resFFT != VKFFT_SUCCESS) return resFFT;
 					}
 				}
 			}
 			if (app->localFFTPlan->bigSequenceEvenR2C) {
 				app->localFFTPlan->R2Cdecomposition.specializationConstants.performBufferSetUpdate = 1;
-				resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan, &app->localFFTPlan->R2Cdecomposition, 0, 0, 0);
-                if (resFFT != VKFFT_SUCCESS) return resFFT;
 			}
 		}
 		if (!app->configuration.makeForwardPlanOnly) {
 			for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
 				for (pfUINT j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
 					app->localFFTPlan_inverse->axes[i][j].specializationConstants.performBufferSetUpdate = 1;
-					resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, &app->localFFTPlan_inverse->axes[i][j], i, j, 1);
-					if (resFFT != VKFFT_SUCCESS) return resFFT;
 				}
 				if (app->useBluesteinFFT[i] && (app->localFFTPlan_inverse->numAxisUploads[i] > 1)) {
 					for (pfUINT j = 1; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++) {
 						app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].specializationConstants.performBufferSetUpdate = 1;
-						resFFT = VkFFTUpdateBufferSet(app, app->localFFTPlan_inverse, &app->localFFTPlan_inverse->inverseBluesteinAxes[i][j], i, j, 1);
-                        if (resFFT != VKFFT_SUCCESS) return resFFT;
 					}
 				}
 			}
 			if (app->localFFTPlan_inverse->bigSequenceEvenR2C) {
 				app->localFFTPlan_inverse->R2Cdecomposition.specializationConstants.performBufferSetUpdate = 1;
-				resFFT = VkFFTUpdateBufferSetR2CMultiUploadDecomposition(app, app->localFFTPlan_inverse, &app->localFFTPlan_inverse->R2Cdecomposition, 0, 0, 1);
-                if (resFFT != VKFFT_SUCCESS) return resFFT;
 			}
 		}
 	}
