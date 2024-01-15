@@ -685,7 +685,7 @@ static inline VkFFTResult VkFFTCheckUpdateBufferSet(VkFFTApplication* app, VkFFT
 		if ((app->configuration.isOutputFormatted) && (app->configuration.outputBuffer == 0)) {
 			performBufferSetUpdate = 0;
 		}
-		if ((app->configuration.userTempBuffer) && (app->configuration.tempBuffer == 0)) {
+		if (((app->configuration.userTempBuffer) && (app->configuration.tempBuffer == 0)) || (app->configuration.allocateTempBuffer)){
 			performBufferSetUpdate = 0;
 		}
 		if ((app->configuration.performConvolution) && (app->configuration.kernel == 0)) {
