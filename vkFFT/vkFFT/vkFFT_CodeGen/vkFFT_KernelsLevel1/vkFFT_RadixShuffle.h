@@ -287,10 +287,6 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 					tempID[i].type = sc->regIDs[0].type;
 					PfAllocateContainerFlexible(sc, &tempID[i], 50);
 				}
-				if (sc->useDisableThreads) {
-					temp_int.data.i = 0;
-					PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
-				}
 				for (pfUINT k = 0; k < (pfUINT)sc->registerBoost; ++k) {
 					for (pfUINT j = 0; j < (pfUINT)logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
 						for (pfUINT i = 0; i < (pfUINT)stageRadix->data.i; i++) {
@@ -575,10 +571,6 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					tempID[i].type = sc->regIDs[0].type;
 					PfAllocateContainerFlexible(sc, &tempID[i], 50);
-				}
-				if (sc->useDisableThreads) {
-					temp_int.data.i = 0;
-					PfIf_gt_start(sc, &sc->disableThreads, &temp_int);
 				}
 				for (pfUINT k = 0; k < sc->registerBoost; ++k) {
 					for (pfUINT j = 0; j < (pfUINT)logicalRegistersPerThread.data.i / stageRadix->data.i; j++) {
