@@ -293,6 +293,16 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 					axisStride[i].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][i-1];
                 prevStride = axisStride[i].data.i;
             }
+			if (FFTPlan->bigSequenceEvenR2C && (app->configuration.FFTdim == 1)) {
+				axisStride[app->configuration.FFTdim].data.i = prevStride * (FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim-1]+1);
+
+				axisStride[app->configuration.FFTdim+1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
+			}
+			else {
+				axisStride[app->configuration.FFTdim].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim-1];
+
+				axisStride[app->configuration.FFTdim+1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
+			}
         }else{
             int locStrideOrder = 2;
             for (int i = 1; i < app->configuration.FFTdim; i++){
@@ -305,12 +315,10 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
                     locStrideOrder++;
                 }
             }
-            
+            axisStride[app->configuration.FFTdim].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim-1];
+
+			axisStride[app->configuration.FFTdim+1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
         }
-
-		axisStride[app->configuration.FFTdim].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim-1];
-
-		axisStride[app->configuration.FFTdim+1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
 	}
 	if ((!inverse) && (axis_id == 0) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload == 0) && (axis->specializationConstants.performR2C || FFTPlan->bigSequenceEvenR2C) && (!(app->configuration.isInputFormatted))) {
         for (int i = 1; i < (app->configuration.FFTdim+2); i++){
@@ -367,6 +375,17 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				else
 					axisStride[i].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][i-1];
                 prevStride = axisStride[i].data.i;
+
+				if (FFTPlan->bigSequenceEvenR2C && (app->configuration.FFTdim == 1)) {
+					axisStride[app->configuration.FFTdim].data.i = prevStride * (FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim - 1]+1);
+
+					axisStride[app->configuration.FFTdim + 1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
+				}
+				else {
+					axisStride[app->configuration.FFTdim].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim - 1];
+
+					axisStride[app->configuration.FFTdim + 1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
+				}
             }
         }else{
             int locStrideOrder = 2;
@@ -380,12 +399,11 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
                     locStrideOrder++;
                 }
             }
-            
+			axisStride[app->configuration.FFTdim].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim-1];
+
+			axisStride[app->configuration.FFTdim+1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
         }
 
-        axisStride[app->configuration.FFTdim].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim-1];
-
-        axisStride[app->configuration.FFTdim+1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
 	}
 	if ((inverse) && (axis_id == 0) && (((!app->useBluesteinFFT[axis_id]) && (axis_upload_id == 0)) || ((app->useBluesteinFFT[axis_id]) && (axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && ((reverseBluesteinMultiUpload == 1) || (FFTPlan->numAxisUploads[axis_id] == 1)))) && (axis->specializationConstants.performR2C || FFTPlan->bigSequenceEvenR2C) && (!((app->configuration.isInputFormatted) && (app->configuration.inverseReturnToInputBuffer))) && (!app->configuration.isOutputFormatted)) {
         for (int i = 1; i < (app->configuration.FFTdim+2); i++){
