@@ -375,18 +375,18 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 				else
 					axisStride[i].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][i-1];
                 prevStride = axisStride[i].data.i;
-
-				if (FFTPlan->bigSequenceEvenR2C && (app->configuration.FFTdim == 1)) {
-					axisStride[app->configuration.FFTdim].data.i = prevStride * (FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim - 1]+1);
-
-					axisStride[app->configuration.FFTdim + 1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
-				}
-				else {
-					axisStride[app->configuration.FFTdim].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim - 1];
-
-					axisStride[app->configuration.FFTdim + 1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
-				}
             }
+			
+			if (FFTPlan->bigSequenceEvenR2C && (app->configuration.FFTdim == 1)) {
+				axisStride[app->configuration.FFTdim].data.i = prevStride * (FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim - 1]+1);
+
+				axisStride[app->configuration.FFTdim + 1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
+			}
+			else {
+				axisStride[app->configuration.FFTdim].data.i = prevStride * FFTPlan->actualFFTSizePerAxis[axis_id][app->configuration.FFTdim - 1];
+
+				axisStride[app->configuration.FFTdim + 1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
+			}
         }else{
             int locStrideOrder = 2;
             for (int i = 1; i < app->configuration.FFTdim; i++){
