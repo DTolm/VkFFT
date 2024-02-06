@@ -26,7 +26,7 @@
 #include "vkFFT/vkFFT_PlanManagement/vkFFT_API_handles/vkFFT_UpdateBuffers.h"
 
 static inline void deleteVkFFT(VkFFTApplication* app) {
-	if (app == NULL) {
+	if (app == 0) {
 		return;
 	}
 #if(VKFFT_BACKEND==0)

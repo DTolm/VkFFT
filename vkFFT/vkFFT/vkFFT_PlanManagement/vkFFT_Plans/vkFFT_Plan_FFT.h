@@ -150,16 +150,16 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		axis->specializationConstants.useBluesteinFFT = 1;
 	}
 
-	if ((app->configuration.performDCT == 3) || (app->configuration.performDST == 3)) {
+	if ((app->configuration.performR2R[axis_id] == 3) || (app->configuration.performR2R[axis_id] == 13)) {
 		axis->specializationConstants.actualInverse = (int)inverse;
 		axis->specializationConstants.inverse = (int)!inverse;
 	}
 	else {
-		if ((app->configuration.performDCT == 4) || (app->configuration.performDST == 4)) {
+		if ((app->configuration.performR2R[axis_id] == 4) || (app->configuration.performR2R[axis_id] == 14)) {
 			axis->specializationConstants.actualInverse = (int)inverse;
 			axis->specializationConstants.inverse = 1;
 		}
-		else if ((app->configuration.performDCT == 1) || (app->configuration.performDST == 1)) {
+		else if ((app->configuration.performR2R[axis_id] == 1) || (app->configuration.performR2R[axis_id] == 11)) {
 			axis->specializationConstants.actualInverse = (int)inverse;
 			axis->specializationConstants.inverse = 0;
 		}
@@ -171,14 +171,14 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	if (app->useBluesteinFFT[axis_id]) {
 		axis->specializationConstants.actualInverse = (int)inverse;
 		axis->specializationConstants.inverse = (int)reverseBluesteinMultiUpload;
-		if ((app->configuration.performDCT == 3) || (app->configuration.performDST == 3)) {
+		if ((app->configuration.performR2R[axis_id] == 3) || (app->configuration.performR2R[axis_id] == 13)) {
 			axis->specializationConstants.inverseBluestein = (int)!inverse;
 		}
 		else {
-			if ((app->configuration.performDCT == 4) || (app->configuration.performDST == 4)) {
+			if ((app->configuration.performR2R[axis_id] == 4) || (app->configuration.performR2R[axis_id] == 14)) {
 				axis->specializationConstants.inverseBluestein = 1;
 			}
-			else if ((app->configuration.performDCT == 1) || (app->configuration.performDST == 1)) {
+			else if ((app->configuration.performR2R[axis_id] == 1) || (app->configuration.performR2R[axis_id] == 11)) {
 				axis->specializationConstants.inverseBluestein = 0;
 			}
 			else {
@@ -204,10 +204,10 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axis->specializationConstants.performR2C = (int)FFTPlan->actualPerformR2CPerAxis[axis_id];
 	axis->specializationConstants.performR2CmultiUpload = ((axis->specializationConstants.performR2C || (FFTPlan->bigSequenceEvenR2C)) && (axis->specializationConstants.numAxisUploads > 1)) ? 1 : 0;
 	
-	if (app->configuration.performDCT > 0)
-		axis->specializationConstants.performDCT = (int)app->configuration.performDCT;
-	if (app->configuration.performDST > 0)
-		axis->specializationConstants.performDST = (int)app->configuration.performDST;
+	if ((app->configuration.performR2R[axis_id] > 0) && (app->configuration.performR2R[axis_id] < 10))
+		axis->specializationConstants.performDCT = (int)app->configuration.performR2R[axis_id];
+	if (app->configuration.performR2R[axis_id] > 10)
+		axis->specializationConstants.performDST = (int)app->configuration.performR2R[axis_id] - 10;
 
 	axis->specializationConstants.performR2RmultiUpload = (((axis->specializationConstants.performDCT>0) || (axis->specializationConstants.performDST>0)) && (axis->specializationConstants.numAxisUploads > 1)) ? 1 : 0;
 	if (axis->specializationConstants.performR2C || axis->specializationConstants.performDCT || axis->specializationConstants.performDST) axis->specializationConstants.forceCallbackVersionRealTransforms = app->configuration.forceCallbackVersionRealTransforms;

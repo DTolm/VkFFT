@@ -2237,7 +2237,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			else
 				complexSize = (2 * sizeof(float));
 	}
-	int usedSharedMemory = (((app->configuration.size[axis_id] & (app->configuration.size[axis_id] - 1)) == 0) && (!app->configuration.performDCT) && (!app->configuration.performDST)) ? (int)app->configuration.sharedMemorySizePow2 : (int)app->configuration.sharedMemorySize;
+	int usedSharedMemory = (((app->configuration.size[axis_id] & (app->configuration.size[axis_id] - 1)) == 0) && (!app->configuration.performR2R[axis_id])) ? (int)app->configuration.sharedMemorySizePow2 : (int)app->configuration.sharedMemorySize;
 	int maxSequenceLengthSharedMemory = usedSharedMemory / complexSize;
 	int maxSingleSizeNonStrided = maxSequenceLengthSharedMemory;
 
@@ -2268,13 +2268,13 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 			FFTPlan->bigSequenceEvenR2C = 1;
 		}
 	}
-	if (app->configuration.performDCT == 1) {
+	if (app->configuration.performR2R[axis_id] == 1) {
 		FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = 2 * app->configuration.size[axis_id] - 2; // now in actualFFTSize - modified dimension size for R2C/DCT
 	}
-	if (app->configuration.performDST == 1) {
+	if (app->configuration.performR2R[axis_id] == 11) {
 		FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = 2 * app->configuration.size[axis_id] + 2; // now in actualFFTSize - modified dimension size for R2C/DCT
 	}
-	if (((app->configuration.performDCT == 4) || (app->configuration.performDST == 4)) && (app->configuration.size[axis_id] % 2 == 0)) {
+	if (((app->configuration.performR2R[axis_id] == 4) || (app->configuration.performR2R[axis_id] == 14)) && (app->configuration.size[axis_id] % 2 == 0)) {
 		FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] / 2; // now in actualFFTSize - modified dimension size for R2C/DCT
 		//FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] = app->configuration.size[axis_id] * 8; // now in actualFFTSize - modified dimension size for R2C/DCT
 	}
@@ -2890,14 +2890,6 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	if (numPasses > 3) {
 		//printf("sequence length exceeds boundaries\n");
 		return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH;
-	}
-	if ((numPasses > 1) && ((app->configuration.performDCT > 0) || (app->configuration.performDST > 0))) {
-		//printf("sequence length exceeds boundaries\n");
-		//return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2R;
-	}
-	if ((numPasses > 1) && (app->configuration.performR2C > 0) && (axis_id == 0) && (app->configuration.size[axis_id] % 2 != 0)) {
-		//printf("sequence length exceeds boundaries\n");
-		//return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
 	}
 	pfUINT tempBufferSize = 0;
 	if ((app->configuration.performR2C) && (axis_id == 0)) {

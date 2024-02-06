@@ -1293,11 +1293,27 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (inputLaunchConfiguration.performR2C != 0) {
 		app->configuration.performR2C = inputLaunchConfiguration.performR2C;
 	}
+	for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
+		if (inputLaunchConfiguration.performR2R[i] != 0) {
+			app->configuration.performR2R[i] = inputLaunchConfiguration.performR2R[i];
+			app->configuration.performDCT = 100;
+			app->configuration.performDST = 200;
+		}
+	}
 	if (inputLaunchConfiguration.performDCT != 0) {
 		app->configuration.performDCT = inputLaunchConfiguration.performDCT;
+
+		for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
+			app->configuration.performR2R[i] = app->configuration.performDCT;
+		}
 	}
+	
 	if (inputLaunchConfiguration.performDST != 0) {
 		app->configuration.performDST = inputLaunchConfiguration.performDST;
+
+		for (pfUINT i = 0; i < app->configuration.FFTdim; i++) {
+			app->configuration.performR2R[i] = 10 + app->configuration.performDST;
+		}
 	}
 	if (inputLaunchConfiguration.forceCallbackVersionRealTransforms != 0)  app->configuration.forceCallbackVersionRealTransforms = inputLaunchConfiguration.forceCallbackVersionRealTransforms; 
 	

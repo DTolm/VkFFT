@@ -212,8 +212,10 @@ typedef struct {
 	pfUINT doublePrecisionFloatMemory; //use FP64 precision for all calculations, while all memory storage is done in FP32.
 
 	pfUINT performR2C; //perform R2C/C2R decomposition (0 - off, 1 - on)
-	pfUINT performDCT; //perform DCT transformation (X - DCT type, 1-4)
-	pfUINT performDST; //perform DST transformation (X - DCT type, 1-4)
+	pfUINT performDCT; //perform DCT transformation of the same type for all axes (X - DCT type, 1-4)
+	pfUINT performDST; //perform DST transformation of the same type for all axes (X - DST type, 1-4)
+	pfUINT performR2R[VKFFT_MAX_FFT_DIMENSIONS]; //set DCT/DST transformation per axis (0 - off, 1 for DCT-I, 2 for DCT-II, 3 for DCT-III, 4 for DCT-IV, 11 for DST-I, 12 for DST-II, 13 for DST-III, 14 for DST-IV). Overwritten by performDCT and performDST, if they are not 0.
+
 	pfUINT disableMergeSequencesR2C; //disable merging of two real sequences to reduce calculations (0 - off, 1 - on)
 	pfUINT forceCallbackVersionRealTransforms; //force callback version of R2C and R2R algorithms for all usecases (0 - off, 1 - on)
 

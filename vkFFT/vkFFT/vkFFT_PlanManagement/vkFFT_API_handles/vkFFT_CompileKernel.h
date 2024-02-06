@@ -728,7 +728,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 	}
 	if (app->configuration.saveApplicationToString) {
 		size_t codeSize;
-		res = clGetProgramInfo(axis->program, CL_PROGRAM_BINARY_SIZES, sizeof(size_t), &codeSize, NULL);
+		res = clGetProgramInfo(axis->program, CL_PROGRAM_BINARY_SIZES, sizeof(size_t), &codeSize, 0);
 		if (res != CL_SUCCESS) {
 			free(code0);
 			code0 = 0;
@@ -743,7 +743,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
-		res = clGetProgramInfo(axis->program, CL_PROGRAM_BINARIES, sizeof(unsigned char*), &axis->binary, NULL);
+		res = clGetProgramInfo(axis->program, CL_PROGRAM_BINARIES, sizeof(unsigned char*), &axis->binary, 0);
 		if (res != CL_SUCCESS) {
 			if (app->configuration.saveApplicationToString) {
 				free(axis->binary);
