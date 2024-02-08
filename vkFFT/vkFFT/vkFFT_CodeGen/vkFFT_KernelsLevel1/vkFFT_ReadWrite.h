@@ -361,7 +361,7 @@ static inline void appendKernelOffset(VkFFTSpecializationConstantsLayout* sc, in
                 PfMod(sc, &sc->inoutID_y, &sc->tempInt, &sc->size[i]);
                 checkZeropad_otherAxes(sc, &sc->inoutID_y, i);
                 PfMul(sc, &sc->inoutID_y, &sc->inoutID_y, &bufferStride[locStrideOrder], 0);
-                PfAdd(sc, &sc->shiftZ, &sc->shiftZ, &sc->inoutID_y);
+                PfAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &sc->inoutID_y);
 				if ((i!=(sc->numFFTdims-1) && (sc->axis_id != (sc->numFFTdims-1))) || ((i!=(sc->numFFTdims-2)) && (sc->axis_id == (sc->numFFTdims-1))))
 					PfDiv(sc, &sc->tempInt, &sc->tempInt, &sc->size[i]);
                 locStrideOrder++;
