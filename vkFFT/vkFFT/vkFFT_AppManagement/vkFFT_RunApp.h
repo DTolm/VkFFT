@@ -339,7 +339,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
                     pfUINT dispatchBlock[3];
                     dispatchBlock[0] = (pfUINT)pfceil(app->localFFTPlan_inverse->actualFFTSizePerAxis[i][0] / (double)axis->axisBlock[0] * app->localFFTPlan_inverse->actualFFTSizePerAxis[i][i] / (double)axis->specializationConstants.fftDim.data.i);
                     dispatchBlock[1] = 1;
-                    dispatchBlock[2] = app->configuration.coordinateFeatures * app->configuration.numberKernels;
+                    dispatchBlock[2] = app->configuration.coordinateFeatures * app->configuration.numberBatches * app->configuration.numberKernels;
                     for (int p = 1; p <app->configuration.FFTdim; p++){
                         if (p != i)
                             dispatchBlock[2]*= app->localFFTPlan_inverse->actualFFTSizePerAxis[i][p];
@@ -372,7 +372,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
                 
                 
                 dispatchBlock[1] = 1;
-                dispatchBlock[2] = app->configuration.coordinateFeatures * app->configuration.numberKernels;
+                dispatchBlock[2] = app->configuration.coordinateFeatures * app->configuration.numberBatches * app->configuration.numberKernels;
                 resFFT = VkFFT_DispatchPlan(app, axis, dispatchBlock);
                 if (resFFT != VKFFT_SUCCESS) return resFFT;
                 printDebugInformation(app, axis);
@@ -412,7 +412,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
                         dispatchBlock[0] = (pfUINT)pfceil(app->localFFTPlan_inverse->actualFFTSizePerAxis[0][0] / axis->specializationConstants.fftDim.data.i / (double)axis->axisBlock[0]);
                         dispatchBlock[1] = app->localFFTPlan_inverse->actualFFTSizePerAxis[0][1];
                     }
-                    dispatchBlock[2] = app->configuration.coordinateFeatures * app->configuration.numberKernels;
+                    dispatchBlock[2] = app->configuration.coordinateFeatures * app->configuration.numberBatches * app->configuration.numberKernels;
                     for (int p = 2; p <app->configuration.FFTdim; p++){
                         dispatchBlock[2]*= app->localFFTPlan_inverse->actualFFTSizePerAxis[i-1][p];
                     }
@@ -420,7 +420,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
                 }else{
                     dispatchBlock[0] = (pfUINT)pfceil(app->localFFTPlan_inverse->actualFFTSizePerAxis[i-1][0] / (double)axis->axisBlock[0] * app->localFFTPlan_inverse->actualFFTSizePerAxis[i-1][i-1] / (double)axis->specializationConstants.fftDim.data.i);
                     dispatchBlock[1] = 1;
-                    dispatchBlock[2] = app->configuration.coordinateFeatures * app->configuration.numberKernels;
+                    dispatchBlock[2] = app->configuration.coordinateFeatures * app->configuration.numberBatches * app->configuration.numberKernels;
                     for (int p = 1; p <app->configuration.FFTdim; p++){
                         if (p != (i-1))
                             dispatchBlock[2]*= app->localFFTPlan_inverse->actualFFTSizePerAxis[i-1][p];
@@ -450,7 +450,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
                 pfUINT dispatchBlock[3];
                 dispatchBlock[0] = (pfUINT)pfceil(app->localFFTPlan_inverse->actualFFTSizePerAxis[0][0] / (double)axis->axisBlock[0] * app->localFFTPlan_inverse->actualFFTSizePerAxis[0][1] / (double)axis->specializationConstants.fftDim.data.i);
                 dispatchBlock[1] = 1;
-                dispatchBlock[2] = app->configuration.coordinateFeatures * app->configuration.numberKernels;
+                dispatchBlock[2] = app->configuration.coordinateFeatures * app->configuration.numberBatches * app->configuration.numberKernels;
                 
                 //if (app->configuration.mergeSequencesR2C == 1) dispatchBlock[0] = (pfUINT)pfceil(dispatchBlock[0] / 2.0);
                 //if (app->configuration.performZeropadding[2]) dispatchBlock[2] = (pfUINT)pfceil(dispatchBlock[2] / 2.0);
