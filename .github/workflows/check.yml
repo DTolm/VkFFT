@@ -1,0 +1,28 @@
+name: Build and test accuracy
+
+on:
+  push
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Get dependencies
+      run: |
+        sudo apt -y update
+        sudo apt -y install build-essential cmake libfftw3-dev libpocl-dev opencl-headers \
+          pocl-opencl-icd ocl-icd-opencl-dev
+    - name: Build and test OpenCl
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DVKFFT_BACKEND=3 -Dbuild_VkFFT_FFTW_precision=ON \
+          -DFFTW_LIB=/usr/lib/x86_64-linux-gnu/libfftw3.so \
+          -DOpenCL_LIBRARY=/usr/lib/x86_64-linux-gnu/libOpenCL.so
+        make
+        ./Vulkan_FFT -h
+        ./Vulkan_FFT -benchmark_vkfft -X 256
+        #./Vulkan_FFT -vkfft 11
+        #./Vulkan_FFT -vkfft 14
+        #./Vulkan_FFT -vkfft 15
