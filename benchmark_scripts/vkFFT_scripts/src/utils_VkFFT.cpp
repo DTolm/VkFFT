@@ -114,16 +114,9 @@ std::vector<const char*> getRequiredExtensions(VkGPU* vkGPU, uint64_t sample_id)
 	if (vkGPU->enableValidationLayers) {
 		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 	}
-	switch (sample_id) {
 #if (VK_API_VERSION>10)
-	case 2: case 102:
-		extensions.push_back("VK_KHR_get_physical_device_properties2");
-		break;
+	extensions.push_back("VK_KHR_get_physical_device_properties2");
 #endif
-	default:
-		break;
-	}
-
 
 	return extensions;
 }
@@ -243,22 +236,17 @@ VkResult createDevice(VkGPU* vkGPU, uint64_t sample_id) {
 	queueCreateInfo.pQueuePriorities = &queuePriorities;
 	VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	VkPhysicalDeviceFeatures deviceFeatures = {};
+#if (VK_API_VERSION>10)
+	VkPhysicalDeviceFeatures2 deviceFeatures2 = {};
+	deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	void ** current_pNext = &deviceFeatures2.pNext;
+#endif
 	switch (sample_id) {
 	case 1: case 9: case 12: case 17: case 18: case 19: case 101: case 201: case 203: case 1001: case 1004: {
 		deviceFeatures.shaderFloat64 = true;
-		deviceCreateInfo.enabledExtensionCount = (uint32_t)vkGPU->enabledDeviceExtensions.size();
-		deviceCreateInfo.ppEnabledExtensionNames = vkGPU->enabledDeviceExtensions.data();
-		deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
-		deviceCreateInfo.queueCreateInfoCount = 1;
-		deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
-		res = vkCreateDevice(vkGPU->physicalDevice, &deviceCreateInfo, NULL, &vkGPU->device);
-		if (res != VK_SUCCESS) return res;
-		vkGetDeviceQueue(vkGPU->device, (uint32_t)vkGPU->queueFamilyIndex, 0, &vkGPU->queue);
-		break;
 	}
 #if (VK_API_VERSION>10)
-	case 2: case 102: case 202: case 1002: {
-		VkPhysicalDeviceFeatures2 deviceFeatures2 = {};
+	case 2: case 13: case 102: case 202: case 1002: {
 		VkPhysicalDevice16BitStorageFeatures shaderFloat16 = {};
 		shaderFloat16.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES;
 		shaderFloat16.storageBuffer16BitAccess = true;
@@ -266,36 +254,42 @@ VkResult createDevice(VkGPU* vkGPU, uint64_t sample_id) {
 		shaderFloat16.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
 		shaderFloat16.shaderFloat16 = true;
 		shaderFloat16.shaderInt8 = true;*/
-		deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-		deviceFeatures2.pNext = &shaderFloat16;
-		deviceFeatures2.features = deviceFeatures;
-		vkGetPhysicalDeviceFeatures2(vkGPU->physicalDevice, &deviceFeatures2);
-		deviceCreateInfo.pNext = &deviceFeatures2;
+		current_pNext[0] = &shaderFloat16;
+		current_pNext = &shaderFloat16.pNext;
 		vkGPU->enabledDeviceExtensions.push_back("VK_KHR_16bit_storage");
-		deviceCreateInfo.enabledExtensionCount = (uint32_t)vkGPU->enabledDeviceExtensions.size();
-		deviceCreateInfo.ppEnabledExtensionNames = vkGPU->enabledDeviceExtensions.data();
-		deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
-		deviceCreateInfo.queueCreateInfoCount = 1;
-		deviceCreateInfo.pEnabledFeatures = NULL;
-		res = vkCreateDevice(vkGPU->physicalDevice, &deviceCreateInfo, NULL, &vkGPU->device);
-		if (res != VK_SUCCESS) return res;
-		vkGetDeviceQueue(vkGPU->device, (uint32_t)vkGPU->queueFamilyIndex, 0, &vkGPU->queue);
 		break;
 	}
 #endif
-	default: {
-		deviceCreateInfo.enabledExtensionCount = (uint32_t)vkGPU->enabledDeviceExtensions.size();
-		deviceCreateInfo.ppEnabledExtensionNames = vkGPU->enabledDeviceExtensions.data();
-		deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
-		deviceCreateInfo.queueCreateInfoCount = 1;
-		deviceCreateInfo.pEnabledFeatures = NULL;
-		deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
-		res = vkCreateDevice(vkGPU->physicalDevice, &deviceCreateInfo, NULL, &vkGPU->device);
-		if (res != VK_SUCCESS) return res;
-		vkGetDeviceQueue(vkGPU->device, (uint32_t)vkGPU->queueFamilyIndex, 0, &vkGPU->queue);
-		break;
 	}
+
+#if (VK_API_VERSION>10)
+	VkPhysicalDevicePushDescriptorPropertiesKHR pushDescriptorProperties = {};
+	pushDescriptorProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR;
+	VkPhysicalDeviceProperties2KHR deviceProperties = {};
+	deviceProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR;
+	deviceProperties.pNext = &pushDescriptorProperties;
+	vkGetPhysicalDeviceProperties2(vkGPU->physicalDevice, &deviceProperties);
+
+	if (pushDescriptorProperties.maxPushDescriptors >= 8) {
+		current_pNext[0] = &pushDescriptorProperties;
+		current_pNext = &pushDescriptorProperties.pNext;
+		vkGPU->enabledDeviceExtensions.push_back("VK_KHR_push_descriptor");
 	}
+	deviceFeatures2.features = deviceFeatures;
+	vkGetPhysicalDeviceFeatures2(vkGPU->physicalDevice, &deviceFeatures2);
+	deviceCreateInfo.pNext = &deviceFeatures2;
+#endif
+
+	deviceCreateInfo.enabledExtensionCount = (uint32_t)vkGPU->enabledDeviceExtensions.size();
+	deviceCreateInfo.ppEnabledExtensionNames = vkGPU->enabledDeviceExtensions.data();
+	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
+	deviceCreateInfo.queueCreateInfoCount = 1;
+#if (VK_API_VERSION==10)
+	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
+#endif
+	res = vkCreateDevice(vkGPU->physicalDevice, &deviceCreateInfo, NULL, &vkGPU->device);
+	if (res != VK_SUCCESS) return res;
+	vkGetDeviceQueue(vkGPU->device, (uint32_t)vkGPU->queueFamilyIndex, 0, &vkGPU->queue);
 	return res;
 }
 VkResult createFence(VkGPU* vkGPU) {

@@ -313,6 +313,8 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
 	descriptorSetLayoutCreateInfo.bindingCount = (uint32_t)axis->numBindings;
 	descriptorSetLayoutCreateInfo.pBindings = descriptorSetLayoutBindings;
+	if (app->configuration.usePushDescriptors)
+		descriptorSetLayoutCreateInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
 
 	res = vkCreateDescriptorSetLayout(app->configuration.device[0], &descriptorSetLayoutCreateInfo, 0, &axis->descriptorSetLayout);
 	if (res != VK_SUCCESS) {
@@ -321,14 +323,16 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 	}
 	free(descriptorSetLayoutBindings);
 	descriptorSetLayoutBindings = 0;
-	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-	descriptorSetAllocateInfo.descriptorPool = axis->descriptorPool;
-	descriptorSetAllocateInfo.descriptorSetCount = 1;
-	descriptorSetAllocateInfo.pSetLayouts = &axis->descriptorSetLayout;
-	res = vkAllocateDescriptorSets(app->configuration.device[0], &descriptorSetAllocateInfo, &axis->descriptorSet);
-	if (res != VK_SUCCESS) {
-		deleteVkFFT(app);
-		return VKFFT_ERROR_FAILED_TO_ALLOCATE_DESCRIPTOR_SETS;
+	if (!app->configuration.usePushDescriptors) {
+		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+		descriptorSetAllocateInfo.descriptorPool = axis->descriptorPool;
+		descriptorSetAllocateInfo.descriptorSetCount = 1;
+		descriptorSetAllocateInfo.pSetLayouts = &axis->descriptorSetLayout;
+		res = vkAllocateDescriptorSets(app->configuration.device[0], &descriptorSetAllocateInfo, &axis->descriptorSet);
+		if (res != VK_SUCCESS) {
+			deleteVkFFT(app);
+			return VKFFT_ERROR_FAILED_TO_ALLOCATE_DESCRIPTOR_SETS;
+		}
 	}
 #endif
 	return VKFFT_SUCCESS;
@@ -605,6 +609,8 @@ static inline VkFFTResult VkFFTConfigureDescriptorsR2CMultiUploadDecomposition(V
 	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
 	descriptorSetLayoutCreateInfo.bindingCount = (uint32_t)axis->numBindings;
 	descriptorSetLayoutCreateInfo.pBindings = descriptorSetLayoutBindings;
+	if (app->configuration.usePushDescriptors)
+		descriptorSetLayoutCreateInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
 
 	res = vkCreateDescriptorSetLayout(app->configuration.device[0], &descriptorSetLayoutCreateInfo, 0, &axis->descriptorSetLayout);
 	if (res != VK_SUCCESS) {
@@ -613,14 +619,16 @@ static inline VkFFTResult VkFFTConfigureDescriptorsR2CMultiUploadDecomposition(V
 	}
 	free(descriptorSetLayoutBindings);
 	descriptorSetLayoutBindings = 0;
-	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-	descriptorSetAllocateInfo.descriptorPool = axis->descriptorPool;
-	descriptorSetAllocateInfo.descriptorSetCount = 1;
-	descriptorSetAllocateInfo.pSetLayouts = &axis->descriptorSetLayout;
-	res = vkAllocateDescriptorSets(app->configuration.device[0], &descriptorSetAllocateInfo, &axis->descriptorSet);
-	if (res != VK_SUCCESS) {
-		deleteVkFFT(app);
-		return VKFFT_ERROR_FAILED_TO_ALLOCATE_DESCRIPTOR_SETS;
+	if (!app->configuration.usePushDescriptors) {
+		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+		descriptorSetAllocateInfo.descriptorPool = axis->descriptorPool;
+		descriptorSetAllocateInfo.descriptorSetCount = 1;
+		descriptorSetAllocateInfo.pSetLayouts = &axis->descriptorSetLayout;
+		res = vkAllocateDescriptorSets(app->configuration.device[0], &descriptorSetAllocateInfo, &axis->descriptorSet);
+		if (res != VK_SUCCESS) {
+			deleteVkFFT(app);
+			return VKFFT_ERROR_FAILED_TO_ALLOCATE_DESCRIPTOR_SETS;
+		}
 	}
 #endif
 	return VKFFT_SUCCESS;
@@ -691,6 +699,11 @@ static inline VkFFTResult VkFFTCheckUpdateBufferSet(VkFFTApplication* app, VkFFT
 		if ((app->configuration.performConvolution) && (app->configuration.kernel == 0)) {
 			performBufferSetUpdate = 0;
 		}
+#if(VKFFT_BACKEND==0)
+		if (app->configuration.usePushDescriptors) {
+			performBufferSetUpdate = 0;
+		}
+#endif
 	}
 	else {
 		if (app->configuration.buffer == 0) {
@@ -1183,7 +1196,17 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 					writeDescriptorSet.descriptorType = descriptorType;
 					writeDescriptorSet.descriptorCount = 1;
 					writeDescriptorSet.pBufferInfo = &descriptorBufferInfo;
-					vkUpdateDescriptorSets(app->configuration.device[0], 1, &writeDescriptorSet, 0, 0);
+					if (app->configuration.usePushDescriptors){
+						PFN_vkCmdPushDescriptorSetKHR vkCmdPushDescriptorSetKHR = VKFFT_ZERO_INIT;
+						vkCmdPushDescriptorSetKHR = (PFN_vkCmdPushDescriptorSetKHR)vkGetDeviceProcAddr(app->configuration.device[0], "vkCmdPushDescriptorSetKHR");
+						if (!vkCmdPushDescriptorSetKHR) {
+							return VKFFT_SUCCESS;
+						}
+						vkCmdPushDescriptorSetKHR(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &writeDescriptorSet);
+					}
+					else{
+						vkUpdateDescriptorSets(app->configuration.device[0], 1, &writeDescriptorSet, 0, 0);
+					}
 				}
 #endif
 			}
@@ -1562,7 +1585,17 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 					writeDescriptorSet.descriptorType = descriptorType;
 					writeDescriptorSet.descriptorCount = 1;
 					writeDescriptorSet.pBufferInfo = &descriptorBufferInfo;
-					vkUpdateDescriptorSets(app->configuration.device[0], 1, &writeDescriptorSet, 0, 0);
+					if (app->configuration.usePushDescriptors){
+						PFN_vkCmdPushDescriptorSetKHR vkCmdPushDescriptorSetKHR = VKFFT_ZERO_INIT;
+						vkCmdPushDescriptorSetKHR = (PFN_vkCmdPushDescriptorSetKHR)vkGetDeviceProcAddr(app->configuration.device[0], "vkCmdPushDescriptorSetKHR");
+						if (!vkCmdPushDescriptorSetKHR) {
+							return VKFFT_SUCCESS;
+						}
+						vkCmdPushDescriptorSetKHR(app->configuration.commandBuffer[0], VK_PIPELINE_BIND_POINT_COMPUTE, axis->pipelineLayout, 0, 1, &writeDescriptorSet);
+					}
+					else{
+						vkUpdateDescriptorSets(app->configuration.device[0], 1, &writeDescriptorSet, 0, 0);
+					}
 				}
 #endif
 			}

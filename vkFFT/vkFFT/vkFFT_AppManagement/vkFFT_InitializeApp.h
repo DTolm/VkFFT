@@ -478,6 +478,8 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	}
 	app->configuration.fence = inputLaunchConfiguration.fence;
 
+	app->configuration.usePushDescriptors = inputLaunchConfiguration.usePushDescriptors;
+
 	VkPhysicalDeviceProperties physicalDeviceProperties = { 0 };
 	vkGetPhysicalDeviceProperties(app->configuration.physicalDevice[0], &physicalDeviceProperties);
 	app->configuration.maxThreadsNum = physicalDeviceProperties.limits.maxComputeWorkGroupInvocations;
