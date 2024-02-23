@@ -156,19 +156,21 @@ if(VkFFT_use_FP128_double_double)
 	target_link_libraries(${PROJECT_NAME} PUBLIC quadmath)
 endif()
 if(${VKFFT_BACKEND} EQUAL 0)
-	set(ENABLE_OPT 0)
-	FetchContent_Declare(
-		glslang-main
-		GIT_TAG ${GLSLANG_GIT_TAG}
-		GIT_REPOSITORY https://github.com/KhronosGroup/glslang
-		SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/glslang-main
-	)
-	FetchContent_GetProperties(glslang-main)
-	if(NOT glslang-main_POPULATED)
-		FetchContent_Populate(glslang-main)
-	endif()
-	target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glslang-main/glslang/Include/)
-	add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-main)
+	find_package(glslang CONFIG)
+	if (NOT ${glslang_FOUND})
+		set(ENABLE_OPT 0)
+		FetchContent_Declare(
+			glslang-main
+			GIT_TAG ${GLSLANG_GIT_TAG}
+			GIT_REPOSITORY https://github.com/KhronosGroup/glslang
+			SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/glslang-main
+		)
+		FetchContent_GetProperties(glslang-main)
+		if(NOT glslang-main_POPULATED)
+			FetchContent_Populate(glslang-main)
+		endif()
+		add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-main)
+	endif (NOT ${glslang_FOUND})
 endif()
 
 add_library(VkFFT INTERFACE)
@@ -181,7 +183,11 @@ target_include_directories(half INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/half_lib/)
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/vkFFT_scripts/include/)
 
 if(${VKFFT_BACKEND} EQUAL 0)
-	target_link_libraries(${PROJECT_NAME} PUBLIC SPIRV glslang Vulkan::Vulkan VkFFT half)
+	if (${glslang_FOUND})
+		target_link_libraries(${PROJECT_NAME} PUBLIC glslang::SPIRV glslang::glslang Vulkan::Vulkan VkFFT half)
+	else (${glslang_FOUND})
+		target_link_libraries(${PROJECT_NAME} PUBLIC SPIRV glslang Vulkan::Vulkan VkFFT half)
+	endif (${glslang_FOUND})
 elseif(${VKFFT_BACKEND} EQUAL 1)
 	find_library(CUDA_NVRTC_LIB libnvrtc nvrtc HINTS "${CUDA_TOOLKIT_ROOT_DIR}/lib64" "${LIBNVRTC_LIBRARY_DIR}" "${CUDA_TOOLKIT_ROOT_DIR}/lib/x64" /usr/lib64 /usr/local/cuda/lib64)
 	add_definitions(-DCUDA_TOOLKIT_ROOT_DIR="${CUDA_TOOLKIT_ROOT_DIR}")

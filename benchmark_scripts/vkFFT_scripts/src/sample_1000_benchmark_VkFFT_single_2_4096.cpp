@@ -13,7 +13,7 @@
 
 #if(VKFFT_BACKEND==0)
 #include "vulkan/vulkan.h"
-#include "glslang_c_interface.h"
+#include "glslang/Include/glslang_c_interface.h"
 #elif(VKFFT_BACKEND==1)
 #include <cuda.h>
 #include <cuda_runtime.h>

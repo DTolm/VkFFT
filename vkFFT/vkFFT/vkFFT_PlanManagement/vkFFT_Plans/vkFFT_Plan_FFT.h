@@ -210,7 +210,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 		axis->specializationConstants.performDST = (int)app->configuration.performR2R[axis_id] - 10;
 
 	axis->specializationConstants.performR2RmultiUpload = (((axis->specializationConstants.performDCT>0) || (axis->specializationConstants.performDST>0)) && (axis->specializationConstants.numAxisUploads > 1)) ? 1 : 0;
-	if (axis->specializationConstants.performR2C || axis->specializationConstants.performDCT || axis->specializationConstants.performDST) axis->specializationConstants.forceCallbackVersionRealTransforms = app->configuration.forceCallbackVersionRealTransforms;
+	if (axis->specializationConstants.performR2C || axis->specializationConstants.performDCT || axis->specializationConstants.performDST) axis->specializationConstants.forceCallbackVersionRealTransforms = (int)app->configuration.forceCallbackVersionRealTransforms;
 	if (((axis->specializationConstants.performR2C && (!FFTPlan->bigSequenceEvenR2C)) || axis->specializationConstants.performDCT || axis->specializationConstants.performDST) && (axis->specializationConstants.numAxisUploads > 1)) axis->specializationConstants.forceCallbackVersionRealTransforms = 1;
 	//if ((axis->specializationConstants.performR2CmultiUpload) && (app->configuration.size[0] % 2 != 0)) return VKFFT_ERROR_UNSUPPORTED_FFT_LENGTH_R2C;
 	//pfUINT passID = FFTPlan->numAxisUploads[axis_id] - 1 - axis_upload_id;
