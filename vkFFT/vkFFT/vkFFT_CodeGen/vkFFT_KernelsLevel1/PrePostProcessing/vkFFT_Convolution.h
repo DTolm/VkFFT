@@ -282,6 +282,8 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 
 				PfAdd(sc, &sc->inoutID_y, &sc->inoutID_y, &sc->shiftY);
 
+				temp_int.data.i = batching_localSize.data.i;
+
 				if ((sc->size[1].data.i % temp_int.data.i) != 0) {
 #if (VKFFT_BACKEND!=2) //AMD compiler fix
 					PfIf_lt_start(sc, &sc->inoutID_y, &sc->size[1]);
