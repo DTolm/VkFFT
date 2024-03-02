@@ -274,6 +274,7 @@ typedef struct {
 	pfUINT matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
 	pfUINT symmetricKernel; //specify if kernel in 2x2 or 3x3 matrix convolution is symmetric
 	pfUINT numberKernels;// N - only used in convolution step - specify how many kernels were initialized before. Expands one input to multiple (batched) output
+	pfUINT singleKernelMultipleBatches;// 0 off, 1 - perform convolution with one kernel to multiple (numberBatches) input/output. kernel can still use multiple coordinates for batching (for example if you want to have 3 kernels cycling for 9 systems). Default 0
 	pfUINT kernelConvolution;// specify if this application is used to create kernel for convolution, so it has the same properties. performConvolution has to be set to 0 for kernel creation
 
 	//register overutilization (experimental): (default 0 if not stated otherwise)
@@ -802,6 +803,7 @@ typedef struct {
 	pfUINT kernelBlockSize;
 	int numCoordinates;
 	int matrixConvolution; //if equal to 2 perform 2x2, if equal to 3 perform 3x3 matrix-vector convolution. Overrides coordinateFeatures
+	int singleKernelMultipleBatches;
 	PfContainer numBatches;
 	PfContainer numKernels;
 	int conjugateConvolution;

@@ -1,0 +1,327 @@
+//general parts
+#include <stdio.h>
+#include <vector>
+#include <memory>
+#include <string.h>
+#include <chrono>
+#include <thread>
+#include <iostream>
+#ifndef __STDC_FORMAT_MACROS
+#define __STDC_FORMAT_MACROS
+#endif
+#include <inttypes.h>
+
+#if(VKFFT_BACKEND==0)
+#include "vulkan/vulkan.h"
+#include "glslang/Include/glslang_c_interface.h"
+#elif(VKFFT_BACKEND==1)
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <nvrtc.h>
+#include <cuda_runtime_api.h>
+#include <cuComplex.h>
+#elif(VKFFT_BACKEND==2)
+#ifndef __HIP_PLATFORM_HCC__
+#define __HIP_PLATFORM_HCC__
+#endif
+#include <hip/hip_runtime.h>
+#include <hip/hiprtc.h>
+#include <hip/hip_runtime_api.h>
+#include <hip/hip_complex.h>
+#elif(VKFFT_BACKEND==3)
+#ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#endif
+#ifdef __APPLE__
+#include <OpenCL/opencl.h>
+#else
+#include <CL/cl.h>
+#endif 
+#elif(VKFFT_BACKEND==4)
+#include <ze_api.h>
+#elif(VKFFT_BACKEND==5)
+#include "Foundation/Foundation.hpp"
+#include "QuartzCore/QuartzCore.hpp"
+#include "Metal/Metal.hpp"
+#endif
+#include "vkFFT.h"
+#include "utils_VkFFT.h"
+
+VkFFTResult sample_53_convolution_VkFFT_single_2d_Nimages_1kernel(VkGPU* vkGPU, uint64_t file_output, FILE* output, uint64_t isCompilerInitialized)
+{
+	VkFFTResult resFFT = VKFFT_SUCCESS;
+#if(VKFFT_BACKEND==0)
+	VkResult res = VK_SUCCESS;
+#elif(VKFFT_BACKEND==1)
+	cudaError_t res = cudaSuccess;
+#elif(VKFFT_BACKEND==2)
+	hipError_t res = hipSuccess;
+#elif(VKFFT_BACKEND==3)
+	cl_int res = CL_SUCCESS;
+#elif(VKFFT_BACKEND==4)
+	ze_result_t res = ZE_RESULT_SUCCESS;
+#elif(VKFFT_BACKEND==5)
+#endif
+	if (file_output)
+		fprintf(output, "53 - VkFFT convolution example with one scaling kernel of three colors, multiple images of three colors\n");
+	printf("53 - VkFFT convolution example with one scaling kernel of three colors, multiple images of three colors\n");
+	//Configuration + FFT application.
+	VkFFTConfiguration configuration = {};
+	VkFFTConfiguration convolution_configuration = {};
+	VkFFTApplication app_convolution = {};
+	VkFFTApplication app_kernel = {};
+	//Convolution sample code
+	//Setting up FFT configuration. FFT is performed in-place with no performance loss. 
+
+	configuration.FFTdim = 2; //FFT dimension, 1D, 2D or 3D (default 1).
+	configuration.size[0] = 32; //Multidimensional FFT dimensions sizes (default 1). For best performance (and stability), order dimensions in descendant size order as: x>y>z. 
+	configuration.size[1] = 32;
+	configuration.size[2] = 1;
+
+	configuration.kernelConvolution = true; //specify if this plan is used to create kernel for convolution
+	configuration.coordinateFeatures = 3; //batching control parameter - for example, number of colors in the image and kernel
+	configuration.normalize = 1;//normalize iFFT
+	
+	//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
+#if(VKFFT_BACKEND==5)
+    configuration.device = vkGPU->device;
+#else
+    configuration.device = &vkGPU->device;
+#endif
+#if(VKFFT_BACKEND==0)
+	configuration.queue = &vkGPU->queue; //to allocate memory for LUT, we have to pass a queue, vkGPU->fence, commandPool and physicalDevice pointers 
+	configuration.fence = &vkGPU->fence;
+	configuration.commandPool = &vkGPU->commandPool;
+	configuration.physicalDevice = &vkGPU->physicalDevice;
+	configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
+#elif(VKFFT_BACKEND==3)
+	configuration.context = &vkGPU->context;
+#elif(VKFFT_BACKEND==4)
+	configuration.context = &vkGPU->context;
+	configuration.commandQueue = &vkGPU->commandQueue;
+	configuration.commandQueueID = vkGPU->commandQueueID;
+#elif(VKFFT_BACKEND==5)
+    configuration.queue = vkGPU->queue;
+#endif
+	
+	uint64_t kernelSize = ((uint64_t)configuration.coordinateFeatures) * sizeof(float) * 2 * configuration.size[0] * configuration.size[1] * configuration.size[2];;
+
+#if(VKFFT_BACKEND==0)
+	VkBuffer kernel = {};
+	VkDeviceMemory kernelDeviceMemory = {};
+	resFFT = allocateBuffer(vkGPU, &kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
+	configuration.buffer = &kernel;
+#elif(VKFFT_BACKEND==1)
+	cuFloatComplex* kernel = 0;
+	res = cudaMalloc((void**)&kernel, kernelSize);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	configuration.buffer = (void**)&kernel;
+#elif(VKFFT_BACKEND==2)
+	hipFloatComplex* kernel = 0;
+	res = hipMalloc((void**)&kernel, kernelSize);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	configuration.buffer = (void**)&kernel;
+#elif(VKFFT_BACKEND==3)
+	cl_mem kernel = 0;
+	kernel = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, kernelSize, 0, &res);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	configuration.buffer = &kernel;
+#elif(VKFFT_BACKEND==4)
+	void* kernel = 0;
+	ze_device_mem_alloc_desc_t device_desc = {};
+	device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
+	res = zeMemAllocDevice(vkGPU->context, &device_desc, kernelSize, sizeof(float), vkGPU->device, &kernel);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	configuration.buffer = &kernel;
+#elif(VKFFT_BACKEND==5)
+	MTL::Buffer* kernel = 0;
+	kernel = vkGPU->device->newBuffer(kernelSize, MTL::ResourceStorageModePrivate);
+	configuration.buffer = &kernel;
+#endif
+
+	configuration.bufferSize = &kernelSize;
+
+	if (file_output)
+		fprintf(output, "Total memory needed for kernel: %" PRIu64 " MB\n", kernelSize / 1024 / 1024);
+	printf("Total memory needed for kernel: %" PRIu64 " MB\n", kernelSize / 1024 / 1024);
+
+	//Fill kernel on CPU.
+	float* kernel_input = (float*)malloc(kernelSize);
+	if (!kernel_input) return VKFFT_ERROR_MALLOC_FAILED;
+	for (uint64_t v = 0; v < configuration.coordinateFeatures; v++) {
+		for (uint64_t k = 0; k < configuration.size[2]; k++) {
+			for (uint64_t j = 0; j < configuration.size[1]; j++) {
+
+				//Below is the test identity kernel for 1x1 nonsymmetric FFT, multiplied by (f * configuration.coordinateFeatures + v + 1);
+				for (uint64_t i = 0; i < configuration.size[0]; i++) {
+
+					kernel_input[2 * (i + j * configuration.size[0] + k * configuration.size[0] * configuration.size[1] + v * configuration.size[0] * configuration.size[1] * configuration.size[2])] = (float)(v + 1.0);
+					kernel_input[2 * (i + j * configuration.size[0] + k * configuration.size[0] * configuration.size[1] + v * configuration.size[0] * configuration.size[1] * configuration.size[2]) + 1] = 0;
+
+				}
+			}
+		}
+	}
+	//Sample buffer transfer tool. Uses staging buffer (if needed) of the same size as destination buffer, which can be reduced if transfer is done sequentially in small buffers.
+	resFFT = transferDataFromCPU(vkGPU, kernel_input, &kernel, kernelSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
+	//Initialize application responsible for the kernel. This function loads shaders, creates pipeline and configures FFT based on configuration file. No buffer allocations inside VkFFT library.  
+	resFFT = initializeVkFFT(&app_kernel, configuration);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
+	//Sample forward FFT command buffer allocation + execution performed on kernel. Second number determines how many times perform application in one submit. FFT can also be appended to user defined command buffers.
+
+	//Uncomment the line below if you want to perform kernel FFT. In this sample we use predefined identitiy kernel.
+	//performVulkanFFT(vkGPU, &app_kernel, -1, 1);
+
+	//The kernel has been trasnformed.
+
+
+	//2. Buffer convolution with transformed kernel.
+	//Copy configuration, as it mostly remains unchanged. Change specific parts.
+	convolution_configuration = configuration;
+	convolution_configuration.kernelConvolution = false;
+	convolution_configuration.performConvolution = true;
+
+#if(VKFFT_BACKEND==0)
+	convolution_configuration.kernel = &kernel;
+#elif(VKFFT_BACKEND==1)
+	convolution_configuration.kernel = (void**)&kernel;
+#elif(VKFFT_BACKEND==2)
+	convolution_configuration.kernel = (void**)&kernel;
+#elif(VKFFT_BACKEND==3)
+	convolution_configuration.kernel = &kernel;
+#elif(VKFFT_BACKEND==4)
+	convolution_configuration.kernel = (void**)&kernel;
+#elif(VKFFT_BACKEND==5)
+	convolution_configuration.kernel = &kernel;
+#endif	
+
+	convolution_configuration.kernelSize = &kernelSize;
+	convolution_configuration.numberBatches = 3;
+	convolution_configuration.singleKernelMultipleBatches = true;
+	//Allocate separate buffer for the input data.
+	uint64_t bufferSize = convolution_configuration.numberBatches * convolution_configuration.coordinateFeatures * sizeof(float) * 2 * convolution_configuration.size[0] * convolution_configuration.size[1] * convolution_configuration.size[2];;
+	
+#if(VKFFT_BACKEND==0)
+	VkBuffer buffer = {};
+	VkDeviceMemory bufferDeviceMemory = {};
+	resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
+	convolution_configuration.buffer = &buffer;
+#elif(VKFFT_BACKEND==1)
+	cuFloatComplex* buffer = 0;
+	res = cudaMalloc((void**)&buffer, bufferSize);
+	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	convolution_configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==2)
+	hipFloatComplex* buffer = 0;
+	res = hipMalloc((void**)&buffer, bufferSize);
+	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	convolution_configuration.buffer = (void**)&buffer;
+#elif(VKFFT_BACKEND==3)
+	cl_mem buffer = 0;
+	buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
+	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	convolution_configuration.buffer = &buffer;
+#elif(VKFFT_BACKEND==4)
+	void* buffer = 0;
+	res = zeMemAllocDevice(vkGPU->context, &device_desc, bufferSize, sizeof(float), vkGPU->device, &buffer);
+	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
+	convolution_configuration.buffer = &buffer;
+#elif(VKFFT_BACKEND==5)
+	MTL::Buffer* buffer = 0;
+	buffer = vkGPU->device->newBuffer(bufferSize, MTL::ResourceStorageModePrivate);
+	convolution_configuration.buffer = &buffer;
+#endif
+
+	convolution_configuration.bufferSize = &bufferSize;
+
+
+	if (file_output)
+		fprintf(output, "Total memory needed for buffer: %" PRIu64 " MB\n", bufferSize / 1024 / 1024);
+	printf("Total memory needed for buffer: %" PRIu64 " MB\n", bufferSize / 1024 / 1024);
+	//Fill data on CPU. It is best to perform all operations on GPU after initial upload.
+	float* buffer_input = (float*)malloc(bufferSize);
+	if (!buffer_input) return VKFFT_ERROR_MALLOC_FAILED;
+	for (uint64_t f = 0; f < convolution_configuration.numberBatches; f++) {
+		for (uint64_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
+			for (uint64_t k = 0; k < convolution_configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < convolution_configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < convolution_configuration.size[0]; i++) {
+						buffer_input[2 * (i + j * convolution_configuration.size[0] + k * convolution_configuration.size[0] * convolution_configuration.size[1] + v * convolution_configuration.size[0] * convolution_configuration.size[1] * convolution_configuration.size[2] + f * convolution_configuration.size[0] * convolution_configuration.size[1] * convolution_configuration.size[2] * convolution_configuration.coordinateFeatures)] = (float)(f * configuration.coordinateFeatures + v + 1.0);
+						buffer_input[2 * (i + j * convolution_configuration.size[0] + k * convolution_configuration.size[0] * convolution_configuration.size[1] + v * convolution_configuration.size[0] * convolution_configuration.size[1] * convolution_configuration.size[2] + f * convolution_configuration.size[0] * convolution_configuration.size[1] * convolution_configuration.size[2] * convolution_configuration.coordinateFeatures) + 1] = 0;
+					}
+				}
+			}
+		}
+	}
+	//Transfer data to GPU using staging buffer.
+	resFFT = transferDataFromCPU(vkGPU, buffer_input, &buffer, bufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
+
+	//Initialize application responsible for the convolution.
+	resFFT = initializeVkFFT(&app_convolution, convolution_configuration);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
+	//Sample forward FFT command buffer allocation + execution performed on kernel. FFT can also be appended to user defined command buffers.
+	VkFFTLaunchParams launchParams = {};
+	resFFT = performVulkanFFT(vkGPU, &app_convolution, &launchParams, -1, 1);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
+	//The kernel has been trasnformed.
+
+	float* buffer_output = (float*)malloc(bufferSize);
+	if (!buffer_output) return VKFFT_ERROR_MALLOC_FAILED;
+	//Transfer data from GPU using staging buffer.
+	resFFT = transferDataToCPU(vkGPU, buffer_output, &buffer, bufferSize);
+	if (resFFT != VKFFT_SUCCESS) return resFFT;
+	
+	//Print data, if needed.
+	for (uint64_t f = 0; f < convolution_configuration.numberBatches; f++) {
+		if (file_output)
+			fprintf(output, "\Batch id: %" PRIu64 "\n\n", f);
+		printf("\Batch id: %" PRIu64 "\n\n", f);
+		for (uint64_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
+			if (file_output)
+				fprintf(output, "\ncoordinate: %" PRIu64 "\n\n", v);
+			printf("\ncoordinate: %" PRIu64 "\n\n", v);
+			for (uint64_t k = 0; k < convolution_configuration.size[2]; k++) {
+				for (uint64_t j = 0; j < convolution_configuration.size[1]; j++) {
+					for (uint64_t i = 0; i < convolution_configuration.size[0]; i++) {
+						if (file_output)
+							fprintf(output, "(%.2f, %.2f) ", buffer_output[2 * (i + j * convolution_configuration.size[0] + k * convolution_configuration.size[0] * convolution_configuration.size[1] + v * convolution_configuration.size[0] * convolution_configuration.size[1] * convolution_configuration.size[2] + f * convolution_configuration.size[0] * convolution_configuration.size[1] * convolution_configuration.size[2] * convolution_configuration.coordinateFeatures)], buffer_output[2 * (i + j * convolution_configuration.size[0] + k * convolution_configuration.size[0] * convolution_configuration.size[1] + v * convolution_configuration.size[0] * convolution_configuration.size[1] * convolution_configuration.size[2] + f * convolution_configuration.size[0] * convolution_configuration.size[1] * convolution_configuration.size[2] * convolution_configuration.coordinateFeatures) + 1]);
+
+						printf("(%.2f, %.2f) ", buffer_output[2 * (i + j * convolution_configuration.size[0] + k * convolution_configuration.size[0] * convolution_configuration.size[1] + v * convolution_configuration.size[0] * convolution_configuration.size[1] * convolution_configuration.size[2] + f * convolution_configuration.size[0] * convolution_configuration.size[1] * convolution_configuration.size[2] * convolution_configuration.coordinateFeatures)], buffer_output[2 * (i + j * convolution_configuration.size[0] + k * convolution_configuration.size[0] * convolution_configuration.size[1] + v * convolution_configuration.size[0] * convolution_configuration.size[1] * convolution_configuration.size[2] + f * convolution_configuration.size[0] * convolution_configuration.size[1] * convolution_configuration.size[2] * convolution_configuration.coordinateFeatures) + 1]);
+					}
+					printf("\n");
+				}
+			}
+		}
+	}
+	free(kernel_input);
+	free(buffer_input);
+	free(buffer_output);
+#if(VKFFT_BACKEND==0)
+	vkDestroyBuffer(vkGPU->device, buffer, NULL);
+	vkFreeMemory(vkGPU->device, bufferDeviceMemory, NULL);
+	vkDestroyBuffer(vkGPU->device, kernel, NULL);
+	vkFreeMemory(vkGPU->device, kernelDeviceMemory, NULL);
+#elif(VKFFT_BACKEND==1)
+	cudaFree(buffer);
+	cudaFree(kernel);
+#elif(VKFFT_BACKEND==2)
+	hipFree(buffer);
+	hipFree(kernel);
+#elif(VKFFT_BACKEND==3)
+	clReleaseMemObject(buffer);
+	clReleaseMemObject(kernel);
+#elif(VKFFT_BACKEND==4)
+	zeMemFree(vkGPU->context, buffer);
+	zeMemFree(vkGPU->context, kernel);
+#elif(VKFFT_BACKEND==5)
+	buffer->release();
+	kernel->release();
+#endif	
+	deleteVkFFT(&app_kernel);
+	deleteVkFFT(&app_convolution);
+	return resFFT;
+}

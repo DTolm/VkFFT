@@ -195,6 +195,8 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 
 		axis->specializationConstants.numCoordinates = (app->configuration.matrixConvolution > 1) ? 1 : (int)app->configuration.coordinateFeatures;
 		axis->specializationConstants.matrixConvolution = (int)app->configuration.matrixConvolution;
+		axis->specializationConstants.singleKernelMultipleBatches = (int)app->configuration.singleKernelMultipleBatches;
+		
         for (pfUINT i = 0; i < VKFFT_MAX_FFT_DIMENSIONS; i++) {
             axis->specializationConstants.size[i].type = 31;
             axis->specializationConstants.size[i].data.i = (pfINT)app->configuration.size[i];

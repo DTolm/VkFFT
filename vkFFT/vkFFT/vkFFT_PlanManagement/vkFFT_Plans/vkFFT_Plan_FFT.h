@@ -474,6 +474,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 		axis->specializationConstants.numCoordinates = (app->configuration.matrixConvolution > 1) ? 1 : (int)app->configuration.coordinateFeatures;
 		axis->specializationConstants.matrixConvolution = (int)app->configuration.matrixConvolution;
+		axis->specializationConstants.singleKernelMultipleBatches = (int)app->configuration.singleKernelMultipleBatches;
 		axis->specializationConstants.coordinate.type = 31;
 		axis->specializationConstants.coordinate.data.i = 0;
 		axis->specializationConstants.batchID.type = 31;

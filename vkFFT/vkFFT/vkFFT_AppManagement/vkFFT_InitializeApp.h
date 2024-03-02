@@ -1176,56 +1176,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (inputLaunchConfiguration.kernelOffset != 0)	app->configuration.kernelOffset = inputLaunchConfiguration.kernelOffset;
 	if (inputLaunchConfiguration.specifyOffsetsAtLaunch != 0)	app->configuration.specifyOffsetsAtLaunch = inputLaunchConfiguration.specifyOffsetsAtLaunch;
 	//set optional parameters:
-	pfUINT checkBufferSizeFor64BitAddressing = 0;
-	for (pfUINT i = 0; i < app->configuration.bufferNum; i++) {
-		if (app->configuration.bufferSize)
-			checkBufferSizeFor64BitAddressing += app->configuration.bufferSize[i];
-		else {
-			checkBufferSizeFor64BitAddressing = app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2] * 8;
-			if (app->configuration.coordinateFeatures > 0) checkBufferSizeFor64BitAddressing *= app->configuration.coordinateFeatures;
-			if (app->configuration.numberBatches > 0) checkBufferSizeFor64BitAddressing *= app->configuration.numberBatches;
-			if (app->configuration.numberKernels > 0) checkBufferSizeFor64BitAddressing *= app->configuration.numberKernels;
-			if (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) checkBufferSizeFor64BitAddressing *= 2;
-			if (app->configuration.quadDoubleDoublePrecision) checkBufferSizeFor64BitAddressing *= 4;
-		}
-	}
-#if(VKFFT_BACKEND==2)
-	app->configuration.useStrict32BitAddress = 0;
-	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)32)) app->configuration.useStrict32BitAddress = -1;
-#endif
-	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)34)) app->configuration.useUint64 = 1;
-	checkBufferSizeFor64BitAddressing = 0;
-	for (pfUINT i = 0; i < app->configuration.inputBufferNum; i++) {
-		if (app->configuration.inputBufferSize)
-			checkBufferSizeFor64BitAddressing += app->configuration.inputBufferSize[i];
-	}
-#if(VKFFT_BACKEND==2)
-	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)32)) app->configuration.useStrict32BitAddress = -1;
-#endif
-	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)34)) app->configuration.useUint64 = 1;
-
-	checkBufferSizeFor64BitAddressing = 0;
-	for (pfUINT i = 0; i < app->configuration.outputBufferNum; i++) {
-		if (app->configuration.outputBufferSize)
-			checkBufferSizeFor64BitAddressing += app->configuration.outputBufferSize[i];
-	}
-	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)34)) app->configuration.useUint64 = 1;
-
-	checkBufferSizeFor64BitAddressing = 0;
-	for (pfUINT i = 0; i < app->configuration.kernelNum; i++) {
-		if (app->configuration.kernelSize)
-			checkBufferSizeFor64BitAddressing += app->configuration.kernelSize[i];
-	}
-#if(VKFFT_BACKEND==2)
-	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)32)) app->configuration.useStrict32BitAddress = -1;
-	// No reason was found to disable strict 32 bit addressing, so enable it
-	if (app->configuration.useStrict32BitAddress == 0) app->configuration.useStrict32BitAddress = 1;
-#endif
-	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)34)) app->configuration.useUint64 = 1;
-	if (inputLaunchConfiguration.useUint64 != 0)	app->configuration.useUint64 = inputLaunchConfiguration.useUint64;
-#if(VKFFT_BACKEND==2)
-	if (inputLaunchConfiguration.useStrict32BitAddress != 0) app->configuration.useStrict32BitAddress = inputLaunchConfiguration.useStrict32BitAddress;
-#endif
 	if (inputLaunchConfiguration.maxThreadsNum != 0)	app->configuration.maxThreadsNum = inputLaunchConfiguration.maxThreadsNum;
 	if (inputLaunchConfiguration.coalescedMemory != 0)	app->configuration.coalescedMemory = inputLaunchConfiguration.coalescedMemory;
 	app->configuration.aimThreads = 128;
@@ -1380,7 +1330,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 
 		if (inputLaunchConfiguration.matrixConvolution != 0)	app->configuration.matrixConvolution = inputLaunchConfiguration.matrixConvolution;
 		if (inputLaunchConfiguration.numberKernels != 0)	app->configuration.numberKernels = inputLaunchConfiguration.numberKernels;
-
+		if (inputLaunchConfiguration.singleKernelMultipleBatches != 0)	app->configuration.singleKernelMultipleBatches = inputLaunchConfiguration.singleKernelMultipleBatches;
 		if (inputLaunchConfiguration.symmetricKernel != 0)	app->configuration.symmetricKernel = inputLaunchConfiguration.symmetricKernel;
 		if (inputLaunchConfiguration.conjugateConvolution != 0)	app->configuration.conjugateConvolution = inputLaunchConfiguration.conjugateConvolution;
 		if (inputLaunchConfiguration.crossPowerSpectrumNormalization != 0)	app->configuration.crossPowerSpectrumNormalization = inputLaunchConfiguration.crossPowerSpectrumNormalization;
@@ -1391,6 +1341,58 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.registerBoost4Step = 1;
 		if (app->configuration.matrixConvolution > 1) app->configuration.coordinateFeatures = app->configuration.matrixConvolution;
 	}
+
+	pfUINT checkBufferSizeFor64BitAddressing = 0;
+	for (pfUINT i = 0; i < app->configuration.bufferNum; i++) {
+		if (app->configuration.bufferSize)
+			checkBufferSizeFor64BitAddressing += app->configuration.bufferSize[i];
+		else {
+			checkBufferSizeFor64BitAddressing = app->configuration.size[0] * app->configuration.size[1] * app->configuration.size[2] * 8;
+			if (app->configuration.coordinateFeatures > 0) checkBufferSizeFor64BitAddressing *= app->configuration.coordinateFeatures;
+			if (app->configuration.numberBatches > 0) checkBufferSizeFor64BitAddressing *= app->configuration.numberBatches;
+			if (app->configuration.numberKernels > 0) checkBufferSizeFor64BitAddressing *= app->configuration.numberKernels;
+			if (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) checkBufferSizeFor64BitAddressing *= 2;
+			if (app->configuration.quadDoubleDoublePrecision) checkBufferSizeFor64BitAddressing *= 4;
+		}
+	}
+#if(VKFFT_BACKEND==2)
+	app->configuration.useStrict32BitAddress = 0;
+	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)32)) app->configuration.useStrict32BitAddress = -1;
+#endif
+	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)34)) app->configuration.useUint64 = 1;
+	checkBufferSizeFor64BitAddressing = 0;
+	for (pfUINT i = 0; i < app->configuration.inputBufferNum; i++) {
+		if (app->configuration.inputBufferSize)
+			checkBufferSizeFor64BitAddressing += app->configuration.inputBufferSize[i];
+	}
+#if(VKFFT_BACKEND==2)
+	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)32)) app->configuration.useStrict32BitAddress = -1;
+#endif
+	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)34)) app->configuration.useUint64 = 1;
+
+	checkBufferSizeFor64BitAddressing = 0;
+	for (pfUINT i = 0; i < app->configuration.outputBufferNum; i++) {
+		if (app->configuration.outputBufferSize)
+			checkBufferSizeFor64BitAddressing += app->configuration.outputBufferSize[i];
+	}
+	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)34)) app->configuration.useUint64 = 1;
+
+	checkBufferSizeFor64BitAddressing = 0;
+	for (pfUINT i = 0; i < app->configuration.kernelNum; i++) {
+		if (app->configuration.kernelSize)
+			checkBufferSizeFor64BitAddressing += app->configuration.kernelSize[i];
+	}
+#if(VKFFT_BACKEND==2)
+	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)32)) app->configuration.useStrict32BitAddress = -1;
+	// No reason was found to disable strict 32 bit addressing, so enable it
+	if (app->configuration.useStrict32BitAddress == 0) app->configuration.useStrict32BitAddress = 1;
+#endif
+	if (checkBufferSizeFor64BitAddressing >= (pfUINT)pow((pfUINT)2, (pfUINT)34)) app->configuration.useUint64 = 1;
+	if (inputLaunchConfiguration.useUint64 != 0)	app->configuration.useUint64 = inputLaunchConfiguration.useUint64;
+#if(VKFFT_BACKEND==2)
+	if (inputLaunchConfiguration.useStrict32BitAddress != 0) app->configuration.useStrict32BitAddress = inputLaunchConfiguration.useStrict32BitAddress;
+#endif
+
 	app->firstAxis = 0;
 	app->lastAxis = app->configuration.FFTdim - 1;
 	for (int i = 0; i < app->configuration.FFTdim; i++) {

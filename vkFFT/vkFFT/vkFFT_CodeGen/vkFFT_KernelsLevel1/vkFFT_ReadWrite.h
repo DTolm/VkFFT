@@ -381,7 +381,7 @@ static inline void appendKernelOffset(VkFFTSpecializationConstantsLayout* sc, in
 		PfMul(sc, &temp_int, &sc->coordinate, &bufferStride[sc->numFFTdims], 0);
 		PfAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &temp_int);
 	}
-	if ((sc->numBatches.data.i > 1) || (sc->numKernels.data.i > 1)) {
+	if (((sc->numBatches.data.i > 1) && (!sc->singleKernelMultipleBatches)) || (sc->numKernels.data.i > 1)) {
 		if (sc->convolutionStep && (sc->numKernels.data.i > 1)) {
 			PfMul(sc, &sc->tempInt, &sc->batchID, &sc->inputStride[sc->numFFTdims+1], 0);
 			PfAdd(sc, &sc->blockInvocationID, &sc->blockInvocationID, &sc->tempInt);

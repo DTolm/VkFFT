@@ -82,6 +82,7 @@
 #include "sample_50_convolution_VkFFT_single_1d_matrix.h"
 #include "sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.h"
 #include "sample_52_convolution_VkFFT_single_2d_batched_r2c.h"
+#include "sample_53_convolution_VkFFT_single_2d_Nimages_1kernel.h"
 
 #include "sample_100_benchmark_VkFFT_single_nd_dct.h"
 #include "sample_101_benchmark_VkFFT_double_nd_dct.h"
@@ -424,6 +425,11 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
         resFFT = sample_52_convolution_VkFFT_single_2d_batched_r2c(vkGPU, file_output, output, isCompilerInitialized);
         break;
     }
+	case 53:
+    {
+        resFFT = sample_53_convolution_VkFFT_single_2d_Nimages_1kernel(vkGPU, file_output, output, isCompilerInitialized);
+        break;
+    }
     case 110:
     {
         resFFT = sample_100_benchmark_VkFFT_single_nd_dct(vkGPU, file_output, output, isCompilerInitialized, 1);
@@ -638,6 +644,7 @@ int main(int argc, char* argv[])
 		printf("		50 - convolution example with identity kernel\n");
 		printf("		51 - zeropadding convolution example with identity kernel\n");
 		printf("		52 - batched convolution example with identity kernel\n");
+		printf("		53 - convolution example with one scaling kernel of three colors, multiple images of three colors\n");
 		printf("		110 - VkFFT FFT + iFFT R2R DCT-1 multidimensional benchmark in single precision\n");
 		printf("		111 - VkFFT FFT + iFFT R2R DCT-1 multidimensional benchmark in double precision\n");
 		printf("		120 - VkFFT FFT + iFFT R2R DCT-2 multidimensional benchmark in single precision\n");
