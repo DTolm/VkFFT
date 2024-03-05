@@ -281,7 +281,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 
 	axisStride[app->configuration.FFTdim+1].type = 31;
 	axisStride[app->configuration.FFTdim+1].data.i = axisStride[app->configuration.FFTdim].data.i * app->configuration.coordinateFeatures;
-	if ((FFTPlan->numAxisUploads[axis_id] > 1) && ((app->useBluesteinFFT[axis_id] && (!((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload == 0))))) || ((!app->useBluesteinFFT[axis_id]) && (!((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1))))) {
+	if ((FFTPlan->numAxisUploads[axis_id] > 1) && ((app->useBluesteinFFT[axis_id] && (!((axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1) && (reverseBluesteinMultiUpload == 0)))) || ((!app->useBluesteinFFT[axis_id]) && (!(axis_upload_id == FFTPlan->numAxisUploads[axis_id] - 1))))) {
 		axisStride[0].data.i = 1;
         pfINT prevStride = axisStride[0].data.i;
         
