@@ -21,6 +21,9 @@
 // THE SOFTWARE.
 #ifndef VKFFT_REGISTERS_H
 #define VKFFT_REGISTERS_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
@@ -298,7 +301,7 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 		PfDefine(sc, &sc->raderIDx2, name);
 		PfSetToZero(sc, &sc->raderIDx2);
 		
-		/*#if((VKFFT_BACKEND==1)||(VKFFT_BACKEND==2))
+		/*#if((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP))
 				sprintf(sc->gl_SubgroupInvocationID, "gl_SubgroupInvocationID");
 				sprintf(sc->gl_SubgroupID, "gl_SubgroupID");
 				if (sc->localSize[1] == 1) {
@@ -601,7 +604,7 @@ static inline void freeRegisterInitialization(VkFFTSpecializationConstantsLayout
 
 		PfDeallocateContainer(sc, &sc->raderIDx2);
 
-		/*#if((VKFFT_BACKEND==1)||(VKFFT_BACKEND==2))
+		/*#if((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP))
 				sprintf(sc->gl_SubgroupInvocationID, "gl_SubgroupInvocationID");
 				sprintf(sc->gl_SubgroupID, "gl_SubgroupID");
 				if (sc->localSize[1] == 1) {

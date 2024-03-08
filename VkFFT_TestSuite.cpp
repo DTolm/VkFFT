@@ -7,16 +7,17 @@
 #include <algorithm>
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
-#if(VKFFT_BACKEND==0)
+#include "vkFFT.h"
+#if(VKFFT_BACKEND_VULKAN)
 #include "vulkan/vulkan.h"
 #include "glslang/Include/glslang_c_interface.h"
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_CUDA)
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <nvrtc.h>
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_HIP)
 #ifndef __HIP_PLATFORM_HCC__
 #define __HIP_PLATFORM_HCC__
 #endif
@@ -24,7 +25,7 @@
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_OPENCL)
 #ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #endif
@@ -33,9 +34,9 @@
 #else
 #include <CL/cl.h>
 #endif 
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_LEVEL_ZERO)
 #include <ze_api.h>
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_METAL)
 #ifndef NS_PRIVATE_IMPLEMENTATION
 #define NS_PRIVATE_IMPLEMENTATION
 #endif
@@ -49,7 +50,6 @@
 #include "QuartzCore/QuartzCore.hpp"
 #include "Metal/Metal.hpp"
 #endif
-#include "vkFFT.h"
 #include "utils_VkFFT.h"
 #include "half.hpp"
 #include "user_benchmark_VkFFT.h"
@@ -126,7 +126,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	//Sample Vulkan project GPU initialization.
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 	VkResult res = VK_SUCCESS;
 	//create instance - a connection between the application and the Vulkan library 
 	res = createInstance(vkGPU, sample_id);
@@ -168,7 +168,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	vkGetPhysicalDeviceMemoryProperties(vkGPU->physicalDevice, &vkGPU->physicalDeviceMemoryProperties);
 
 	glslang_initialize_process();//compiler can be initialized before VkFFT
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_CUDA)
 	CUresult res = CUDA_SUCCESS;
 	cudaError_t res2 = cudaSuccess;
 	res = cuInit(0);
@@ -179,7 +179,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
 	res = cuCtxCreate(&vkGPU->context, 0, (int)vkGPU->device);
 	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_HIP)
 	hipError_t res = hipSuccess;
 	res = hipInit(0);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
@@ -189,7 +189,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
 	res = hipCtxCreate(&vkGPU->context, 0, (int)vkGPU->device);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_OPENCL)
 	cl_int res = CL_SUCCESS;
 	cl_uint numPlatforms;
 	res = clGetPlatformIDs(0, 0, &numPlatforms);
@@ -225,7 +225,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 		free(deviceList);
 	}
 	free(platforms);
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 	res = zeInit(0);
 	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
@@ -291,7 +291,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 		free(deviceList);
 	}
 	free(drivers);
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_METAL)
     NS::Array* devices = MTL::CopyAllDevices();
     MTL::Device* device = (MTL::Device*)devices->object(vkGPU->device_id);
     vkGPU->device = device;
@@ -354,7 +354,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 		break;
 	}
 #endif
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
     case 10:
     {
         resFFT = sample_10_benchmark_VkFFT_single_multipleBuffers(vkGPU, file_output, output, isCompilerInitialized);
@@ -510,26 +510,26 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	}
 #endif
     }
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 	vkDestroyFence(vkGPU->device, vkGPU->fence, NULL);
 	vkDestroyCommandPool(vkGPU->device, vkGPU->commandPool, NULL);
 	vkDestroyDevice(vkGPU->device, NULL);
 	DestroyDebugUtilsMessengerEXT(vkGPU, NULL);
 	vkDestroyInstance(vkGPU->instance, NULL);
 	glslang_finalize_process();//destroy compiler after use
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_CUDA)
 	res = cuCtxDestroy(vkGPU->context);
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_HIP)
 	res = hipCtxDestroy(vkGPU->context);
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_OPENCL)
 	res = clReleaseCommandQueue(vkGPU->commandQueue);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
 	clReleaseContext(vkGPU->context);
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_LEVEL_ZERO)
 	res = zeCommandQueueDestroy(vkGPU->commandQueue);
 	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
 	res = zeContextDestroy(vkGPU->context);
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_METAL)
     vkGPU->queue->release();
     vkGPU->device->release();
     devices->release();
@@ -554,7 +554,7 @@ char* getFlagValue(char** start, char** end, const std::string& flag)
 int main(int argc, char* argv[])
 {
 	VkGPU vkGPU = {};
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 	vkGPU.enableValidationLayers = 0;
 #endif
 	bool file_output = false;
@@ -569,17 +569,17 @@ int main(int argc, char* argv[])
 		version_decomposed[1] = (version - version_decomposed[0] * 10000) / 100;
 		version_decomposed[2] = (version - version_decomposed[0] * 10000 - version_decomposed[1] * 100);
 		printf("VkFFT v%d.%d.%d (05-02-2024). Author: Tolmachev Dmitrii\n", version_decomposed[0], version_decomposed[1], version_decomposed[2]);
-#if (VKFFT_BACKEND==0)
+#if (VKFFT_BACKEND_VULKAN)
 		printf("Vulkan backend\n");
-#elif (VKFFT_BACKEND==1)
+#elif (VKFFT_BACKEND_CUDA)
 		printf("CUDA backend\n");
-#elif (VKFFT_BACKEND==2)
+#elif (VKFFT_BACKEND_HIP)
 		printf("HIP backend\n");
-#elif (VKFFT_BACKEND==3)
+#elif (VKFFT_BACKEND_OPENCL)
 		printf("OpenCL backend\n");
-#elif (VKFFT_BACKEND==4)
+#elif (VKFFT_BACKEND_LEVEL_ZERO)
 		printf("Level Zero backend\n");
-#elif (VKFFT_BACKEND==5)
+#elif (VKFFT_BACKEND_METAL)
         printf("Metal backend\n");
 #endif
 		printf("	-h: print help\n");
@@ -599,7 +599,7 @@ int main(int argc, char* argv[])
 #ifdef VKFFT_USE_DOUBLEDOUBLE_FP128
 		printf("		9 - FFT + iFFT C2C benchmark 1D batched in double-double emulation of quad precision LUT\n");
 #endif
-#if (VKFFT_BACKEND==0)
+#if (VKFFT_BACKEND_VULKAN)
 		printf("		10 - multiple buffer(4 by default) split version of benchmark 0\n");
 #endif
 #ifdef USE_FFTW
@@ -1040,7 +1040,7 @@ int main(int argc, char* argv[])
 			output = fopen("result.txt", "a");
 		}
 		for (uint64_t i = 0; i < 9; i++) {
-#if((VKFFT_BACKEND>0) || (VK_API_VERSION == 10))
+#if((!VKFFT_BACKEND_VULKAN) || (VK_API_VERSION == 10))
 			if (i == 2) i++;
 #endif
 			VkFFTResult resFFT = launchVkFFT(&vkGPU, i, file_output, output, 0);

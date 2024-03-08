@@ -21,6 +21,9 @@
 // THE SOFTWARE.
 #ifndef VKFFT_SHAREDMEMORY_H
 #define VKFFT_SHAREDMEMORY_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
@@ -109,46 +112,46 @@ static inline void appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLayout* s
 			sc->offsetImaginaryShared.data.i = sc->usedSharedMemory.data.i / sc->complexSize;
 			PfContainer* floatType = VKFFT_ZERO_INIT;
 			PfGetTypeFromCode(sc, sc->floatTypeCode, &floatType);
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 			sc->tempLen = sprintf(sc->tempStr, "shared %s sdata[%" PRIi64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", floatType->name, (2 * sc->usedSharedMemory.data.i) / sc->complexSize);
 			PfAppendLine(sc);
 		
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_CUDA)
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[%" PRIu64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
 			sc->tempLen = sprintf(sc->tempStr, "%s* sdata = (%s*)shared;\n\n", floatType->name, floatType->name);
 			PfAppendLine(sc);
 			
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", sharedDefinitions, vecType);
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_HIP)
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[%" PRIu64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
 			sc->tempLen = sprintf(sc->tempStr, "%s* sdata = (%s*)shared;\n\n", floatType->name, floatType->name);
 			PfAppendLine(sc);
 			
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", sharedDefinitions, vecType);
-#elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+#elif((VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO))
 			sc->tempLen = sprintf(sc->tempStr, "__local %s sdata[%" PRIi64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", floatType->name, (2 * sc->usedSharedMemory.data.i) / sc->complexSize);
 			PfAppendLine(sc);
 #endif
 		}else{
 			PfContainer* vecType = VKFFT_ZERO_INIT;
 			PfGetTypeFromCode(sc, sc->vecTypeCode, &vecType);
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 			sc->tempLen = sprintf(sc->tempStr, "shared %s sdata[%" PRIi64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", vecType->name, sc->usedSharedMemory.data.i / sc->complexSize);
 			PfAppendLine(sc);
 		
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_CUDA)
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[%" PRIu64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
 			sc->tempLen = sprintf(sc->tempStr, "%s* sdata = (%s*)shared;\n\n", vecType->name, vecType->name);
 			PfAppendLine(sc);
 			
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", sharedDefinitions, vecType);
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_HIP)
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[%" PRIu64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", sharedDefinitions, vecType, sc->localSize[1] * sc->maxSharedStride);
 			sc->tempLen = sprintf(sc->tempStr, "%s* sdata = (%s*)shared;\n\n", vecType->name, vecType->name);
 			PfAppendLine(sc);
 			
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", sharedDefinitions, vecType);
-#elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+#elif((VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO))
 			sc->tempLen = sprintf(sc->tempStr, "__local %s sdata[%" PRIi64 "];// sharedStride - fft size,  gl_WorkGroupSize.y - grouped consecutive ffts\n\n", vecType->name, sc->usedSharedMemory.data.i / sc->complexSize);
 			PfAppendLine(sc);
 #endif
@@ -181,44 +184,44 @@ static inline void appendSharedMemoryVkFFT(VkFFTSpecializationConstantsLayout* s
 			sc->offsetImaginaryShared.data.i = sc->usedSharedMemory.data.i / sc->complexSize;
 			PfContainer* floatType = VKFFT_ZERO_INIT;
 			PfGetTypeFromCode(sc, sc->floatTypeCode, &floatType);
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 			sc->tempLen = sprintf(sc->tempStr, "shared %s sdata[%" PRIi64 "];\n\n", floatType->name, (2 * sc->usedSharedMemory.data.i) / sc->complexSize);
 			PfAppendLine(sc);
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_CUDA)
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[%" PRIu64 "];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
 			sc->tempLen = sprintf(sc->tempStr, "%s* sdata = (%s*)shared;\n\n", floatType->name, floatType->name);
 			PfAppendLine(sc);
 			
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[];\n\n", sharedDefinitions, vecType);
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_HIP)
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[%" PRIu64 "];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
 			sc->tempLen = sprintf(sc->tempStr, "%s* sdata = (%s*)shared;\n\n", floatType->name, floatType->name);
 			PfAppendLine(sc);
 			
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[];\n\n", sharedDefinitions, vecType);
-#elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+#elif((VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO))
 			sc->tempLen = sprintf(sc->tempStr, "__local %s sdata[%" PRIi64 "];\n\n", floatType->name, (2 * sc->usedSharedMemory.data.i) / sc->complexSize);
 			PfAppendLine(sc);
 #endif
 		}else{
 			PfContainer* vecType = VKFFT_ZERO_INIT;
 			PfGetTypeFromCode(sc, sc->vecTypeCode, &vecType);
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 			sc->tempLen = sprintf(sc->tempStr, "shared %s sdata[%" PRIi64 "];\n\n", vecType->name, sc->usedSharedMemory.data.i / sc->complexSize);
 			PfAppendLine(sc);
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_CUDA)
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[%" PRIu64 "];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
 			sc->tempLen = sprintf(sc->tempStr, "%s* sdata = (%s*)shared;\n\n", vecType->name, vecType->name);
 			PfAppendLine(sc);
 			
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[];\n\n", sharedDefinitions, vecType);
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_HIP)
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[%" PRIu64 "];\n\n", sharedDefinitions, vecType, sc->maxSharedStride * (sc->fftDim + mergeR2C) / sc->registerBoost);
 			sc->tempLen = sprintf(sc->tempStr, "%s* sdata = (%s*)shared;\n\n", vecType->name, vecType->name);
 			PfAppendLine(sc);
 			
 			//sc->tempLen = sprintf(sc->tempStr, "%s %s sdata[];\n\n", sharedDefinitions, vecType);
-#elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+#elif((VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO))
 			sc->tempLen = sprintf(sc->tempStr, "__local %s sdata[%" PRIi64 "];\n\n", vecType->name, sc->usedSharedMemory.data.i / sc->complexSize);
 			PfAppendLine(sc);
 #endif

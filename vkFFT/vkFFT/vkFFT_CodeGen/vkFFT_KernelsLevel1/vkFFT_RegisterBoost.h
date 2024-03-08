@@ -22,6 +22,8 @@
 #ifndef VKFFT_REGISTERBOOST_H
 #define VKFFT_REGISTERBOOST_H
 
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"

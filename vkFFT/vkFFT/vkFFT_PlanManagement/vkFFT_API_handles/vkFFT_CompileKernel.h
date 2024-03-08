@@ -21,23 +21,26 @@
 // THE SOFTWARE.
 #ifndef VKFFT_COMPILEKERNEL_H
 #define VKFFT_COMPILEKERNEL_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 
 static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* axis) {
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 	VkResult res = VK_SUCCESS;
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_CUDA)
 	cudaError_t res = cudaSuccess;
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_HIP)
 	hipError_t res = hipSuccess;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_OPENCL)
 	cl_int res = CL_SUCCESS;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_METAL)
 #endif
 	char* code0 = axis->specializationConstants.code0;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 	uint32_t* code;
 	pfUINT codeSize;
 	if (app->configuration.loadApplicationFromString) {
@@ -296,7 +299,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		free(code);
 		code = 0;
 	}
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_CUDA)
 	char* code;
 	pfUINT codeSize;
 	if (app->configuration.loadApplicationFromString) {
@@ -489,7 +492,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		free(code);
 		code = 0;
 	}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_HIP)
 	uint32_t* code;
 	pfUINT codeSize;
 	if (app->configuration.loadApplicationFromString) {
@@ -663,7 +666,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		free(code);
 		code = 0;
 	}
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_OPENCL)
 	if (app->configuration.loadApplicationFromString) {
 		char* code;
 		pfUINT codeSize;
@@ -766,7 +769,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		deleteVkFFT(app);
 		return VKFFT_ERROR_FAILED_TO_CREATE_SHADER_MODULE;
 	}
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_LEVEL_ZERO)
 	uint32_t* code;
 	pfUINT codeSize;
 	if (app->configuration.loadApplicationFromString) {
@@ -917,7 +920,7 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		deleteVkFFT(app);
 		return VKFFT_ERROR_FAILED_TO_CREATE_SHADER_MODULE;
 	}
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_METAL)
 	NS::Error* error;
 	if (app->configuration.loadApplicationFromString) {
 		char* code;

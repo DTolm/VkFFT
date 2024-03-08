@@ -21,6 +21,9 @@
 // THE SOFTWARE.
 #ifndef VKFFT_AXISBLOCKSPLITTER_H
 #define VKFFT_AXISBLOCKSPLITTER_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 
 static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* FFTPlan, VkFFTAxis* axis, pfUINT axis_id, pfUINT axis_upload_id, pfUINT allowedSharedMemory, pfUINT allowedSharedMemoryPow2) {
@@ -79,7 +82,7 @@ static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* 
 				
 				axis->groupedBatch = axis->axisBlock[1];
 				if (((axis->specializationConstants.fftDim.data.i % 2 == 0) || (axis->axisBlock[0] < app->configuration.numSharedBanks / 4)) && (!(((!axis->specializationConstants.reorderFourStep) || (axis->specializationConstants.useBluesteinFFT)) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim.data.i < maxSequenceLengthSharedMemory) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2])))) {
-					/*#if (VKFFT_BACKEND==0)
+					/*#if (VKFFT_BACKEND_VULKAN)
 										if (((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) != 0)) {
 											pfUINT temp = axis->axisBlock[1];
 											axis->axisBlock[1] = axis->axisBlock[0];
@@ -208,7 +211,7 @@ static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* 
 	//axis->groupedBatch = (app->configuration.sharedMemorySize / axis->specializationConstants.fftDim >= app->configuration.coalescedMemory) ? maxSequenceLengthSharedMemory / axis->specializationConstants.fftDim : axis->groupedBatch;
 	//axis->groupedBatch = 8;
 	//shared memory bank conflict resolve
-//#if(VKFFT_BACKEND!=2)//for some reason, hip doesn't get performance increase from having variable shared memory strides.
+//#if(!VKFFT_BACKEND_HIP)//for some reason, hip doesn't get performance increase from having variable shared memory strides.
 	if (app->configuration.vendorID == 0x10DE) {
 		if (FFTPlan->numAxisUploads[axis_id] == 2) {
 			if ((axis_upload_id > 0) || (axis->specializationConstants.fftDim.data.i <= 512)) {
@@ -348,7 +351,7 @@ static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* 
 			while ((axis->axisBlock[1] * (axis->specializationConstants.fftDim.data.i / axis->specializationConstants.registerBoost)) > maxSequenceLengthSharedMemory) axis->axisBlock[1] /= 2;
 			axis->groupedBatch = axis->axisBlock[1];
 			if (((axis->specializationConstants.fftDim.data.i % 2 == 0) || (axis->axisBlock[0] < app->configuration.numSharedBanks / 4)) && (!(((!axis->specializationConstants.reorderFourStep) || (axis->specializationConstants.useBluesteinFFT)) && (FFTPlan->numAxisUploads[0] > 1))) && (axis->axisBlock[1] > 1) && (axis->axisBlock[1] * axis->specializationConstants.fftDim.data.i < maxSequenceLengthSharedMemory) && (!((app->configuration.performZeropadding[0] || app->configuration.performZeropadding[1] || app->configuration.performZeropadding[2])))) {
-				/*#if (VKFFT_BACKEND==0)
+				/*#if (VKFFT_BACKEND_VULKAN)
 									if (((axis->specializationConstants.fftDim & (axis->specializationConstants.fftDim - 1)) != 0)) {
 										pfUINT temp = axis->axisBlock[1];
 										axis->axisBlock[1] = axis->axisBlock[0];

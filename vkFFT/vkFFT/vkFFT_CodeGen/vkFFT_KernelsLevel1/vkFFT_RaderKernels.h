@@ -22,6 +22,8 @@
 #ifndef VKFFT_RADERKERNELS_H
 #define VKFFT_RADERKERNELS_H
 
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
@@ -2034,7 +2036,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 				
 
 				for (pfUINT t = 0; t < (pfUINT)num_logical_groups.data.i; t++) {
-#if(VKFFT_BACKEND != 2) //AMD compiler fix
+#if(!VKFFT_BACKEND_HIP) //AMD compiler fix
 					if ((require_cutoff_check) && (t == num_logical_groups.data.i - 1)) {
 						temp_int.data.i = sc->fftDim.data.i / stageRadix->data.i - t * num_logical_subgroups;
 						PfIf_lt_start(sc, &sc->raderIDx2, &temp_int);
@@ -2066,7 +2068,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 					}
 					appendSharedToRegisters(sc, &sc->temp, &sc->sdataID);
 					
-#if(VKFFT_BACKEND == 2) //AMD compiler fix
+#if(VKFFT_BACKEND_HIP) //AMD compiler fix
 					if ((require_cutoff_check) && (t == num_logical_groups.data.i - 1)) {
 						temp_int.data.i = sc->fftDim.data.i / stageRadix->data.i - t * num_logical_subgroups;
 						PfIf_ge_start(sc, &sc->raderIDx2, &temp_int);
@@ -2077,12 +2079,12 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 #endif
 					PfFMA3(sc, &sc->x0[t], &sc->regIDs[2 * t + 1], &sc->regIDs[0], &sc->w, &sc->temp);
 					
-#if(VKFFT_BACKEND != 2) //AMD compiler fix
+#if(!VKFFT_BACKEND_HIP) //AMD compiler fix
 					if ((require_cutoff_check) && (t == num_logical_groups.data.i - 1)) {
 						PfIf_end(sc);
 					}
 #endif
-#if(VKFFT_BACKEND == 2) //AMD compiler fix
+#if(VKFFT_BACKEND_HIP) //AMD compiler fix
 					if ((pfUINT)pfceil((sc->localSize[0].data.i * sc->localSize[1].data.i) / ((pfLD)sc->warpSize)) * sc->warpSize * (1 + sc->registers_per_thread + sc->usedLocRegs) > 2048) {
 						PfIf_end(sc);
 
@@ -2122,7 +2124,7 @@ static inline void appendMultRaderStage(VkFFTSpecializationConstantsLayout* sc, 
 					}
 #endif
 				}
-#if(VKFFT_BACKEND == 2) //AMD compiler fix
+#if(VKFFT_BACKEND_HIP) //AMD compiler fix
 				if ((pfUINT)pfceil((sc->localSize[0].data.i * sc->localSize[1].data.i) / ((double)sc->warpSize)) * sc->warpSize * (1 + sc->registers_per_thread + sc->usedLocRegs) <= 2048) {
 					PfIf_end(sc);
 

@@ -21,6 +21,9 @@
 // THE SOFTWARE.
 #ifndef VKFFT_PLAN_R2C_EVEN_DECOMPOSITION_H
 #define VKFFT_PLAN_R2C_EVEN_DECOMPOSITION_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_PlanManagement/vkFFT_API_handles/vkFFT_InitAPIParameters.h"
 #include "vkFFT/vkFFT_PlanManagement/vkFFT_API_handles/vkFFT_CompileKernel.h"
@@ -29,17 +32,17 @@
 #include "vkFFT/vkFFT_AppManagement/vkFFT_DeleteApp.h"
 static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication* app, VkFFTPlan* FFTPlan, pfUINT inverse) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 	VkResult res = VK_SUCCESS;
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_CUDA)
 	cudaError_t res = cudaSuccess;
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_HIP)
 	hipError_t res = hipSuccess;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_OPENCL)
 	cl_int res = CL_SUCCESS;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_METAL)
 #endif
 	VkFFTAxis* axis = &FFTPlan->R2Cdecomposition;
 	axis->specializationConstants.sourceFFTSize.type = 31;
@@ -49,7 +52,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 	axis->specializationConstants.warpSize = (int)app->configuration.warpSize;
 	axis->specializationConstants.numSharedBanks = (int)app->configuration.numSharedBanks;
 	axis->specializationConstants.useUint64 = (int)app->configuration.useUint64;
-#if(VKFFT_BACKEND==2)
+#if(VKFFT_BACKEND_HIP)
 	axis->specializationConstants.useStrict32BitAddress = app->configuration.useStrict32BitAddress;
 #endif
 	axis->specializationConstants.disableSetLocale = (int)app->configuration.disableSetLocale;
@@ -350,7 +353,7 @@ static inline VkFFTResult VkFFTPlanR2CMultiUploadDecomposition(VkFFTApplication*
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 		sprintf(axis->VkFFTFunctionName, "main");
 #else
 		sprintf(axis->VkFFTFunctionName, "VkFFT_main_R2C");

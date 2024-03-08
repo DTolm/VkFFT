@@ -21,10 +21,13 @@
 // THE SOFTWARE.
 #ifndef VKFFT_MANAGEMEMORY_H
 #define VKFFT_MANAGEMEMORY_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_AppManagement/vkFFT_DeleteApp.h"
 
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 static inline VkFFTResult findMemoryType(VkFFTApplication* app, pfUINT memoryTypeBits, pfUINT memorySize, VkMemoryPropertyFlags properties, uint32_t* memoryTypeIndex) {
 	VkPhysicalDeviceMemoryProperties memoryProperties = { 0 };
 
@@ -67,7 +70,7 @@ static inline VkFFTResult allocateBufferVulkan(VkFFTApplication* app, VkBuffer* 
 
 static inline VkFFTResult VkFFT_TransferDataFromCPU(VkFFTApplication* app, void* cpu_arr, void* input_buffer, pfUINT transferSize) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 	VkBuffer* buffer = (VkBuffer*)input_buffer;
 	VkDeviceSize bufferSize = transferSize;
 	VkResult res = VK_SUCCESS;
@@ -122,21 +125,21 @@ static inline VkFFTResult VkFFT_TransferDataFromCPU(VkFFTApplication* app, void*
 		free(stagingBuffer);
 		free(stagingBufferMemory);
 	}
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_CUDA)
 	cudaError_t res = cudaSuccess;
 	void* buffer = ((void**)input_buffer)[0];
 	res = cudaMemcpy(buffer, cpu_arr, transferSize, cudaMemcpyHostToDevice);
 	if (res != cudaSuccess) {
 		return VKFFT_ERROR_FAILED_TO_COPY;
 	}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_HIP)
 	hipError_t res = hipSuccess;
 	void* buffer = ((void**)input_buffer)[0];
 	res = hipMemcpy(buffer, cpu_arr, transferSize, hipMemcpyHostToDevice);
 	if (res != hipSuccess) {
 		return VKFFT_ERROR_FAILED_TO_COPY;
 	}
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_OPENCL)
 	cl_int res = CL_SUCCESS;
 	cl_mem* buffer = (cl_mem*)input_buffer;
 	cl_command_queue commandQueue = clCreateCommandQueue(app->configuration.context[0], app->configuration.device[0], 0, &res);
@@ -147,7 +150,7 @@ static inline VkFFTResult VkFFT_TransferDataFromCPU(VkFFTApplication* app, void*
 	}
 	res = clReleaseCommandQueue(commandQueue);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 	void* buffer = ((void**)input_buffer)[0];
 	ze_command_queue_desc_t commandQueueCopyDesc = {
@@ -172,7 +175,7 @@ static inline VkFFTResult VkFFT_TransferDataFromCPU(VkFFTApplication* app, void*
 	if (res != ZE_RESULT_SUCCESS) {
 		return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	}
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_METAL)
 	MTL::Buffer* stagingBuffer = app->configuration.device->newBuffer(cpu_arr, transferSize, MTL::ResourceStorageModeShared);
 	MTL::CommandBuffer* copyCommandBuffer = app->configuration.queue->commandBuffer();
 	if (copyCommandBuffer == 0) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
@@ -191,7 +194,7 @@ static inline VkFFTResult VkFFT_TransferDataFromCPU(VkFFTApplication* app, void*
 }
 static inline VkFFTResult VkFFT_TransferDataToCPU(VkFFTApplication* app, void* cpu_arr, void* output_buffer, pfUINT transferSize) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_VULKAN)
 	VkBuffer* buffer = (VkBuffer*)output_buffer;
 	VkDeviceSize bufferSize = transferSize;
 	VkResult res = VK_SUCCESS;
@@ -246,21 +249,21 @@ static inline VkFFTResult VkFFT_TransferDataToCPU(VkFFTApplication* app, void* c
 		free(stagingBuffer);
 		free(stagingBufferMemory);
 	}
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_CUDA)
 	cudaError_t res = cudaSuccess;
 	void* buffer = ((void**)output_buffer)[0];
 	res = cudaMemcpy(cpu_arr, buffer, transferSize, cudaMemcpyDeviceToHost);
 	if (res != cudaSuccess) {
 		return VKFFT_ERROR_FAILED_TO_COPY;
 	}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_HIP)
 	hipError_t res = hipSuccess;
 	void* buffer = ((void**)output_buffer)[0];
 	res = hipMemcpy(cpu_arr, buffer, transferSize, hipMemcpyDeviceToHost);
 	if (res != hipSuccess) {
 		return VKFFT_ERROR_FAILED_TO_COPY;
 	}
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_OPENCL)
 	cl_int res = CL_SUCCESS;
 	cl_mem* buffer = (cl_mem*)output_buffer;
 	cl_command_queue commandQueue = clCreateCommandQueue(app->configuration.context[0], app->configuration.device[0], 0, &res);
@@ -271,7 +274,7 @@ static inline VkFFTResult VkFFT_TransferDataToCPU(VkFFTApplication* app, void* c
 	}
 	res = clReleaseCommandQueue(commandQueue);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 	void* buffer = ((void**)output_buffer)[0];
 	ze_command_queue_desc_t commandQueueCopyDesc = {
@@ -296,7 +299,7 @@ static inline VkFFTResult VkFFT_TransferDataToCPU(VkFFTApplication* app, void* c
 	if (res != ZE_RESULT_SUCCESS) {
 		return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	}
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_METAL)
 	MTL::Buffer* stagingBuffer = app->configuration.device->newBuffer(transferSize, MTL::ResourceStorageModeShared);
 	MTL::CommandBuffer* copyCommandBuffer = app->configuration.queue->commandBuffer();
 	if (copyCommandBuffer == 0) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
