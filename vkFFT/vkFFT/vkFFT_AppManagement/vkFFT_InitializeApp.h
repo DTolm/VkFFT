@@ -543,7 +543,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.device = inputLaunchConfiguration.device;
 	if (inputLaunchConfiguration.num_streams != 0)	app->configuration.num_streams = inputLaunchConfiguration.num_streams;
 	if (inputLaunchConfiguration.stream != 0)	app->configuration.stream = inputLaunchConfiguration.stream;
-	app->configuration.streamID = 0;
 	int value = 0;
 	res = cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, app->configuration.device[0]);
 	if (res != CUDA_SUCCESS) {
@@ -659,7 +658,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.device = inputLaunchConfiguration.device;
 	if (inputLaunchConfiguration.num_streams != 0)	app->configuration.num_streams = inputLaunchConfiguration.num_streams;
 	if (inputLaunchConfiguration.stream != 0)	app->configuration.stream = inputLaunchConfiguration.stream;
-	app->configuration.streamID = 0;
 	int value = 0;
 	res = hipDeviceGetAttribute(&value, hipDeviceAttributeComputeCapabilityMajor, app->configuration.device[0]);
 	if (res != hipSuccess) {

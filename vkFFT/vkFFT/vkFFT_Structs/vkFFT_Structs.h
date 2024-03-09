@@ -310,12 +310,8 @@ typedef struct {
 	VkMemoryBarrier* memory_barrier;//Filled at app creation
 #elif(VKFFT_BACKEND==1)
 	cudaEvent_t* stream_event;//Filled at app creation
-	pfUINT streamCounter;//Filled at app creation
-	pfUINT streamID;//Filled at app creation
 #elif(VKFFT_BACKEND==2)
 	hipEvent_t* stream_event;//Filled at app creation
-	pfUINT streamCounter;//Filled at app creation
-	pfUINT streamID;//Filled at app creation
 	pfINT  useStrict32BitAddress; // guarantee 32 bit addresses in bytes instead of number of elements. This results in fewer instructions generated. -1: Disable, 0: Infer based on size, 1: enable. Has no effect with useUint64.
 #elif(VKFFT_BACKEND==3)
 	cl_command_queue* commandQueue;
