@@ -197,31 +197,15 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 						}
 					}
 				}*/
-				if (app->configuration.num_streams >= 1) {
-					result = cuLaunchKernel(axis->VkFFTKernel,
-						(unsigned int)dispatchSize[0], (unsigned int)dispatchSize[1], (unsigned int)dispatchSize[2],     // grid dim
-						(unsigned int)axis->specializationConstants.localSize[0].data.i, (unsigned int)axis->specializationConstants.localSize[1].data.i, (unsigned int)axis->specializationConstants.localSize[2].data.i,   // block dim
-						(unsigned int)axis->specializationConstants.usedSharedMemory.data.i, app->configuration.stream[app->configuration.streamID],             // shared mem and stream
-						args, 0);
-				}
-				else {
-					result = cuLaunchKernel(axis->VkFFTKernel,
-						(unsigned int)dispatchSize[0], (unsigned int)dispatchSize[1], (unsigned int)dispatchSize[2],     // grid dim
-						(unsigned int)axis->specializationConstants.localSize[0].data.i, (unsigned int)axis->specializationConstants.localSize[1].data.i, (unsigned int)axis->specializationConstants.localSize[2].data.i,   // block dim
-						(unsigned int)axis->specializationConstants.usedSharedMemory.data.i, 0,             // shared mem and stream
-						args, 0);
-				}
+				result = cuLaunchKernel(axis->VkFFTKernel,
+					(unsigned int)dispatchSize[0], (unsigned int)dispatchSize[1], (unsigned int)dispatchSize[2],     // grid dim
+					(unsigned int)axis->specializationConstants.localSize[0].data.i, (unsigned int)axis->specializationConstants.localSize[1].data.i, (unsigned int)axis->specializationConstants.localSize[2].data.i,   // block dim
+					(unsigned int)axis->specializationConstants.usedSharedMemory.data.i, (app->configuration.num_streams > 0) ? app->configuration.stream[0] : 0,             // shared mem and stream
+					args, 0);
+
 				if (result != CUDA_SUCCESS) {
 					printf("cuLaunchKernel error: %d, %" PRIu64 " %" PRIu64 " %" PRIu64 " - %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", result, dispatchSize[0], dispatchSize[1], dispatchSize[2], axis->specializationConstants.localSize[0].data.i, axis->specializationConstants.localSize[1].data.i, axis->specializationConstants.localSize[2].data.i);
 					return VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL;
-				}
-				if (app->configuration.num_streams > 1) {
-					app->configuration.streamID = app->configuration.streamCounter % app->configuration.num_streams;
-					if (app->configuration.streamCounter == 0) {
-						cudaError_t res2 = cudaEventRecord(app->configuration.stream_event[app->configuration.streamID], app->configuration.stream[app->configuration.streamID]);
-						if (res2 != cudaSuccess) return VKFFT_ERROR_FAILED_TO_EVENT_RECORD;
-					}
-					app->configuration.streamCounter++;
 				}
 #elif(VKFFT_BACKEND==2)
 				hipError_t result = hipSuccess;
@@ -267,31 +251,15 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 					}
 				}*/
 				//printf("%" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n",maxBlockSize[0], maxBlockSize[1], maxBlockSize[2], axis->specializationConstants.localSize[0], axis->specializationConstants.localSize[1], axis->specializationConstants.localSize[2]);
-				if (app->configuration.num_streams >= 1) {
-					result = hipModuleLaunchKernel(axis->VkFFTKernel,
-						(unsigned int)dispatchSize[0], (unsigned int)dispatchSize[1], (unsigned int)dispatchSize[2],     // grid dim
-						(unsigned int)axis->specializationConstants.localSize[0].data.i, (unsigned int)axis->specializationConstants.localSize[1].data.i, (unsigned int)axis->specializationConstants.localSize[2].data.i,   // block dim
-						(unsigned int)axis->specializationConstants.usedSharedMemory.data.i, app->configuration.stream[app->configuration.streamID],             // shared mem and stream
-						args, 0);
-				}
-				else {
-					result = hipModuleLaunchKernel(axis->VkFFTKernel,
-						(unsigned int)dispatchSize[0], (unsigned int)dispatchSize[1], (unsigned int)dispatchSize[2],     // grid dim
-						(unsigned int)axis->specializationConstants.localSize[0].data.i, (unsigned int)axis->specializationConstants.localSize[1].data.i, (unsigned int)axis->specializationConstants.localSize[2].data.i,   // block dim
-						(unsigned int)axis->specializationConstants.usedSharedMemory.data.i, 0,             // shared mem and stream
-						args, 0);
-				}
+				result = hipModuleLaunchKernel(axis->VkFFTKernel,
+					(unsigned int)dispatchSize[0], (unsigned int)dispatchSize[1], (unsigned int)dispatchSize[2],     // grid dim
+					(unsigned int)axis->specializationConstants.localSize[0].data.i, (unsigned int)axis->specializationConstants.localSize[1].data.i, (unsigned int)axis->specializationConstants.localSize[2].data.i,   // block dim
+					(unsigned int)axis->specializationConstants.usedSharedMemory.data.i, (app->configuration.num_streams > 0) ? app->configuration.stream[0] : 0,             // shared mem and stream
+					args, 0);
+				
 				if (result != hipSuccess) {
 					printf("hipModuleLaunchKernel error: %d, %" PRIu64 " %" PRIu64 " %" PRIu64 " - %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", result, dispatchSize[0], dispatchSize[1], dispatchSize[2], axis->specializationConstants.localSize[0].data.i, axis->specializationConstants.localSize[1].data.i, axis->specializationConstants.localSize[2].data.i);
 					return VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL;
-				}
-				if (app->configuration.num_streams > 1) {
-					app->configuration.streamID = app->configuration.streamCounter % app->configuration.num_streams;
-					if (app->configuration.streamCounter == 0) {
-						result = hipEventRecord(app->configuration.stream_event[app->configuration.streamID], app->configuration.stream[app->configuration.streamID]);
-						if (result != hipSuccess) return VKFFT_ERROR_FAILED_TO_EVENT_RECORD;
-					}
-					app->configuration.streamCounter++;
 				}
 #elif(VKFFT_BACKEND==3)
 				cl_int result = CL_SUCCESS;

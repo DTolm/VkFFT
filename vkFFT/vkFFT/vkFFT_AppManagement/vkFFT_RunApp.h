@@ -29,23 +29,7 @@ static inline VkFFTResult VkFFTSync(VkFFTApplication* app) {
 #if(VKFFT_BACKEND==0)
     vkCmdPipelineBarrier(app->configuration.commandBuffer[0], VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, app->configuration.memory_barrier, 0, 0, 0, 0);
 #elif(VKFFT_BACKEND==1)
-    if (app->configuration.num_streams > 1) {
-        cudaError_t res = cudaSuccess;
-        for (pfUINT s = 0; s < app->configuration.num_streams; s++) {
-            res = cudaEventSynchronize(app->configuration.stream_event[s]);
-            if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
-        }
-        app->configuration.streamCounter = 0;
-    }
 #elif(VKFFT_BACKEND==2)
-    if (app->configuration.num_streams > 1) {
-        hipError_t res = hipSuccess;
-        for (pfUINT s = 0; s < app->configuration.num_streams; s++) {
-            res = hipEventSynchronize(app->configuration.stream_event[s]);
-            if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
-        }
-        app->configuration.streamCounter = 0;
-    }
 #elif(VKFFT_BACKEND==3)
 #elif(VKFFT_BACKEND==4)
     ze_result_t res = ZE_RESULT_SUCCESS;
@@ -88,9 +72,7 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
     };
     app->configuration.memory_barrier = &memory_barrier;
 #elif(VKFFT_BACKEND==1)
-    app->configuration.streamCounter = 0;
 #elif(VKFFT_BACKEND==2)
-    app->configuration.streamCounter = 0;
 #elif(VKFFT_BACKEND==3)
     app->configuration.commandQueue = launchParams->commandQueue;
 #elif(VKFFT_BACKEND==4)
@@ -108,6 +90,29 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
     if (resFFT != VKFFT_SUCCESS) {
         return resFFT;
     }
+
+#if(VKFFT_BACKEND==1)
+    if (app->configuration.num_streams > 1) {
+        cudaError_t res = cudaSuccess;
+        for (pfUINT i = 1; i < app->configuration.num_streams; i++) {
+            res = cudaEventRecord(app->configuration.stream_event[i], app->configuration.stream[i]);
+            if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_EVENT_RECORD;
+            res = cudaStreamWaitEvent(app->configuration.stream[0], app->configuration.stream_event[i], cudaEventWaitDefault);
+            if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+        }
+    }
+#elif(VKFFT_BACKEND==2)
+    if (app->configuration.num_streams > 1) {
+        hipError_t result = hipSuccess;
+        for (pfUINT i = 1; i < app->configuration.num_streams; i++) {
+            res = hipEventRecord(app->configuration.stream_event[i], app->configuration.stream[i]);
+            if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_EVENT_RECORD;
+            res = hipStreamWaitEvent(app->configuration.stream[0], app->configuration.stream_event[i], 0);
+            if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+        }
+    }
+#endif
+
     if (inverse != 1) {
         //FFT axis 0
         if (!app->configuration.omitDimension[0]) {
@@ -649,6 +654,29 @@ static inline VkFFTResult VkFFTAppend(VkFFTApplication* app, int inverse, VkFFTL
         //if (app->localFFTPlan_inverse->bigSequenceEvenR2C) app->configuration.size[0] *= 2;
 
     }
+
+#if(VKFFT_BACKEND==1)
+    if (app->configuration.num_streams > 1) {
+        cudaError_t res = cudaSuccess;
+        res = cudaEventRecord(app->configuration.stream_event[0], app->configuration.stream[0]);
+        if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_EVENT_RECORD;
+        for (pfUINT i = 1; i < app->configuration.num_streams; i++) {
+            res = cudaStreamWaitEvent(app->configuration.stream[i], app->configuration.stream_event[0], cudaEventWaitDefault);
+            if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+        }
+    }
+#elif(VKFFT_BACKEND==2)
+    if (app->configuration.num_streams > 1) {
+        hipError_t res = hipSuccess;
+        res = hipEventRecord(app->configuration.stream_event[0], app->configuration.stream[0]);
+        if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_EVENT_RECORD;
+        for (pfUINT i = 1; i < app->configuration.num_streams; i++) {
+            res = hipStreamWaitEvent(app->configuration.stream[i], app->configuration.stream_event[0], 0);
+            if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+        }
+    }
+#endif
+
     return resFFT;
 }
 
