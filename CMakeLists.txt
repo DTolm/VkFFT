@@ -100,19 +100,11 @@ if(VKFFT_BACKEND_VULKAN)
 
 elseif(VKFFT_BACKEND_CUDA)
 	find_package(CUDAToolkit 9.0 REQUIRED)
-	enable_language(CUDA)
-
-	set(CMAKE_CUDA_STANDARD               11)
-	set(CMAKE_CUDA_STANDARD_REQUIRED      ON)
-	set(CMAKE_CUDA_SEPARABLE_COMPILATION  ON)
-	set(CMAKE_CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-	set(CMAKE_CUDA_ARCHITECTURES          60 70 75 80 86 90)
 
 elseif(VKFFT_BACKEND_HIP)
 	list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
 
 	find_package(hip)
-	enable_language(HIP)
 
 	#add_compile_definitions(VKFFT_OLD_ROCM) #ROCm versions before 4.5 needed kernel include of hiprtc
 elseif(VKFFT_BACKEND_OPENCL)
@@ -181,23 +173,23 @@ if(build_VkFFT_cuFFT_benchmark)
 	add_compile_definitions(USE_cuFFT)
 
 	set(cuFFT_scripts_DIR ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/cuFFT_scripts)
-	set(cuFFT_scripts_SRC ${cuFFT_scripts_DIR}/src/user_benchmark_cuFFT.cu
-	                      ${cuFFT_scripts_DIR}/src/sample_0_benchmark_cuFFT_single.cu
-	                      ${cuFFT_scripts_DIR}/src/sample_1_benchmark_cuFFT_double.cu
-	                      ${cuFFT_scripts_DIR}/src/sample_2_benchmark_cuFFT_half.cu
-	                      ${cuFFT_scripts_DIR}/src/sample_3_benchmark_cuFFT_single_3d.cu
-	                      ${cuFFT_scripts_DIR}/src/sample_6_benchmark_cuFFT_single_r2c.cu
-	                      ${cuFFT_scripts_DIR}/src/sample_7_benchmark_cuFFT_single_Bluestein.cu
-	                      ${cuFFT_scripts_DIR}/src/sample_8_benchmark_cuFFT_double_Bluestein.cu
-	                      ${cuFFT_scripts_DIR}/src/sample_1000_benchmark_cuFFT_single_2_4096.cu
-	                      ${cuFFT_scripts_DIR}/src/sample_1001_benchmark_cuFFT_double_2_4096.cu
-	                      ${cuFFT_scripts_DIR}/src/sample_1003_benchmark_cuFFT_single_3d_2_512.cu)
+	set(cuFFT_scripts_SRC ${cuFFT_scripts_DIR}/src/user_benchmark_cuFFT.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_0_benchmark_cuFFT_single.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_1_benchmark_cuFFT_double.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_2_benchmark_cuFFT_half.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_3_benchmark_cuFFT_single_3d.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_6_benchmark_cuFFT_single_r2c.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_7_benchmark_cuFFT_single_Bluestein.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_8_benchmark_cuFFT_double_Bluestein.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_1000_benchmark_cuFFT_single_2_4096.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_1001_benchmark_cuFFT_double_2_4096.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_1003_benchmark_cuFFT_single_3d_2_512.cpp)
 
 	if(build_VkFFT_FFTW_precision)
-		list(APPEND cuFFT_scripts_SRC ${cuFFT_scripts_DIR}/src/precision_cuFFT_single.cu
-		                              ${cuFFT_scripts_DIR}/src/precision_cuFFT_r2c.cu
-		                              ${cuFFT_scripts_DIR}/src/precision_cuFFT_double.cu
-		                              ${cuFFT_scripts_DIR}/src/precision_cuFFT_half.cu)
+		list(APPEND cuFFT_scripts_SRC ${cuFFT_scripts_DIR}/src/precision_cuFFT_single.cpp
+		                              ${cuFFT_scripts_DIR}/src/precision_cuFFT_r2c.cpp
+		                              ${cuFFT_scripts_DIR}/src/precision_cuFFT_double.cpp
+		                              ${cuFFT_scripts_DIR}/src/precision_cuFFT_half.cpp)
 	endif()
 
 	add_library(cuFFT_scripts STATIC ${cuFFT_scripts_SRC})
