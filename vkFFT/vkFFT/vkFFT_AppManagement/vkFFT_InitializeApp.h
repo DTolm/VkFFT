@@ -634,7 +634,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
 		for (pfUINT i = 0; i < app->configuration.num_streams; i++) {
-			res_t = cudaEventCreate(&app->configuration.stream_event[i]);
+			res_t = cudaEventCreateWithFlags(&app->configuration.stream_event[i], cudaEventDisableTiming);
 			if (res_t != cudaSuccess) {
 				deleteVkFFT(app);
 				return VKFFT_ERROR_FAILED_TO_CREATE_EVENT;
@@ -738,7 +738,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
 		for (pfUINT i = 0; i < app->configuration.num_streams; i++) {
-			res = hipEventCreate(&app->configuration.stream_event[i]);
+			res = hipEventCreateWithFlags(&app->configuration.stream_event[i], hipEventDisableTiming);
 			if (res != hipSuccess) {
 				deleteVkFFT(app);
 				return VKFFT_ERROR_FAILED_TO_CREATE_EVENT;
