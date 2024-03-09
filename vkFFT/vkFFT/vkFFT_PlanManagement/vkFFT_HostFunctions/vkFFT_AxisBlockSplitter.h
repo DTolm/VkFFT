@@ -125,7 +125,7 @@ static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* 
 				if ((scale > 1) && ((axis->specializationConstants.fftDim.data.i * axis->groupedBatch * scale <= maxSequenceLengthSharedMemory))) axis->groupedBatch *= scale;
 
 				axis->axisBlock[0] = ((pfUINT)axis->specializationConstants.stageStartSize.data.i > axis->groupedBatch) ? axis->groupedBatch : (pfUINT)axis->specializationConstants.stageStartSize.data.i;
-				if (app->configuration.vendorID == 0x10DE) {
+				if (app->configuration.vendorID == VKFFT_VENDOR_NVIDIA) {
 					while ((axis->axisBlock[1] * axis->axisBlock[0] >= 2 * app->configuration.aimThreads) && (axis->axisBlock[0] > maxBatchCoalesced)) {
 						axis->axisBlock[0] /= 2;
 						if (axis->axisBlock[0] < maxBatchCoalesced) axis->axisBlock[0] = maxBatchCoalesced;
@@ -209,7 +209,7 @@ static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* 
 	//axis->groupedBatch = 8;
 	//shared memory bank conflict resolve
 //#if(VKFFT_BACKEND!=2)//for some reason, hip doesn't get performance increase from having variable shared memory strides.
-	if (app->configuration.vendorID == 0x10DE) {
+	if (app->configuration.vendorID == VKFFT_VENDOR_NVIDIA) {
 		if (FFTPlan->numAxisUploads[axis_id] == 2) {
 			if ((axis_upload_id > 0) || (axis->specializationConstants.fftDim.data.i <= 512)) {
 				if ((pfUINT)(axis->specializationConstants.fftDim.data.i * (64 / axis->specializationConstants.complexSize)) <= maxSequenceLengthSharedMemory) {
@@ -327,7 +327,7 @@ static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* 
 				r2cmult = 1;
 			}
 			if ((FFTPlan->numAxisUploads[0] == 1) && ((pfUINT)pfceil(FFTPlan->actualFFTSizePerAxis[axis_id][1] / (double)r2cmult) < axis->axisBlock[1])) axis->axisBlock[1] = (pfUINT)pfceil(FFTPlan->actualFFTSizePerAxis[axis_id][1] / (double)r2cmult);
-			if (app->configuration.vendorID == 0x10DE) {
+			if (app->configuration.vendorID == VKFFT_VENDOR_NVIDIA) {
 				while ((axis->axisBlock[1] * axis->axisBlock[0] >= 2 * app->configuration.aimThreads) && (axis->axisBlock[1] > maxBatchCoalesced)) {
 					axis->axisBlock[1] /= 2;
 					if (axis->axisBlock[1] < maxBatchCoalesced) axis->axisBlock[1] = maxBatchCoalesced;
@@ -394,7 +394,7 @@ static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* 
 			if ((scale > 1) && ((axis->specializationConstants.fftDim.data.i * axis->groupedBatch * scale <= maxSequenceLengthSharedMemory))) axis->groupedBatch *= scale;
 
 			axis->axisBlock[0] = ((pfUINT)axis->specializationConstants.stageStartSize.data.i > axis->groupedBatch) ? axis->groupedBatch : axis->specializationConstants.stageStartSize.data.i;
-			if (app->configuration.vendorID == 0x10DE) {
+			if (app->configuration.vendorID == VKFFT_VENDOR_NVIDIA) {
 				while ((axis->axisBlock[1] * axis->axisBlock[0] >= 2 * app->configuration.aimThreads) && (axis->axisBlock[0] > maxBatchCoalesced)) {
 					axis->axisBlock[0] /= 2;
 					if (axis->axisBlock[0] < maxBatchCoalesced) axis->axisBlock[0] = maxBatchCoalesced;
@@ -444,7 +444,7 @@ static inline VkFFTResult VkFFTSplitAxisBlock(VkFFTApplication* app, VkFFTPlan* 
 		}
 
 		axis->axisBlock[0] = (FFTPlan->actualFFTSizePerAxis[axis_id][0] > axis->groupedBatch) ? axis->groupedBatch : FFTPlan->actualFFTSizePerAxis[axis_id][0];
-		if (app->configuration.vendorID == 0x10DE) {
+		if (app->configuration.vendorID == VKFFT_VENDOR_NVIDIA) {
 			while ((axis->axisBlock[1] * axis->axisBlock[0] >= 2 * app->configuration.aimThreads) && (axis->axisBlock[0] > maxBatchCoalesced)) {
 				axis->axisBlock[0] /= 2;
 				if (axis->axisBlock[0] < maxBatchCoalesced) axis->axisBlock[0] = maxBatchCoalesced;

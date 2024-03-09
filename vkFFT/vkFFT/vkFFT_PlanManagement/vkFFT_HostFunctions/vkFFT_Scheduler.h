@@ -2653,7 +2653,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		locAxisSplit[0] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
 	}
 	if (numPasses == 2) {
-		if (isPowOf2 && (!((app->configuration.vendorID == 0x10DE) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] > 262144)))) {
+		if (isPowOf2 && (!((app->configuration.vendorID == VKFFT_VENDOR_NVIDIA) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] > 262144)))) {
 			if ((axis_id == nonStridedAxisId) && ((!app->configuration.reorderFourStep) || (app->useBluesteinFFT[axis_id]))) {
 				int maxPow8SharedMemory = (int)pow(8, ((int)log2(maxSequenceLengthSharedMemory)) / 3);
 				//unit stride
@@ -2749,7 +2749,7 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 		}
 	}
 	if (numPasses == 3) {
-		if (isPowOf2 && (!((app->configuration.vendorID == 0x10DE) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] > 262144)))) {
+		if (isPowOf2 && (!((app->configuration.vendorID == VKFFT_VENDOR_NVIDIA) && (FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] > 262144)))) {
 			int maxPow8Strided = (int)pow(8, ((int)log2(maxSingleSizeStrided)) / 3);
 			if ((axis_id == nonStridedAxisId) && ((!app->configuration.reorderFourStep) || (app->useBluesteinFFT[axis_id]))) {
 				//unit stride
