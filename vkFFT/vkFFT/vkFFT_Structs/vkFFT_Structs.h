@@ -33,21 +33,21 @@
 #endif
 #include <inttypes.h>
 #include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 #include "vulkan/vulkan.h"
 #include "glslang/Include/glslang_c_interface.h"
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 #include <nvrtc.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 #ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #endif
@@ -56,9 +56,9 @@
 #else
 #include <CL/cl.h>
 #endif
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 #include <ze_api.h>
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 #define NS_PRIVATE_IMPLEMENTATION
 #define CA_PRIVATE_IMPLEMENTATION
 #define MTL_PRIVATE_IMPLEMENTATION
@@ -98,7 +98,7 @@ typedef struct {
 	pfUINT FFTdim; //FFT dimensionality (1, 2 or 3)
 	pfUINT size[VKFFT_MAX_FFT_DIMENSIONS]; // WHD -system dimensions
 
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkPhysicalDevice* physicalDevice;//pointer to Vulkan physical device, obtained from vkEnumeratePhysicalDevices
 	VkDevice* device;//pointer to Vulkan device, created with vkCreateDevice
 	VkQueue* queue;//pointer to Vulkan queue, created with vkGetDeviceQueue
@@ -106,26 +106,26 @@ typedef struct {
 	VkFence* fence;//pointer to Vulkan fence, created with vkCreateFence
 	pfUINT isCompilerInitialized;//specify if glslang compiler has been intialized before (0 - off, 1 - on). Default 0
 	pfUINT usePushDescriptors;//specify if push descriptors have been enabled on the device - then all descriptor sets updates at VkFFTAppend call will be issued with push descriptors. (0 - off, 1 - on). Default 0
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	CUdevice* device;//pointer to CUDA device, obtained from cuDeviceGet
 	//CUcontext* context;//pointer to CUDA context, obtained from cuDeviceGet
 	cudaStream_t* stream;//pointer to streams (can be more than 1), where to execute the kernels
 	pfUINT num_streams;//try to submit CUDA kernels in multiple streams for asynchronous execution. Default 0, set to >=1 if you pass values in the stream pointer.
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipDevice_t* device;//pointer to HIP device, obtained from hipDeviceGet
 	//hipCtx_t* context;//pointer to HIP context, obtained from hipDeviceGet
 	hipStream_t* stream;//pointer to streams (can be more than 1), where to execute the kernels
 	pfUINT num_streams;//try to submit HIP kernels in multiple streams for asynchronous execution. Default 0, set to >=1 if you pass values in the stream pointer.
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_platform_id* platform;//not required
 	cl_device_id* device;
 	cl_context* context;
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_device_handle_t* device;
 	ze_context_handle_t* context;
 	ze_command_queue_handle_t* commandQueue;
 	uint32_t commandQueueID;
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 	MTL::Device* device;
 	MTL::CommandQueue* queue;
 #endif
@@ -146,37 +146,37 @@ typedef struct {
 	pfUINT* outputBufferSize;//array of output buffers sizes in bytes, if isOutputFormatted is enabled
 	pfUINT* kernelSize;//array of kernel buffers sizes in bytes, if performConvolution is enabled
 
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkBuffer* buffer;//pointer to array of buffers (or one buffer) used for computations
 	VkBuffer* tempBuffer;//needed if reorderFourStep is enabled to transpose the array. Same sum size or bigger as buffer (can be split in multiple). Default 0. Setting to non zero value enables manual user allocation
 	VkBuffer* inputBuffer;//pointer to array of input buffers (or one buffer) used to read data from if isInputFormatted is enabled
 	VkBuffer* outputBuffer;//pointer to array of output buffers (or one buffer) used for write data to if isOutputFormatted is enabled
 	VkBuffer* kernel;//pointer to array of kernel buffers (or one buffer) used for read kernel data from if performConvolution is enabled
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	void** buffer;//pointer to device buffer used for computations
 	void** tempBuffer;//needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
 	void** inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
 	void** outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
 	void** kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	void** buffer;//pointer to device buffer used for computations
 	void** tempBuffer;//needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
 	void** inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
 	void** outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
 	void** kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_mem* buffer;//pointer to device buffer used for computations
 	cl_mem* tempBuffer;//needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
 	cl_mem* inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
 	cl_mem* outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
 	cl_mem* kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	void** buffer;//pointer to device buffer used for computations
 	void** tempBuffer;//needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
 	void** inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
 	void** outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
 	void** kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 	MTL::Buffer** buffer;//pointer to device buffer used for computations
 	MTL::Buffer** tempBuffer;//needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
 	MTL::Buffer** inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
@@ -191,7 +191,7 @@ typedef struct {
 	pfUINT specifyOffsetsAtLaunch;//specify if offsets will be selected with launch parameters VkFFTLaunchParams (0 - off, 1 - on). Default 0
 
 	//optional: (default 0 if not stated otherwise)
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkPipelineCache* pipelineCache;//pointer to Vulkan pipeline cache
 	VkBuffer* stagingBuffer;//pointer to the user defined staging buffer (used internally for LUT data transfers)
 	VkDeviceMemory* stagingBufferMemory;//pointer to the user defined staging buffer memory, associated with the stagingBuffer (used internally for LUT data transfers)
@@ -305,31 +305,31 @@ typedef struct {
 	pfUINT autoCustomBluesteinPaddingPattern; // default value for useCustomBluesteinPaddingPattern
 	pfUINT useRaderUintLUT; // allocate additional LUT to store g_pow
 	pfUINT vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 - AMD, etc.
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkDeviceMemory tempBufferDeviceMemory;//Filled at app creation
 	VkCommandBuffer* commandBuffer;//Filled at app execution
 	VkMemoryBarrier* memory_barrier;//Filled at app creation
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cudaEvent_t* stream_event;//Filled at app creation
 	pfUINT streamCounter;//Filled at app creation
 	pfUINT streamID;//Filled at app creation
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipEvent_t* stream_event;//Filled at app creation
 	pfUINT streamCounter;//Filled at app creation
 	pfUINT streamID;//Filled at app creation
 	pfINT  useStrict32BitAddress; // guarantee 32 bit addresses in bytes instead of number of elements. This results in fewer instructions generated. -1: Disable, 0: Infer based on size, 1: enable. Has no effect with useUint64.
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_command_queue* commandQueue;
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_command_list_handle_t* commandList;//Filled at app execution
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 	MTL::CommandBuffer* commandBuffer;//Filled at app execution
 	MTL::ComputeCommandEncoder* commandEncoder;//Filled at app execution
 #endif
 } VkFFTConfiguration;//parameters specified at plan creation
 
 typedef struct {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkCommandBuffer* commandBuffer;//commandBuffer to which FFT is appended
 
 	VkBuffer* buffer;//pointer to array of buffers (or one buffer) used for computations
@@ -337,19 +337,19 @@ typedef struct {
 	VkBuffer* inputBuffer;//pointer to array of input buffers (or one buffer) used to read data from if isInputFormatted is enabled
 	VkBuffer* outputBuffer;//pointer to array of output buffers (or one buffer) used for write data to if isOutputFormatted is enabled
 	VkBuffer* kernel;//pointer to array of kernel buffers (or one buffer) used for read kernel data from if performConvolution is enabled
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	void** buffer;//pointer to device buffer used for computations
 	void** tempBuffer;//needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
 	void** inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
 	void** outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
 	void** kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	void** buffer;//pointer to device buffer used for computations
 	void** tempBuffer;//needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
 	void** inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
 	void** outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
 	void** kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_command_queue* commandQueue;//commandBuffer to which FFT is appended
 
 	cl_mem* buffer;//pointer to device buffer used for computations
@@ -357,7 +357,7 @@ typedef struct {
 	cl_mem* inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
 	cl_mem* outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
 	cl_mem* kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_command_list_handle_t* commandList;//commandList to which FFT is appended
 
 	void** buffer;//pointer to device buffer used for computations
@@ -365,7 +365,7 @@ typedef struct {
 	void** inputBuffer;//pointer to device buffer used to read data from if isInputFormatted is enabled
 	void** outputBuffer;//pointer to device buffer used to read data from if isOutputFormatted is enabled
 	void** kernel;//pointer to device buffer used to read kernel data from if performConvolution is enabled
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 	MTL::CommandBuffer* commandBuffer;//commandBuffer to which FFT is appended
 	MTL::ComputeCommandEncoder* commandEncoder;//encoder associated with commandBuffer
 
@@ -875,7 +875,7 @@ typedef struct {
 	int performOffsetUpdate;
 	int performBufferSetUpdate;
 	int useUint64;
-#if(VKFFT_BACKEND_HIP)
+#if(VKFFT_BACKEND_IS_HIP)
 	pfINT  useStrict32BitAddress;
 #endif
 	int disableSetLocale;
@@ -1048,7 +1048,7 @@ typedef struct {
 	VkFFTPushConstantsLayout pushConstants;
 	pfUINT updatePushConstants;
 	char VkFFTFunctionName[50];
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkBuffer* inputBuffer;
 	VkBuffer* outputBuffer;
 	VkDescriptorPool descriptorPool;
@@ -1064,7 +1064,7 @@ typedef struct {
 	VkDeviceMemory* bufferBluesteinFFTDeviceMemory;
 	VkBuffer* bufferBluestein;
 	VkBuffer* bufferBluesteinFFT;
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	void** inputBuffer;
 	void** outputBuffer;
 	CUmodule VkFFTModule;
@@ -1074,7 +1074,7 @@ typedef struct {
 	CUdeviceptr consts_addr;
 	void** bufferBluestein;
 	void** bufferBluesteinFFT;
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	void** inputBuffer;
 	void** outputBuffer;
 	hipModule_t VkFFTModule;
@@ -1084,7 +1084,7 @@ typedef struct {
 	hipDeviceptr_t consts_addr;
 	void** bufferBluestein;
 	void** bufferBluesteinFFT;
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_mem* inputBuffer;
 	cl_mem* outputBuffer;
 	cl_program  program;
@@ -1093,7 +1093,7 @@ typedef struct {
 	cl_mem bufferRaderUintLUT;
 	cl_mem* bufferBluestein;
 	cl_mem* bufferBluesteinFFT;
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	void** inputBuffer;
 	void** outputBuffer;
 	ze_module_handle_t VkFFTModule;
@@ -1102,7 +1102,7 @@ typedef struct {
 	void* bufferRaderUintLUT;
 	void** bufferBluestein;
 	void** bufferBluesteinFFT;
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 	MTL::Buffer** inputBuffer;
 	MTL::Buffer** outputBuffer;
 	MTL::Library* library;
@@ -1144,7 +1144,7 @@ typedef struct {
 	pfUINT lastAxis;
 	//Bluestein buffers reused among plans
 	pfUINT useBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkDeviceMemory bufferRaderUintLUTDeviceMemory[VKFFT_MAX_FFT_DIMENSIONS][4];
 	VkBuffer bufferRaderUintLUT[VKFFT_MAX_FFT_DIMENSIONS][4];
 	VkDeviceMemory bufferBluesteinDeviceMemory[VKFFT_MAX_FFT_DIMENSIONS];
@@ -1153,27 +1153,27 @@ typedef struct {
 	VkBuffer bufferBluestein[VKFFT_MAX_FFT_DIMENSIONS];
 	VkBuffer bufferBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
 	VkBuffer bufferBluesteinIFFT[VKFFT_MAX_FFT_DIMENSIONS];
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	void* bufferRaderUintLUT[VKFFT_MAX_FFT_DIMENSIONS][4];
 	void* bufferBluestein[VKFFT_MAX_FFT_DIMENSIONS];
 	void* bufferBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
 	void* bufferBluesteinIFFT[VKFFT_MAX_FFT_DIMENSIONS];
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	void* bufferRaderUintLUT[VKFFT_MAX_FFT_DIMENSIONS][4];
 	void* bufferBluestein[VKFFT_MAX_FFT_DIMENSIONS];
 	void* bufferBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
 	void* bufferBluesteinIFFT[VKFFT_MAX_FFT_DIMENSIONS];
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_mem bufferRaderUintLUT[VKFFT_MAX_FFT_DIMENSIONS][4];
 	cl_mem bufferBluestein[VKFFT_MAX_FFT_DIMENSIONS];
 	cl_mem bufferBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
 	cl_mem bufferBluesteinIFFT[VKFFT_MAX_FFT_DIMENSIONS];
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	void* bufferRaderUintLUT[VKFFT_MAX_FFT_DIMENSIONS][4];
 	void* bufferBluestein[VKFFT_MAX_FFT_DIMENSIONS];
 	void* bufferBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];
 	void* bufferBluesteinIFFT[VKFFT_MAX_FFT_DIMENSIONS];
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 	MTL::Buffer* bufferRaderUintLUT[VKFFT_MAX_FFT_DIMENSIONS][4];
 	MTL::Buffer* bufferBluestein[VKFFT_MAX_FFT_DIMENSIONS];
 	MTL::Buffer* bufferBluesteinFFT[VKFFT_MAX_FFT_DIMENSIONS];

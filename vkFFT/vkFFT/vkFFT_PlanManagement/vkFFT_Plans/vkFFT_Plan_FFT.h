@@ -36,17 +36,17 @@
 static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPlan, pfUINT axis_id, pfUINT axis_upload_id, pfUINT inverse, pfUINT reverseBluesteinMultiUpload) {
 	//get radix stages
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkResult res = VK_SUCCESS;
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cudaError_t res = cudaSuccess;
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipError_t res = hipSuccess;
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_int res = CL_SUCCESS;
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 #endif
 	VkFFTAxis* axis = (reverseBluesteinMultiUpload) ? &FFTPlan->inverseBluesteinAxes[axis_id][axis_upload_id] : &FFTPlan->axes[axis_id][axis_upload_id];
 
@@ -67,7 +67,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 	axis->specializationConstants.warpSize = (int)app->configuration.warpSize;
 	axis->specializationConstants.numSharedBanks = (int)app->configuration.numSharedBanks;
 	axis->specializationConstants.useUint64 = (int)app->configuration.useUint64;
-#if(VKFFT_BACKEND_HIP)
+#if(VKFFT_BACKEND_IS_HIP)
 	axis->specializationConstants.useStrict32BitAddress = app->configuration.useStrict32BitAddress;
 #endif
 	axis->specializationConstants.disableSetLocale = (int)app->configuration.disableSetLocale;
@@ -764,7 +764,7 @@ static inline VkFFTResult VkFFTPlanAxis(VkFFTApplication* app, VkFFTPlan* FFTPla
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		sprintf(axis->VkFFTFunctionName, "main");
 #else
 		sprintf(axis->VkFFTFunctionName, "VkFFT_main");

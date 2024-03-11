@@ -30,35 +30,35 @@ set(VKFFT_BACKEND 0 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL, 4 -
 # Parse the backend option and set VKFFT_BACKEND_NUM to the corresponding value and define VKFFT_BACKEND_*
 if((VKFFT_BACKEND EQUAL 0) OR (VKFFT_BACKEND STREQUAL "Vulkan"))
 	set(VKFFT_BACKEND_NUM 0)
-	set(VKFFT_BACKEND_VULKAN ON)
+	set(VKFFT_BACKEND_IS_VULKAN ON)
 elseif((VKFFT_BACKEND EQUAL 1) OR (VKFFT_BACKEND STREQUAL "CUDA"))
 	set(VKFFT_BACKEND_NUM 1)
-	set(VKFFT_BACKEND_CUDA ON)
+	set(VKFFT_BACKEND_IS_CUDA ON)
 elseif((VKFFT_BACKEND EQUAL 2) OR (VKFFT_BACKEND STREQUAL "HIP"))
 	set(VKFFT_BACKEND_NUM 2)
-	set(VKFFT_BACKEND_HIP ON)
+	set(VKFFT_BACKEND_IS_HIP ON)
 elseif((VKFFT_BACKEND EQUAL 3) OR (VKFFT_BACKEND STREQUAL "OpenCL"))
 	set(VKFFT_BACKEND_NUM 3)
-	set(VKFFT_BACKEND_OPENCL ON)
+	set(VKFFT_BACKEND_IS_OPENCL ON)
 elseif((VKFFT_BACKEND EQUAL 4) OR (VKFFT_BACKEND STREQUAL "LevelZero"))
 	set(VKFFT_BACKEND_NUM 4)
-	set(VKFFT_BACKEND_LEVEL_ZERO ON)
+	set(VKFFT_BACKEND_IS_LEVEL_ZERO ON)
 elseif((VKFFT_BACKEND EQUAL 5) OR (VKFFT_BACKEND STREQUAL "Metal"))
 	set(VKFFT_BACKEND_NUM 5)
-	set(VKFFT_BACKEND_METAL ON)
+	set(VKFFT_BACKEND_IS_METAL ON)
 else()
 	message(FATAL_ERROR "Invalid VKFFT_BACKEND value")
 endif()
 
 # Enable cuFFT benchmark by default if CUDA is enabled
-if(VKFFT_BACKEND_CUDA)
+if(VKFFT_BACKEND_IS_CUDA)
 	option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" ON)
 else()
 	option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" OFF)
 endif()
 
 # Enable rocFFT benchmark by default if HIP is enabled
-if(VKFFT_BACKEND_HIP)
+if(VKFFT_BACKEND_IS_HIP)
 	option(build_VkFFT_rocFFT_benchmark "Build VkFFT rocFFT benchmark" ON)
 else()
 	option(build_VkFFT_rocFFT_benchmark "Build VkFFT rocFFT benchmark" OFF)
@@ -78,7 +78,7 @@ endif()
 # Find and configure dependencies
 ########################################################################################################################
 
-if(VKFFT_BACKEND_VULKAN)
+if(VKFFT_BACKEND_IS_VULKAN)
 	find_package(Vulkan REQUIRED)
 
 	add_compile_definitions(VK_API_VERSION=11) # 10 - Vulkan 1.0, 11 - Vulkan 1.1, 12 - Vulkan 1.2
@@ -98,19 +98,19 @@ if(VKFFT_BACKEND_VULKAN)
 		add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-main)
 	endif (NOT ${glslang_FOUND})
 
-elseif(VKFFT_BACKEND_CUDA)
+elseif(VKFFT_BACKEND_IS_CUDA)
 	find_package(CUDAToolkit 9.0 REQUIRED)
 
-elseif(VKFFT_BACKEND_HIP)
+elseif(VKFFT_BACKEND_IS_HIP)
 	list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
 
 	find_package(hip)
 
 	#add_compile_definitions(VKFFT_OLD_ROCM) #ROCm versions before 4.5 needed kernel include of hiprtc
-elseif(VKFFT_BACKEND_OPENCL)
+elseif(VKFFT_BACKEND_IS_OPENCL)
 	find_package(OpenCL REQUIRED)
 
-elseif(VKFFT_BACKEND_LEVEL_ZERO)
+elseif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	set(LevelZero_LIBRARY "/usr/lib/x86_64-linux-gnu/")
 	set(LevelZero_INCLUDE_DIR "/usr/include/")
 
@@ -125,7 +125,7 @@ elseif(VKFFT_BACKEND_LEVEL_ZERO)
 
 	include_directories(${LevelZero_INCLUDES})
 
-elseif(VKFFT_BACKEND_METAL)
+elseif(VKFFT_BACKEND_IS_METAL)
 	find_library(FOUNDATION_LIB Foundation REQUIRED)
 	find_library(QUARTZ_CORE_LIB QuartzCore REQUIRED)	
 	find_library(METAL_LIB Metal REQUIRED)
@@ -311,23 +311,23 @@ endif()
 target_link_libraries(${PROJECT_NAME} PUBLIC VkFFT half)
 
 # Link the correct backend libraries
-if(VKFFT_BACKEND_VULKAN)
+if(VKFFT_BACKEND_IS_VULKAN)
 	if (${glslang_FOUND})
 		target_link_libraries(${PROJECT_NAME} PUBLIC glslang::SPIRV glslang::glslang Vulkan::Vulkan)
 	else (${glslang_FOUND})
 		target_link_libraries(${PROJECT_NAME} PUBLIC SPIRV glslang Vulkan::Vulkan)
 	endif (${glslang_FOUND})
-elseif(VKFFT_BACKEND_CUDA)
+elseif(VKFFT_BACKEND_IS_CUDA)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC CUDA_TOOLKIT_ROOT_DIR="${CUDAToolkit_ROOT}")
 	target_link_libraries(${PROJECT_NAME} PUBLIC CUDA::cudart CUDA::cuda_driver CUDA::nvrtc)
 	target_include_directories(${PROJECT_NAME} PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
-elseif(VKFFT_BACKEND_HIP)
+elseif(VKFFT_BACKEND_IS_HIP)
 	target_link_libraries(${PROJECT_NAME} PUBLIC hip::host)
-elseif(VKFFT_BACKEND_OPENCL)
+elseif(VKFFT_BACKEND_IS_OPENCL)
 	target_link_libraries(${PROJECT_NAME} PUBLIC OpenCL::OpenCL)
-elseif(VKFFT_BACKEND_LEVEL_ZERO)
+elseif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	target_link_libraries(${PROJECT_NAME} PUBLIC ze_loader)
-elseif(VKFFT_BACKEND_METAL)
+elseif(VKFFT_BACKEND_IS_METAL)
 	target_link_libraries(${PROJECT_NAME} PUBLIC ${FOUNDATION_LIB} ${QUARTZ_CORE_LIB} ${METAL_LIB})
 endif()
 

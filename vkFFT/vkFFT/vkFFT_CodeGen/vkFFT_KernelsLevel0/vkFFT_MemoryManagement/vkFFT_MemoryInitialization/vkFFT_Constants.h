@@ -44,11 +44,11 @@ static inline void appendConstantsVkFFT(VkFFTSpecializationConstantsLayout* sc) 
 			if (sc->raderContainer[i].prime > 0) {
 				if (sc->inline_rader_g_pow == 1) {
 					pfINT g_pow = 1;
-#if((VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO))
+#if((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 					sc->tempLen = sprintf(sc->tempStr, "__constant %s %s[%d]= {1", uintType->name, sc->raderContainer[i].g_powConstantStruct.name, sc->raderContainer[i].prime);
 					PfAppendLine(sc);
 					
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 					sc->tempLen = sprintf(sc->tempStr, "constant %s %s[%d]= {1", uintType->name, sc->raderContainer[i].g_powConstantStruct.name, sc->raderContainer[i].prime);
 					PfAppendLine(sc);
 					
@@ -68,11 +68,11 @@ static inline void appendConstantsVkFFT(VkFFTSpecializationConstantsLayout* sc) 
 					
 				}
 				if (sc->inline_rader_kernel) {
-#if((VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO))
+#if((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 					sc->tempLen = sprintf(sc->tempStr, "__constant %s %s[%d]= {", floatType->name, sc->raderContainer[i].r_rader_kernelConstantStruct.name, sc->raderContainer[i].prime - 1);
 					PfAppendLine(sc);
 					
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 					sc->tempLen = sprintf(sc->tempStr, "constant %s %s[%d]= {", floatType->name, sc->raderContainer[i].r_rader_kernelConstantStruct.name, sc->raderContainer[i].prime - 1);
 					PfAppendLine(sc);
 					
@@ -139,11 +139,11 @@ static inline void appendConstantsVkFFT(VkFFTSpecializationConstantsLayout* sc) 
 							}
 						}
 					}
-#if((VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO))
+#if((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 					sc->tempLen = sprintf(sc->tempStr, "__constant %s %s[%d]= {", floatType->name, sc->raderContainer[i].i_rader_kernelConstantStruct.name, sc->raderContainer[i].prime - 1);
 					PfAppendLine(sc);
 					
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 					sc->tempLen = sprintf(sc->tempStr, "constant %s %s[%d]= {", floatType->name, sc->raderContainer[i].i_rader_kernelConstantStruct.name, sc->raderContainer[i].prime - 1);
 					PfAppendLine(sc);
 					

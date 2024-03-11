@@ -3,7 +3,7 @@
 #include "vkFFT.h"
 #include <vector>
 typedef struct {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkInstance instance;//a connection between the application and the Vulkan library 
 	VkPhysicalDevice physicalDevice;//a handle for the graphics card used in the application
 	VkPhysicalDeviceProperties physicalDeviceProperties;//bastic device properties
@@ -19,24 +19,24 @@ typedef struct {
 
 	VkBuffer* stagingBuffer;//optional pointer to the user defined staging buffer
 	VkDeviceMemory* stagingBufferMemory;//optional pointer to the user defined staging buffer memory, associated with the stagingBuffer
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	CUdevice device;
 	CUcontext context;
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipDevice_t device;
 	hipCtx_t context;
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_platform_id platform;
 	cl_device_id device;
 	cl_context context;
 	cl_command_queue commandQueue;
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_driver_handle_t driver;
 	ze_device_handle_t device;
 	ze_context_handle_t context;
 	ze_command_queue_handle_t commandQueue;
 	uint32_t commandQueueID;
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
     MTL::Device* device;
     MTL::CommandQueue* queue;
 #endif
@@ -56,7 +56,7 @@ typedef struct {
 	uint64_t loadApplicationFromString;
 } VkFFTUserSystemParameters;//an example structure used to pass user-defined system for benchmarking
 
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 VkResult CreateDebugUtilsMessengerEXT(VkGPU* vkGPU, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
 void DestroyDebugUtilsMessengerEXT(VkGPU* vkGPU, const VkAllocationCallbacks* pAllocator);
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);

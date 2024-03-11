@@ -2482,7 +2482,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 			else {
 				appendRegistersToShared_x_y(sc, &sc->sdataID, &sc->regIDs[i - used_registers.data.i / 2]);
 			}
-#if(!((VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO)||(VKFFT_BACKEND_METAL)))
+#if(!((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO)||(VKFFT_BACKEND_IS_METAL)))
 			PfIf_else(sc);
 			if (i < (pfUINT)used_registers.data.i / 2) {
 				appendRegistersToShared_y_x(sc, &sc->sdataID, &sc->regIDs[i]);
@@ -2510,7 +2510,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 		if (sc->useDisableThreads) {
 			PfIf_end(sc);
 		}
-#if(((VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO)||(VKFFT_BACKEND_METAL)))
+#if(((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO)||(VKFFT_BACKEND_IS_METAL)))
 		appendBarrierVkFFT(sc);
 		if (sc->useDisableThreads) {
 			temp_int.data.i = 0;
@@ -2804,7 +2804,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 
 		appendRegistersToShared_x_x(sc, &sc->sdataID, &sc->regIDs[i]);
 
-#if(!((VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO)||(VKFFT_BACKEND_METAL)))//OpenCL, Level Zero and Metal are  not handling barrier with thread-conditional writes to local memory - so this is a work-around
+#if(!((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO)||(VKFFT_BACKEND_IS_METAL)))//OpenCL, Level Zero and Metal are  not handling barrier with thread-conditional writes to local memory - so this is a work-around
 		if (sc->stridedSharedLayout) {
 			PfSub(sc, &sc->sdataID, &fftDim, &sc->combinedID);
 
@@ -2849,7 +2849,7 @@ static inline void appendDCTIV_even_read(VkFFTSpecializationConstantsLayout* sc,
 	if (sc->useDisableThreads) {
 		PfIf_end(sc);
 	}
-#if(((VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO)||(VKFFT_BACKEND_METAL)))//OpenCL, Level Zero and Metal are  not handling barrier with thread-conditional writes to local memory - so this is a work-around
+#if(((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO)||(VKFFT_BACKEND_IS_METAL)))//OpenCL, Level Zero and Metal are  not handling barrier with thread-conditional writes to local memory - so this is a work-around
 
 	appendBarrierVkFFT(sc);
 	if (sc->useDisableThreads) {

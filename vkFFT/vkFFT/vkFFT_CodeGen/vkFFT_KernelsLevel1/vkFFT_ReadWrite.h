@@ -93,7 +93,7 @@ static inline void setReadToRegisters(VkFFTSpecializationConstantsLayout* sc, in
 			if (sc->performDST == 4)
 				sc->readToRegisters = 1;
 			else {
-#if(((VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO)||(VKFFT_BACKEND_METAL)))
+#if(((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO)||(VKFFT_BACKEND_IS_METAL)))
 				sc->readToRegisters = 1;
 #else
 				sc->readToRegisters = 0;
@@ -710,7 +710,7 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 					temp_int.data.i *= 2;
 
 				if ((size1.data.i % temp_int.data.i) != 0) {
-#if (!VKFFT_BACKEND_HIP) //AMD compiler fix
+#if (!VKFFT_BACKEND_IS_HIP) //AMD compiler fix
 					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 "){\n", &sc->fftDim, &sc->gl_WorkGroupID_y, shiftY, &sc->localSize[0], &sc->size[&sc->axis_id + 1]);
 					if ((sc->mergeSequencesR2C) && (sc->size[1].data.i % 2) && (readWrite == 0)) {
 						PfIf_ge_start(sc, &sc->inoutID_y, &sc->size[1]);
@@ -804,7 +804,7 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 			append_inoutID_preprocessing_multiupload_R2R(sc, &sc->inoutID_x, readWrite, type, &sc->stageInvocationID, &sc->sdataID);
 			append_inoutID_preprocessing_multiupload_R2C(sc, &sc->inoutID_x, readWrite, type, &sc->stageInvocationID, &sc->sdataID);
 
-#if (!VKFFT_BACKEND_HIP) //AMD compiler fix
+#if (!VKFFT_BACKEND_IS_HIP) //AMD compiler fix
 			if ((bufferStride[1].data.i == fftDim.data.i) && (!(((size1.data.i % temp_int.data.i) != 0) && (sc->mergeSequencesR2C) && (sc->size[1].data.i % 2) && (readWrite == 0))) && (!sc->mergeSequencesR2C) && (!recalculateAtEveryStep_inoutID)) {
 #else
 			if ((bufferStride[1].data.i == fftDim.data.i) && (!(((size1.data.i % temp_int.data.i) != 0) && (readWrite == 0))) && (!sc->mergeSequencesR2C)) {
@@ -1205,7 +1205,7 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 				if ((sc->mergeSequencesR2C) && (mult.data.i == 1))
 					temp_int.data.i *= 2;
 				if ((size1.data.i % temp_int.data.i) != 0) {
-#if (!VKFFT_BACKEND_HIP) //AMD compiler fix
+#if (!VKFFT_BACKEND_IS_HIP) //AMD compiler fix
 					if ((sc->mergeSequencesR2C) && (sc->size[1].data.i % 2) && (readWrite == 0)) {
 					}
 					else {

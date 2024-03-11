@@ -1201,7 +1201,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int 
 							int testMinStages = 10000000;
 							int maxRadixMinStages = 1;
 							int fixMaxCheckRadix2 = 3;
-#if(VKFFT_BACKEND_CUDA)
+#if(VKFFT_BACKEND_IS_CUDA)
 							fixMaxCheckRadix2 = (((fft_length >= 1024) || (fft_length == 256)) && (extraSharedMemoryForPow2) && (!useRader)) ? 5 : 3;
 #endif
 							for (int i = 1; i <= fixMaxCheckRadix2; i++) {

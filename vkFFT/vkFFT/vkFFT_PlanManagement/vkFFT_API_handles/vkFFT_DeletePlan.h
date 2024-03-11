@@ -32,7 +32,7 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis, int isInve
 		axis->specializationConstants.raderContainer = 0;
 		axis->specializationConstants.numRaderPrimes = 0;
 	}
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	if ((app->configuration.useLUT == 1) && (!axis->referenceLUT)) {
 		if (axis->bufferLUT != 0) {
 			vkDestroyBuffer(app->configuration.device[0], axis->bufferLUT, 0);
@@ -59,7 +59,7 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis, int isInve
 		vkDestroyPipeline(app->configuration.device[0], axis->pipeline, 0);
 		axis->pipeline = 0;
 	}
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	CUresult res = CUDA_SUCCESS;
 	cudaError_t res_t = cudaSuccess;
 	if ((app->configuration.useLUT == 1) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
@@ -70,7 +70,7 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis, int isInve
 		res = cuModuleUnload(axis->VkFFTModule);
 		if (res == CUDA_SUCCESS) axis->VkFFTModule = 0;
 	}
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipError_t res = hipSuccess;
 	if ((app->configuration.useLUT == 1) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
 		res = hipFree(axis->bufferLUT);
@@ -80,7 +80,7 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis, int isInve
 		res = hipModuleUnload(axis->VkFFTModule);
 		if (res == hipSuccess) axis->VkFFTModule = 0;
 	}
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_int res = 0;
 	if ((app->configuration.useLUT == 1) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
 		res = clReleaseMemObject(axis->bufferLUT);
@@ -94,7 +94,7 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis, int isInve
 		res = clReleaseKernel(axis->kernel);
 		if (res == 0) axis->kernel = 0;
 	}
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 	if ((app->configuration.useLUT == 1) && (!axis->referenceLUT) && (axis->bufferLUT != 0)) {
 		res = zeMemFree(app->configuration.context[0], axis->bufferLUT);
@@ -108,7 +108,7 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis, int isInve
 		res = zeModuleDestroy(axis->VkFFTModule);
 		if (res == ZE_RESULT_SUCCESS)axis->VkFFTModule = 0;
 	}
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 	if (axis->pushConstants.dataUintBuffer) {
 		axis->pushConstants.dataUintBuffer->release();
 		axis->pushConstants.dataUintBuffer = 0;

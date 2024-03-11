@@ -333,22 +333,22 @@ static inline void PfAppendConversionStart(VkFFTSpecializationConstantsLayout* s
 	case 2:
 		switch ((out->type % 100) / 10) {
 		case 0:
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 			sc->tempLen = sprintf(sc->tempStr, "float16_t(");
 			PfAppendLine(sc);
-#elif((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP)||(VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO))
+#elif((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP)||(VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 			sc->tempLen = sprintf(sc->tempStr, "(half)");
 			PfAppendLine(sc);
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 			sc->tempLen = sprintf(sc->tempStr, "half(");
 			PfAppendLine(sc);
 #endif
 			return;
 		case 1:
-#if((VKFFT_BACKEND_VULKAN)||(VKFFT_BACKEND_METAL))
+#if((VKFFT_BACKEND_IS_VULKAN)||(VKFFT_BACKEND_IS_METAL))
 			sc->tempLen = sprintf(sc->tempStr, "float(");
 			PfAppendLine(sc);
-#elif((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP)||(VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO))
+#elif((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP)||(VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 			sc->tempLen = sprintf(sc->tempStr, "(float)");
 			PfAppendLine(sc);
 #endif
@@ -356,10 +356,10 @@ static inline void PfAppendConversionStart(VkFFTSpecializationConstantsLayout* s
 		case 2:
 			switch ((in->type % 100) / 10) {
 			case 0: case 1: case 2:
-#if((VKFFT_BACKEND_VULKAN)||(VKFFT_BACKEND_METAL))
+#if((VKFFT_BACKEND_IS_VULKAN)||(VKFFT_BACKEND_IS_METAL))
 				sc->tempLen = sprintf(sc->tempStr, "double(");
 				PfAppendLine(sc);
-#elif((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP)||(VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO))
+#elif((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP)||(VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 				sc->tempLen = sprintf(sc->tempStr, "(double)");
 				PfAppendLine(sc);
 #endif
@@ -377,19 +377,19 @@ static inline void PfAppendConversionStart(VkFFTSpecializationConstantsLayout* s
 	case 3:
 		switch ((out->type % 100) / 10) {
 		case 0:
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 			sc->tempLen = sprintf(sc->tempStr, "f16vec2(");
 			PfAppendLine(sc);
-#elif((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP)||(VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO)||(VKFFT_BACKEND_METAL))
+#elif((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP)||(VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO)||(VKFFT_BACKEND_IS_METAL))
 			sc->tempLen = sprintf(sc->tempStr, "conv_half2(");
 			PfAppendLine(sc);
 #endif
 			return;
 		case 1:
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 			sc->tempLen = sprintf(sc->tempStr, "vec2(");
 			PfAppendLine(sc);
-#elif((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP)||(VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO)||(VKFFT_BACKEND_METAL))
+#elif((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP)||(VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO)||(VKFFT_BACKEND_IS_METAL))
 			sc->tempLen = sprintf(sc->tempStr, "conv_float2(");
 			PfAppendLine(sc);
 #endif
@@ -397,10 +397,10 @@ static inline void PfAppendConversionStart(VkFFTSpecializationConstantsLayout* s
 		case 2:
 			switch ((in->type % 100) / 10) {
 			case 0: case 1: case 2:
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 			sc->tempLen = sprintf(sc->tempStr, "dvec2(");
 			PfAppendLine(sc);
-#elif((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP)||(VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO)||(VKFFT_BACKEND_METAL))
+#elif((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP)||(VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO)||(VKFFT_BACKEND_IS_METAL))
 			sc->tempLen = sprintf(sc->tempStr, "conv_double2(");
 			PfAppendLine(sc);
 #endif
@@ -431,26 +431,26 @@ static inline void PfAppendConversionEnd(VkFFTSpecializationConstantsLayout* sc,
 	case 2:
 		switch ((out->type % 100) / 10) {
 		case 0:
-#if((VKFFT_BACKEND_VULKAN)||(VKFFT_BACKEND_METAL))
+#if((VKFFT_BACKEND_IS_VULKAN)||(VKFFT_BACKEND_IS_METAL))
 			sc->tempLen = sprintf(sc->tempStr, ")");
 			PfAppendLine(sc);
-#elif((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP)||(VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO))
+#elif((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP)||(VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 #endif
 			return;
 		case 1:
-#if((VKFFT_BACKEND_VULKAN)||(VKFFT_BACKEND_METAL))
+#if((VKFFT_BACKEND_IS_VULKAN)||(VKFFT_BACKEND_IS_METAL))
 			sc->tempLen = sprintf(sc->tempStr, ")");
 			PfAppendLine(sc);
-#elif((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP)||(VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO))
+#elif((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP)||(VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 #endif
 			return;
 		case 2:
 			switch ((in->type % 100) / 10) {
 			case 0: case 1: case 2:
-#if((VKFFT_BACKEND_VULKAN)||(VKFFT_BACKEND_METAL))
+#if((VKFFT_BACKEND_IS_VULKAN)||(VKFFT_BACKEND_IS_METAL))
 			sc->tempLen = sprintf(sc->tempStr, ")");
 			PfAppendLine(sc);
-#elif((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP)||(VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO))
+#elif((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP)||(VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 #endif
 			return;
 			case 3:
@@ -466,19 +466,19 @@ static inline void PfAppendConversionEnd(VkFFTSpecializationConstantsLayout* sc,
 	case 3:
 		switch ((out->type % 100) / 10) {
 		case 0:
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 			sc->tempLen = sprintf(sc->tempStr, ")");
 			PfAppendLine(sc);
-#elif((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP)||(VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO)||(VKFFT_BACKEND_METAL))
+#elif((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP)||(VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO)||(VKFFT_BACKEND_IS_METAL))
 			sc->tempLen = sprintf(sc->tempStr, ")");
 			PfAppendLine(sc);
 #endif
 			return;
 		case 1:
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 			sc->tempLen = sprintf(sc->tempStr, ")");
 			PfAppendLine(sc);
-#elif((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP)||(VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO)||(VKFFT_BACKEND_METAL))
+#elif((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP)||(VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO)||(VKFFT_BACKEND_IS_METAL))
 			sc->tempLen = sprintf(sc->tempStr, ")");
 			PfAppendLine(sc);
 #endif
@@ -486,10 +486,10 @@ static inline void PfAppendConversionEnd(VkFFTSpecializationConstantsLayout* sc,
 		case 2:
 			switch ((in->type % 100) / 10) {
 			case 0: case 1: case 2:
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 			sc->tempLen = sprintf(sc->tempStr, ")");
 			PfAppendLine(sc);
-#elif((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP)||(VKFFT_BACKEND_OPENCL)||(VKFFT_BACKEND_LEVEL_ZERO)||(VKFFT_BACKEND_METAL))
+#elif((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP)||(VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO)||(VKFFT_BACKEND_IS_METAL))
 			sc->tempLen = sprintf(sc->tempStr, ")");
 			PfAppendLine(sc);
 #endif
@@ -1091,7 +1091,7 @@ static inline void PfQuadSum(VkFFTSpecializationConstantsLayout* sc, PfContainer
 static inline void PfAdd(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* in_1, PfContainer* in_2) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if ((out->type % 10) == 3){
-#if(VKFFT_BACKEND_HIP)
+#if(VKFFT_BACKEND_IS_HIP)
 		if ((in_1->type > 100) && (in_2->type > 100) && (((out->type % 100) / 10) != 3)) {
 			//packed instructions workaround if all values are in registers
 			sc->tempLen = sprintf(sc->tempStr, "%s", out->name);
@@ -1369,7 +1369,7 @@ static inline void PfQuadDiff(VkFFTSpecializationConstantsLayout* sc, PfContaine
 static inline void PfSub(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* in_1, PfContainer* in_2) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if ((out->type % 10) == 3){
-#if(VKFFT_BACKEND_HIP)
+#if(VKFFT_BACKEND_IS_HIP)
 		if ((in_1->type > 100) && (in_2->type > 100) && (((out->type % 100) / 10) != 3)) {
 			//packed instructions workaround if all values are in registers
 			sc->tempLen = sprintf(sc->tempStr, "%s", out->name);
@@ -1748,7 +1748,7 @@ static inline void PfFMA(VkFFTSpecializationConstantsLayout* sc, PfContainer* ou
 	//fma inlining is not correct if all three numbers are complex for now
 	if (sc->res != VKFFT_SUCCESS) return;
 	if ((out->type % 10) == 3){
-#if(VKFFT_BACKEND_HIP)
+#if(VKFFT_BACKEND_IS_HIP)
 		if ((in_1->type > 100) && (in_2->type > 100) && (in_3->type > 100) && (((out->type % 100) / 10) != 3)) {
 			
 			//packed instructions workaround if all values are in registers
@@ -2203,7 +2203,7 @@ static inline void PfFMA(VkFFTSpecializationConstantsLayout* sc, PfContainer* ou
 static inline void PfMul(VkFFTSpecializationConstantsLayout* sc, PfContainer* out, PfContainer* in_1, PfContainer* in_2, PfContainer* temp) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if ((out->type % 10) == 3){
-#if(VKFFT_BACKEND_HIP)
+#if(VKFFT_BACKEND_IS_HIP)
 		if ((in_1->type > 100) && (in_2->type > 100) && (((out->type % 100) / 10) != 3)) {
 			//packed instructions workaround if all values are in registers
 			if (((in_1->type % 10) != 3) || ((in_2->type % 10) != 3)) {
@@ -2525,7 +2525,7 @@ static inline void PfFMA3(VkFFTSpecializationConstantsLayout* sc, PfContainer* o
 static inline void PfFMA3_const_w(VkFFTSpecializationConstantsLayout* sc, PfContainer* out_1, PfContainer* out_2, PfContainer* in_1, PfContainer* in_num_x, PfContainer* in_num_y, PfContainer* in_conj, PfContainer* temp, PfContainer* tempx) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if (out_1->type > 100) {
-#if(VKFFT_BACKEND_HIP)
+#if(VKFFT_BACKEND_IS_HIP)
 		if (((out_1->type%100)/10) < 2) {
 			PfMov(sc, &temp->data.c[0], &in_1->data.c[0]);
 			PfMov(sc, &temp->data.c[1], &in_conj->data.c[1]);
@@ -3269,25 +3269,25 @@ static inline void PfSinCos(VkFFTSpecializationConstantsLayout* sc, PfContainer*
 				case 2:
 					switch ((out->type / 10) % 10) {
 					case 0: case 1:
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 						sc->tempLen = sprintf(sc->tempStr, "\
 %s.x = cos(%s);\n", out->name, in_1->name);
 						PfAppendLine(sc);
 						sc->tempLen = sprintf(sc->tempStr, "\
 %s.y = sin(%s);\n", out->name, in_1->name);
 						PfAppendLine(sc);
-#elif ((VKFFT_BACKEND_CUDA) || (VKFFT_BACKEND_HIP))
+#elif ((VKFFT_BACKEND_IS_CUDA) || (VKFFT_BACKEND_IS_HIP))
 						sc->tempLen = sprintf(sc->tempStr, "\
 __sincosf(%s, &%s.y, &%s.x);\n", in_1->name, out->name, out->name);
 						PfAppendLine(sc);
-#elif ((VKFFT_BACKEND_OPENCL) || (VKFFT_BACKEND_LEVEL_ZERO))
+#elif ((VKFFT_BACKEND_IS_OPENCL) || (VKFFT_BACKEND_IS_LEVEL_ZERO))
 						sc->tempLen = sprintf(sc->tempStr, "\
 %s.x = native_cos(%s);\n", out->name, in_1->name);
 						PfAppendLine(sc);
 						sc->tempLen = sprintf(sc->tempStr, "\
 %s.y = native_sin(%s);\n", out->name, in_1->name);
 						PfAppendLine(sc);
-#elif (VKFFT_BACKEND_METAL)
+#elif (VKFFT_BACKEND_IS_METAL)
 						sc->tempLen = sprintf(sc->tempStr, "\
 %s.x = cos(%s);\n", out->name, in_1->name);
 						PfAppendLine(sc);
@@ -3297,15 +3297,15 @@ __sincosf(%s, &%s.y, &%s.x);\n", in_1->name, out->name, out->name);
 #endif
 						return;
 					case 2:
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 						sc->tempLen = sprintf(sc->tempStr, "\
 %s = sincos20(%s);\n", out->name, in_1->name);
 						PfAppendLine(sc);
-#elif ((VKFFT_BACKEND_CUDA) || (VKFFT_BACKEND_HIP))
+#elif ((VKFFT_BACKEND_IS_CUDA) || (VKFFT_BACKEND_IS_HIP))
 						sc->tempLen = sprintf(sc->tempStr, "\
 sincos(%s, &%s.y, &%s.x);\n", in_1->name, out->name, out->name);
 						PfAppendLine(sc);
-#elif ((VKFFT_BACKEND_OPENCL) || (VKFFT_BACKEND_LEVEL_ZERO) || (VKFFT_BACKEND_METAL))
+#elif ((VKFFT_BACKEND_IS_OPENCL) || (VKFFT_BACKEND_IS_LEVEL_ZERO) || (VKFFT_BACKEND_IS_METAL))
 						sc->tempLen = sprintf(sc->tempStr, "\
 %s.y = sincos(%s, &%s.x);\n", out->name, in_1->name, out->name);
 						PfAppendLine(sc);
@@ -3399,7 +3399,7 @@ static inline void PfRsqrt(VkFFTSpecializationConstantsLayout* sc, PfContainer* 
 			if (in_1->type > 100) {
 				switch (in_1->type % 10) {
 				case 2:
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 					sc->tempLen = sprintf(sc->tempStr, "\
 %s = inversesqrt(%s);\n", out->name, in_1->name);
 					PfAppendLine(sc);
@@ -4052,14 +4052,14 @@ static inline void PfPermute(VkFFTSpecializationConstantsLayout* sc, pfUINT* per
 static inline void PfSubgroupAdd(VkFFTSpecializationConstantsLayout* sc, PfContainer* in, PfContainer* out, pfUINT subWarpSplit) {
 	if (sc->res != VKFFT_SUCCESS) return;
 
-#if (VKFFT_BACKEND_VULKAN)
+#if (VKFFT_BACKEND_IS_VULKAN)
 	/*sc->tempLen = sprintf(sc->tempStr, "	%s.x = subgroupAdd(%s.x);\n", out, in);
 	res = PfAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;
 	sc->tempLen = sprintf(sc->tempStr, "	%s.y = subgroupAdd(%s.y);\n", out, in);
 	res = PfAppendLine(sc);
 	if (res != VKFFT_SUCCESS) return res;*/
-#elif (VKFFT_BACKEND_CUDA)
+#elif (VKFFT_BACKEND_IS_CUDA)
 	//v1
 	/*for (int i = 1; i < sc->warpSize / subWarpSplit; i *= 2) {
 		sc->tempLen = sprintf(sc->tempStr, "	%s.x += __shfl_xor_sync(0xffffffff, %s.x, %d);\n", out, in, i);

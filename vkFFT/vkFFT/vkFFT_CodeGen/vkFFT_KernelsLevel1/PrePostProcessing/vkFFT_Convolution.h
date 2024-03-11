@@ -288,7 +288,7 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 				temp_int.data.i = batching_localSize.data.i;
 
 				if ((sc->size[1].data.i % temp_int.data.i) != 0) {
-#if (!VKFFT_BACKEND_HIP) //AMD compiler fix
+#if (!VKFFT_BACKEND_IS_HIP) //AMD compiler fix
 					PfIf_lt_start(sc, &sc->inoutID_y, &sc->size[1]);
 #else
 					//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(!(combinedID / %" PRIu64 " + (%s%s)*%" PRIu64 "< %" PRIu64 ")) %s = 0; {\n", &sc->fftDim, &sc->gl_WorkGroupID_y, shiftY, &sc->localSize[0], &sc->size[&sc->axis_id + 1], &sc->inoutID);
@@ -422,7 +422,7 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 				//we switched to reading 2x more data, but we still need to check out of bounds for odd size1
 
 				if ((sc->size[1].data.i % temp_int.data.i) != 0) {
-#if (!VKFFT_BACKEND_HIP) //AMD compiler fix
+#if (!VKFFT_BACKEND_IS_HIP) //AMD compiler fix
 					PfIf_end(sc);
 #endif
 				}

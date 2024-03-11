@@ -1185,31 +1185,31 @@ typedef struct {
 // Required parameters: 	
 pfUINT FFTdim;	// FFT dimensionality (1, 2 or 3)
 pfUINT size[VKFFT_MAX_FFT_DIMENSIONS];	// WHD+ - system dimensions
-#if(VKFFT_BACKEND_VULKAN) //Vulkan API
+#if(VKFFT_BACKEND_IS_VULKAN) //Vulkan API
 VkPhysicalDevice* physicalDevice;	// Pointer to Vulkan physical device, obtained from vkEnumeratePhysicalDevices
 VkDevice* device;	// Pointer to Vulkan device, created with vkCreateDevice
 VkQueue* queue;	// Pointer to Vulkan queue, created with vkGetDeviceQueue
 VkCommandPool* commandPool;	// Pointer to Vulkan command pool, created with vkCreateCommandPool
 VkFence* fence;	// Pointer to Vulkan fence, created with vkCreateFence
 pfUINT isCompilerInitialized;	// Specify if glslang compiler has been intialized before (0 - off, 1 - on). Default 0 
-#elif(VKFFT_BACKEND_CUDA) //CUDA API
+#elif(VKFFT_BACKEND_IS_CUDA) //CUDA API
 CUdevice* device;	// Pointer to CUDA device, obtained from cuDeviceGet
 cudaStream_t* stream;	// Pointer to streams (can be more than 1), where to execute the kernels. Deafult 0
 pfUINT num_streams;	// Try to submit CUDA kernels in multiple streams for asynchronous execution. Default 0, set to >=1 if you pass values in the stream pointer.  
-#elif(VKFFT_BACKEND_HIP) //HIP API
+#elif(VKFFT_BACKEND_IS_HIP) //HIP API
 hipDevice_t* device;	// Pointer to HIP device, obtained from hipDeviceGet
 hipStream_t* stream;	// Pointer to streams (can be more than 1), where to execute the kernels. Deafult 0
 pfUINT num_streams;	// Try to submit HIP kernels in multiple streams for asynchronous execution. Default 0, set to >=1 if you pass values in the stream pointer.
-#elif(VKFFT_BACKEND_OPENCL) //OpenCL API
+#elif(VKFFT_BACKEND_IS_OPENCL) //OpenCL API
 cl_platform_id* platform;	// NOT REQUIRED
 cl_device_id* device;	// Pointer to OpenCL device, obtained from clGetDeviceIDs
 cl_context* context;	// Pointer to OpenCL context, obtained from clCreateContext
-#elif(VKFFT_BACKEND_LEVEL_ZERO) //Level Zero API
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO) //Level Zero API
 ze_device_handle_t* device;	// Pointer to Level Zero device, obtained from zeDeviceGet
 ze_context_handle_t* context;	// Pointer to Level Zero context, obtained from zeContextCreate
 ze_command_queue_handle_t* commandQueue;	// Pointer to Level Zero command queue with compute and copy capabilities, obtained from zeCommandQueueCreate
 uint32_t commandQueueID;	// ID of the commandQueue with compute and copy capabilities
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 MTL::Device* device;	// Pointer to Metal device, obtained from MTL::CopyAllDevices
 MTL::CommandQueue* queue;	// Pointer to Metal queue, obtained from device->newCommandQueue()
 #endif
@@ -1226,37 +1226,37 @@ pfUINT* tempBufferSize;	// Array of temp buffers sizes in bytes. Default set to 
 pfUINT* inputBufferSize;	// Array of input buffers sizes in bytes, if isInputFormatted is enabled
 pfUINT* outputBufferSize;	// Array of output buffers sizes in bytes, if isOutputFormatted is enabled
 pfUINT* kernelSize;	// Array of kernel buffers sizes in bytes, if performConvolution is enabled
-#if(VKFFT_BACKEND_VULKAN) //Vulkan API
+#if(VKFFT_BACKEND_IS_VULKAN) //Vulkan API
 VkBuffer* buffer;	// Pointer to array of buffers (or one buffer) used for computations
 VkBuffer* tempBuffer;	// Needed if reorderFourStep is enabled to transpose the array. Same sum size or bigger as buffer (can be split in multiple). Default 0. Setting to non zero value enables manual user allocation
 VkBuffer* inputBuffer;	// Pointer to array of input buffers (or one buffer) used to read data from if isInputFormatted is enabled
 VkBuffer* outputBuffer;	// Pointer to array of output buffers (or one buffer) used to write data to if isOutputFormatted is enabled
 VkBuffer* kernel;	// Pointer to array of kernel buffers (or one buffer) used to read kernel data from if performConvolution is enabled
-#elif(VKFFT_BACKEND_CUDA) //CUDA API
+#elif(VKFFT_BACKEND_IS_CUDA) //CUDA API
 void** buffer;	// Pointer to device buffer used for computations
 void** tempBuffer;	// Needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation 
 void** inputBuffer;	// Pointer to device buffer used to read data from if isInputFormatted is enabled
 void** outputBuffer;	// Pointer to device buffer used to write data to if isOutputFormatted is enabled
 void** kernel;	// Pointer to device buffer used to read kernel data from if performConvolution is enabled 
-#elif(VKFFT_BACKEND_HIP) //HIP API
+#elif(VKFFT_BACKEND_IS_HIP) //HIP API
 void** buffer;	// Pointer to device buffer used for computations
 void** tempBuffer;	// Needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
 void** inputBuffer;	// Pointer to device buffer used to read data from if isInputFormatted is enabled
 void** outputBuffer;	// Pointer to device buffer used to write data to if isOutputFormatted is enabled
 void** kernel;	// Pointer to device buffer used to read kernel data from if performConvolution is enabled 
-#elif(VKFFT_BACKEND_OPENCL) //OpenCL API
+#elif(VKFFT_BACKEND_IS_OPENCL) //OpenCL API
 cl_mem* buffer;	// Pointer to device buffer used for computations
 cl_mem* tempBuffer;	// Needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
 cl_mem* inputBuffer;	// Pointer to device buffer used to read data from if isInputFormatted is enabled
 cl_mem* outputBuffer;	// Pointer to device buffer used to write data to if isOutputFormatted is enabled
 cl_mem* kernel;	// Pointer to device buffer used to read kernel data from if performConvolution is enabled
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 void** buffer;	// Pointer to device buffer used for computations
 void** tempBuffer;	// Needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
 void** inputBuffer;	// Pointer to device buffer used to read data from if isInputFormatted is enabled
 void** outputBuffer;	// Pointer to device buffer used to read data from if isOutputFormatted is enabled
 void** kernel;	// Pointer to device buffer used to read kernel data from if performConvolution is enabled
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 MTL::Buffer** buffer;	// Pointer to device buffer used for computations
 MTL::Buffer** tempBuffer;	// Needed if reorderFourStep is enabled to transpose the array. Same size as buffer. Default 0. Setting to non zero value enables manual user allocation
 MTL::Buffer** inputBuffer;	// Pointer to device buffer used to read data from if isInputFormatted is enabled
@@ -1371,23 +1371,23 @@ pfINT maxTempLength;	// Specify how big can be buffer used for intermediate stri
 pfUINT autoCustomBluesteinPaddingPattern; // default value for useCustomBluesteinPaddingPattern
 pfUINT useRaderUintLUT; // allocate additional LUT to store g_pow
 pfUINT vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 - AMD, etc
-#if(VKFFT_BACKEND_VULKAN) //Vulkan API
+#if(VKFFT_BACKEND_IS_VULKAN) //Vulkan API
 VkDeviceMemory tempBufferDeviceMemory;	// Filled at app creation
 VkCommandBuffer* commandBuffer;	// Filled at app execution
 VkMemoryBarrier* memory_barrier;	// Filled at app creation
-#elif(VKFFT_BACKEND_CUDA) //CUDA API
+#elif(VKFFT_BACKEND_IS_CUDA) //CUDA API
 cudaEvent_t* stream_event;	// Filled at app creation
 pfUINT streamCounter;	// Filled at app creation
 pfUINT streamID;	// Filled at app creation
-#elif(VKFFT_BACKEND_HIP) //HIP API
+#elif(VKFFT_BACKEND_IS_HIP) //HIP API
 hipEvent_t* stream_event;	// Filled at app creation
 pfUINT streamCounter;	// Filled at app creation
 pfUINT streamID;	// Filled at app creation
-#elif(VKFFT_BACKEND_OPENCL) //OpenCL API
+#elif(VKFFT_BACKEND_IS_OPENCL) //OpenCL API
 cl_command_queue* commandQueue;	// Filled at app creation
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 ze_command_list_handle_t* commandList;	// Filled at app creation
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 MTL::CommandBuffer* commandBuffer;	// Filled at app execution
 MTL::ComputeCommandEncoder* commandEncoder;	// Filled at app execution
 #endif
@@ -2026,7 +2026,7 @@ vkGPU struct has the following definition:
 \begin{mdframed}[backgroundcolor=bg]
 \begin{minted}[tabsize=4,obeytabs,breaklines]{C}
 typedef struct {
-#if(VKFFT_BACKEND_VULKAN) //Vulkan API
+#if(VKFFT_BACKEND_IS_VULKAN) //Vulkan API
 VkInstance instance; //a connection between the application and the Vulkan library
 VkPhysicalDevice physicalDevice; //a handle for the graphics card used in the application
 VkPhysicalDeviceProperties physicalDeviceProperties; //bastic device properties
@@ -2039,24 +2039,24 @@ VkCommandPool commandPool; //an opaque objects that command buffer memory is all
 VkFence fence; //a vkGPU->fence used to synchronize dispatches
 std::vector<const char*> enabledDeviceExtensions;
 uint64_t enableValidationLayers;
-#elif(VKFFT_BACKEND_CUDA) //CUDA API
+#elif(VKFFT_BACKEND_IS_CUDA) //CUDA API
 CUdevice device;
 CUcontext context;
-#elif(VKFFT_BACKEND_HIP) //HIP API
+#elif(VKFFT_BACKEND_IS_HIP) //HIP API
 hipDevice_t device;
 hipCtx_t context;
-#elif(VKFFT_BACKEND_OPENCL) //OpenCL API
+#elif(VKFFT_BACKEND_IS_OPENCL) //OpenCL API
 cl_platform_id platform;
 cl_device_id device;
 cl_context context;
 cl_command_queue commandQueue;
-#elif(VKFFT_BACKEND_LEVEL_ZERO) //Level Zero API
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO) //Level Zero API
 ze_driver_handle_t driver;
 ze_device_handle_t device;
 ze_context_handle_t context;
 ze_command_queue_handle_t commandQueue;
 uint32_t commandQueueID;
-#elif(VKFFT_BACKEND_METAL) //Metal API
+#elif(VKFFT_BACKEND_IS_METAL) //Metal API
 MTL::Device* device;
 MTL::CommandQueue* queue;
 #endif
@@ -2083,7 +2083,7 @@ particular user's configuration.
 
 \begin{mdframed}[backgroundcolor=bg]
 \begin{minted}[tabsize=4,obeytabs,breaklines]{C}
-#if(VKFFT_BACKEND_VULKAN) //Vulkan API
+#if(VKFFT_BACKEND_IS_VULKAN) //Vulkan API
 VkResult res = VK_SUCCESS;
 //create instance - a connection between the application and the Vulkan library
 res = createInstance(vkGPU, sample_id);
@@ -2126,7 +2126,7 @@ vkGetPhysicalDeviceMemoryProperties(vkGPU->physicalDevice, &vkGPU->physicalDevic
 glslang_initialize_process();
 //compiler can be initialized before VkFFT
 
-#elif(VKFFT_BACKEND_CUDA) //CUDA API
+#elif(VKFFT_BACKEND_IS_CUDA) //CUDA API
 CUresult res = CUDA_SUCCESS;
 cudaError_t res2 = cudaSuccess;
 res = cuInit(0);
@@ -2137,7 +2137,7 @@ res = cuDeviceGet(&vkGPU->device, (int)vkGPU->device_id);
 if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
 res = cuCtxCreate(&vkGPU->context, 0, (int)vkGPU->device);
 if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
-#elif(VKFFT_BACKEND_HIP) //HIP API
+#elif(VKFFT_BACKEND_IS_HIP) //HIP API
 hipError_t res = hipSuccess;
 res = hipInit(0);
 if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
@@ -2147,7 +2147,7 @@ res = hipDeviceGet(&vkGPU->device, (int)vkGPU->device_id);
 if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_GET_DEVICE; 
 res = hipCtxCreate(&vkGPU->context, 0, (int)vkGPU->device);
 if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
-#elif(VKFFT_BACKEND_OPENCL) //OpenCL API
+#elif(VKFFT_BACKEND_IS_OPENCL) //OpenCL API
 cl_int res = CL_SUCCESS;
 cl_uint numPlatforms;
 res = clGetPlatformIDs(0, 0, &numPlatforms);
@@ -2183,7 +2183,7 @@ for (uint64_t j = 0; j < numPlatforms; j++) {
 	free(deviceList);
 }
 free(platforms);
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 	res = zeInit(0);
 	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
@@ -2249,7 +2249,7 @@ free(platforms);
 		free(deviceList);
 	}
 	free(drivers);
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
     NS::Array* devices = MTL::CopyAllDevices();
     MTL::Device* device = (MTL::Device*)devices->object(vkGPU->device_id);
     vkGPU->device = device;
@@ -2280,32 +2280,32 @@ configuration.size[0] = Nx; //FFT size
 uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * configuration.size[0];
 
 //Device management + code submission
-#if(VKFFT_BACKEND_METAL)
+#if(VKFFT_BACKEND_IS_METAL)
 configuration.device = vkGPU->device;
 #else
 configuration.device = &vkGPU->device;
 #endif
 
-#if(VKFFT_BACKEND_VULKAN) //Vulkan API		
+#if(VKFFT_BACKEND_IS_VULKAN) //Vulkan API		
 configuration.queue = &vkGPU->queue;
 configuration.fence = &vkGPU->fence; 			
 configuration.commandPool = &vkGPU->commandPool; 			
 configuration.physicalDevice = &vkGPU->physicalDevice; 			
 configuration.isCompilerInitialized = isCompilerInitialized; //glslang compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization 
-#elif(VKFFT_BACKEND_OPENCL) //OpenCL API		
+#elif(VKFFT_BACKEND_IS_OPENCL) //OpenCL API		
 configuration.context = &vkGPU->context; 
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 configuration.context = &vkGPU->context;
 configuration.commandQueue = &vkGPU->commandQueue;
 configuration.commandQueueID = vkGPU->commandQueueID;
-#elif(VKFFT_BACKEND_METAL)             
+#elif(VKFFT_BACKEND_IS_METAL)             
 configuration.queue = vkGPU->queue;
 #endif
 
 allocateBuffer(buffer, bufferSize); //Pseudocode for buffer allocation, differs between APIs
 transferDataFromCPU(buffer, cpu_buffer); //Pseudocode for data transfer from CPU to GPU, differs between APIs
 
-#if(VKFFT_BACKEND_VULKAN) //Vulkan API needs bufferSize at initialization	
+#if(VKFFT_BACKEND_IS_VULKAN) //Vulkan API needs bufferSize at initialization	
 configuration.bufferSize = &bufferSize; 
 #endif
 
@@ -2313,13 +2313,13 @@ VkFFTResult resFFT = initializeVkFFT(&app, configuration);
 
 VkFFTLaunchParams launchParams = {};
 launchParams.buffer = &buffer;
-#if(VKFFT_BACKEND_VULKAN) //Vulkan API 
+#if(VKFFT_BACKEND_IS_VULKAN) //Vulkan API 
 launchParams.commandBuffer = &commandBuffer;
-#elif(VKFFT_BACKEND_OPENCL) //OpenCL API
+#elif(VKFFT_BACKEND_IS_OPENCL) //OpenCL API
 launchParams.commandQueue = &commandQueue;
-#elif(VKFFT_BACKEND_LEVEL_ZERO) //Level Zero API
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO) //Level Zero API
 launchParams->commandList = &commandList;
-#elif(VKFFT_BACKEND_METAL) //Metal API
+#elif(VKFFT_BACKEND_IS_METAL) //Metal API
 launchParams->commandBuffer = commandBuffer;
 launchParams->commandEncoder = commandEncoder;
 #endif

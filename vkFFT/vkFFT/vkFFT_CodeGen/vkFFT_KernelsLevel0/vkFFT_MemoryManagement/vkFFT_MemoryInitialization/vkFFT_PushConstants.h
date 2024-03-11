@@ -45,19 +45,19 @@ static inline void appendPushConstants(VkFFTSpecializationConstantsLayout* sc) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if (sc->pushConstantsStructSize == 0)
 		return;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	sc->tempLen = sprintf(sc->tempStr, "layout(push_constant) uniform PushConsts\n{\n");
 	PfAppendLine(sc);
 	
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	sc->tempLen = sprintf(sc->tempStr, "	typedef struct {\n");
 	PfAppendLine(sc);
 	
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	sc->tempLen = sprintf(sc->tempStr, "	typedef struct {\n");
 	PfAppendLine(sc);
 	
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	sc->tempLen = sprintf(sc->tempStr, "	typedef struct {\n");
 	PfAppendLine(sc);
 	
@@ -93,23 +93,23 @@ static inline void appendPushConstants(VkFFTSpecializationConstantsLayout* sc) {
 		sprintf(tempCopyStr, "consts.%s", sc->kernelOffset.name);
 		sprintf(sc->kernelOffset.name, "%s", tempCopyStr);
 	}
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	sc->tempLen = sprintf(sc->tempStr, "} consts;\n\n");
 	PfAppendLine(sc);
 	
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	sc->tempLen = sprintf(sc->tempStr, "	}PushConsts;\n");
 	PfAppendLine(sc);
 	//sc->tempLen = sprintf(sc->tempStr, "	__constant__ PushConsts consts;\n");
 	//PfAppendLine(sc);
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	sc->tempLen = sprintf(sc->tempStr, "	}PushConsts;\n");
 	PfAppendLine(sc);
 	
 	//sc->tempLen = sprintf(sc->tempStr, "	__constant__ PushConsts consts;\n");
 	//PfAppendLine(sc);
 	
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	sc->tempLen = sprintf(sc->tempStr, "	}PushConsts;\n");
 	PfAppendLine(sc);
 	

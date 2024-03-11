@@ -301,7 +301,7 @@ static inline void appendRegisterInitialization(VkFFTSpecializationConstantsLayo
 		PfDefine(sc, &sc->raderIDx2, name);
 		PfSetToZero(sc, &sc->raderIDx2);
 		
-		/*#if((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP))
+		/*#if((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP))
 				sprintf(sc->gl_SubgroupInvocationID, "gl_SubgroupInvocationID");
 				sprintf(sc->gl_SubgroupID, "gl_SubgroupID");
 				if (sc->localSize[1] == 1) {
@@ -604,7 +604,7 @@ static inline void freeRegisterInitialization(VkFFTSpecializationConstantsLayout
 
 		PfDeallocateContainer(sc, &sc->raderIDx2);
 
-		/*#if((VKFFT_BACKEND_CUDA)||(VKFFT_BACKEND_HIP))
+		/*#if((VKFFT_BACKEND_IS_CUDA)||(VKFFT_BACKEND_IS_HIP))
 				sprintf(sc->gl_SubgroupInvocationID, "gl_SubgroupInvocationID");
 				sprintf(sc->gl_SubgroupID, "gl_SubgroupID");
 				if (sc->localSize[1] == 1) {

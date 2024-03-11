@@ -446,7 +446,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		if (!app->configuration.paddedSizes) return VKFFT_ERROR_EMPTY_useCustomBluesteinPaddingPattern_arrays;
 	}
 	//set device parameters
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	if (!inputLaunchConfiguration.isCompilerInitialized) {
 		if (!app->configuration.isCompilerInitialized) {
 			int resGlslangInitialize = glslang_initialize_process();
@@ -535,7 +535,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
 		break;
 	}
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	CUresult res = CUDA_SUCCESS;
 	cudaError_t res_t = cudaSuccess;
 	if (inputLaunchConfiguration.device == 0) {
@@ -652,7 +652,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.registerBoost4Step = 1;
 	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 4194305 : 4194305;
 	app->configuration.vendorID = 0x10DE;
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipError_t res = hipSuccess;
 	if (inputLaunchConfiguration.device == 0) {
 		deleteVkFFT(app);
@@ -757,7 +757,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.registerBoost4Step = 1;
 	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1048576 : 2097152;
 	app->configuration.vendorID = 0x1002;
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_int res = 0;
 	if (inputLaunchConfiguration.device == 0) {
 		deleteVkFFT(app);
@@ -858,7 +858,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
 		break;
 	}
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 	if (inputLaunchConfiguration.device == 0) {
 		deleteVkFFT(app);
@@ -903,7 +903,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
 	app->configuration.vendorID = 0x8086;
 	app->configuration.useRaderUintLUT = 1;
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 	if (inputLaunchConfiguration.device == 0) {
 		deleteVkFFT(app);
 		return VKFFT_ERROR_INVALID_DEVICE;
@@ -1047,7 +1047,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 
 	if (inputLaunchConfiguration.bufferNum == 0)	app->configuration.bufferNum = 1;
 	else app->configuration.bufferNum = inputLaunchConfiguration.bufferNum;
-#if(VKFFT_BACKEND_VULKAN) 
+#if(VKFFT_BACKEND_IS_VULKAN) 
 	if (inputLaunchConfiguration.bufferSize == 0) {
 		deleteVkFFT(app);
 		return VKFFT_ERROR_EMPTY_bufferSize;
@@ -1069,7 +1069,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (app->configuration.userTempBuffer != 0) {
 		if (inputLaunchConfiguration.tempBufferNum == 0)	app->configuration.tempBufferNum = 1;
 		else app->configuration.tempBufferNum = inputLaunchConfiguration.tempBufferNum;
-#if(VKFFT_BACKEND_VULKAN) 
+#if(VKFFT_BACKEND_IS_VULKAN) 
 		if (inputLaunchConfiguration.tempBufferSize == 0) {
 			deleteVkFFT(app);
 			return VKFFT_ERROR_EMPTY_tempBufferSize;
@@ -1100,7 +1100,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (app->configuration.isInputFormatted) {
 		if (inputLaunchConfiguration.inputBufferNum == 0)	app->configuration.inputBufferNum = 1;
 		else app->configuration.inputBufferNum = inputLaunchConfiguration.inputBufferNum;
-#if(VKFFT_BACKEND_VULKAN) 
+#if(VKFFT_BACKEND_IS_VULKAN) 
 		if (inputLaunchConfiguration.inputBufferSize == 0) {
 			deleteVkFFT(app);
 			return VKFFT_ERROR_EMPTY_inputBufferSize;
@@ -1127,7 +1127,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		if (inputLaunchConfiguration.outputBufferNum == 0)	app->configuration.outputBufferNum = 1;
 		else
 			app->configuration.outputBufferNum = inputLaunchConfiguration.outputBufferNum;
-#if(VKFFT_BACKEND_VULKAN) 
+#if(VKFFT_BACKEND_IS_VULKAN) 
 		if (inputLaunchConfiguration.outputBufferSize == 0) {
 			deleteVkFFT(app);
 			return VKFFT_ERROR_EMPTY_outputBufferSize;
@@ -1153,7 +1153,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (app->configuration.performConvolution) {
 		if (inputLaunchConfiguration.kernelNum == 0)	app->configuration.kernelNum = 1;
 		else app->configuration.kernelNum = inputLaunchConfiguration.kernelNum;
-#if(VKFFT_BACKEND_VULKAN) 
+#if(VKFFT_BACKEND_IS_VULKAN) 
 		if (inputLaunchConfiguration.kernelSize == 0) {
 			deleteVkFFT(app);
 			return VKFFT_ERROR_EMPTY_kernelSize;
@@ -1446,7 +1446,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (inputLaunchConfiguration.swapTo3Stage4Step != 0)	app->configuration.swapTo3Stage4Step = inputLaunchConfiguration.swapTo3Stage4Step;
 	if ((app->configuration.performDCT > 0) || (app->configuration.performDST > 0)) app->configuration.performBandwidthBoost = -1;
 	if (inputLaunchConfiguration.performBandwidthBoost != 0)	app->configuration.performBandwidthBoost = inputLaunchConfiguration.performBandwidthBoost;
-#if(VKFFT_BACKEND_VULKAN)	
+#if(VKFFT_BACKEND_IS_VULKAN)	
 	if (inputLaunchConfiguration.stagingBuffer != 0)	app->configuration.stagingBuffer = inputLaunchConfiguration.stagingBuffer;
 	if (inputLaunchConfiguration.stagingBufferMemory != 0)	app->configuration.stagingBufferMemory = inputLaunchConfiguration.stagingBufferMemory;
 #endif	
@@ -1459,7 +1459,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (inputLaunchConfiguration.keepShaderCode != 0)	app->configuration.keepShaderCode = inputLaunchConfiguration.keepShaderCode;
 	if (inputLaunchConfiguration.printMemoryLayout != 0)	app->configuration.printMemoryLayout = inputLaunchConfiguration.printMemoryLayout;
 	if (inputLaunchConfiguration.considerAllAxesStrided != 0)	app->configuration.considerAllAxesStrided = inputLaunchConfiguration.considerAllAxesStrided;
-#if(!VKFFT_BACKEND_METAL)
+#if(!VKFFT_BACKEND_IS_METAL)
 	if (inputLaunchConfiguration.loadApplicationString != 0)	app->configuration.loadApplicationString = inputLaunchConfiguration.loadApplicationString;
 	if (inputLaunchConfiguration.saveApplicationToString != 0)	app->configuration.saveApplicationToString = inputLaunchConfiguration.saveApplicationToString;
 #endif
@@ -1481,7 +1481,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	}
 	//temporary set:
 	app->configuration.registerBoost4Step = 1;
-#if(VKFFT_BACKEND_VULKAN) 
+#if(VKFFT_BACKEND_IS_VULKAN) 
 	app->configuration.useUint64 = 0; //No physical addressing mode in Vulkan shaders. Use multiple-buffer support to achieve emulation of physical addressing.
 #endif
 	//pfUINT initSharedMemory = app->configuration.sharedMemorySize;
@@ -1623,19 +1623,19 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 	}
 
 	if (app->configuration.allocateTempBuffer && (app->configuration.tempBuffer == 0)) {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		VkResult res = VK_SUCCESS;
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 		cudaError_t res = cudaSuccess;
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 		hipError_t res = hipSuccess;
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 		cl_int res = CL_SUCCESS;
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 		ze_result_t res = ZE_RESULT_SUCCESS;
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 #endif
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		app->configuration.tempBuffer = (VkBuffer*)malloc(sizeof(VkBuffer));
 		if (!app->configuration.tempBuffer) {
 			deleteVkFFT(app);
@@ -1646,7 +1646,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			deleteVkFFT(app);
 			return resFFT;
 		}
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 		app->configuration.tempBuffer = (void**)malloc(sizeof(void*));
 		if (!app->configuration.tempBuffer) {
 			deleteVkFFT(app);
@@ -1657,7 +1657,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 		}
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 		app->configuration.tempBuffer = (void**)malloc(sizeof(void*));
 		if (!app->configuration.tempBuffer) {
 			deleteVkFFT(app);
@@ -1668,7 +1668,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 		}
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 		app->configuration.tempBuffer = (cl_mem*)malloc(sizeof(cl_mem));
 		if (!app->configuration.tempBuffer) {
 			deleteVkFFT(app);
@@ -1679,7 +1679,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 		}
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 		app->configuration.tempBuffer = (void**)malloc(sizeof(void*));
 		if (!app->configuration.tempBuffer) {
 			deleteVkFFT(app);
@@ -1692,7 +1692,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 		}
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 		app->configuration.tempBuffer = (MTL::Buffer**)malloc(sizeof(MTL::Buffer*));
 		if (!app->configuration.tempBuffer) {
 			deleteVkFFT(app);
@@ -1865,7 +1865,7 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 			}
 		}
 	}
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	if (app->configuration.isCompilerInitialized) {
 		glslang_finalize_process();
 		app->configuration.isCompilerInitialized = 0;

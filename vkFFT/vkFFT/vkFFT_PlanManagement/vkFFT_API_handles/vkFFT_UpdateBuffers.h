@@ -238,7 +238,7 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 	axis->specializationConstants.numBuffersBound[1] = (int)axis->specializationConstants.outputBufferBlockNum;
 	axis->specializationConstants.numBuffersBound[2] = 0;
 	axis->specializationConstants.numBuffersBound[3] = 0;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkDescriptorPoolSize descriptorPoolSize = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 	descriptorPoolSize.descriptorCount = (uint32_t)(axis->specializationConstants.inputBufferBlockNum + axis->specializationConstants.outputBufferBlockNum);
 #endif
@@ -246,7 +246,7 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 	if ((axis_id == (app->configuration.FFTdim-1)) && (axis_upload_id == 0) && (app->configuration.performConvolution)) {
 		axis->specializationConstants.convolutionBindingID = (int)axis->numBindings;
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = (int)axis->specializationConstants.kernelBlockNum;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		descriptorPoolSize.descriptorCount += (uint32_t)axis->specializationConstants.kernelBlockNum;
 #endif
 		axis->numBindings++;
@@ -254,7 +254,7 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 	if (app->configuration.useLUT == 1) {
 		axis->specializationConstants.LUTBindingID = (int)axis->numBindings;
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = 1;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		descriptorPoolSize.descriptorCount++;
 #endif
 		axis->numBindings++;
@@ -262,7 +262,7 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 	if (axis->specializationConstants.raderUintLUT) {
 		axis->specializationConstants.RaderUintLUTBindingID = (int)axis->numBindings;
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = 1;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		descriptorPoolSize.descriptorCount++;
 #endif
 		axis->numBindings++;
@@ -274,7 +274,7 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 			axis->bufferBluesteinFFT = &app->bufferBluesteinFFT[axis_id];
 		axis->specializationConstants.BluesteinConvolutionBindingID = (int)axis->numBindings;
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = 1;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		descriptorPoolSize.descriptorCount++;
 #endif
 		axis->numBindings++;
@@ -283,12 +283,12 @@ static inline VkFFTResult VkFFTConfigureDescriptors(VkFFTApplication* app, VkFFT
 		axis->bufferBluestein = &app->bufferBluestein[axis_id];
 		axis->specializationConstants.BluesteinMultiplicationBindingID = (int)axis->numBindings;
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = 1;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		descriptorPoolSize.descriptorCount++;
 #endif
 		axis->numBindings++;
 	}
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkResult res = VK_SUCCESS;
 	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
 	descriptorPoolCreateInfo.poolSizeCount = 1;
@@ -565,13 +565,13 @@ static inline VkFFTResult VkFFTConfigureDescriptorsR2CMultiUploadDecomposition(V
 	axis->specializationConstants.numBuffersBound[2] = 0;
 	axis->specializationConstants.numBuffersBound[3] = 0;
 
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkDescriptorPoolSize descriptorPoolSize = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 	descriptorPoolSize.descriptorCount = (uint32_t)(axis->specializationConstants.numBuffersBound[0] + axis->specializationConstants.numBuffersBound[1]);
 #endif
 	if ((axis_id == (app->configuration.FFTdim-1)) && (axis_upload_id == 0) && (app->configuration.performConvolution)) {
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = (int)axis->specializationConstants.kernelBlockNum;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		descriptorPoolSize.descriptorCount += (uint32_t)axis->specializationConstants.kernelBlockNum;
 #endif
 		axis->numBindings++;
@@ -579,12 +579,12 @@ static inline VkFFTResult VkFFTConfigureDescriptorsR2CMultiUploadDecomposition(V
 
 	if (app->configuration.useLUT == 1) {
 		axis->specializationConstants.numBuffersBound[axis->numBindings] = 1;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		descriptorPoolSize.descriptorCount++;
 #endif
 		axis->numBindings++;
 	}
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkResult res = VK_SUCCESS;
 	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
 	descriptorPoolCreateInfo.poolSizeCount = 1;
@@ -794,12 +794,12 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 		axis->specializationConstants.inputOffset.type = 31;
 		axis->specializationConstants.outputOffset.type = 31;
 		axis->specializationConstants.kernelOffset.type = 31;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		const VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 #endif
 		for (pfUINT i = 0; i < axis->numBindings; ++i) {
 			for (pfUINT j = 0; j < axis->specializationConstants.numBuffersBound[i]; ++j) {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				VkDescriptorBufferInfo descriptorBufferInfo = { 0 };
 #endif
 				if (i == 0) {
@@ -824,7 +824,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 								}
 							}
 							axis->inputBuffer = app->configuration.inputBuffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 							descriptorBufferInfo.buffer = app->configuration.inputBuffer[bufferId];
 							descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize);
 							descriptorBufferInfo.offset = offset * (axis->specializationConstants.inputBufferBlockSize);
@@ -853,7 +853,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 									}
 								}
 								axis->inputBuffer = app->configuration.outputBuffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 								descriptorBufferInfo.buffer = app->configuration.outputBuffer[bufferId];
 								descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize);
 								descriptorBufferInfo.offset = offset * (axis->specializationConstants.inputBufferBlockSize);
@@ -883,7 +883,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 											}
 										}
 										axis->inputBuffer = app->configuration.buffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 										descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
 #endif
 									}
@@ -906,7 +906,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 											}
 										}
 										axis->inputBuffer = app->configuration.tempBuffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 										descriptorBufferInfo.buffer = app->configuration.tempBuffer[bufferId];
 #endif
 									}
@@ -930,7 +930,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 										}
 									}
 									axis->inputBuffer = app->configuration.buffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 									descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
 #endif
 								}
@@ -938,7 +938,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 									axis->specializationConstants.inputOffset.data.i = app->configuration.bufferOffset;
 								}
 							}
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 							if (axis->specializationConstants.performBufferSetUpdate) {
 								descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize);
 								descriptorBufferInfo.offset = offset * (axis->specializationConstants.inputBufferBlockSize);
@@ -978,7 +978,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 								}
 							}
 							axis->outputBuffer = app->configuration.outputBuffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 							descriptorBufferInfo.buffer = app->configuration.outputBuffer[bufferId];
 							descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize);
 							descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize);
@@ -1011,7 +1011,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 										}
 									}
 									axis->outputBuffer = app->configuration.inputBuffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 									descriptorBufferInfo.buffer = app->configuration.inputBuffer[bufferId];
 #endif
 								}
@@ -1035,7 +1035,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 											}
 										}
 										axis->outputBuffer = app->configuration.tempBuffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 										descriptorBufferInfo.buffer = app->configuration.tempBuffer[bufferId];
 #endif
 									}
@@ -1058,7 +1058,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 											}
 										}
 										axis->outputBuffer = app->configuration.buffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 										descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
 #endif
 									}
@@ -1084,7 +1084,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 										}
 									}
 									axis->outputBuffer = app->configuration.inputBuffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 									descriptorBufferInfo.buffer = app->configuration.inputBuffer[bufferId];
 #endif
 								}
@@ -1107,7 +1107,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 										}
 									}
 									axis->outputBuffer = app->configuration.buffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 									descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
 #endif
 								}
@@ -1116,7 +1116,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 								}
 							}
 						}
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 						if (axis->specializationConstants.performBufferSetUpdate) {
 							descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize);
 							descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize);
@@ -1141,7 +1141,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 
 							}
 						}
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 						descriptorBufferInfo.buffer = app->configuration.kernel[bufferId];
 						descriptorBufferInfo.range = (axis->specializationConstants.kernelBlockSize);
 						descriptorBufferInfo.offset = offset * (axis->specializationConstants.kernelBlockSize);
@@ -1152,7 +1152,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 					}
 				}
 				if ((i == axis->specializationConstants.LUTBindingID) && (app->configuration.useLUT == 1)) {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 					if (axis->specializationConstants.performBufferSetUpdate) {
 						descriptorBufferInfo.buffer = axis->bufferLUT;
 						descriptorBufferInfo.offset = 0;
@@ -1161,7 +1161,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 #endif
 				}
 				if ((i == axis->specializationConstants.RaderUintLUTBindingID) && (axis->specializationConstants.raderUintLUT)) {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 					if (axis->specializationConstants.performBufferSetUpdate) {
 						descriptorBufferInfo.buffer = axis->bufferRaderUintLUT;
 						descriptorBufferInfo.offset = 0;
@@ -1170,7 +1170,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 #endif
 				}
 				if ((i == axis->specializationConstants.BluesteinConvolutionBindingID) && (app->useBluesteinFFT[axis_id]) && (axis_upload_id == 0)) {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 					if (axis->specializationConstants.performBufferSetUpdate) {
 						if (axis->specializationConstants.inverseBluestein)
 							descriptorBufferInfo.buffer = app->bufferBluesteinIFFT[axis_id];
@@ -1182,7 +1182,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 #endif
 				}
 				if ((i == axis->specializationConstants.BluesteinMultiplicationBindingID) && (app->useBluesteinFFT[axis_id]) && (axis_upload_id == (FFTPlan->numAxisUploads[axis_id] - 1))) {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 					if (axis->specializationConstants.performBufferSetUpdate) {
 						descriptorBufferInfo.buffer = app->bufferBluestein[axis_id];
 						descriptorBufferInfo.offset = 0;
@@ -1190,7 +1190,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 					}
 #endif
 				}
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				if (axis->specializationConstants.performBufferSetUpdate) {
 					VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
 					writeDescriptorSet.dstSet = axis->descriptorSet;
@@ -1225,12 +1225,12 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 }
 static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTApplication* app, VkFFTPlan* FFTPlan, VkFFTAxis* axis, pfUINT axis_id, pfUINT axis_upload_id, pfUINT inverse) {
 	if (axis->specializationConstants.performOffsetUpdate || axis->specializationConstants.performBufferSetUpdate) {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		const VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 #endif
 		for (pfUINT i = 0; i < axis->numBindings; ++i) {
 			for (pfUINT j = 0; j < axis->specializationConstants.numBuffersBound[i]; ++j) {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				VkDescriptorBufferInfo descriptorBufferInfo = { 0 };
 #endif
 				if (i == 0) {
@@ -1255,7 +1255,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 									}
 								}
 								axis->inputBuffer = app->configuration.inputBuffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 								descriptorBufferInfo.buffer = app->configuration.inputBuffer[bufferId];
 								descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize);
 								descriptorBufferInfo.offset = offset * (axis->specializationConstants.inputBufferBlockSize);
@@ -1283,7 +1283,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 										}
 									}
 									axis->inputBuffer = app->configuration.outputBuffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 									descriptorBufferInfo.buffer = app->configuration.outputBuffer[bufferId];
 									descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize);
 									descriptorBufferInfo.offset = offset * (axis->specializationConstants.inputBufferBlockSize);
@@ -1310,7 +1310,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 										}
 									}
 									axis->inputBuffer = app->configuration.buffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 									descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
 									descriptorBufferInfo.range = (axis->specializationConstants.inputBufferBlockSize);
 									descriptorBufferInfo.offset = offset * (axis->specializationConstants.inputBufferBlockSize);
@@ -1352,7 +1352,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 									}
 								}
 								axis->inputBuffer = app->configuration.outputBuffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 								descriptorBufferInfo.buffer = app->configuration.outputBuffer[bufferId];
 								descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize);
 								descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize);
@@ -1379,7 +1379,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 									}
 								}
 								axis->inputBuffer = app->configuration.buffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 								descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
 								descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize);
 								descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize);
@@ -1410,7 +1410,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 									}
 								}
 								axis->outputBuffer = app->configuration.outputBuffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 								descriptorBufferInfo.buffer = app->configuration.outputBuffer[bufferId];
 								descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize);
 								descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize);
@@ -1438,7 +1438,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 										}
 									}
 									axis->outputBuffer = app->configuration.tempBuffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 									descriptorBufferInfo.buffer = app->configuration.tempBuffer[bufferId];
 									descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize);
 									descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize);
@@ -1463,7 +1463,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 										}
 									}
 									axis->outputBuffer = app->configuration.buffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 									descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
 									descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize);
 									descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize);
@@ -1505,7 +1505,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 									}
 								}
 								axis->outputBuffer = app->configuration.outputBuffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 								descriptorBufferInfo.buffer = app->configuration.outputBuffer[bufferId];
 								descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize);
 								descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize);
@@ -1532,7 +1532,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 									}
 								}
 								axis->outputBuffer = app->configuration.buffer;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 								descriptorBufferInfo.buffer = app->configuration.buffer[bufferId];
 								descriptorBufferInfo.range = (axis->specializationConstants.outputBufferBlockSize);
 								descriptorBufferInfo.offset = offset * (axis->specializationConstants.outputBufferBlockSize);
@@ -1560,7 +1560,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 
 							}
 						}
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 						descriptorBufferInfo.buffer = app->configuration.kernel[bufferId];
 						descriptorBufferInfo.range = (axis->specializationConstants.kernelBlockSize);
 						descriptorBufferInfo.offset = offset * (axis->specializationConstants.kernelBlockSize);
@@ -1571,7 +1571,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 					}
 				}
 				if ((i == axis->numBindings - 1) && (app->configuration.useLUT == 1)) {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 					if (axis->specializationConstants.performBufferSetUpdate) {
 						descriptorBufferInfo.buffer = axis->bufferLUT;
 						descriptorBufferInfo.offset = 0;
@@ -1579,7 +1579,7 @@ static inline VkFFTResult VkFFTUpdateBufferSetR2CMultiUploadDecomposition(VkFFTA
 					}
 #endif
 				}
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				if (axis->specializationConstants.performBufferSetUpdate) {
 					VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
 					writeDescriptorSet.dstSet = axis->descriptorSet;

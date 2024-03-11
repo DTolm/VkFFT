@@ -30,17 +30,17 @@
 
 static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FFTPlan, VkFFTAxis* axis, pfUINT inverse){
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkResult res = VK_SUCCESS;
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cudaError_t res = cudaSuccess;
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipError_t res = hipSuccess;
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_int res = CL_SUCCESS;
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 #endif
 	//allocate LUT
 	if (app->configuration.useLUT == 1) {
@@ -526,7 +526,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 			axis->referenceLUT = 0;
 			if ((axis->specializationConstants.reverseBluesteinMultiUpload == 1) && (!disableReferenceLUT_DCT)) {
 				axis->bufferLUT = FFTPlan->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				axis->bufferLUTDeviceMemory = FFTPlan->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
 #endif
 				axis->bufferLUTSize = FFTPlan->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUTSize;
@@ -535,7 +535,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 			else {
 				if ((!inverse) && (!app->configuration.makeForwardPlanOnly) && (!disableReferenceLUT_DCT)) {
 					axis->bufferLUT = app->localFFTPlan_inverse->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 					axis->bufferLUTDeviceMemory = app->localFFTPlan_inverse->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
 #endif
 					axis->bufferLUTSize = app->localFFTPlan_inverse->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUTSize;
@@ -556,7 +556,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 					}
 					if (checkRadixOrder && (!disableReferenceLUT_DCT) && (axis->specializationConstants.axis_id >= 1) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] > 1))) && ((axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[0][0].specializationConstants.fft_dim_full.data.i) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] == 1) && (axis->specializationConstants.fft_dim_full.data.i < axis->specializationConstants.maxSingleSizeStrided.data.i / axis->specializationConstants.registerBoost)) && (((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[0]))) {
 						axis->bufferLUT = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 						axis->bufferLUTDeviceMemory = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
 #endif
 						axis->bufferLUTSize = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUTSize;
@@ -579,7 +579,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
                                 }
                                 if (checkRadixOrder && (!disableReferenceLUT_DCT) && (axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[p][0].specializationConstants.fft_dim_full.data.i) && (((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[p]))) {
                                     axis->bufferLUT = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
                                     axis->bufferLUTDeviceMemory = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
 #endif
                                     axis->bufferLUTSize = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUTSize;
@@ -588,7 +588,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
                             }
                         }
                         if(axis->referenceLUT == 0){
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 							resFFT = allocateBufferVulkan(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
 							if (resFFT != VKFFT_SUCCESS) {
 								deleteVkFFT(app);
@@ -603,7 +603,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return resFFT;
 							}
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 							res = cudaMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
 							if (res != cudaSuccess) {
 								deleteVkFFT(app);
@@ -618,7 +618,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return resFFT;
 							}
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 							res = hipMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
 							if (res != hipSuccess) {
 								deleteVkFFT(app);
@@ -633,7 +633,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return resFFT;
 							}
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 							axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
 							if (res != CL_SUCCESS) {
 								deleteVkFFT(app);
@@ -641,7 +641,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 							}
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 							ze_device_mem_alloc_desc_t device_desc = VKFFT_ZERO_INIT;
 							device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
 							res = zeMemAllocDevice(app->configuration.context[0], &device_desc, axis->bufferLUTSize, sizeof(float), app->configuration.device[0], &axis->bufferLUT);
@@ -658,7 +658,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return resFFT;
 							}
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 							axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate);
 							resFFT = VkFFT_TransferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
 							if (resFFT != VKFFT_SUCCESS) {
@@ -824,7 +824,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 			axis->referenceLUT = 0;
 			if ((axis->specializationConstants.reverseBluesteinMultiUpload == 1) && (!disableReferenceLUT_DCT)) {
 				axis->bufferLUT = FFTPlan->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				axis->bufferLUTDeviceMemory = FFTPlan->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
 #endif
 				axis->bufferLUTSize = FFTPlan->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUTSize;
@@ -833,7 +833,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 			else {
 				if ((!inverse) && (!app->configuration.makeForwardPlanOnly) && (!disableReferenceLUT_DCT)) {
 					axis->bufferLUT = app->localFFTPlan_inverse->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 					axis->bufferLUTDeviceMemory = app->localFFTPlan_inverse->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
 #endif
 					axis->bufferLUTSize = app->localFFTPlan_inverse->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUTSize;
@@ -854,7 +854,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 					}
 					if (checkRadixOrder && (!disableReferenceLUT_DCT) && (axis->specializationConstants.axis_id >= 1) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] > 1))) && ((axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[0][0].specializationConstants.fft_dim_full.data.i) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] == 1) && (axis->specializationConstants.fft_dim_full.data.i < axis->specializationConstants.maxSingleSizeStrided.data.i / axis->specializationConstants.registerBoost)) && ((((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[0]))) {
 						axis->bufferLUT = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 						axis->bufferLUTDeviceMemory = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
 #endif
 						axis->bufferLUTSize = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUTSize;
@@ -877,7 +877,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
                                 }
                                 if (checkRadixOrder && (!disableReferenceLUT_DCT) && (axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[p][0].specializationConstants.fft_dim_full.data.i) && (((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[p]))) {
                                     axis->bufferLUT = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
                                     axis->bufferLUTDeviceMemory = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
 #endif
                                     axis->bufferLUTSize = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUTSize;
@@ -886,7 +886,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
                             }
                         }
                         if(axis->referenceLUT == 0){
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 							resFFT = allocateBufferVulkan(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
 							if (resFFT != VKFFT_SUCCESS) {
 								deleteVkFFT(app);
@@ -901,7 +901,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return resFFT;
 							}
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 							res = cudaMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
 							if (res != cudaSuccess) {
 								deleteVkFFT(app);
@@ -916,7 +916,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return resFFT;
 							}
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 							res = hipMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
 							if (res != hipSuccess) {
 								deleteVkFFT(app);
@@ -931,7 +931,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return resFFT;
 							}
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 							axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
 							if (res != CL_SUCCESS) {
 								deleteVkFFT(app);
@@ -939,7 +939,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 							}
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 							ze_device_mem_alloc_desc_t device_desc = VKFFT_ZERO_INIT;
 							device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
 							res = zeMemAllocDevice(app->configuration.context[0], &device_desc, axis->bufferLUTSize, sizeof(float), app->configuration.device[0], &axis->bufferLUT);
@@ -956,7 +956,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return resFFT;
 							}
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 							axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate);
 							resFFT = VkFFT_TransferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
 							if (resFFT != VKFFT_SUCCESS) {
@@ -1121,7 +1121,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 
 			if ((axis->specializationConstants.reverseBluesteinMultiUpload == 1) && (!disableReferenceLUT_DCT)) {
 				axis->bufferLUT = FFTPlan->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				axis->bufferLUTDeviceMemory = FFTPlan->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
 #endif
 				axis->bufferLUTSize = FFTPlan->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUTSize;
@@ -1130,7 +1130,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 			else {
 				if ((!inverse) && (!app->configuration.makeForwardPlanOnly) && (!disableReferenceLUT_DCT)) {
 					axis->bufferLUT = app->localFFTPlan_inverse->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 					axis->bufferLUTDeviceMemory = app->localFFTPlan_inverse->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
 #endif
 					axis->bufferLUTSize = app->localFFTPlan_inverse->axes[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id].bufferLUTSize;
@@ -1151,7 +1151,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 					}
 					if (checkRadixOrder && (!disableReferenceLUT_DCT) && (axis->specializationConstants.axis_id >= 1) && (!((!axis->specializationConstants.reorderFourStep) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] > 1))) && ((axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[0][0].specializationConstants.fft_dim_full.data.i) && (FFTPlan->numAxisUploads[axis->specializationConstants.axis_id] == 1) && (axis->specializationConstants.fft_dim_full.data.i < axis->specializationConstants.maxSingleSizeStrided.data.i / axis->specializationConstants.registerBoost)) && ((((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[0]))) {
 						axis->bufferLUT = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 						axis->bufferLUTDeviceMemory = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
 #endif
 						axis->bufferLUTSize = FFTPlan->axes[0][axis->specializationConstants.axis_upload_id].bufferLUTSize;
@@ -1174,7 +1174,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
                                 }
                                 if (checkRadixOrder && (!disableReferenceLUT_DCT) && (axis->specializationConstants.fft_dim_full.data.i == FFTPlan->axes[p][0].specializationConstants.fft_dim_full.data.i) && (((!axis->specializationConstants.performDCT) && (!axis->specializationConstants.performDST)) || (app->configuration.size[axis->specializationConstants.axis_id] == app->configuration.size[p]))) {
                                     axis->bufferLUT = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
                                     axis->bufferLUTDeviceMemory = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUTDeviceMemory;
 #endif
                                     axis->bufferLUTSize = FFTPlan->axes[p][axis->specializationConstants.axis_upload_id].bufferLUTSize;
@@ -1183,7 +1183,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
                             }
                         }
                         if(axis->referenceLUT == 0){
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 							resFFT = allocateBufferVulkan(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
 							if (resFFT != VKFFT_SUCCESS) {
 								deleteVkFFT(app);
@@ -1198,7 +1198,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return resFFT;
 							}
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 							res = cudaMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
 							if (res != cudaSuccess) {
 								deleteVkFFT(app);
@@ -1213,7 +1213,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return resFFT;
 							}
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 							res = hipMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
 							if (res != hipSuccess) {
 								deleteVkFFT(app);
@@ -1228,7 +1228,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return resFFT;
 							}
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 							axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
 							if (res != CL_SUCCESS) {
 								deleteVkFFT(app);
@@ -1236,7 +1236,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 							}
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 							ze_device_mem_alloc_desc_t device_desc = VKFFT_ZERO_INIT;
 							device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
 							res = zeMemAllocDevice(app->configuration.context[0], &device_desc, axis->bufferLUTSize, sizeof(float), app->configuration.device[0], &axis->bufferLUT);
@@ -1253,7 +1253,7 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 								tempLUT = 0;
 								return resFFT;
 							}
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 							axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate);
 							resFFT = VkFFT_TransferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
 							if (resFFT != VKFFT_SUCCESS) {
@@ -1276,17 +1276,17 @@ static inline VkFFTResult VkFFT_AllocateLUT(VkFFTApplication* app, VkFFTPlan* FF
 
 static inline VkFFTResult VkFFT_AllocateRaderUintLUT(VkFFTApplication* app, VkFFTAxis* axis){
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkResult res = VK_SUCCESS;
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cudaError_t res = cudaSuccess;
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipError_t res = hipSuccess;
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_int res = CL_SUCCESS;
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 #endif
 	//allocate RaderUintLUT
 	if (axis->specializationConstants.raderUintLUT) {
@@ -1315,7 +1315,7 @@ static inline VkFFTResult VkFFT_AllocateRaderUintLUT(VkFFTApplication* app, VkFF
 				}
 			}
 
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 			resFFT = allocateBufferVulkan(app, &app->bufferRaderUintLUT[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id], &app->bufferRaderUintLUTDeviceMemory[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, app->bufferRaderUintLUTSize[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id]);
 			if (resFFT != VKFFT_SUCCESS) {
 				deleteVkFFT(app);
@@ -1330,7 +1330,7 @@ static inline VkFFTResult VkFFT_AllocateRaderUintLUT(VkFFTApplication* app, VkFF
 				tempRaderUintLUT = 0;
 				return resFFT;
 			}
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 			res = cudaMalloc((void**)&app->bufferRaderUintLUT[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id], app->bufferRaderUintLUTSize[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id]);
 			if (res != cudaSuccess) {
 				deleteVkFFT(app);
@@ -1345,7 +1345,7 @@ static inline VkFFTResult VkFFT_AllocateRaderUintLUT(VkFFTApplication* app, VkFF
 				tempRaderUintLUT = 0;
 				return resFFT;
 			}
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 			res = hipMalloc((void**)&app->bufferRaderUintLUT[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id], app->bufferRaderUintLUTSize[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id]);
 			if (res != hipSuccess) {
 				deleteVkFFT(app);
@@ -1360,7 +1360,7 @@ static inline VkFFTResult VkFFT_AllocateRaderUintLUT(VkFFTApplication* app, VkFF
 				tempRaderUintLUT = 0;
 				return resFFT;
 			}
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 			app->bufferRaderUintLUT[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id] = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, app->bufferRaderUintLUTSize[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id], tempRaderUintLUT, &res);
 			if (res != CL_SUCCESS) {
 				deleteVkFFT(app);
@@ -1368,7 +1368,7 @@ static inline VkFFTResult VkFFT_AllocateRaderUintLUT(VkFFTApplication* app, VkFF
 				tempRaderUintLUT = 0;
 				return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 			}
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 			ze_device_mem_alloc_desc_t device_desc = VKFFT_ZERO_INIT;
 			device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
 			res = zeMemAllocDevice(app->configuration.context[0], &device_desc, app->bufferRaderUintLUTSize[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id], sizeof(uint32_t), app->configuration.device[0], &app->bufferRaderUintLUT[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id]);
@@ -1385,7 +1385,7 @@ static inline VkFFTResult VkFFT_AllocateRaderUintLUT(VkFFTApplication* app, VkFF
 				tempRaderUintLUT = 0;
 				return resFFT;
 			}
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 			app->bufferRaderUintLUT[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id] = app->configuration.device->newBuffer(app->bufferRaderUintLUTSize[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id], MTL::ResourceStorageModePrivate);
 			resFFT = VkFFT_TransferDataFromCPU(app, tempRaderUintLUT, &app->bufferRaderUintLUT[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id], app->bufferRaderUintLUTSize[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id]);
 			if (resFFT != VKFFT_SUCCESS) {
@@ -1410,7 +1410,7 @@ static inline VkFFTResult VkFFT_AllocateRaderUintLUT(VkFFTApplication* app, VkFF
 		}
 
 		axis->bufferRaderUintLUT = app->bufferRaderUintLUT[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id];
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		axis->bufferRaderUintLUTDeviceMemory = app->bufferRaderUintLUTDeviceMemory[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id];
 #endif
 		axis->bufferRaderUintLUTSize = app->bufferRaderUintLUTSize[axis->specializationConstants.axis_id][axis->specializationConstants.axis_upload_id];
@@ -1420,17 +1420,17 @@ static inline VkFFTResult VkFFT_AllocateRaderUintLUT(VkFFTApplication* app, VkFF
 
 static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan* FFTPlan, VkFFTAxis* axis, pfUINT inverse) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkResult res = VK_SUCCESS;
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cudaError_t res = cudaSuccess;
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipError_t res = hipSuccess;
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_int res = CL_SUCCESS;
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 	#endif
 	if (app->configuration.useLUT == 1) {
 		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
@@ -1461,14 +1461,14 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 			PfDeallocateContainer(&axis->specializationConstants, &temp1);
 			if ((!inverse) && (!app->configuration.makeForwardPlanOnly)) {
 				axis->bufferLUT = app->localFFTPlan_inverse->R2Cdecomposition.bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				axis->bufferLUTDeviceMemory = app->localFFTPlan_inverse->R2Cdecomposition.bufferLUTDeviceMemory;
 #endif
 				axis->bufferLUTSize = app->localFFTPlan_inverse->R2Cdecomposition.bufferLUTSize;
 				axis->referenceLUT = 1;
 			}
 			else {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				resFFT = allocateBufferVulkan(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
 				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
@@ -1483,7 +1483,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 				res = cudaMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
 				if (res != cudaSuccess) {
 					deleteVkFFT(app);
@@ -1498,7 +1498,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 				res = hipMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
 				if (res != hipSuccess) {
 					deleteVkFFT(app);
@@ -1513,7 +1513,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 				axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
 				if (res != CL_SUCCESS) {
 					deleteVkFFT(app);
@@ -1521,7 +1521,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 				}
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 				ze_device_mem_alloc_desc_t device_desc = VKFFT_ZERO_INIT;
 				device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
 				res = zeMemAllocDevice(app->configuration.context[0], &device_desc, axis->bufferLUTSize, sizeof(float), app->configuration.device[0], &axis->bufferLUT);
@@ -1538,7 +1538,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 				axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate);
 
 				resFFT = VkFFT_TransferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
@@ -1569,14 +1569,14 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 			axis->referenceLUT = 0;
 			if ((!inverse) && (!app->configuration.makeForwardPlanOnly)) {
 				axis->bufferLUT = app->localFFTPlan_inverse->R2Cdecomposition.bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				axis->bufferLUTDeviceMemory = app->localFFTPlan_inverse->R2Cdecomposition.bufferLUTDeviceMemory;
 #endif
 				axis->bufferLUTSize = app->localFFTPlan_inverse->R2Cdecomposition.bufferLUTSize;
 				axis->referenceLUT = 1;
 			}
 			else {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				resFFT = allocateBufferVulkan(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
 				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
@@ -1591,7 +1591,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 				res = cudaMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
 				if (res != cudaSuccess) {
 					deleteVkFFT(app);
@@ -1606,7 +1606,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 				res = hipMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
 				if (res != hipSuccess) {
 					deleteVkFFT(app);
@@ -1621,7 +1621,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 				axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
 				if (res != CL_SUCCESS) {
 					deleteVkFFT(app);
@@ -1629,7 +1629,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 				}
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 				ze_device_mem_alloc_desc_t device_desc = VKFFT_ZERO_INIT;
 				device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
 				res = zeMemAllocDevice(app->configuration.context[0], &device_desc, axis->bufferLUTSize, sizeof(float), app->configuration.device[0], &axis->bufferLUT);
@@ -1646,7 +1646,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 				axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate);
 
 				resFFT = VkFFT_TransferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
@@ -1677,14 +1677,14 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 			axis->referenceLUT = 0;
 			if ((!inverse) && (!app->configuration.makeForwardPlanOnly)) {
 				axis->bufferLUT = app->localFFTPlan_inverse->R2Cdecomposition.bufferLUT;
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				axis->bufferLUTDeviceMemory = app->localFFTPlan_inverse->R2Cdecomposition.bufferLUTDeviceMemory;
 #endif
 				axis->bufferLUTSize = app->localFFTPlan_inverse->R2Cdecomposition.bufferLUTSize;
 				axis->referenceLUT = 1;
 			}
 			else {
-#if(VKFFT_BACKEND_VULKAN)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				resFFT = allocateBufferVulkan(app, &axis->bufferLUT, &axis->bufferLUTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, axis->bufferLUTSize);
 				if (resFFT != VKFFT_SUCCESS) {
 					deleteVkFFT(app);
@@ -1699,7 +1699,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND_CUDA)
+#elif(VKFFT_BACKEND_IS_CUDA)
 				res = cudaMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
 				if (res != cudaSuccess) {
 					deleteVkFFT(app);
@@ -1714,7 +1714,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND_HIP)
+#elif(VKFFT_BACKEND_IS_HIP)
 				res = hipMalloc((void**)&axis->bufferLUT, axis->bufferLUTSize);
 				if (res != hipSuccess) {
 					deleteVkFFT(app);
@@ -1729,7 +1729,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND_OPENCL)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 				axis->bufferLUT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, axis->bufferLUTSize, tempLUT, &res);
 				if (res != CL_SUCCESS) {
 					deleteVkFFT(app);
@@ -1737,7 +1737,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 				}
-#elif(VKFFT_BACKEND_LEVEL_ZERO)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 				ze_device_mem_alloc_desc_t device_desc = VKFFT_ZERO_INIT;
 				device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
 				res = zeMemAllocDevice(app->configuration.context[0], &device_desc, axis->bufferLUTSize, sizeof(float), app->configuration.device[0], &axis->bufferLUT);
@@ -1754,7 +1754,7 @@ static inline VkFFTResult VkFFT_AllocateLUT_R2C(VkFFTApplication* app, VkFFTPlan
 					tempLUT = 0;
 					return resFFT;
 				}
-#elif(VKFFT_BACKEND_METAL)
+#elif(VKFFT_BACKEND_IS_METAL)
 				axis->bufferLUT = app->configuration.device->newBuffer(axis->bufferLUTSize, MTL::ResourceStorageModePrivate);
 
 				resFFT = VkFFT_TransferDataFromCPU(app, tempLUT, &axis->bufferLUT, axis->bufferLUTSize);
