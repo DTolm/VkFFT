@@ -90,7 +90,7 @@ struct PfContainer{
 	int size; //  bytes allcoated in name
 };
 
-typedef enum VkFFTVendor : pfUINT
+typedef enum VkFFTVendor
 {
 	VKFFT_VENDOR_AMD    = 0x1002,
 	VKFFT_VENDOR_INTEL  = 0x8086,
