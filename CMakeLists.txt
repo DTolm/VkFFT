@@ -1,25 +1,64 @@
-cmake_minimum_required(VERSION 3.11)
-project(VkFFT_TestSuite)
+cmake_minimum_required(VERSION 3.17)
+project(VkFFT_TestSuite LANGUAGES CXX)
 
+########################################################################################################################
+# Include CMake modules
+########################################################################################################################
+
+include(FetchContent)
+
+########################################################################################################################
+# Set up project options
+########################################################################################################################
+
+# Set the default build type to Release
 if(NOT CMAKE_BUILD_TYPE)
-set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
-set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+	set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
+	set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
 endif()
 
 if (NOT DEFINED GLSLANG_GIT_TAG)
 	set(GLSLANG_GIT_TAG "12.3.1")
 endif()
 
-include(FetchContent)
+# Enable Unity build by default (will work for CXX only, not CUDA or HIP)
+set(CMAKE_UNITY_BUILD ON CACHE BOOL "Enable Unity build" FORCE)
+
+# Set the default backend to Vulkan
 set(VKFFT_BACKEND 0 CACHE STRING "0 - Vulkan, 1 - CUDA, 2 - HIP, 3 - OpenCL, 4 - Level Zero, 5 - Metal")
 
-if(${VKFFT_BACKEND} EQUAL 1)
+# Parse the backend option and set VKFFT_BACKEND_NUM to the corresponding value and define VKFFT_BACKEND_*
+if((VKFFT_BACKEND EQUAL 0) OR (VKFFT_BACKEND STREQUAL "Vulkan"))
+	set(VKFFT_BACKEND_NUM 0)
+	set(VKFFT_BACKEND_IS_VULKAN ON)
+elseif((VKFFT_BACKEND EQUAL 1) OR (VKFFT_BACKEND STREQUAL "CUDA"))
+	set(VKFFT_BACKEND_NUM 1)
+	set(VKFFT_BACKEND_IS_CUDA ON)
+elseif((VKFFT_BACKEND EQUAL 2) OR (VKFFT_BACKEND STREQUAL "HIP"))
+	set(VKFFT_BACKEND_NUM 2)
+	set(VKFFT_BACKEND_IS_HIP ON)
+elseif((VKFFT_BACKEND EQUAL 3) OR (VKFFT_BACKEND STREQUAL "OpenCL"))
+	set(VKFFT_BACKEND_NUM 3)
+	set(VKFFT_BACKEND_IS_OPENCL ON)
+elseif((VKFFT_BACKEND EQUAL 4) OR (VKFFT_BACKEND STREQUAL "LevelZero"))
+	set(VKFFT_BACKEND_NUM 4)
+	set(VKFFT_BACKEND_IS_LEVEL_ZERO ON)
+elseif((VKFFT_BACKEND EQUAL 5) OR (VKFFT_BACKEND STREQUAL "Metal"))
+	set(VKFFT_BACKEND_NUM 5)
+	set(VKFFT_BACKEND_IS_METAL ON)
+else()
+	message(FATAL_ERROR "Invalid VKFFT_BACKEND value")
+endif()
+
+# Enable cuFFT benchmark by default if CUDA is enabled
+if(VKFFT_BACKEND_IS_CUDA)
 	option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" ON)
 else()
 	option(build_VkFFT_cuFFT_benchmark "Build VkFFT cuFFT benchmark" OFF)
 endif()
 
-if(${VKFFT_BACKEND} EQUAL 2)
+# Enable rocFFT benchmark by default if HIP is enabled
+if(VKFFT_BACKEND_IS_HIP)
 	option(build_VkFFT_rocFFT_benchmark "Build VkFFT rocFFT benchmark" ON)
 else()
 	option(build_VkFFT_rocFFT_benchmark "Build VkFFT rocFFT benchmark" OFF)
@@ -29,311 +68,296 @@ option(build_VkFFT_FFTW_precision "Build VkFFT FFTW precision comparison" OFF)
 option(VkFFT_use_FP128_Bluestein_RaderFFT "Use LD for Bluestein and Rader FFT kernel calculations. Currently requires LD FFT library, like FFTWl, will be reworked" OFF)
 option(VkFFT_use_FP128_double_double "Build VkFFT quad double-double" OFF)
 
-if (MSVC)
+# Configure MSVC
+if(MSVC)
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
-	add_definitions(-D_CRT_SECURE_NO_WARNINGS)
-endif()
-if(build_VkFFT_FFTW_precision)
-	add_executable(${PROJECT_NAME} VkFFT_TestSuite.cpp
-		benchmark_scripts/vkFFT_scripts/src/utils_VkFFT.cpp
-		benchmark_scripts/vkFFT_scripts/src/user_benchmark_VkFFT.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_0_benchmark_VkFFT_single.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1_benchmark_VkFFT_double.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_2_benchmark_VkFFT_half.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_3_benchmark_VkFFT_single_3d.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_4_benchmark_VkFFT_single_3d_zeropadding.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_5_benchmark_VkFFT_single_disableReorderFourStep.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_6_benchmark_VkFFT_single_r2c.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_7_benchmark_VkFFT_single_Bluestein.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_8_benchmark_VkFFT_double_Bluestein.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_9_benchmark_VkFFT_quadDoubleDouble.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_10_benchmark_VkFFT_single_multipleBuffers.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_11_precision_VkFFT_single.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_12_precision_VkFFT_double.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_13_precision_VkFFT_half.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_14_precision_VkFFT_single_nonPow2.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_15_precision_VkFFT_single_r2c.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_16_precision_VkFFT_single_dct.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_17_precision_VkFFT_double_dct.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_18_precision_VkFFT_double_nonPow2.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_19_precision_VkFFT_quadDoubleDouble_nonPow2.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_50_convolution_VkFFT_single_1d_matrix.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_52_convolution_VkFFT_single_2d_batched_r2c.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_53_convolution_VkFFT_single_2d_Nimages_1kernel.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_100_benchmark_VkFFT_single_nd_dct.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_101_benchmark_VkFFT_double_nd_dct.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1000_benchmark_VkFFT_single_2_4096.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1001_benchmark_VkFFT_double_2_4096.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1002_benchmark_VkFFT_half_2_4096.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1003_benchmark_VkFFT_single_3d_2_512.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1004_benchmark_VkFFT_quadDoubleDouble_2_4096.cpp)
-else()		
-	add_executable(${PROJECT_NAME} VkFFT_TestSuite.cpp
-		benchmark_scripts/vkFFT_scripts/src/utils_VkFFT.cpp
-		benchmark_scripts/vkFFT_scripts/src/user_benchmark_VkFFT.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_0_benchmark_VkFFT_single.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1_benchmark_VkFFT_double.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_2_benchmark_VkFFT_half.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_3_benchmark_VkFFT_single_3d.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_4_benchmark_VkFFT_single_3d_zeropadding.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_5_benchmark_VkFFT_single_disableReorderFourStep.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_6_benchmark_VkFFT_single_r2c.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_7_benchmark_VkFFT_single_Bluestein.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_8_benchmark_VkFFT_double_Bluestein.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_9_benchmark_VkFFT_quadDoubleDouble.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_10_benchmark_VkFFT_single_multipleBuffers.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_50_convolution_VkFFT_single_1d_matrix.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_52_convolution_VkFFT_single_2d_batched_r2c.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_53_convolution_VkFFT_single_2d_Nimages_1kernel.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_100_benchmark_VkFFT_single_nd_dct.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_101_benchmark_VkFFT_double_nd_dct.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1000_benchmark_VkFFT_single_2_4096.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1001_benchmark_VkFFT_double_2_4096.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1002_benchmark_VkFFT_half_2_4096.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1003_benchmark_VkFFT_single_3d_2_512.cpp
-		benchmark_scripts/vkFFT_scripts/src/sample_1004_benchmark_VkFFT_quadDoubleDouble_2_4096.cpp)
-endif()
-target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_11)  
-add_definitions(-DVKFFT_BACKEND=${VKFFT_BACKEND})
-if(${VKFFT_BACKEND} EQUAL 0)
-	find_package(Vulkan REQUIRED)
-elseif(${VKFFT_BACKEND} EQUAL 1)
-	find_package(CUDA 9.0 REQUIRED)
-	enable_language(CUDA)
-if (MSVC)
-else()
-		set_source_files_properties(VkFFT_TestSuite.cpp PROPERTIES LANGUAGE CUDA)
-endif()
-	set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 60 70 75 80 86)
-	target_compile_options(${PROJECT_NAME} PUBLIC "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:
-	-std=c++11
-	-DVKFFT_BACKEND=${VKFFT_BACKEND}
-	-gencode arch=compute_60,code=compute_60
-	-gencode arch=compute_70,code=compute_70 
-	-gencode arch=compute_75,code=compute_75 
-	-gencode arch=compute_80,code=compute_80 
-	-gencode arch=compute_86,code=compute_86>")
-	set_target_properties(${PROJECT_NAME} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-	set_target_properties(${PROJECT_NAME} PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-elseif(${VKFFT_BACKEND} EQUAL 2)
-	list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
-	find_package(hip)
-	#target_compile_definitions(${PROJECT_NAME} PUBLIC -DVKFFT_OLD_ROCM) #ROCm versions before 4.5 needed kernel include of hiprtc
-elseif(${VKFFT_BACKEND} EQUAL 3)
-	find_package(OpenCL REQUIRED)
-elseif(${VKFFT_BACKEND} EQUAL 4)
-	set(LevelZero_LIBRARY "/usr/lib/x86_64-linux-gnu/")
-	set(LevelZero_INCLUDE_DIR "/usr/include/")
-	find_library(
-		LevelZero_LIB
-		NAMES "ze_loader"
-		PATHS ${LevelZero_LIBRARY}
-		PATH_SUFFIXES "lib" "lib64"
-		NO_DEFAULT_PATH
-	  )
-	find_path(
-		LevelZero_INCLUDES
-		NAMES "ze_api.h"
-		PATHS ${LevelZero_INCLUDE_DIR}
-		PATH_SUFFIXES "include" "level_zero"
-		NO_DEFAULT_PATH
-	  )
-	target_include_directories(${PROJECT_NAME} PUBLIC ${LevelZero_INCLUDES})
-elseif(${VKFFT_BACKEND} EQUAL 5)
-	add_compile_options(-WMTL_IGNORE_WARNINGS)
-	find_library(FOUNDATION_LIB Foundation REQUIRED)
-	find_library(QUARTZ_CORE_LIB QuartzCore REQUIRED)	
-	find_library(METAL_LIB Metal REQUIRED)
-	target_include_directories(${PROJECT_NAME} PUBLIC "metal-cpp/")
+	add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 endif()
 
-target_compile_definitions(${PROJECT_NAME} PUBLIC -DVK_API_VERSION=11)#10 - Vulkan 1.0, 11 - Vulkan 1.1, 12 - Vulkan 1.2 
-if(VkFFT_use_FP128_Bluestein_RaderFFT)
-        target_compile_definitions(${PROJECT_NAME} PUBLIC -DVkFFT_use_FP128_Bluestein_RaderFFT)
-endif()  
-if(VkFFT_use_FP128_double_double)
-	target_compile_definitions(${PROJECT_NAME} PUBLIC -DVKFFT_USE_DOUBLEDOUBLE_FP128)
-	target_link_libraries(${PROJECT_NAME} PUBLIC quadmath)
-endif()
-if(${VKFFT_BACKEND} EQUAL 0)
+########################################################################################################################
+# Find and configure dependencies
+########################################################################################################################
+
+if(VKFFT_BACKEND_IS_VULKAN)
+	find_package(Vulkan REQUIRED)
+
+	add_compile_definitions(VK_API_VERSION=11) # 10 - Vulkan 1.0, 11 - Vulkan 1.1, 12 - Vulkan 1.2
+
 	find_package(glslang CONFIG)
-	if (NOT ${glslang_FOUND})
+	if(NOT ${glslang_FOUND})
 		set(ENABLE_OPT 0)
-		FetchContent_Declare(
-			glslang-main
-			GIT_TAG ${GLSLANG_GIT_TAG}
-			GIT_REPOSITORY https://github.com/KhronosGroup/glslang
-			SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/glslang-main
-		)
+		FetchContent_Declare(glslang-main GIT_TAG ${GLSLANG_GIT_TAG}
+			                                GIT_REPOSITORY https://github.com/KhronosGroup/glslang
+			                                SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/glslang-main)
 		FetchContent_GetProperties(glslang-main)
+
 		if(NOT glslang-main_POPULATED)
 			FetchContent_Populate(glslang-main)
 		endif()
+
 		add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glslang-main)
 	endif (NOT ${glslang_FOUND})
-endif()
 
-add_library(VkFFT INTERFACE)
-target_include_directories(VkFFT INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/)
-target_compile_definitions(VkFFT INTERFACE -DVKFFT_BACKEND=${VKFFT_BACKEND})
+elseif(VKFFT_BACKEND_IS_CUDA)
+	find_package(CUDAToolkit 9.0 REQUIRED)
 
-add_library(half INTERFACE)
-target_include_directories(half INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/half_lib/)
+elseif(VKFFT_BACKEND_IS_HIP)
+	list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
 
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/vkFFT_scripts/include/)
+	find_package(hip)
 
-if(${VKFFT_BACKEND} EQUAL 0)
-	if (${glslang_FOUND})
-		target_link_libraries(${PROJECT_NAME} PUBLIC glslang::SPIRV glslang::glslang Vulkan::Vulkan VkFFT half)
-	else (${glslang_FOUND})
-		target_link_libraries(${PROJECT_NAME} PUBLIC SPIRV glslang Vulkan::Vulkan VkFFT half)
-	endif (${glslang_FOUND})
-elseif(${VKFFT_BACKEND} EQUAL 1)
-	find_library(CUDA_NVRTC_LIB libnvrtc nvrtc HINTS "${CUDA_TOOLKIT_ROOT_DIR}/lib64" "${LIBNVRTC_LIBRARY_DIR}" "${CUDA_TOOLKIT_ROOT_DIR}/lib/x64" /usr/lib64 /usr/local/cuda/lib64)
-	add_definitions(-DCUDA_TOOLKIT_ROOT_DIR="${CUDA_TOOLKIT_ROOT_DIR}")
-	target_link_libraries(${PROJECT_NAME} PUBLIC ${CUDA_LIBRARIES} cuda ${CUDA_NVRTC_LIB} VkFFT half)
-	target_include_directories(${PROJECT_NAME} PUBLIC ${CUDA_INCLUDE_DIRS})
-elseif(${VKFFT_BACKEND} EQUAL 2)
-	target_link_libraries(${PROJECT_NAME} PUBLIC hip::host VkFFT half)
-elseif(${VKFFT_BACKEND} EQUAL 3)
-	target_link_libraries(${PROJECT_NAME} PUBLIC OpenCL::OpenCL VkFFT half)
-elseif(${VKFFT_BACKEND} EQUAL 4)
-	target_link_libraries(${PROJECT_NAME} PUBLIC ze_loader VkFFT half)
-elseif(${VKFFT_BACKEND} EQUAL 5)
-	target_link_libraries(${PROJECT_NAME} PUBLIC ${FOUNDATION_LIB} ${QUARTZ_CORE_LIB} ${METAL_LIB} VkFFT half)
+	#add_compile_definitions(VKFFT_OLD_ROCM) #ROCm versions before 4.5 needed kernel include of hiprtc
+elseif(VKFFT_BACKEND_IS_OPENCL)
+	find_package(OpenCL REQUIRED)
+
+elseif(VKFFT_BACKEND_IS_LEVEL_ZERO)
+	set(LevelZero_LIBRARY "/usr/lib/x86_64-linux-gnu/")
+	set(LevelZero_INCLUDE_DIR "/usr/include/")
+
+	find_library(LevelZero_LIB NAMES "ze_loader"
+		                         PATHS ${LevelZero_LIBRARY}
+		                         PATH_SUFFIXES "lib" "lib64"
+		                         NO_DEFAULT_PATH)
+	find_path(LevelZero_INCLUDES NAMES "ze_api.h"
+		                           PATHS ${LevelZero_INCLUDE_DIR}
+		                           PATH_SUFFIXES "include" "level_zero"
+		                           NO_DEFAULT_PATH)
+
+	include_directories(${LevelZero_INCLUDES})
+
+elseif(VKFFT_BACKEND_IS_METAL)
+	find_library(FOUNDATION_LIB Foundation REQUIRED)
+	find_library(QUARTZ_CORE_LIB QuartzCore REQUIRED)	
+	find_library(METAL_LIB Metal REQUIRED)
+
+	include_directories(${CMAKE_CURRENT_SOURCE_DIR}/metal-cpp)
+
+	add_compile_options(-WMTL_IGNORE_WARNINGS)
 endif()
 
 if(build_VkFFT_FFTW_precision OR VkFFT_use_FP128_Bluestein_RaderFFT)
-	add_definitions(-DUSE_FFTW)
+	add_compile_definitions(USE_FFTW)
+
 	set(FFTW3_LIB_DIR "/usr/lib/x86_64-linux-gnu/")
 	set(FFTW3_INCLUDE_DIR "/usr/include/")
-	find_library(
-		FFTW_LIB
-		NAMES "libfftw3-3" "fftw3" 
-		PATHS ${FFTW3_LIB_DIR}
-		PATH_SUFFIXES "lib" "lib64"
-		NO_DEFAULT_PATH
-	  )
-	find_path(
-		FFTW_INCLUDES
-		NAMES "fftw3.h"
-		PATHS ${FFTW3_INCLUDE_DIR}
-		PATH_SUFFIXES "include"
-		NO_DEFAULT_PATH
-	  )
-        target_include_directories(${PROJECT_NAME} PUBLIC ${FFTW_INCLUDES})
-if(VkFFT_use_FP128_double_double)
-	find_library(
-		FFTWQ_LIB
-		NAMES "libfftw3q" "fftw3q"
-		PATHS ${FFTW3_LIB_DIR}
-		PATH_SUFFIXES "lib" "lib64"
-		NO_DEFAULT_PATH
-	  )
-	  target_link_libraries (${PROJECT_NAME} PUBLIC ${FFTWQ_LIB})
+
+	find_library(FFTW_LIB NAMES "libfftw3-3" "fftw3" 
+		                    PATHS ${FFTW3_LIB_DIR}
+		                    PATH_SUFFIXES "lib" "lib64"
+		                    NO_DEFAULT_PATH)
+	find_path(FFTW_INCLUDES NAMES "fftw3.h"
+		                      PATHS ${FFTW3_INCLUDE_DIR}
+		                      PATH_SUFFIXES "include"
+		                      NO_DEFAULT_PATH)
+													
+	if(VkFFT_use_FP128_double_double)
+		find_library(FFTWQ_LIB NAMES "libfftw3q" "fftw3q"
+			                     PATHS ${FFTW3_LIB_DIR}
+			                     PATH_SUFFIXES "lib" "lib64"
+			                     NO_DEFAULT_PATH)
+	endif()
+
+	if(VkFFT_use_FP128_Bluestein_RaderFFT)        
+		find_library(FFTWL_LIB NAMES "libfftw3l" "fftw3l"
+			                     PATHS ${FFTW3_LIB_DIR}
+			                     PATH_SUFFIXES "lib" "lib64"
+			                     NO_DEFAULT_PATH)
+	endif()
 endif()
-if(VkFFT_use_FP128_Bluestein_RaderFFT)        
-	find_library(
-		FFTWL_LIB
-		NAMES "libfftw3l" "fftw3l"
-		PATHS ${FFTW3_LIB_DIR}
-		PATH_SUFFIXES "lib" "lib64"
-		NO_DEFAULT_PATH
-	  )
-	target_link_libraries (${PROJECT_NAME} PUBLIC ${FFTWL_LIB})
-endif()
-	target_link_libraries (${PROJECT_NAME} PUBLIC ${FFTW_LIB})
-endif()
+
+########################################################################################################################
+# Add cuFFT benchmark target
+########################################################################################################################
 
 if(build_VkFFT_cuFFT_benchmark)
-	add_definitions(-DUSE_cuFFT)
-	find_package(CUDA 9.0 REQUIRED)
-	enable_language(CUDA)	
-	if(build_VkFFT_FFTW_precision)
-		add_library(cuFFT_scripts STATIC
-		benchmark_scripts/cuFFT_scripts/src/user_benchmark_cuFFT.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_0_benchmark_cuFFT_single.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_1_benchmark_cuFFT_double.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_2_benchmark_cuFFT_half.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_3_benchmark_cuFFT_single_3d.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_6_benchmark_cuFFT_single_r2c.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_7_benchmark_cuFFT_single_Bluestein.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_8_benchmark_cuFFT_double_Bluestein.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_1000_benchmark_cuFFT_single_2_4096.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_1001_benchmark_cuFFT_double_2_4096.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_1003_benchmark_cuFFT_single_3d_2_512.cu
-		benchmark_scripts/cuFFT_scripts/src/precision_cuFFT_single.cu
-		benchmark_scripts/cuFFT_scripts/src/precision_cuFFT_r2c.cu
-		benchmark_scripts/cuFFT_scripts/src/precision_cuFFT_double.cu
-		benchmark_scripts/cuFFT_scripts/src/precision_cuFFT_half.cu)
-	else()
-		add_library(cuFFT_scripts STATIC
-		benchmark_scripts/cuFFT_scripts/src/user_benchmark_cuFFT.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_0_benchmark_cuFFT_single.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_1_benchmark_cuFFT_double.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_2_benchmark_cuFFT_half.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_3_benchmark_cuFFT_single_3d.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_6_benchmark_cuFFT_single_r2c.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_7_benchmark_cuFFT_single_Bluestein.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_8_benchmark_cuFFT_double_Bluestein.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_1000_benchmark_cuFFT_single_2_4096.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_1001_benchmark_cuFFT_double_2_4096.cu
-		benchmark_scripts/cuFFT_scripts/src/sample_1003_benchmark_cuFFT_single_3d_2_512.cu)
-	endif()
-	set_property(TARGET cuFFT_scripts PROPERTY CUDA_ARCHITECTURES 60 70 75 80 86)
-	CUDA_ADD_CUFFT_TO_TARGET(cuFFT_scripts)
-	target_compile_options(cuFFT_scripts PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:
-	-std=c++11
-	-gencode arch=compute_60,code=compute_60
-	-gencode arch=compute_70,code=compute_70 
-	-gencode arch=compute_75,code=compute_75 
-	-gencode arch=compute_80,code=compute_80 
-	-gencode arch=compute_86,code=compute_86>")
-	target_include_directories(cuFFT_scripts PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/cuFFT_scripts/include)
-	target_include_directories(cuFFT_scripts PUBLIC ${CUDA_INCLUDE_DIRS})
-	set_target_properties(cuFFT_scripts PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-	set_target_properties(cuFFT_scripts PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-	target_link_libraries(${PROJECT_NAME} PUBLIC cuFFT_scripts)
-endif()
-if(build_VkFFT_rocFFT_benchmark)
-	add_definitions(-DUSE_rocFFT)
-	list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
-	find_package(hip)
-    find_package(hipfft)
+	add_compile_definitions(USE_cuFFT)
+
+	set(cuFFT_scripts_DIR ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/cuFFT_scripts)
+	set(cuFFT_scripts_SRC ${cuFFT_scripts_DIR}/src/user_benchmark_cuFFT.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_0_benchmark_cuFFT_single.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_1_benchmark_cuFFT_double.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_2_benchmark_cuFFT_half.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_3_benchmark_cuFFT_single_3d.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_6_benchmark_cuFFT_single_r2c.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_7_benchmark_cuFFT_single_Bluestein.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_8_benchmark_cuFFT_double_Bluestein.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_1000_benchmark_cuFFT_single_2_4096.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_1001_benchmark_cuFFT_double_2_4096.cpp
+	                      ${cuFFT_scripts_DIR}/src/sample_1003_benchmark_cuFFT_single_3d_2_512.cpp)
 
 	if(build_VkFFT_FFTW_precision)
-		add_library(rocFFT_scripts STATIC
-		benchmark_scripts/rocFFT_scripts/src/user_benchmark_rocFFT.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_0_benchmark_rocFFT_single.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_1_benchmark_rocFFT_double.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_3_benchmark_rocFFT_single_3d.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_6_benchmark_rocFFT_single_r2c.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_7_benchmark_rocFFT_single_Bluestein.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_8_benchmark_rocFFT_double_Bluestein.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_1000_benchmark_rocFFT_single_2_4096.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_1001_benchmark_rocFFT_double_2_4096.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_1003_benchmark_rocFFT_single_3d_2_512.cpp
-		benchmark_scripts/rocFFT_scripts/src/precision_rocFFT_single.cpp
-		benchmark_scripts/rocFFT_scripts/src/precision_rocFFT_r2c.cpp
-		benchmark_scripts/rocFFT_scripts/src/precision_rocFFT_double.cpp)
-	else()
-		add_library(rocFFT_scripts STATIC
-		benchmark_scripts/rocFFT_scripts/src/user_benchmark_rocFFT.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_0_benchmark_rocFFT_single.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_1_benchmark_rocFFT_double.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_3_benchmark_rocFFT_single_3d.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_6_benchmark_rocFFT_single_r2c.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_7_benchmark_rocFFT_single_Bluestein.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_8_benchmark_rocFFT_double_Bluestein.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_1000_benchmark_rocFFT_single_2_4096.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_1001_benchmark_rocFFT_double_2_4096.cpp
-		benchmark_scripts/rocFFT_scripts/src/sample_1003_benchmark_rocFFT_single_3d_2_512.cpp)
+		list(APPEND cuFFT_scripts_SRC ${cuFFT_scripts_DIR}/src/precision_cuFFT_single.cpp
+		                              ${cuFFT_scripts_DIR}/src/precision_cuFFT_r2c.cpp
+		                              ${cuFFT_scripts_DIR}/src/precision_cuFFT_double.cpp
+		                              ${cuFFT_scripts_DIR}/src/precision_cuFFT_half.cpp)
 	endif()
-	target_include_directories(rocFFT_scripts PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/rocFFT_scripts/include)
+
+	add_library(cuFFT_scripts STATIC ${cuFFT_scripts_SRC})
+	target_compile_features(cuFFT_scripts PUBLIC cxx_std_11)
+
+	target_include_directories(cuFFT_scripts PUBLIC ${cuFFT_scripts_DIR}/include)
+	target_include_directories(cuFFT_scripts PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+	target_link_libraries(cuFFT_scripts PRIVATE CUDA::cudart CUDA::cufft)
+endif()
+
+########################################################################################################################
+# Add rocFFT benchmark target
+########################################################################################################################
+
+if(build_VkFFT_rocFFT_benchmark)
+	add_compile_definitions(USE_rocFFT)
+
+	list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
+
+	find_package(hipfft)
+
+	set(rocFFT_scripts_DIR ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/rocFFT_scripts)
+	set(rocFFT_scripts_SRC ${rocFFT_scripts_DIR}/src/user_benchmark_rocFFT.cpp
+	                       ${rocFFT_scripts_DIR}/src/sample_0_benchmark_rocFFT_single.cpp
+	                       ${rocFFT_scripts_DIR}/src/sample_1_benchmark_rocFFT_double.cpp
+	                       ${rocFFT_scripts_DIR}/src/sample_3_benchmark_rocFFT_single_3d.cpp
+	                       ${rocFFT_scripts_DIR}/src/sample_6_benchmark_rocFFT_single_r2c.cpp
+	                       ${rocFFT_scripts_DIR}/src/sample_7_benchmark_rocFFT_single_Bluestein.cpp
+	                       ${rocFFT_scripts_DIR}/src/sample_8_benchmark_rocFFT_double_Bluestein.cpp
+	                       ${rocFFT_scripts_DIR}/src/sample_1000_benchmark_rocFFT_single_2_4096.cpp
+	                       ${rocFFT_scripts_DIR}/src/sample_1001_benchmark_rocFFT_double_2_4096.cpp
+	                       ${rocFFT_scripts_DIR}/src/sample_1003_benchmark_rocFFT_single_3d_2_512.cpp)
+
+	if(build_VkFFT_FFTW_precision)
+		list(APPEND rocFFT_scripts_SRC ${rocFFT_scripts_DIR}/src/precision_rocFFT_single.cpp
+		                               ${rocFFT_scripts_DIR}/src/precision_rocFFT_r2c.cpp
+		                               ${rocFFT_scripts_DIR}/src/precision_rocFFT_double.cpp)
+	endif()
+
+	add_library(rocFFT_scripts STATIC ${rocFFT_scripts_SRC})
+	target_compile_features(rocFFT_scripts PUBLIC cxx_std_11)
+
+	target_include_directories(rocFFT_scripts PUBLIC ${rocFFT_scripts_DIR}/include)
 	target_link_libraries(rocFFT_scripts PRIVATE hip::host hip::hipfft)
+endif()
+
+########################################################################################################################
+# Add VkFFT library target
+########################################################################################################################
+
+add_library(VkFFT INTERFACE)
+target_include_directories(VkFFT INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/)
+target_compile_definitions(VkFFT INTERFACE VKFFT_BACKEND=${VKFFT_BACKEND_NUM})
+
+########################################################################################################################
+# Add half library target
+########################################################################################################################
+
+add_library(half INTERFACE)
+target_include_directories(half INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/half_lib)
+
+########################################################################################################################
+# Add VkFFT_TestSuite target
+########################################################################################################################
+
+set(${PROJECT_NAME}_DIR ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/vkFFT_scripts)
+set(${PROJECT_NAME}_SRC ${CMAKE_CURRENT_SOURCE_DIR}/VkFFT_TestSuite.cpp
+                        ${${PROJECT_NAME}_DIR}/src/utils_VkFFT.cpp
+                        ${${PROJECT_NAME}_DIR}/src/user_benchmark_VkFFT.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_0_benchmark_VkFFT_single.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_1_benchmark_VkFFT_double.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_2_benchmark_VkFFT_half.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_3_benchmark_VkFFT_single_3d.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_4_benchmark_VkFFT_single_3d_zeropadding.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_5_benchmark_VkFFT_single_disableReorderFourStep.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_6_benchmark_VkFFT_single_r2c.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_7_benchmark_VkFFT_single_Bluestein.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_8_benchmark_VkFFT_double_Bluestein.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_9_benchmark_VkFFT_quadDoubleDouble.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_10_benchmark_VkFFT_single_multipleBuffers.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_50_convolution_VkFFT_single_1d_matrix.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_52_convolution_VkFFT_single_2d_batched_r2c.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_53_convolution_VkFFT_single_2d_Nimages_1kernel.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_100_benchmark_VkFFT_single_nd_dct.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_101_benchmark_VkFFT_double_nd_dct.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_1000_benchmark_VkFFT_single_2_4096.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_1001_benchmark_VkFFT_double_2_4096.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_1002_benchmark_VkFFT_half_2_4096.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_1003_benchmark_VkFFT_single_3d_2_512.cpp
+                        ${${PROJECT_NAME}_DIR}/src/sample_1004_benchmark_VkFFT_quadDoubleDouble_2_4096.cpp)
+
+if(build_VkFFT_FFTW_precision)
+	list(APPEND ${PROJECT_NAME}_SRC ${${PROJECT_NAME}_DIR}/src/sample_11_precision_VkFFT_single.cpp
+		                              ${${PROJECT_NAME}_DIR}/src/sample_12_precision_VkFFT_double.cpp
+		                              ${${PROJECT_NAME}_DIR}/src/sample_13_precision_VkFFT_half.cpp
+		                              ${${PROJECT_NAME}_DIR}/src/sample_14_precision_VkFFT_single_nonPow2.cpp
+		                              ${${PROJECT_NAME}_DIR}/src/sample_15_precision_VkFFT_single_r2c.cpp
+		                              ${${PROJECT_NAME}_DIR}/src/sample_16_precision_VkFFT_single_dct.cpp
+		                              ${${PROJECT_NAME}_DIR}/src/sample_17_precision_VkFFT_double_dct.cpp
+		                              ${${PROJECT_NAME}_DIR}/src/sample_18_precision_VkFFT_double_nonPow2.cpp
+		                              ${${PROJECT_NAME}_DIR}/src/sample_19_precision_VkFFT_quadDoubleDouble_nonPow2.cpp)
+endif()
+
+add_executable(${PROJECT_NAME} ${${PROJECT_NAME}_SRC})
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_11)
+add_compile_definitions(VKFFT_BACKEND=${VKFFT_BACKEND_NUM})
+target_include_directories(${PROJECT_NAME} PUBLIC ${${PROJECT_NAME}_DIR}/include)
+
+if(VkFFT_use_FP128_Bluestein_RaderFFT)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC VkFFT_use_FP128_Bluestein_RaderFFT)
+endif()
+
+if(VkFFT_use_FP128_double_double)
+	target_compile_definitions(${PROJECT_NAME} PUBLIC VKFFT_USE_DOUBLEDOUBLE_FP128)
+	target_link_libraries(${PROJECT_NAME} PUBLIC quadmath)
+endif()
+
+target_link_libraries(${PROJECT_NAME} PUBLIC VkFFT half)
+
+# Link the correct backend libraries
+if(VKFFT_BACKEND_IS_VULKAN)
+	if (${glslang_FOUND})
+		target_link_libraries(${PROJECT_NAME} PUBLIC glslang::SPIRV glslang::glslang Vulkan::Vulkan)
+	else (${glslang_FOUND})
+		target_link_libraries(${PROJECT_NAME} PUBLIC SPIRV glslang Vulkan::Vulkan)
+	endif (${glslang_FOUND})
+elseif(VKFFT_BACKEND_IS_CUDA)
+	target_compile_definitions(${PROJECT_NAME} PUBLIC CUDA_TOOLKIT_ROOT_DIR="${CUDAToolkit_ROOT}")
+	target_link_libraries(${PROJECT_NAME} PUBLIC CUDA::cudart CUDA::cuda_driver CUDA::nvrtc)
+	target_include_directories(${PROJECT_NAME} PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+elseif(VKFFT_BACKEND_IS_HIP)
+	target_link_libraries(${PROJECT_NAME} PUBLIC hip::host)
+elseif(VKFFT_BACKEND_IS_OPENCL)
+	target_link_libraries(${PROJECT_NAME} PUBLIC OpenCL::OpenCL)
+elseif(VKFFT_BACKEND_IS_LEVEL_ZERO)
+	target_link_libraries(${PROJECT_NAME} PUBLIC ze_loader)
+elseif(VKFFT_BACKEND_IS_METAL)
+	target_link_libraries(${PROJECT_NAME} PUBLIC ${FOUNDATION_LIB} ${QUARTZ_CORE_LIB} ${METAL_LIB})
+endif()
+
+# Link FFTW libraries if needed
+if(build_VkFFT_FFTW_precision OR VkFFT_use_FP128_Bluestein_RaderFFT)
+	target_include_directories(${PROJECT_NAME} PUBLIC ${FFTW_INCLUDES})
+	target_link_libraries(${PROJECT_NAME} PUBLIC ${FFTW_LIB})
+		
+	if (VkFFT_use_FP128_double_double)
+		target_link_libraries(${PROJECT_NAME} PUBLIC ${FFTWQ_LIB})
+	endif()
+
+	if(VkFFT_use_FP128_Bluestein_RaderFFT)        
+		target_link_libraries(${PROJECT_NAME} PUBLIC ${FFTWL_LIB})
+	endif()
+endif()
+
+# Link cuFFT benchmark library if needed
+if(build_VkFFT_cuFFT_benchmark)
+	target_link_libraries(${PROJECT_NAME} PUBLIC cuFFT_scripts)
+endif()
+
+# Link rocFFT benchmark library if needed
+if(build_VkFFT_rocFFT_benchmark)
 	target_link_libraries(${PROJECT_NAME} PUBLIC rocFFT_scripts)
 endif()
+
+########################################################################################################################
+# Install targets
+########################################################################################################################
+
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/" DESTINATION include)
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)

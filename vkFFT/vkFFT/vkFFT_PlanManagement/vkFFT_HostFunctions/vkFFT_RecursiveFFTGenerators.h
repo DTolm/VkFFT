@@ -21,6 +21,9 @@
 // THE SOFTWARE.
 #ifndef VKFFT_RECURSIVEFFTGENERATORS_H
 #define VKFFT_RECURSIVEFFTGENERATORS_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 
 #include "vkFFT/vkFFT_PlanManagement/vkFFT_API_handles/vkFFT_ManageMemory.h"
@@ -39,7 +42,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 	if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory) bufferSize *= sizeof(double) / sizeof(float);
 	if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) bufferSize *= 4;
 	app->bufferBluesteinSize[axis_id] = bufferSize;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkResult res = VK_SUCCESS;
 	resFFT = allocateBufferVulkan(app, &app->bufferBluestein[axis_id], &app->bufferBluesteinDeviceMemory[axis_id], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 	if (resFFT != VKFFT_SUCCESS) return resFFT;
@@ -51,7 +54,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		resFFT = allocateBufferVulkan(app, &app->bufferBluesteinIFFT[axis_id], &app->bufferBluesteinIFFTDeviceMemory[axis_id], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 		if (resFFT != VKFFT_SUCCESS) return resFFT;
 	}
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cudaError_t res = cudaSuccess;
 	res = cudaMalloc((void**)&app->bufferBluestein[axis_id], bufferSize);
 	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
@@ -63,7 +66,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		res = cudaMalloc((void**)&app->bufferBluesteinIFFT[axis_id], bufferSize);
 		if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipError_t res = hipSuccess;
 	res = hipMalloc((void**)&app->bufferBluestein[axis_id], bufferSize);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
@@ -75,7 +78,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		res = hipMalloc((void**)&app->bufferBluesteinIFFT[axis_id], bufferSize);
 		if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	}
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_int res = CL_SUCCESS;
 	app->bufferBluestein[axis_id] = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_WRITE, bufferSize, 0, &res);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
@@ -89,7 +92,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 	}
 	cl_command_queue commandQueue = clCreateCommandQueue(app->configuration.context[0], app->configuration.device[0], 0, &res);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 
 	ze_device_mem_alloc_desc_t device_desc = VKFFT_ZERO_INIT;
@@ -105,7 +108,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		res = zeMemAllocDevice(app->configuration.context[0], &device_desc, bufferSize, sizeof(float), app->configuration.device[0], &app->bufferBluesteinIFFT[axis_id]);
 		if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	}
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	app->bufferBluestein[axis_id] = app->configuration.device->newBuffer(bufferSize, MTL::ResourceStorageModePrivate);
 
 	if (!app->configuration.makeInversePlanOnly) {
@@ -270,7 +273,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			kernelPreparationConfiguration.tempBufferNum = app->configuration.tempBufferNum;
 		}
 		kernelPreparationConfiguration.device = app->configuration.device;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		kernelPreparationConfiguration.queue = app->configuration.queue; //to allocate memory for LUT, we have to pass a queue, vkGPU->fence, commandPool and physicalDevice pointers 
 		kernelPreparationConfiguration.fence = app->configuration.fence;
 		kernelPreparationConfiguration.commandPool = app->configuration.commandPool;
@@ -281,13 +284,13 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 		}
 		if (app->configuration.stagingBuffer != 0)	kernelPreparationConfiguration.stagingBuffer = app->configuration.stagingBuffer;
 		if (app->configuration.stagingBufferMemory != 0)	kernelPreparationConfiguration.stagingBufferMemory = app->configuration.stagingBufferMemory;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 		kernelPreparationConfiguration.context = app->configuration.context;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 		kernelPreparationConfiguration.context = app->configuration.context;
 		kernelPreparationConfiguration.commandQueue = app->configuration.commandQueue;
 		kernelPreparationConfiguration.commandQueueID = app->configuration.commandQueueID;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 		kernelPreparationConfiguration.device = app->configuration.device;
 		kernelPreparationConfiguration.queue = app->configuration.queue;
 #endif			
@@ -369,7 +372,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 				deleteVkFFT(&kernelPreparationApplication);
 				return resFFT;
 			}
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 			{
 				VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 				commandBufferAllocateInfo.commandPool = kernelPreparationApplication.configuration.commandPool[0];
@@ -430,7 +433,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 				}
 				vkFreeCommandBuffers(kernelPreparationApplication.configuration.device[0], kernelPreparationApplication.configuration.commandPool[0], 1, &commandBuffer);
 			}
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 			VkFFTLaunchParams launchParams = VKFFT_ZERO_INIT;
 			launchParams.inputBuffer = &app->bufferBluestein[axis_id];
 			launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
@@ -446,7 +449,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 				deleteVkFFT(&kernelPreparationApplication);
 				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 			}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 			VkFFTLaunchParams launchParams = VKFFT_ZERO_INIT;
 			launchParams.inputBuffer = &app->bufferBluestein[axis_id];
 			launchParams.buffer = &app->bufferBluesteinIFFT[axis_id];
@@ -462,7 +465,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 				deleteVkFFT(&kernelPreparationApplication);
 				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 			}
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 			VkFFTLaunchParams launchParams = VKFFT_ZERO_INIT;
 			launchParams.commandQueue = &commandQueue;
 			launchParams.inputBuffer = &app->bufferBluestein[axis_id];
@@ -479,7 +482,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 				deleteVkFFT(&kernelPreparationApplication);
 				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 			}
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 			ze_command_list_desc_t commandListDescription = VKFFT_ZERO_INIT;
 			commandListDescription.stype = ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC;
 			ze_command_list_handle_t commandList = VKFFT_ZERO_INIT;
@@ -519,7 +522,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 				deleteVkFFT(&kernelPreparationApplication);
 				return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
 			}
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 			VkFFTLaunchParams launchParams = VKFFT_ZERO_INIT;
 			MTL::CommandBuffer* commandBuffer = app->configuration.queue->commandBuffer();
 			if (commandBuffer == 0) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
@@ -627,7 +630,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			deleteVkFFT(&kernelPreparationApplication);
 			return resFFT;
 		}
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		if (!app->configuration.makeInversePlanOnly) {
 			VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 			commandBufferAllocateInfo.commandPool = kernelPreparationApplication.configuration.commandPool[0];
@@ -748,7 +751,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			}
 			vkFreeCommandBuffers(kernelPreparationApplication.configuration.device[0], kernelPreparationApplication.configuration.commandPool[0], 1, &commandBuffer);
 		}
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 		VkFFTLaunchParams launchParams = VKFFT_ZERO_INIT;
 		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
 		if (!app->configuration.makeInversePlanOnly) {
@@ -781,7 +784,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 			}
 		}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 		VkFFTLaunchParams launchParams = VKFFT_ZERO_INIT;
 		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
 		if (!app->configuration.makeInversePlanOnly) {
@@ -814,7 +817,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 			}
 		}
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 		VkFFTLaunchParams launchParams = VKFFT_ZERO_INIT;
 		launchParams.commandQueue = &commandQueue;
 		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
@@ -848,7 +851,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 				return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 			}
 		}
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 		ze_command_list_desc_t commandListDescription = VKFFT_ZERO_INIT;
 		commandListDescription.stype = ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC;
 		ze_command_list_handle_t commandList = VKFFT_ZERO_INIT;
@@ -925,7 +928,7 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			deleteVkFFT(&kernelPreparationApplication);
 			return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
 		}
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 		VkFFTLaunchParams launchParams = VKFFT_ZERO_INIT;
 		launchParams.inputBuffer = &app->bufferBluestein[axis_id];
 		if (!app->configuration.makeInversePlanOnly) {
@@ -971,9 +974,9 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			commandBuffer->release();
 		}
 #endif
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 		kernelPreparationApplication.configuration.isCompilerInitialized = 0;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 		res = clReleaseCommandQueue(commandQueue);
 		if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
 #endif
@@ -1119,7 +1122,7 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 				kernelPreparationConfiguration.fixMaxRaderPrimeMult = 17;
 
 				kernelPreparationConfiguration.device = app->configuration.device;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				kernelPreparationConfiguration.queue = app->configuration.queue; //to allocate memory for LUT, we have to pass a queue, vkGPU->fence, commandPool and physicalDevice pointers 
 				kernelPreparationConfiguration.fence = app->configuration.fence;
 				kernelPreparationConfiguration.commandPool = app->configuration.commandPool;
@@ -1127,13 +1130,13 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 				kernelPreparationConfiguration.isCompilerInitialized = 1;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
 				if (app->configuration.stagingBuffer != 0)	kernelPreparationConfiguration.stagingBuffer = app->configuration.stagingBuffer;
 				if (app->configuration.stagingBufferMemory != 0)	kernelPreparationConfiguration.stagingBufferMemory = app->configuration.stagingBufferMemory;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 				kernelPreparationConfiguration.context = app->configuration.context;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 				kernelPreparationConfiguration.context = app->configuration.context;
 				kernelPreparationConfiguration.commandQueue = app->configuration.commandQueue;
 				kernelPreparationConfiguration.commandQueueID = app->configuration.commandQueueID;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 				kernelPreparationConfiguration.device = app->configuration.device;
 				kernelPreparationConfiguration.queue = app->configuration.queue;
 #endif			
@@ -1146,45 +1149,45 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 				resFFT = initializeVkFFT(&kernelPreparationApplication, kernelPreparationConfiguration);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
 
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				VkDeviceMemory bufferRaderFFTDeviceMemory;
 				VkBuffer bufferRaderFFT;
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 				void* bufferRaderFFT;
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 				void* bufferRaderFFT;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 				cl_mem bufferRaderFFT;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 				void* bufferRaderFFT;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 				MTL::Buffer* bufferRaderFFT;
 #endif
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				VkResult res = VK_SUCCESS;
 				resFFT = allocateBufferVulkan(app, &bufferRaderFFT, &bufferRaderFFTDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 				if (resFFT != VKFFT_SUCCESS) return resFFT;
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 				cudaError_t res = cudaSuccess;
 				res = cudaMalloc(&bufferRaderFFT, bufferSize);
 				if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 				hipError_t res = hipSuccess;
 				res = hipMalloc(&bufferRaderFFT, bufferSize);
 				if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 				cl_int res = CL_SUCCESS;
 				bufferRaderFFT = clCreateBuffer(app->configuration.context[0], CL_MEM_READ_WRITE, bufferSize, 0, &res);
 				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 				cl_command_queue commandQueue = clCreateCommandQueue(app->configuration.context[0], app->configuration.device[0], 0, &res);
 				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_QUEUE;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 				ze_result_t res = ZE_RESULT_SUCCESS;
 				ze_device_mem_alloc_desc_t device_desc = VKFFT_ZERO_INIT;
 				device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
 				res = zeMemAllocDevice(app->configuration.context[0], &device_desc, bufferSize, sizeof(float), app->configuration.device[0], &bufferRaderFFT);
 				if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 				bufferRaderFFT = app->configuration.device->newBuffer(bufferSize, MTL::ResourceStorageModePrivate);
 #endif
 
@@ -1194,7 +1197,7 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 					deleteVkFFT(&kernelPreparationApplication);
 					return resFFT;
 				}
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				{
 					VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 					commandBufferAllocateInfo.commandPool = kernelPreparationApplication.configuration.commandPool[0];
@@ -1254,7 +1257,7 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 					}
 					vkFreeCommandBuffers(kernelPreparationApplication.configuration.device[0], kernelPreparationApplication.configuration.commandPool[0], 1, &commandBuffer);
 				}
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 				VkFFTLaunchParams launchParams = VKFFT_ZERO_INIT;
 				launchParams.buffer = &bufferRaderFFT;
 				resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
@@ -1269,7 +1272,7 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 					deleteVkFFT(&kernelPreparationApplication);
 					return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 				}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 				VkFFTLaunchParams launchParams = VKFFT_ZERO_INIT;
 				launchParams.buffer = &bufferRaderFFT;
 				resFFT = VkFFTAppend(&kernelPreparationApplication, -1, &launchParams);
@@ -1284,7 +1287,7 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 					deleteVkFFT(&kernelPreparationApplication);
 					return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 				}
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 				VkFFTLaunchParams launchParams = VKFFT_ZERO_INIT;
 				launchParams.commandQueue = &commandQueue;
 				launchParams.buffer = &bufferRaderFFT;
@@ -1300,7 +1303,7 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 					deleteVkFFT(&kernelPreparationApplication);
 					return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 				}
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 				ze_command_list_desc_t commandListDescription = VKFFT_ZERO_INIT;
 				commandListDescription.stype = ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC;
 				ze_command_list_handle_t commandList = VKFFT_ZERO_INIT;
@@ -1339,7 +1342,7 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 					deleteVkFFT(&kernelPreparationApplication);
 					return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
 				}
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 				VkFFTLaunchParams launchParams = VKFFT_ZERO_INIT;
 				MTL::CommandBuffer* commandBuffer = app->configuration.queue->commandBuffer();
 				if (commandBuffer == 0) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
@@ -1368,24 +1371,24 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 					return resFFT;
 				}
 
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				kernelPreparationApplication.configuration.isCompilerInitialized = 0;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 				res = clReleaseCommandQueue(commandQueue);
 				if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
 #endif
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				vkDestroyBuffer(app->configuration.device[0], bufferRaderFFT, 0);
 				vkFreeMemory(app->configuration.device[0], bufferRaderFFTDeviceMemory, 0);
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 				cudaFree(bufferRaderFFT);
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 				hipFree(bufferRaderFFT);
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 				clReleaseMemObject(bufferRaderFFT);
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 				zeMemFree(app->configuration.context[0], bufferRaderFFT);
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 				bufferRaderFFT->release();
 #endif
 				deleteVkFFT(&kernelPreparationApplication);

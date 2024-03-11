@@ -21,6 +21,9 @@
 // THE SOFTWARE.
 #ifndef VKFFT_DELETEAPP_H
 #define VKFFT_DELETEAPP_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_PlanManagement/vkFFT_API_handles/vkFFT_DeletePlan.h"
 #include "vkFFT/vkFFT_PlanManagement/vkFFT_API_handles/vkFFT_UpdateBuffers.h"
@@ -29,12 +32,12 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 	if (app == 0) {
 		return;
 	}
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	if (app->configuration.isCompilerInitialized) {
 		glslang_finalize_process();
 		app->configuration.isCompilerInitialized = 0;
 	}
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	if (app->configuration.num_streams > 1) {
 		cudaError_t res_t = cudaSuccess;
 		for (pfUINT i = 0; i < app->configuration.num_streams; i++) {
@@ -48,7 +51,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 			app->configuration.stream_event = 0;
 		}
 	}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	if (app->configuration.num_streams > 1) {
 		hipError_t res_t = hipSuccess;
 		for (pfUINT i = 0; i < app->configuration.num_streams; i++) {
@@ -72,7 +75,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 	if (!app->configuration.userTempBuffer) {
 		if (app->configuration.allocateTempBuffer && (app->configuration.tempBuffer != 0)) {
 			app->configuration.allocateTempBuffer = 0;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 			if (app->configuration.tempBuffer[0] != 0) {
 				vkDestroyBuffer(app->configuration.device[0], app->configuration.tempBuffer[0], 0);
 				app->configuration.tempBuffer[0] = 0;
@@ -81,31 +84,31 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 				vkFreeMemory(app->configuration.device[0], app->configuration.tempBufferDeviceMemory, 0);
 				app->configuration.tempBufferDeviceMemory = 0;
 			}
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 			cudaError_t res_t = cudaSuccess;
 			if (app->configuration.tempBuffer[0] != 0) {
 				res_t = cudaFree(app->configuration.tempBuffer[0]);
 				if (res_t == cudaSuccess) app->configuration.tempBuffer[0] = 0;
 			}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 			hipError_t res_t = hipSuccess;
 			if (app->configuration.tempBuffer[0] != 0) {
 				res_t = hipFree(app->configuration.tempBuffer[0]);
 				if (res_t == hipSuccess) app->configuration.tempBuffer[0] = 0;
 			}
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 			cl_int res = 0;
 			if (app->configuration.tempBuffer[0] != 0) {
 				res = clReleaseMemObject(app->configuration.tempBuffer[0]);
 				if (res == 0) app->configuration.tempBuffer[0] = 0;
 			}
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 			ze_result_t res = ZE_RESULT_SUCCESS;
 			if (app->configuration.tempBuffer[0] != 0) {
 				res = zeMemFree(app->configuration.context[0], app->configuration.tempBuffer[0]);
 				if (res == ZE_RESULT_SUCCESS) app->configuration.tempBuffer[0] = 0;
 			}
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 			if (app->configuration.tempBuffer[0] != 0) {
 				((MTL::Buffer*)app->configuration.tempBuffer[0])->release();
 			}
@@ -124,28 +127,28 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 		if (app->configuration.useRaderUintLUT) {
 			for (pfUINT j = 0; j < 4; j++) {
 				if (app->bufferRaderUintLUT[i][j]) {
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 					vkDestroyBuffer(app->configuration.device[0], app->bufferRaderUintLUT[i][j], 0);
 					app->bufferRaderUintLUT[i][j] = 0;
 					vkFreeMemory(app->configuration.device[0], app->bufferRaderUintLUTDeviceMemory[i][j], 0);
 					app->bufferRaderUintLUTDeviceMemory[i][j] = 0;
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 					cudaError_t res_t = cudaSuccess;
 					res_t = cudaFree(app->bufferRaderUintLUT[i][j]);
 					if (res_t == cudaSuccess) app->bufferRaderUintLUT[i][j] = 0;
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 					hipError_t res_t = hipSuccess;
 					res_t = hipFree(app->bufferRaderUintLUT[i][j]);
 					if (res_t == hipSuccess) app->bufferRaderUintLUT[i][j] = 0;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 					cl_int res = 0;
 					res = clReleaseMemObject(app->bufferRaderUintLUT[i][j]);
 					if (res == 0) app->bufferRaderUintLUT[i][j] = 0;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 					ze_result_t res = ZE_RESULT_SUCCESS;
 					res = zeMemFree(app->configuration.context[0], app->bufferRaderUintLUT[i][j]);
 					if (res == ZE_RESULT_SUCCESS) app->bufferRaderUintLUT[i][j] = 0;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 					if (app->bufferRaderUintLUT[i][j] != 0) {
 						((MTL::Buffer*)app->bufferRaderUintLUT[i][j])->release();
 						//free(app->bufferRaderUintLUT[i][j]);
@@ -156,7 +159,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 			}
 		}
 		if (app->useBluesteinFFT[i]) {
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 			if (app->bufferBluestein[i] != 0) {
 				vkDestroyBuffer(app->configuration.device[0], app->bufferBluestein[i], 0);
 				app->bufferBluestein[i] = 0;
@@ -181,7 +184,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 				vkFreeMemory(app->configuration.device[0], app->bufferBluesteinIFFTDeviceMemory[i], 0);
 				app->bufferBluesteinIFFTDeviceMemory[i] = 0;
 			}
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 			cudaError_t res_t = cudaSuccess;
 			if (app->bufferBluestein[i] != 0) {
 				res_t = cudaFree(app->bufferBluestein[i]);
@@ -195,7 +198,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 				res_t = cudaFree(app->bufferBluesteinIFFT[i]);
 				if (res_t == cudaSuccess) app->bufferBluesteinIFFT[i] = 0;
 			}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 			hipError_t res_t = hipSuccess;
 			if (app->bufferBluestein[i] != 0) {
 				res_t = hipFree(app->bufferBluestein[i]);
@@ -209,7 +212,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 				res_t = hipFree(app->bufferBluesteinIFFT[i]);
 				if (res_t == hipSuccess) app->bufferBluesteinIFFT[i] = 0;
 			}
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 			cl_int res = 0;
 			if (app->bufferBluestein[i] != 0) {
 				res = clReleaseMemObject(app->bufferBluestein[i]);
@@ -223,7 +226,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 				res = clReleaseMemObject(app->bufferBluesteinIFFT[i]);
 				if (res == 0) app->bufferBluesteinIFFT[i] = 0;
 			}
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 			ze_result_t res = ZE_RESULT_SUCCESS;
 			if (app->bufferBluestein[i] != 0) {
 				res = zeMemFree(app->configuration.context[0], app->bufferBluestein[i]);
@@ -237,7 +240,7 @@ static inline void deleteVkFFT(VkFFTApplication* app) {
 				res = zeMemFree(app->configuration.context[0], app->bufferBluesteinIFFT[i]);
 				if (res == ZE_RESULT_SUCCESS) app->bufferBluesteinIFFT[i] = 0;
 			}
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 			if (app->bufferBluestein[i] != 0) {
 				((MTL::Buffer*)app->bufferBluestein[i])->release();
 				//free(app->bufferBluestein[i]);

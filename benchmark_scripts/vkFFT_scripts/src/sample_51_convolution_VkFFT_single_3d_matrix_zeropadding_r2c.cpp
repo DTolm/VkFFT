@@ -11,16 +11,16 @@
 #endif
 #include <inttypes.h>
 
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 #include "vulkan/vulkan.h"
 #include "glslang/Include/glslang_c_interface.h"
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <nvrtc.h>
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 #ifndef __HIP_PLATFORM_HCC__
 #define __HIP_PLATFORM_HCC__
 #endif
@@ -28,7 +28,7 @@
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 #ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #endif
@@ -37,9 +37,9 @@
 #else
 #include <CL/cl.h>
 #endif 
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 #include <ze_api.h>
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 #include "Foundation/Foundation.hpp"
 #include "QuartzCore/QuartzCore.hpp"
 #include "Metal/Metal.hpp"
@@ -50,17 +50,17 @@
 VkFFTResult sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(VkGPU* vkGPU, uint64_t file_output, FILE* output, uint64_t isCompilerInitialized)
 {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkResult res = VK_SUCCESS;
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cudaError_t res = cudaSuccess;
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipError_t res = hipSuccess;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_int res = CL_SUCCESS;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 #endif
 	if (file_output)
 		fprintf(output, "51 - VkFFT zeropadding convolution example with identitiy kernel\n");
@@ -94,58 +94,58 @@ VkFFTResult sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(VkGPU* 
 	//coordinateFeatures number is an important constant for convolution. If we perform 1x1 convolution, it is equal to number of features, but matrixConvolution should be equal to 1. For matrix convolution, it must be equal to matrixConvolution parameter. If we perform 2x2 convolution, it is equal to 3 for symmetric kernel (stored as xx, xy, yy) and 4 for nonsymmetric (stored as xx, xy, yx, yy). Similarly, 6 (stored as xx, xy, xz, yy, yz, zz) and 9 (stored as xx, xy, xz, yx, yy, yz, zx, zy, zz) for 3x3 convolutions. 
 	
 	//After this, configuration file contains pointers to Vulkan objects needed to work with the GPU: VkDevice* device - created device, [uint64_t *bufferSize, VkBuffer *buffer, VkDeviceMemory* bufferDeviceMemory] - allocated GPU memory FFT is performed on. [uint64_t *kernelSize, VkBuffer *kernel, VkDeviceMemory* kernelDeviceMemory] - allocated GPU memory, where kernel for convolution is stored.
-#if(VKFFT_BACKEND==5)
+#if(VKFFT_BACKEND_IS_METAL)
 	configuration.device = vkGPU->device;
 #else
 	configuration.device = &vkGPU->device;
 #endif
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	configuration.queue = &vkGPU->queue; //to allocate memory for LUT, we have to pass a queue, vkGPU->fence, commandPool and physicalDevice pointers 
 	configuration.fence = &vkGPU->fence;
 	configuration.commandPool = &vkGPU->commandPool;
 	configuration.physicalDevice = &vkGPU->physicalDevice;
 	configuration.isCompilerInitialized = isCompilerInitialized;//compiler can be initialized before VkFFT plan creation. if not, VkFFT will create and destroy one after initialization
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	configuration.context = &vkGPU->context;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	configuration.context = &vkGPU->context;
 	configuration.commandQueue = &vkGPU->commandQueue;
 	configuration.commandQueueID = vkGPU->commandQueueID;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
     configuration.queue = vkGPU->queue;
 #endif
 	//In this example, we perform a convolution for a real vectorfield (3vector) with a symmetric kernel (6 values). We use configuration to initialize convolution kernel first from real data, then we create convolution_configuration for convolution. The buffer object from configuration is passed to convolution_configuration as kernel object.
 	//1. Kernel forward FFT.
 	uint64_t kernelSize = ((uint64_t)configuration.coordinateFeatures) * sizeof(float) * 2 * (configuration.size[0] / 2 + 1) * configuration.size[1] * configuration.size[2];
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkBuffer kernel = {};
 	VkDeviceMemory kernelDeviceMemory = {};
 	resFFT = allocateBuffer(vkGPU, &kernel, &kernelDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, kernelSize);
 	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	configuration.buffer = &kernel;
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cuFloatComplex* kernel = 0;
 	res = cudaMalloc((void**)&kernel, kernelSize);
 	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = (void**)&kernel;
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipFloatComplex* kernel = 0;
 	res = hipMalloc((void**)&kernel, kernelSize);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = (void**)&kernel;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_mem kernel = 0;
 	kernel = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, kernelSize, 0, &res);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = &kernel;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	void* kernel = 0;
 	ze_device_mem_alloc_desc_t device_desc = {};
 	device_desc.stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC;
 	res = zeMemAllocDevice(vkGPU->context, &device_desc, kernelSize, sizeof(float), vkGPU->device, &kernel);
 	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = &kernel;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	MTL::Buffer* kernel = 0;
 	kernel = vkGPU->device->newBuffer(kernelSize, MTL::ResourceStorageModePrivate);
 	configuration.buffer = &kernel;
@@ -208,50 +208,50 @@ VkFFTResult sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(VkGPU* 
 	convolution_configuration.crossPowerSpectrumNormalization = 0;
 	//convolution_configuration.keepShaderCode = 1;
 	//convolution_configuration.printMemoryLayout = 1;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	convolution_configuration.kernel = &kernel;
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	convolution_configuration.kernel = (void**)&kernel;
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	convolution_configuration.kernel = (void**)&kernel;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	convolution_configuration.kernel = &kernel;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	convolution_configuration.kernel = (void**)&kernel;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	convolution_configuration.kernel = &kernel;
 #endif	
 
 	//Allocate separate buffer for the input data.
 	uint64_t bufferSize = ((uint64_t)convolution_configuration.coordinateFeatures) * sizeof(float) * 2 * (convolution_configuration.size[0] / 2 + 1) * convolution_configuration.size[1] * convolution_configuration.size[2];;
 
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkBuffer buffer = {};
 	VkDeviceMemory bufferDeviceMemory = {};
 	resFFT = allocateBuffer(vkGPU, &buffer, &bufferDeviceMemory, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, bufferSize);
 	if (resFFT != VKFFT_SUCCESS) return resFFT;
 	convolution_configuration.buffer = &buffer;
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cuFloatComplex* buffer = 0;
 	res = cudaMalloc((void**)&buffer, bufferSize);
 	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	convolution_configuration.buffer = (void**)&buffer;
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipFloatComplex* buffer = 0;
 	res = hipMalloc((void**)&buffer, bufferSize);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	convolution_configuration.buffer = (void**)&buffer;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_mem buffer = 0;
 	buffer = clCreateBuffer(vkGPU->context, CL_MEM_READ_WRITE, bufferSize, 0, &res);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	convolution_configuration.buffer = &buffer;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	void* buffer = 0;
 	res = zeMemAllocDevice(vkGPU->context, &device_desc, bufferSize, sizeof(float), vkGPU->device, &buffer);
 	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_ALLOCATE;
 	configuration.buffer = &buffer;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	MTL::Buffer* buffer = 0;
 	buffer = vkGPU->device->newBuffer(bufferSize, MTL::ResourceStorageModePrivate);
 	configuration.buffer = &buffer;
@@ -312,24 +312,24 @@ VkFFTResult sample_51_convolution_VkFFT_single_3d_matrix_zeropadding_r2c(VkGPU* 
 	free(kernel_input);
 	free(buffer_input);
 	free(buffer_output);
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	vkDestroyBuffer(vkGPU->device, buffer, NULL);
 	vkFreeMemory(vkGPU->device, bufferDeviceMemory, NULL);
 	vkDestroyBuffer(vkGPU->device, kernel, NULL);
 	vkFreeMemory(vkGPU->device, kernelDeviceMemory, NULL);
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cudaFree(buffer);
 	cudaFree(kernel);
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipFree(buffer);
 	hipFree(kernel);
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	clReleaseMemObject(buffer);
 	clReleaseMemObject(kernel);
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	zeMemFree(vkGPU->context, buffer);
 	zeMemFree(vkGPU->context, kernel);
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	buffer->release();
 	kernel->release();
 #endif	

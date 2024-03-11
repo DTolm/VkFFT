@@ -21,6 +21,9 @@
 // THE SOFTWARE.
 #ifndef VKFFT_PUSHCONSTANTS_H
 #define VKFFT_PUSHCONSTANTS_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
@@ -42,19 +45,19 @@ static inline void appendPushConstants(VkFFTSpecializationConstantsLayout* sc) {
 	if (sc->res != VKFFT_SUCCESS) return;
 	if (sc->pushConstantsStructSize == 0)
 		return;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	sc->tempLen = sprintf(sc->tempStr, "layout(push_constant) uniform PushConsts\n{\n");
 	PfAppendLine(sc);
 	
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	sc->tempLen = sprintf(sc->tempStr, "	typedef struct {\n");
 	PfAppendLine(sc);
 	
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	sc->tempLen = sprintf(sc->tempStr, "	typedef struct {\n");
 	PfAppendLine(sc);
 	
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	sc->tempLen = sprintf(sc->tempStr, "	typedef struct {\n");
 	PfAppendLine(sc);
 	
@@ -90,23 +93,23 @@ static inline void appendPushConstants(VkFFTSpecializationConstantsLayout* sc) {
 		sprintf(tempCopyStr, "consts.%s", sc->kernelOffset.name);
 		sprintf(sc->kernelOffset.name, "%s", tempCopyStr);
 	}
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	sc->tempLen = sprintf(sc->tempStr, "} consts;\n\n");
 	PfAppendLine(sc);
 	
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	sc->tempLen = sprintf(sc->tempStr, "	}PushConsts;\n");
 	PfAppendLine(sc);
 	//sc->tempLen = sprintf(sc->tempStr, "	__constant__ PushConsts consts;\n");
 	//PfAppendLine(sc);
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	sc->tempLen = sprintf(sc->tempStr, "	}PushConsts;\n");
 	PfAppendLine(sc);
 	
 	//sc->tempLen = sprintf(sc->tempStr, "	__constant__ PushConsts consts;\n");
 	//PfAppendLine(sc);
 	
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	sc->tempLen = sprintf(sc->tempStr, "	}PushConsts;\n");
 	PfAppendLine(sc);
 	

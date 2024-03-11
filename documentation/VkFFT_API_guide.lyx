@@ -3333,7 +3333,7 @@ pfUINT size[VKFFT_MAX_FFT_DIMENSIONS];	// WHD+ - system dimensions
 
 \begin_layout Plain Layout
 
-#if(VKFFT_BACKEND==0) //Vulkan API
+#if(VKFFT_BACKEND_VULKAN) //Vulkan API
 \end_layout
 
 \begin_layout Plain Layout
@@ -3372,7 +3372,7 @@ pfUINT isCompilerInitialized;	// Specify if glslang compiler has been intialized
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==1) //CUDA API
+#elif(VKFFT_BACKEND_CUDA) //CUDA API
 \end_layout
 
 \begin_layout Plain Layout
@@ -3397,7 +3397,7 @@ pfUINT num_streams;	// Try to submit CUDA kernels in multiple streams for
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==2) //HIP API
+#elif(VKFFT_BACKEND_HIP) //HIP API
 \end_layout
 
 \begin_layout Plain Layout
@@ -3421,7 +3421,7 @@ pfUINT num_streams;	// Try to submit HIP kernels in multiple streams for
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==3) //OpenCL API
+#elif(VKFFT_BACKEND_OPENCL) //OpenCL API
 \end_layout
 
 \begin_layout Plain Layout
@@ -3441,7 +3441,7 @@ cl_context* context;	// Pointer to OpenCL context, obtained from clCreateContext
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==4) //Level Zero API
+#elif(VKFFT_BACKEND_LEVEL_ZERO) //Level Zero API
 \end_layout
 
 \begin_layout Plain Layout
@@ -3470,7 +3470,7 @@ uint32_t commandQueueID;	// ID of the commandQueue with compute and copy
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_METAL)
 \end_layout
 
 \begin_layout Plain Layout
@@ -3572,7 +3572,7 @@ tion is enabled
 
 \begin_layout Plain Layout
 
-#if(VKFFT_BACKEND==0) //Vulkan API
+#if(VKFFT_BACKEND_VULKAN) //Vulkan API
 \end_layout
 
 \begin_layout Plain Layout
@@ -3610,7 +3610,7 @@ VkBuffer* kernel;	// Pointer to array of kernel buffers (or one buffer)
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==1) //CUDA API
+#elif(VKFFT_BACKEND_CUDA) //CUDA API
 \end_layout
 
 \begin_layout Plain Layout
@@ -3647,7 +3647,7 @@ void** kernel;	// Pointer to device buffer used to read kernel data from
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==2) //HIP API
+#elif(VKFFT_BACKEND_HIP) //HIP API
 \end_layout
 
 \begin_layout Plain Layout
@@ -3684,7 +3684,7 @@ void** kernel;	// Pointer to device buffer used to read kernel data from
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==3) //OpenCL API
+#elif(VKFFT_BACKEND_OPENCL) //OpenCL API
 \end_layout
 
 \begin_layout Plain Layout
@@ -3721,7 +3721,7 @@ cl_mem* kernel;	// Pointer to device buffer used to read kernel data from
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_LEVEL_ZERO)
 \end_layout
 
 \begin_layout Plain Layout
@@ -3758,7 +3758,7 @@ void** kernel;	// Pointer to device buffer used to read kernel data from
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_METAL)
 \end_layout
 
 \begin_layout Plain Layout
@@ -4502,7 +4502,7 @@ pfUINT vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 - AMD,
 
 \begin_layout Plain Layout
 
-#if(VKFFT_BACKEND==0) //Vulkan API
+#if(VKFFT_BACKEND_VULKAN) //Vulkan API
 \end_layout
 
 \begin_layout Plain Layout
@@ -4522,7 +4522,7 @@ VkMemoryBarrier* memory_barrier;	// Filled at app creation
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==1) //CUDA API
+#elif(VKFFT_BACKEND_CUDA) //CUDA API
 \end_layout
 
 \begin_layout Plain Layout
@@ -4542,7 +4542,7 @@ pfUINT streamID;	// Filled at app creation
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==2) //HIP API
+#elif(VKFFT_BACKEND_HIP) //HIP API
 \end_layout
 
 \begin_layout Plain Layout
@@ -4562,7 +4562,7 @@ pfUINT streamID;	// Filled at app creation
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==3) //OpenCL API
+#elif(VKFFT_BACKEND_OPENCL) //OpenCL API
 \end_layout
 
 \begin_layout Plain Layout
@@ -4572,7 +4572,7 @@ cl_command_queue* commandQueue;	// Filled at app creation
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_LEVEL_ZERO)
 \end_layout
 
 \begin_layout Plain Layout
@@ -4582,7 +4582,7 @@ ze_command_list_handle_t* commandList;	// Filled at app creation
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_METAL)
 \end_layout
 
 \begin_layout Plain Layout
@@ -5779,7 +5779,7 @@ typedef struct {
 
 \begin_layout Plain Layout
 
-#if(VKFFT_BACKEND==0) //Vulkan API
+#if(VKFFT_BACKEND_VULKAN) //Vulkan API
 \end_layout
 
 \begin_layout Plain Layout
@@ -5849,7 +5849,7 @@ uint64_t enableValidationLayers;
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==1) //CUDA API
+#elif(VKFFT_BACKEND_CUDA) //CUDA API
 \end_layout
 
 \begin_layout Plain Layout
@@ -5864,7 +5864,7 @@ CUcontext context;
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==2) //HIP API
+#elif(VKFFT_BACKEND_HIP) //HIP API
 \end_layout
 
 \begin_layout Plain Layout
@@ -5879,7 +5879,7 @@ hipCtx_t context;
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==3) //OpenCL API
+#elif(VKFFT_BACKEND_OPENCL) //OpenCL API
 \end_layout
 
 \begin_layout Plain Layout
@@ -5904,7 +5904,7 @@ cl_command_queue commandQueue;
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==4) //Level Zero API
+#elif(VKFFT_BACKEND_LEVEL_ZERO) //Level Zero API
 \end_layout
 
 \begin_layout Plain Layout
@@ -5934,7 +5934,7 @@ uint32_t commandQueueID;
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==5) //Metal API
+#elif(VKFFT_BACKEND_METAL) //Metal API
 \end_layout
 
 \begin_layout Plain Layout
@@ -6031,7 +6031,7 @@ begin{minted}[tabsize=4,obeytabs,breaklines]{C}
 
 \begin_layout Plain Layout
 
-#if(VKFFT_BACKEND==0) //Vulkan API
+#if(VKFFT_BACKEND_VULKAN) //Vulkan API
 \end_layout
 
 \begin_layout Plain Layout
@@ -6260,7 +6260,7 @@ glslang_initialize_process();
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==1) //CUDA API
+#elif(VKFFT_BACKEND_CUDA) //CUDA API
 \end_layout
 
 \begin_layout Plain Layout
@@ -6315,7 +6315,7 @@ if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==2) //HIP API
+#elif(VKFFT_BACKEND_HIP) //HIP API
 \end_layout
 
 \begin_layout Plain Layout
@@ -6365,7 +6365,7 @@ if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==3) //OpenCL API
+#elif(VKFFT_BACKEND_OPENCL) //OpenCL API
 \end_layout
 
 \begin_layout Plain Layout
@@ -6550,7 +6550,7 @@ free(platforms);
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_LEVEL_ZERO)
 \end_layout
 
 \begin_layout Plain Layout
@@ -6888,7 +6888,7 @@ EUE;
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_METAL)
 \end_layout
 
 \begin_layout Plain Layout
@@ -7017,7 +7017,7 @@ uint64_t bufferSize = (uint64_t)sizeof(float) * 2 * configuration.size[0];
 
 \begin_layout Plain Layout
 
-#if(VKFFT_BACKEND==5)
+#if(VKFFT_BACKEND_METAL)
 \end_layout
 
 \begin_layout Plain Layout
@@ -7046,7 +7046,7 @@ configuration.device = &vkGPU->device;
 
 \begin_layout Plain Layout
 
-#if(VKFFT_BACKEND==0) //Vulkan API		
+#if(VKFFT_BACKEND_VULKAN) //Vulkan API		
 \end_layout
 
 \begin_layout Plain Layout
@@ -7078,7 +7078,7 @@ configuration.isCompilerInitialized = isCompilerInitialized; //glslang compiler
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==3) //OpenCL API		
+#elif(VKFFT_BACKEND_OPENCL) //OpenCL API		
 \end_layout
 
 \begin_layout Plain Layout
@@ -7088,7 +7088,7 @@ configuration.context = &vkGPU->context;
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_LEVEL_ZERO)
 \end_layout
 
 \begin_layout Plain Layout
@@ -7108,7 +7108,7 @@ configuration.commandQueueID = vkGPU->commandQueueID;
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==5)             
+#elif(VKFFT_BACKEND_METAL)             
 \end_layout
 
 \begin_layout Plain Layout
@@ -7143,7 +7143,7 @@ transferDataFromCPU(buffer, cpu_buffer); //Pseudocode for data transfer
 
 \begin_layout Plain Layout
 
-#if(VKFFT_BACKEND==0) //Vulkan API needs bufferSize at initialization	
+#if(VKFFT_BACKEND_VULKAN) //Vulkan API needs bufferSize at initialization	
 \end_layout
 
 \begin_layout Plain Layout
@@ -7181,7 +7181,7 @@ launchParams.buffer = &buffer;
 
 \begin_layout Plain Layout
 
-#if(VKFFT_BACKEND==0) //Vulkan API 
+#if(VKFFT_BACKEND_VULKAN) //Vulkan API 
 \end_layout
 
 \begin_layout Plain Layout
@@ -7191,7 +7191,7 @@ launchParams.commandBuffer = &commandBuffer;
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==3) //OpenCL API
+#elif(VKFFT_BACKEND_OPENCL) //OpenCL API
 \end_layout
 
 \begin_layout Plain Layout
@@ -7201,7 +7201,7 @@ launchParams.commandQueue = &commandQueue;
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==4) //Level Zero API
+#elif(VKFFT_BACKEND_LEVEL_ZERO) //Level Zero API
 \end_layout
 
 \begin_layout Plain Layout
@@ -7211,7 +7211,7 @@ launchParams->commandList = &commandList;
 
 \begin_layout Plain Layout
 
-#elif(VKFFT_BACKEND==5) //Metal API
+#elif(VKFFT_BACKEND_METAL) //Metal API
 \end_layout
 
 \begin_layout Plain Layout

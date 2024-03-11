@@ -21,6 +21,9 @@
 // THE SOFTWARE.
 #ifndef VKFFT_KERNELUTILS_H
 #define VKFFT_KERNELUTILS_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
@@ -55,7 +58,7 @@ static inline void appendLicense(VkFFTSpecializationConstantsLayout* sc) {
 
 static inline void appendVersion(VkFFTSpecializationConstantsLayout* sc) {
 	if (sc->res != VKFFT_SUCCESS) return;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	sc->tempLen = sprintf(sc->tempStr, "#version 450\n\n");
 	PfAppendLine(sc);
 #endif
@@ -63,7 +66,7 @@ static inline void appendVersion(VkFFTSpecializationConstantsLayout* sc) {
 }
 static inline void appendExtensions(VkFFTSpecializationConstantsLayout* sc) {
 	if (sc->res != VKFFT_SUCCESS) return;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	//sc->tempLen = sprintf(sc->tempStr, "#extension GL_EXT_debug_printf : require\n\n");
 	//PfAppendLine(sc);
 	//
@@ -78,13 +81,13 @@ static inline void appendExtensions(VkFFTSpecializationConstantsLayout* sc) {
 		sc->tempLen = sprintf(sc->tempStr, "#extension GL_EXT_shader_16bit_storage : require\n\n");
 		PfAppendLine(sc);
 	}
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	if ((((sc->floatTypeInputMemoryCode / 10) % 10) == 0) || (((sc->floatTypeOutputMemoryCode / 10) % 10) == 0) || (((sc->floatTypeCode / 10) % 10) == 0)) {
 		sc->tempLen = sprintf(sc->tempStr, "\
 #include <%s/include/cuda_fp16.h>\n", CUDA_TOOLKIT_ROOT_DIR);
 		PfAppendLine(sc);
 	}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 #ifdef VKFFT_OLD_ROCM
 	sc->tempLen = sprintf(sc->tempStr, "\
 #include <hip/hip_runtime.h>\n");
@@ -95,7 +98,7 @@ static inline void appendExtensions(VkFFTSpecializationConstantsLayout* sc) {
 #include <hip/hip_fp16.h>\n");
 		PfAppendLine(sc);
 	}
-#elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+#elif((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 	if ((((sc->floatTypeCode / 10) % 10) == 2) || (((sc->floatTypeCode/10)%10) == 3) || (sc->useUint64)) {
 		sc->tempLen = sprintf(sc->tempStr, "\
 #pragma OPENCL EXTENSION cl_khr_fp64 : enable\n\n");
@@ -106,7 +109,7 @@ static inline void appendExtensions(VkFFTSpecializationConstantsLayout* sc) {
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable\n\n");
         PfAppendLine(sc);
     }
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	sc->tempLen = sprintf(sc->tempStr, "\
 #include <metal_math>\n\
 using namespace metal;\n");
@@ -115,7 +118,7 @@ using namespace metal;\n");
 	return;
 }
 static inline void appendQuadDoubleDoubleStruct(VkFFTSpecializationConstantsLayout* sc) {
-#if(VKFFT_BACKEND==0)	
+#if(VKFFT_BACKEND_IS_VULKAN)	
 	/*sc->tempLen = sprintf(sc->tempStr, "\
 struct pf_quad {\n\
 %s x;\n\
@@ -154,7 +157,7 @@ static inline void appendSinCos20(VkFFTSpecializationConstantsLayout* sc) {
 	PfContainer temp_name = VKFFT_ZERO_INIT;
 	temp_name.type = 100 + sc->floatTypeCode;
 	PfAllocateContainerFlexible(sc, &temp_name, 50);
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	temp_double.data.d = pfFPinit("0.63661977236758134307553505349006");
 	sprintf(temp_name.name, "loc_2_PI");
 	PfDefineConstant(sc, &temp_name, &temp_double);
@@ -274,7 +277,7 @@ static inline void appendConversion(VkFFTSpecializationConstantsLayout* sc) {
 		PfAppendLine(sc);
 	}
 	else {
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 #else
 		sc->tempLen = sprintf(sc->tempStr, "\
 %s%s conv_%s(%s input)\n\
@@ -301,19 +304,19 @@ static inline void appendConversion(VkFFTSpecializationConstantsLayout* sc) {
 
 static inline void appendBarrierVkFFT(VkFFTSpecializationConstantsLayout* sc) {
 	if (sc->res != VKFFT_SUCCESS) return;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	sc->tempLen = sprintf(sc->tempStr, "barrier();\n\n");
 	PfAppendLine(sc);
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	sc->tempLen = sprintf(sc->tempStr, "__syncthreads();\n\n");
 	PfAppendLine(sc);
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	sc->tempLen = sprintf(sc->tempStr, "__syncthreads();\n\n");
 	PfAppendLine(sc);
-#elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+#elif((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 	sc->tempLen = sprintf(sc->tempStr, "barrier(CLK_LOCAL_MEM_FENCE);\n\n");
 	PfAppendLine(sc);
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	sc->tempLen = sprintf(sc->tempStr, "threadgroup_barrier(mem_flags::mem_none);\n\n");
 	PfAppendLine(sc);
 #endif

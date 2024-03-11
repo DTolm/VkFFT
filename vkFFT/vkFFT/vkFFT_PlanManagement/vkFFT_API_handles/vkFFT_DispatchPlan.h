@@ -21,6 +21,9 @@
 // THE SOFTWARE.
 #ifndef VKFFT_DISPATCHPLAN_H
 #define VKFFT_DISPATCHPLAN_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 
 static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* axis, pfUINT* dispatchBlock) {
@@ -149,12 +152,12 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				dispatchSize[0] = (i == blockNumber[0] - 1) ? lastBlockSize[0] : blockSize[0];
 				dispatchSize[1] = (j == blockNumber[1] - 1) ? lastBlockSize[1] : blockSize[1];
 				dispatchSize[2] = (k == blockNumber[2] - 1) ? lastBlockSize[2] : blockSize[2];
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 				if (axis->pushConstants.structSize > 0) {
 					vkCmdPushConstants(app->configuration.commandBuffer[0], axis->pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, (uint32_t)axis->pushConstants.structSize, axis->pushConstants.data);
 				}
 				vkCmdDispatch(app->configuration.commandBuffer[0], (uint32_t)dispatchSize[0], (uint32_t)dispatchSize[1], (uint32_t)dispatchSize[2]);
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 				void* args[10];
 				CUresult result = CUDA_SUCCESS;
 				args[0] = axis->inputBuffer;
@@ -223,7 +226,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 					}
 					app->configuration.streamCounter++;
 				}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 				hipError_t result = hipSuccess;
 				void* args[10];
 				args[0] = axis->inputBuffer;
@@ -293,7 +296,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 					}
 					app->configuration.streamCounter++;
 				}
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 				cl_int result = CL_SUCCESS;
 				void* args[10];
 				args[0] = axis->inputBuffer;
@@ -366,7 +369,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				if (result != CL_SUCCESS) {
 					return VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL;
 				}
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 				ze_result_t result = ZE_RESULT_SUCCESS;
 				void* args[10];
 				args[0] = axis->inputBuffer;
@@ -440,7 +443,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				if (result != ZE_RESULT_SUCCESS) {
 					return VKFFT_ERROR_FAILED_TO_LAUNCH_KERNEL;
 				}
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 				app->configuration.commandEncoder->setComputePipelineState(axis->pipeline);
 				void* args[10];
 				app->configuration.commandEncoder->setBuffer(axis->inputBuffer[0], 0, 0);

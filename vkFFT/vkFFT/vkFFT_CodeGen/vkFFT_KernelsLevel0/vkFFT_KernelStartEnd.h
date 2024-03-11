@@ -21,6 +21,9 @@
 // THE SOFTWARE.
 #ifndef VKFFT_KERNELSTARTEND_H
 #define VKFFT_KERNELSTARTEND_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_KernelsLevel0/vkFFT_MemoryManagement/vkFFT_MemoryInitialization/vkFFT_SharedMemory.h"
@@ -42,11 +45,11 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, int
 
 	PfContainer* uintType32;
 	PfGetTypeFromCode(sc, sc->uintType32Code, &uintType32);
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	appendSharedMemoryVkFFT(sc, (int)locType);
 	sc->tempLen = sprintf(sc->tempStr, "void main() {\n");
 	PfAppendLine(sc);
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	sc->tempLen = sprintf(sc->tempStr, "extern __shared__ float shared[];\n");
 	PfAppendLine(sc);
 	
@@ -85,7 +88,7 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, int
 	
 	appendSharedMemoryVkFFT(sc, (int)locType);
 	
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	sc->tempLen = sprintf(sc->tempStr, "extern __shared__ float shared[];\n");
 	PfAppendLine(sc);
 	if (!sc->useUint64 && sc->useStrict32BitAddress > 0) {
@@ -151,7 +154,7 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, int
 	PfAppendLine(sc);
 	
 	appendSharedMemoryVkFFT(sc, (int)locType);
-#elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+#elif((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 	sc->tempLen = sprintf(sc->tempStr, "__kernel __attribute__((reqd_work_group_size(%" PRIi64 ", %" PRIi64 ", %" PRIi64 "))) void VkFFT_main ", sc->localSize[0].data.i, sc->localSize[1].data.i, sc->localSize[2].data.i);
 	PfAppendLine(sc);
 
@@ -191,7 +194,7 @@ static inline void appendKernelStart(VkFFTSpecializationConstantsLayout* sc, int
 	PfAppendLine(sc);
 	//sc->tempLen = sprintf(sc->tempStr, ", const PushConsts consts) {\n");
 	appendSharedMemoryVkFFT(sc, (int)locType);
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	sc->tempLen = sprintf(sc->tempStr, "kernel void VkFFT_main ");
 	PfAppendLine(sc);
 	
@@ -270,11 +273,11 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 
 	PfContainer* uintType32;
 	PfGetTypeFromCode(sc, sc->uintType32Code, &uintType32);
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	sc->tempLen = sprintf(sc->tempStr, "void main() {\n");
 	PfAppendLine(sc);
 	
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	
 	sc->tempLen = sprintf(sc->tempStr, "extern \"C\" __global__ void __launch_bounds__(%" PRIi64 ") VkFFT_main_R2C ", sc->localSize[0].data.i * sc->localSize[1].data.i * sc->localSize[2].data.i);
 	PfAppendLine(sc);
@@ -293,7 +296,7 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
 
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	if (!sc->useUint64 && sc->useStrict32BitAddress > 0) {
 		// These wrappers help hipcc to generate faster code for load and store operations where
 		// 64-bit scalar + 32-bit vector registers are used instead of 64-bit vector saving a few
@@ -341,7 +344,7 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
 	
-#elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+#elif((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 	sc->tempLen = sprintf(sc->tempStr, "__kernel __attribute__((reqd_work_group_size(%" PRIi64 ", %" PRIi64 ", %" PRIi64 "))) void VkFFT_main_R2C ", sc->localSize[0].data.i, sc->localSize[1].data.i, sc->localSize[2].data.i);
 	PfAppendLine(sc);
 	sc->tempLen = sprintf(sc->tempStr, "(__global %s* inputs, __global %s* outputs", inputMemoryType->name, outputMemoryType->name);
@@ -359,7 +362,7 @@ static inline void appendKernelStart_R2C(VkFFTSpecializationConstantsLayout* sc,
 	sc->tempLen = sprintf(sc->tempStr, ") {\n");
 	PfAppendLine(sc);
 
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	sc->tempLen = sprintf(sc->tempStr, "kernel void VkFFT_main_R2C ");
 	PfAppendLine(sc);
 

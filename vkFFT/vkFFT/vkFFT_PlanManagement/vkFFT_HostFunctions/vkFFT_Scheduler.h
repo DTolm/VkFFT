@@ -21,7 +21,11 @@
 // THE SOFTWARE.
 #ifndef VKFFT_SCHEDULER_H
 #define VKFFT_SCHEDULER_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
+
 static inline VkFFTResult VkFFTGetRegistersPerThreadQuad(VkFFTApplication* app, int fft_length, int extraSharedMemoryForPow2, pfUINT max_rhs, int useRader, int* loc_multipliers, int* registers_per_thread_per_radix, int* registers_per_thread, int* min_registers_per_thread, int* isGoodSequence) {
 	for (int i = 0; i < 33; i++) {
 		registers_per_thread_per_radix[i] = 0;
@@ -1197,7 +1201,7 @@ static inline VkFFTResult VkFFTGetRegistersPerThread(VkFFTApplication* app, int 
 							int testMinStages = 10000000;
 							int maxRadixMinStages = 1;
 							int fixMaxCheckRadix2 = 3;
-#if(VKFFT_BACKEND==1)
+#if(VKFFT_BACKEND_IS_CUDA)
 							fixMaxCheckRadix2 = (((fft_length >= 1024) || (fft_length == 256)) && (extraSharedMemoryForPow2) && (!useRader)) ? 5 : 3;
 #endif
 							for (int i = 1; i <= fixMaxCheckRadix2; i++) {

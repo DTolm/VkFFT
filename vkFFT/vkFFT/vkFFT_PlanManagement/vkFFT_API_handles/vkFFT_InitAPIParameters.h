@@ -21,6 +21,9 @@
 // THE SOFTWARE.
 #ifndef VKFFT_INITAPIPARAMETERS_H
 #define VKFFT_INITAPIPARAMETERS_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_MathUtils/vkFFT_MathUtils.h"
@@ -60,7 +63,7 @@ static inline VkFFTResult initMemoryParametersAPI(VkFFTApplication* app, VkFFTSp
 	sc->int64Def.type = 331;
 	PfAllocateContainerFlexible(sc, &sc->int64Def, 50);
 	
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	sprintf(sc->halfLiteral.name, "h");
 	sprintf(sc->floatLiteral.name, "f");
 	sprintf(sc->doubleLiteral.name, "LF");
@@ -77,7 +80,7 @@ static inline VkFFTResult initMemoryParametersAPI(VkFFTApplication* app, VkFFTSp
 	sprintf(sc->uintDef.name, "uint");
 	sprintf(sc->int64Def.name, "int64_t");
 	sprintf(sc->uint64Def.name, "uint64_t");
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	sprintf(sc->halfLiteral.name, "h");
 	sprintf(sc->floatLiteral.name, "f");
 	sprintf(sc->doubleLiteral.name, "l");
@@ -94,7 +97,7 @@ static inline VkFFTResult initMemoryParametersAPI(VkFFTApplication* app, VkFFTSp
 	sprintf(sc->uintDef.name, "unsigned int");
 	sprintf(sc->int64Def.name, "long long");
 	sprintf(sc->uint64Def.name, "unsigned long long");
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	sprintf(sc->halfLiteral.name, "h");
 	sprintf(sc->floatLiteral.name, "f");
 	sprintf(sc->doubleLiteral.name, "l");
@@ -111,7 +114,7 @@ static inline VkFFTResult initMemoryParametersAPI(VkFFTApplication* app, VkFFTSp
 	sprintf(sc->uintDef.name, "unsigned int");
 	sprintf(sc->int64Def.name, "long long");
 	sprintf(sc->uint64Def.name, "unsigned long long");
-#elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+#elif((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 	sprintf(sc->halfLiteral.name, "h");
 	sprintf(sc->floatLiteral.name, "f");
 	sprintf(sc->halfDef.name, "half");
@@ -127,7 +130,7 @@ static inline VkFFTResult initMemoryParametersAPI(VkFFTApplication* app, VkFFTSp
 	sprintf(sc->uintDef.name, "unsigned int");
 	sprintf(sc->int64Def.name, "long long");
 	sprintf(sc->uint64Def.name, "unsigned long long");
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	sprintf(sc->halfLiteral.name, "h");
 	sprintf(sc->floatLiteral.name, "f");
 	sprintf(sc->halfDef.name, "half");
@@ -389,7 +392,7 @@ static inline VkFFTResult initParametersAPI(VkFFTApplication* app, VkFFTSpeciali
 		PfAllocateContainerFlexible(sc, &sc->kernelOffset, 50);
 		sprintf(sc->kernelOffset.name, "kernelOffset");
 	}
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	sprintf(sc->inputsStruct.name, "inputs");
 	sprintf(sc->outputsStruct.name, "outputs");
 	sprintf(sc->gl_LocalInvocationID_x.name, "gl_LocalInvocationID.x");
@@ -427,7 +430,7 @@ static inline VkFFTResult initParametersAPI(VkFFTApplication* app, VkFFTSpeciali
 	//sprintf(sc->cosDef.name, "cos");
 	//sprintf(sc->sinDef.name, "sin");
 	sprintf(sc->constDef.name, "const");
-#elif((VKFFT_BACKEND==1) ||(VKFFT_BACKEND==2))
+#elif((VKFFT_BACKEND_IS_CUDA) ||(VKFFT_BACKEND_IS_HIP))
 	sprintf(sc->inputsStruct.name, "inputs");
 	sprintf(sc->outputsStruct.name, "outputs");
 	sprintf(sc->gl_LocalInvocationID_x.name, "threadIdx.x");
@@ -466,7 +469,7 @@ static inline VkFFTResult initParametersAPI(VkFFTApplication* app, VkFFTSpeciali
 	//sprintf(sc->sinDef.name, "__sinf");
 	sprintf(sc->constDef.name, "const");
 	sprintf(sc->functionDef.name, "__device__ static __inline__ ");
-#elif((VKFFT_BACKEND==3)||(VKFFT_BACKEND==4))
+#elif((VKFFT_BACKEND_IS_OPENCL)||(VKFFT_BACKEND_IS_LEVEL_ZERO))
 	sprintf(sc->inputsStruct.name, "inputs");
 	sprintf(sc->outputsStruct.name, "outputs");
 	sprintf(sc->gl_LocalInvocationID_x.name, "get_local_id(0)");
@@ -505,7 +508,7 @@ static inline VkFFTResult initParametersAPI(VkFFTApplication* app, VkFFTSpeciali
 	//sprintf(sc->sinDef.name, "native_sin");
 	sprintf(sc->constDef.name, "__constant");
 	sprintf(sc->functionDef.name, "static __inline__ ");
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	sprintf(sc->inputsStruct.name, "inputs");
 	sprintf(sc->outputsStruct.name, "outputs");
 	sprintf(sc->gl_LocalInvocationID_x.name, "thread_position_in_threadgroup.x");

@@ -21,6 +21,9 @@
 // THE SOFTWARE.
 #ifndef VKFFT_TRANSFERS_H
 #define VKFFT_TRANSFERS_H
+
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_CodeGen/vkFFT_StringManagement/vkFFT_StringManager.h"
 

@@ -33,10 +33,11 @@
 #define __STDC_FORMAT_MACROS
 #endif
 #include <inttypes.h>
-#if(VKFFT_BACKEND==0)
+#include "vkFFT/vkFFT_Backend/vkFFT_Backend.h"
+#if(VKFFT_BACKEND_IS_VULKAN)
 #include "vulkan/vulkan.h"
 #include "glslang/Include/glslang_c_interface.h"
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 #include <nvrtc.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -45,12 +46,12 @@
 #ifndef CUDA_TOOLKIT_ROOT_DIR
 #define CUDA_TOOLKIT_ROOT_DIR ""
 #endif
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 #ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #endif

@@ -278,8 +278,8 @@ VkFFTResult sample_53_convolution_VkFFT_single_2d_Nimages_1kernel(VkGPU* vkGPU, 
 	//Print data, if needed.
 	for (uint64_t f = 0; f < convolution_configuration.numberBatches; f++) {
 		if (file_output)
-			fprintf(output, "\Batch id: %" PRIu64 "\n\n", f);
-		printf("\Batch id: %" PRIu64 "\n\n", f);
+			fprintf(output, "Batch id: %" PRIu64 "\n\n", f);
+		printf("Batch id: %" PRIu64 "\n\n", f);
 		for (uint64_t v = 0; v < convolution_configuration.coordinateFeatures; v++) {
 			if (file_output)
 				fprintf(output, "\ncoordinate: %" PRIu64 "\n\n", v);

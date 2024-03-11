@@ -11,16 +11,16 @@
 #endif
 #include <inttypes.h>
 
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 #include "vulkan/vulkan.h"
 #include "glslang/Include/glslang_c_interface.h"
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <nvrtc.h>
 #include <cuda_runtime_api.h>
 #include <cuComplex.h>
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 #ifndef __HIP_PLATFORM_HCC__
 #define __HIP_PLATFORM_HCC__
 #endif
@@ -28,7 +28,7 @@
 #include <hip/hiprtc.h>
 #include <hip/hip_runtime_api.h>
 #include <hip/hip_complex.h>
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 #ifndef CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #endif
@@ -37,16 +37,16 @@
 #else
 #include <CL/cl.h>
 #endif 
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 #include <ze_api.h>
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 #include "Foundation/Foundation.hpp"
 #include "QuartzCore/QuartzCore.hpp"
 #include "Metal/Metal.hpp"
 #endif
 #include "vkFFT.h"
 #include "utils_VkFFT.h"
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 
 VkResult CreateDebugUtilsMessengerEXT(VkGPU* vkGPU, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
 	//pointer to the function, as it is not part of the core. Function creates debugging messenger
@@ -354,7 +354,7 @@ VkFFTResult allocateBuffer(VkGPU* vkGPU, VkBuffer* buffer, VkDeviceMemory* devic
 VkFFTResult transferDataToCPU(VkGPU* vkGPU, void* cpu_arr, void* output_buffer, uint64_t transferSize) {
 	//a function that transfers data from the GPU to the CPU using staging buffer, because the GPU memory is not host-coherent
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkResult res = VK_SUCCESS;
 	VkBuffer* buffer = (VkBuffer*)output_buffer;
 	uint64_t stagingBufferSize = transferSize;
@@ -408,21 +408,21 @@ VkFFTResult transferDataToCPU(VkGPU* vkGPU, void* cpu_arr, void* output_buffer, 
 		free(stagingBuffer);
 		free(stagingBufferMemory);
 	}
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cudaError_t res = cudaSuccess;
 	void* buffer = ((void**)output_buffer)[0];
 	res = cudaMemcpy(cpu_arr, buffer, transferSize, cudaMemcpyDeviceToHost);
 	if (res != cudaSuccess) {
 		return VKFFT_ERROR_FAILED_TO_COPY;
 	}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipError_t res = hipSuccess;
 	void* buffer = ((void**)output_buffer)[0];
 	res = hipMemcpy(cpu_arr, buffer, transferSize, hipMemcpyDeviceToHost);
 	if (res != hipSuccess) {
 		return VKFFT_ERROR_FAILED_TO_COPY;
 	}
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_int res = CL_SUCCESS;
 	cl_mem* buffer = (cl_mem*)output_buffer;
 	cl_command_queue commandQueue = clCreateCommandQueue(vkGPU->context, vkGPU->device, 0, &res);
@@ -433,7 +433,7 @@ VkFFTResult transferDataToCPU(VkGPU* vkGPU, void* cpu_arr, void* output_buffer, 
 	}
 	res = clReleaseCommandQueue(commandQueue);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 	void* buffer = ((void**)output_buffer)[0];
 	ze_command_queue_desc_t commandQueueCopyDesc = {
@@ -458,7 +458,7 @@ VkFFTResult transferDataToCPU(VkGPU* vkGPU, void* cpu_arr, void* output_buffer, 
 	if (res != ZE_RESULT_SUCCESS) {
 		return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	}
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	MTL::Buffer* stagingBuffer = vkGPU->device->newBuffer(transferSize, MTL::ResourceStorageModeShared);
 	MTL::CommandBuffer* copyCommandBuffer = vkGPU->queue->commandBuffer();
 	if (copyCommandBuffer == 0) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
@@ -478,7 +478,7 @@ VkFFTResult transferDataToCPU(VkGPU* vkGPU, void* cpu_arr, void* output_buffer, 
 }
 VkFFTResult transferDataFromCPU(VkGPU* vkGPU, void* cpu_arr, void* input_buffer, uint64_t transferSize) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkResult res = VK_SUCCESS;
 	VkBuffer* buffer = (VkBuffer*)input_buffer;
 	uint64_t stagingBufferSize = transferSize;
@@ -533,21 +533,21 @@ VkFFTResult transferDataFromCPU(VkGPU* vkGPU, void* cpu_arr, void* input_buffer,
 		free(stagingBufferMemory);
 	}
 	return resFFT;
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cudaError_t res = cudaSuccess;
 	void* buffer = ((void**)input_buffer)[0];
 	res = cudaMemcpy(buffer, cpu_arr, transferSize, cudaMemcpyHostToDevice);
 	if (res != cudaSuccess) {
 		return VKFFT_ERROR_FAILED_TO_COPY;
 	}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipError_t res = hipSuccess;
 	void* buffer = ((void**)input_buffer)[0];
 	res = hipMemcpy(buffer, cpu_arr, transferSize, hipMemcpyHostToDevice);
 	if (res != hipSuccess) {
 		return VKFFT_ERROR_FAILED_TO_COPY;
 	}
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_int res = CL_SUCCESS;
 	cl_mem* buffer = (cl_mem*)input_buffer;
 	cl_command_queue commandQueue = clCreateCommandQueue(vkGPU->context, vkGPU->device, 0, &res);
@@ -558,7 +558,7 @@ VkFFTResult transferDataFromCPU(VkGPU* vkGPU, void* cpu_arr, void* input_buffer,
 	}
 	res = clReleaseCommandQueue(commandQueue);
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_RELEASE_COMMAND_QUEUE;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 	void* buffer = ((void**)input_buffer)[0];
 	ze_command_queue_desc_t commandQueueCopyDesc = {
@@ -583,7 +583,7 @@ VkFFTResult transferDataFromCPU(VkGPU* vkGPU, void* cpu_arr, void* input_buffer,
 	if (res != ZE_RESULT_SUCCESS) {
 		return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	}
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	MTL::Buffer* stagingBuffer = vkGPU->device->newBuffer(cpu_arr, transferSize, MTL::ResourceStorageModeShared);
 	MTL::CommandBuffer* copyCommandBuffer = vkGPU->queue->commandBuffer();
 	if (copyCommandBuffer == 0) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
@@ -602,7 +602,7 @@ VkFFTResult transferDataFromCPU(VkGPU* vkGPU, void* cpu_arr, void* input_buffer,
 }
 VkFFTResult devices_list() {
 	//this function creates an instance and prints the list of available devices
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkResult res = VK_SUCCESS;
 	VkInstance local_instance = { 0 };
 	VkInstanceCreateInfo createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
@@ -634,7 +634,7 @@ VkFFTResult devices_list() {
 	else
 		return VKFFT_ERROR_FAILED_TO_ENUMERATE_DEVICES;
 	vkDestroyInstance(local_instance, NULL);
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	CUresult res = CUDA_SUCCESS;
 	res = cuInit(0);
 	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
@@ -650,7 +650,7 @@ VkFFTResult devices_list() {
 		if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
 		printf("Device id: %" PRIu64 " name: %s\n", i, deviceName);
 	}
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipError_t res = hipSuccess;
 	res = hipInit(0);
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
@@ -666,7 +666,7 @@ VkFFTResult devices_list() {
 		if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
 		printf("Device id: %" PRIu64 " name: %s\n", i, deviceName);
 	}
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_int res = CL_SUCCESS;
 	cl_uint numPlatforms;
 	res = clGetPlatformIDs(0, 0, &numPlatforms);
@@ -696,7 +696,7 @@ VkFFTResult devices_list() {
 		free(deviceList);
 	}
 	free(platforms);
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 	res = zeInit(0);
 	if (res != ZE_RESULT_SUCCESS) return VKFFT_ERROR_FAILED_TO_INITIALIZE;
@@ -727,7 +727,7 @@ VkFFTResult devices_list() {
 		free(deviceList);
 	}
 	free(drivers);
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	NS::Array* devices = MTL::CopyAllDevices();
 	for (uint64_t i = 0; i < devices->count(); i++) {
 		MTL::Device* loc_device = (MTL::Device*)devices->object(i);
@@ -738,7 +738,7 @@ VkFFTResult devices_list() {
 }
 VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchParams* launchParams, int inverse, uint64_t num_iter) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkResult res = VK_SUCCESS;
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	commandBufferAllocateInfo.commandPool = vkGPU->commandPool;
@@ -773,7 +773,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	res = vkResetFences(vkGPU->device, 1, &vkGPU->fence);
 	if (res != 0) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
 	vkFreeCommandBuffers(vkGPU->device, vkGPU->commandPool, 1, &commandBuffer);
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cudaError_t res = cudaSuccess;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 	for (uint64_t i = 0; i < num_iter; i++) {
@@ -784,7 +784,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	if (res != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipError_t res = hipSuccess;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 	for (uint64_t i = 0; i < num_iter; i++) {
@@ -795,7 +795,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	if (res != hipSuccess) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_int res = CL_SUCCESS;
 	launchParams->commandQueue = &vkGPU->commandQueue;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
@@ -807,7 +807,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	if (res != CL_SUCCESS) return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 	ze_command_list_desc_t commandListDescription = {};
 	commandListDescription.stype = ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC;
@@ -835,7 +835,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	//printf("Pure submit execution time per num_iter: %.3f ms\n", totTime / num_iter);
 	res = zeCommandListDestroy(commandList);
 	if (res != 0) return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	MTL::CommandBuffer* commandBuffer = vkGPU->queue->commandBuffer();
 	if (commandBuffer == 0) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
 	launchParams->commandBuffer = commandBuffer;
@@ -861,7 +861,7 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 }
 VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchParams* launchParams, uint64_t num_iter, double* time_result) {
 	VkFFTResult resFFT = VKFFT_SUCCESS;
-#if(VKFFT_BACKEND==0)
+#if(VKFFT_BACKEND_IS_VULKAN)
 	VkResult res = VK_SUCCESS;
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	commandBufferAllocateInfo.commandPool = vkGPU->commandPool;
@@ -897,7 +897,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	res = vkResetFences(vkGPU->device, 1, &vkGPU->fence);
 	if (res != 0) return VKFFT_ERROR_FAILED_TO_RESET_FENCES;
 	vkFreeCommandBuffers(vkGPU->device, vkGPU->commandPool, 1, &commandBuffer);
-#elif(VKFFT_BACKEND==1)
+#elif(VKFFT_BACKEND_IS_CUDA)
 	cudaError_t res = cudaSuccess;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 	for (uint64_t i = 0; i < num_iter; i++) {
@@ -911,7 +911,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 	time_result[0] = totTime / num_iter;
-#elif(VKFFT_BACKEND==2)
+#elif(VKFFT_BACKEND_IS_HIP)
 	hipError_t res = hipSuccess;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
 	for (uint64_t i = 0; i < num_iter; i++) {
@@ -925,7 +925,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 	time_result[0] = totTime / num_iter;
-#elif(VKFFT_BACKEND==3)
+#elif(VKFFT_BACKEND_IS_OPENCL)
 	cl_int res = CL_SUCCESS;
 	launchParams->commandQueue = &vkGPU->commandQueue;
 	std::chrono::steady_clock::time_point timeSubmit = std::chrono::steady_clock::now();
@@ -940,7 +940,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 	time_result[0] = totTime / num_iter;
-#elif(VKFFT_BACKEND==4)
+#elif(VKFFT_BACKEND_IS_LEVEL_ZERO)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 	ze_command_list_desc_t commandListDescription = {};
 	commandListDescription.stype = ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC;
@@ -969,7 +969,7 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	time_result[0] = totTime / num_iter;
 	res = zeCommandListDestroy(commandList);
 	if (res != 0) return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
-#elif(VKFFT_BACKEND==5)
+#elif(VKFFT_BACKEND_IS_METAL)
 	MTL::CommandBuffer* commandBuffer = vkGPU->queue->commandBuffer();
 	if (commandBuffer == 0) return VKFFT_ERROR_FAILED_TO_CREATE_COMMAND_LIST;
 	launchParams->commandBuffer = commandBuffer;
