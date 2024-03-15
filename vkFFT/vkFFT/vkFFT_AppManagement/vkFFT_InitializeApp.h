@@ -495,44 +495,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.vendorID = physicalDeviceProperties.vendorID;
 	if (inputLaunchConfiguration.pipelineCache != 0)	app->configuration.pipelineCache = inputLaunchConfiguration.pipelineCache;
 	app->configuration.useRaderUintLUT = 1;
-	switch (physicalDeviceProperties.vendorID) {
-	case 0x10DE://NVIDIA
-		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
-		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
-		app->configuration.warpSize = 32;
-		app->configuration.registerBoostNonPow2 = 0;
-		app->configuration.registerBoost = 4;
-		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 4194305 : 4194305;
-		break;
-	case 0x8086://INTEL
-		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
-		app->configuration.useLUT = 1;
-		app->configuration.warpSize = 32;
-		app->configuration.registerBoostNonPow2 = 0;
-		app->configuration.registerBoost = (physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 1 : 2;
-		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
-		break;
-	case 0x1002://AMD
-		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;
-		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
-		app->configuration.warpSize = 64;
-		app->configuration.registerBoostNonPow2 = 0;
-		app->configuration.registerBoost = (physicalDeviceProperties.limits.maxComputeSharedMemorySize >= 65536) ? 2 : 4;
-		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
-		break;
-	default:
-		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
-		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
-		app->configuration.warpSize = 32;
-		app->configuration.registerBoostNonPow2 = 0;
-		app->configuration.registerBoost = 1;
-		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
-		break;
-	}
 #elif(VKFFT_BACKEND==1)
 	CUresult res = CUDA_SUCCESS;
 	cudaError_t res_t = cudaSuccess;
@@ -643,12 +605,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		}
 	}
 
-	app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
-	app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
-	app->configuration.registerBoostNonPow2 = 0;
-	app->configuration.registerBoost = 1;
-	app->configuration.registerBoost4Step = 1;
-	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 4194305 : 4194305;
 	app->configuration.vendorID = 0x10DE;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
@@ -747,14 +703,13 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 			}
 		}
 	}
-	app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;
-	app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
-	app->configuration.useLUT_4step = -1;
-	app->configuration.registerBoostNonPow2 = 0;
-	app->configuration.registerBoost = 1;
-	app->configuration.registerBoost4Step = 1;
-	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1048576 : 2097152;
+#ifdef __HIP_PLATFORM_AMD__
 	app->configuration.vendorID = 0x1002;
+#elif defined(__HIP_PLATFORM_NVIDIA__)
+	app->configuration.vendorID = 0x10DE;
+#else
+# error "Unsupported HIP platform"
+#endif
 #elif(VKFFT_BACKEND==3)
 	cl_int res = 0;
 	if (inputLaunchConfiguration.device == 0) {
@@ -817,45 +772,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.sharedMemorySize = sharedMemorySize;
 	app->configuration.vendorID = vendorID;
 	app->configuration.useRaderUintLUT = 1;
-	switch (vendorID) {
-	case 0x10DE://NVIDIA
-		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
-		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
-		app->configuration.warpSize = 32;
-		app->configuration.registerBoostNonPow2 = 0;
-		app->configuration.registerBoost = 4;
-		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 4194305 : 4194305;
-		app->configuration.sharedMemorySize -= 0x10;//reserved by system
-		break;
-	case 0x8086://INTEL
-		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
-		app->configuration.useLUT = 1;
-		app->configuration.warpSize = 32;
-		app->configuration.registerBoostNonPow2 = 0;
-		app->configuration.registerBoost = (sharedMemorySize >= 65536) ? 1 : 2;
-		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
-		break;
-	case 0x1002://AMD
-		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;
-		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
-		app->configuration.warpSize = 64;
-		app->configuration.registerBoostNonPow2 = 0;
-		app->configuration.registerBoost = (sharedMemorySize >= 65536) ? 2 : 4;
-		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
-		break;
-	default:
-		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
-		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
-		app->configuration.warpSize = 32;
-		app->configuration.registerBoostNonPow2 = 0;
-		app->configuration.registerBoost = 1;
-		app->configuration.registerBoost4Step = 1;
-		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
-		break;
-	}
+	
 #elif(VKFFT_BACKEND==4)
 	ze_result_t res = ZE_RESULT_SUCCESS;
 	if (inputLaunchConfiguration.device == 0) {
@@ -892,13 +809,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	//if ((vendorID == 0x8086) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
 	app->configuration.sharedMemorySize = compute_properties.maxSharedLocalMemory;
 
-	app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
-	app->configuration.useLUT = 1;
-	app->configuration.warpSize = device_properties.physicalEUSimdWidth;
-	app->configuration.registerBoostNonPow2 = 0;
-	app->configuration.registerBoost = (app->configuration.sharedMemorySize >= 65536) ? 1 : 2;
-	app->configuration.registerBoost4Step = 1;
-	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
 	app->configuration.vendorID = 0x8086;
 	app->configuration.useRaderUintLUT = 1;
 #elif(VKFFT_BACKEND==5)
@@ -951,13 +861,6 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.warpSize = dummy_state->threadExecutionWidth();
 
 	app->configuration.useRaderUintLUT = 1;
-
-	app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;//the coalesced memory is equal to 64 bytes between L2 and VRAM.
-	app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
-	app->configuration.registerBoostNonPow2 = 0;
-	app->configuration.registerBoost = 1;
-	app->configuration.registerBoost4Step = 1;
-	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
 	app->configuration.vendorID = 0x1027f00;
 
 	dummy_state->release();
@@ -967,6 +870,54 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	str_code->release();
 	compileOptions->release();
 #endif
+	// set vendor specific parameters
+	switch (app->configuration.vendorID) {
+	case 0x10DE://NVIDIA
+		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
+		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
+		app->configuration.warpSize = 32;
+		app->configuration.registerBoostNonPow2 = 0;
+		app->configuration.registerBoost = 4;
+		app->configuration.registerBoost4Step = 1;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 4194305 : 4194305;
+		app->configuration.sharedMemorySize -= 0x10;//reserved by system
+		break;
+	case 0x8086://INTEL
+		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
+		app->configuration.useLUT = 1;
+		app->configuration.warpSize = 32;
+		app->configuration.registerBoostNonPow2 = 0;
+		app->configuration.registerBoost = (app->configuration.sharedMemorySize >= 65536) ? 1 : 2;
+		app->configuration.registerBoost4Step = 1;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
+		break;
+	case 0x1002://AMD
+		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;
+		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
+		app->configuration.warpSize = 64;
+		app->configuration.registerBoostNonPow2 = 0;
+		app->configuration.registerBoost = (app->configuration.sharedMemorySize >= 65536) ? 2 : 4;
+		app->configuration.registerBoost4Step = 1;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
+		break;
+	case 0x1027f00:
+		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;//the coalesced memory is equal to 64 bytes between L2 and VRAM.
+		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
+		app->configuration.registerBoostNonPow2 = 0;
+		app->configuration.registerBoost = 1;
+		app->configuration.registerBoost4Step = 1;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
+		break;
+	default:
+		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
+		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
+		app->configuration.warpSize = 32;
+		app->configuration.registerBoostNonPow2 = 0;
+		app->configuration.registerBoost = 1;
+		app->configuration.registerBoost4Step = 1;
+		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
+		break;
+	}
 
 	resFFT = initializeBluesteinAutoPadding(app);
 	if (resFFT != VKFFT_SUCCESS) {
