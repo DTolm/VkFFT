@@ -33,7 +33,7 @@ static inline VkFFTResult initializeBluesteinAutoPadding(VkFFTApplication* app) 
 	VkFFTResult resFFT = VKFFT_SUCCESS;
 	if (!app->configuration.useCustomBluesteinPaddingPattern) {
 		switch (app->configuration.vendorID) {
-		case 0x10DE://NVIDIA
+		case VKFFT_VENDOR_NVIDIA:
 			if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
 				app->configuration.autoCustomBluesteinPaddingPattern = 49;
 			}
@@ -55,7 +55,7 @@ static inline VkFFTResult initializeBluesteinAutoPadding(VkFFTApplication* app) 
 		app->configuration.paddedSizes = (pfUINT*)malloc(app->configuration.autoCustomBluesteinPaddingPattern * sizeof(pfUINT));
 		if (!app->configuration.paddedSizes) return VKFFT_ERROR_MALLOC_FAILED;
 		switch (app->configuration.vendorID) {
-		case 0x10DE://Nvidia
+		case VKFFT_VENDOR_NVIDIA:
 			if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) {
 				app->configuration.primeSizes[0] = 17;
 				app->configuration.paddedSizes[0] = 36;
@@ -483,20 +483,20 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	VkPhysicalDeviceProperties physicalDeviceProperties = { 0 };
 	vkGetPhysicalDeviceProperties(app->configuration.physicalDevice[0], &physicalDeviceProperties);
 	app->configuration.maxThreadsNum = physicalDeviceProperties.limits.maxComputeWorkGroupInvocations;
-	if (physicalDeviceProperties.vendorID == 0x8086) app->configuration.maxThreadsNum = 256; //Intel fix
+	if ((VkFFTVendor)physicalDeviceProperties.vendorID == VKFFT_VENDOR_INTEL) app->configuration.maxThreadsNum = 256; //Intel fix
 	app->configuration.maxComputeWorkGroupCount[0] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[0];
 	app->configuration.maxComputeWorkGroupCount[1] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[1];
 	app->configuration.maxComputeWorkGroupCount[2] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[2];
 	app->configuration.maxComputeWorkGroupSize[0] = physicalDeviceProperties.limits.maxComputeWorkGroupSize[0];
 	app->configuration.maxComputeWorkGroupSize[1] = physicalDeviceProperties.limits.maxComputeWorkGroupSize[1];
 	app->configuration.maxComputeWorkGroupSize[2] = physicalDeviceProperties.limits.maxComputeWorkGroupSize[2];
-	//if ((physicalDeviceProperties.vendorID == 0x8086) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
+	//if ((physicalDeviceProperties.vendorID == VKFFT_VENDOR_INTEL) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
 	app->configuration.sharedMemorySize = physicalDeviceProperties.limits.maxComputeSharedMemorySize;
-	app->configuration.vendorID = physicalDeviceProperties.vendorID;
+	app->configuration.vendorID = (VkFFTVendor)physicalDeviceProperties.vendorID;
 	if (inputLaunchConfiguration.pipelineCache != 0)	app->configuration.pipelineCache = inputLaunchConfiguration.pipelineCache;
 	app->configuration.useRaderUintLUT = 1;
 	switch (physicalDeviceProperties.vendorID) {
-	case 0x10DE://NVIDIA
+	case VKFFT_VENDOR_NVIDIA:
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
 		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
 		app->configuration.warpSize = 32;
@@ -505,7 +505,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.registerBoost4Step = 1;
 		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision) ? 4194305 : 4194305;
 		break;
-	case 0x8086://INTEL
+	case VKFFT_VENDOR_INTEL:
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
 		app->configuration.useLUT = 1;
 		app->configuration.warpSize = 32;
@@ -514,7 +514,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.registerBoost4Step = 1;
 		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
 		break;
-	case 0x1002://AMD
+	case VKFFT_VENDOR_AMD:
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;
 		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
 		app->configuration.warpSize = 64;
@@ -649,7 +649,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.registerBoost = 1;
 	app->configuration.registerBoost4Step = 1;
 	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 4194305 : 4194305;
-	app->configuration.vendorID = 0x10DE;
+	app->configuration.vendorID = VKFFT_VENDOR_NVIDIA;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
 	if (inputLaunchConfiguration.device == 0) {
@@ -754,7 +754,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.registerBoost = 1;
 	app->configuration.registerBoost4Step = 1;
 	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1048576 : 2097152;
-	app->configuration.vendorID = 0x1002;
+	app->configuration.vendorID = VKFFT_VENDOR_AMD;
 #elif(VKFFT_BACKEND==3)
 	cl_int res = 0;
 	if (inputLaunchConfiguration.device == 0) {
@@ -807,7 +807,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.maxComputeWorkGroupCount[0] = UINT64_MAX;
 	app->configuration.maxComputeWorkGroupCount[1] = UINT64_MAX;
 	app->configuration.maxComputeWorkGroupCount[2] = UINT64_MAX;
-	//if ((vendorID == 0x8086) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
+	//if ((vendorID == VKFFT_VENDOR_INTEL) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
 	cl_ulong sharedMemorySize;
 	res = clGetDeviceInfo(app->configuration.device[0], CL_DEVICE_LOCAL_MEM_SIZE, sizeof(cl_ulong), &sharedMemorySize, 0);
 	if (res != 0) {
@@ -815,10 +815,10 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
 	}
 	app->configuration.sharedMemorySize = sharedMemorySize;
-	app->configuration.vendorID = vendorID;
+	app->configuration.vendorID = (VkFFTVendor)vendorID;
 	app->configuration.useRaderUintLUT = 1;
 	switch (vendorID) {
-	case 0x10DE://NVIDIA
+	case VKFFT_VENDOR_NVIDIA:
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;//the coalesced memory is equal to 32 bytes between L2 and VRAM.
 		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
 		app->configuration.warpSize = 32;
@@ -828,7 +828,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 4194305 : 4194305;
 		app->configuration.sharedMemorySize -= 0x10;//reserved by system
 		break;
-	case 0x8086://INTEL
+	case VKFFT_VENDOR_INTEL:
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
 		app->configuration.useLUT = 1;
 		app->configuration.warpSize = 32;
@@ -837,7 +837,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		app->configuration.registerBoost4Step = 1;
 		app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
 		break;
-	case 0x1002://AMD
+	case VKFFT_VENDOR_AMD:
 		app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 64 : 32;
 		app->configuration.useLUT = (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 1 : -1;
 		app->configuration.warpSize = 64;
@@ -889,7 +889,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.maxComputeWorkGroupCount[0] = compute_properties.maxGroupCountX;
 	app->configuration.maxComputeWorkGroupCount[1] = compute_properties.maxGroupCountY;
 	app->configuration.maxComputeWorkGroupCount[2] = compute_properties.maxGroupCountZ;
-	//if ((vendorID == 0x8086) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
+	//if ((vendorID == VKFFT_VENDOR_INTEL) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
 	app->configuration.sharedMemorySize = compute_properties.maxSharedLocalMemory;
 
 	app->configuration.coalescedMemory = (app->configuration.halfPrecision) ? 128 : 64;
@@ -899,7 +899,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.registerBoost = (app->configuration.sharedMemorySize >= 65536) ? 1 : 2;
 	app->configuration.registerBoost4Step = 1;
 	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
-	app->configuration.vendorID = 0x8086;
+	app->configuration.vendorID = VKFFT_VENDOR_INTEL;
 	app->configuration.useRaderUintLUT = 1;
 #elif(VKFFT_BACKEND==5)
 	if (inputLaunchConfiguration.device == 0) {
@@ -958,7 +958,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.registerBoost = 1;
 	app->configuration.registerBoost4Step = 1;
 	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
-	app->configuration.vendorID = 0x1027f00;
+	app->configuration.vendorID = VKFFT_VENDOR_APPLE;
 
 	dummy_state->release();
 	function->release();
@@ -1212,10 +1212,10 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	} else{
 			app->configuration.fixMinRaderPrimeMult = 17;
 			switch (app->configuration.vendorID) {
-			case 0x10DE://NVIDIA
+			case VKFFT_VENDOR_NVIDIA:
 					app->configuration.fixMaxRaderPrimeMult = 89;
 					break;
-			case 0x1002://AMD profile
+			case VKFFT_VENDOR_AMD:
 					app->configuration.fixMaxRaderPrimeMult = 89;
 					break;
 			default:
@@ -1227,7 +1227,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	if (inputLaunchConfiguration.fixMaxRaderPrimeMult != 0) app->configuration.fixMaxRaderPrimeMult = inputLaunchConfiguration.fixMaxRaderPrimeMult;
 
 	switch (app->configuration.vendorID) {
-	case 0x1002://AMD profile
+	case VKFFT_VENDOR_AMD:
 			if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
 					app->configuration.fixMinRaderPrimeFFT = 19;
 			else if (app->configuration.doublePrecision || app->configuration.doublePrecisionFloatMemory)

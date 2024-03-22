@@ -90,6 +90,14 @@ struct PfContainer{
 	int size; //  bytes allcoated in name
 };
 
+typedef enum VkFFTVendor
+{
+	VKFFT_VENDOR_AMD    = 0x1002,
+	VKFFT_VENDOR_APPLE  = 0x1027f00,
+	VKFFT_VENDOR_INTEL  = 0x8086,
+	VKFFT_VENDOR_NVIDIA = 0x10de
+} VkFFTVendor;
+
 typedef struct {
 	//WHDCN layout
 
@@ -303,7 +311,7 @@ typedef struct {
 	pfINT maxTempLength; //specify how big can be buffer used for intermediate string sprintfs be (in char). Default 5000 chars. If code segfaults for some reason - try increasing this number.
 	pfUINT autoCustomBluesteinPaddingPattern; // default value for useCustomBluesteinPaddingPattern
 	pfUINT useRaderUintLUT; // allocate additional LUT to store g_pow
-	pfUINT vendorID; // vendorID 0x10DE - NVIDIA, 0x8086 - Intel, 0x1002 - AMD, etc.
+	VkFFTVendor vendorID; // vendorID
 #if(VKFFT_BACKEND==0)
 	VkDeviceMemory tempBufferDeviceMemory;//Filled at app creation
 	VkCommandBuffer* commandBuffer;//Filled at app execution
