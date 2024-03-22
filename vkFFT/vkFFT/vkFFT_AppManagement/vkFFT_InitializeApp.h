@@ -483,7 +483,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	VkPhysicalDeviceProperties physicalDeviceProperties = { 0 };
 	vkGetPhysicalDeviceProperties(app->configuration.physicalDevice[0], &physicalDeviceProperties);
 	app->configuration.maxThreadsNum = physicalDeviceProperties.limits.maxComputeWorkGroupInvocations;
-	if (physicalDeviceProperties.vendorID == VKFFT_VENDOR_INTEL) app->configuration.maxThreadsNum = 256; //Intel fix
+	if ((VkFFTVendor)physicalDeviceProperties.vendorID == VKFFT_VENDOR_INTEL) app->configuration.maxThreadsNum = 256; //Intel fix
 	app->configuration.maxComputeWorkGroupCount[0] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[0];
 	app->configuration.maxComputeWorkGroupCount[1] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[1];
 	app->configuration.maxComputeWorkGroupCount[2] = physicalDeviceProperties.limits.maxComputeWorkGroupCount[2];
@@ -492,7 +492,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.maxComputeWorkGroupSize[2] = physicalDeviceProperties.limits.maxComputeWorkGroupSize[2];
 	//if ((physicalDeviceProperties.vendorID == VKFFT_VENDOR_INTEL) && (!app->configuration.doublePrecision) && (!app->configuration.doublePrecisionFloatMemory)) app->configuration.halfThreads = 1;
 	app->configuration.sharedMemorySize = physicalDeviceProperties.limits.maxComputeSharedMemorySize;
-	app->configuration.vendorID = physicalDeviceProperties.vendorID;
+	app->configuration.vendorID = (VkFFTVendor)physicalDeviceProperties.vendorID;
 	if (inputLaunchConfiguration.pipelineCache != 0)	app->configuration.pipelineCache = inputLaunchConfiguration.pipelineCache;
 	app->configuration.useRaderUintLUT = 1;
 	switch (physicalDeviceProperties.vendorID) {
@@ -815,7 +815,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 		return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
 	}
 	app->configuration.sharedMemorySize = sharedMemorySize;
-	app->configuration.vendorID = vendorID;
+	app->configuration.vendorID = (VkFFTVendor)vendorID;
 	app->configuration.useRaderUintLUT = 1;
 	switch (vendorID) {
 	case VKFFT_VENDOR_NVIDIA:
@@ -958,7 +958,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 	app->configuration.registerBoost = 1;
 	app->configuration.registerBoost4Step = 1;
 	app->configuration.swapTo3Stage4Step = (app->configuration.doublePrecision || app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory) ? 262144 : 524288;
-	app->configuration.vendorID = 0x1027f00;
+	app->configuration.vendorID = VKFFT_VENDOR_APPLE;
 
 	dummy_state->release();
 	function->release();

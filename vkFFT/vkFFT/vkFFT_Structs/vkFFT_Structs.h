@@ -93,8 +93,9 @@ struct PfContainer{
 typedef enum VkFFTVendor
 {
 	VKFFT_VENDOR_AMD    = 0x1002,
+	VKFFT_VENDOR_APPLE  = 0x1027f00,
 	VKFFT_VENDOR_INTEL  = 0x8086,
-	VKFFT_VENDOR_NVIDIA = 0x10DE
+	VKFFT_VENDOR_NVIDIA = 0x10de
 } VkFFTVendor;
 
 typedef struct {
