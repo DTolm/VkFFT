@@ -198,9 +198,9 @@ VkFFTResult sample_10_benchmark_VkFFT_single_multipleBuffers(VkGPU* vkGPU, uint6
 
 			//Submit FFT+iFFT.
 			uint64_t num_iter = (((uint64_t)4096 * 1024.0 * 1024.0) / (numBuf * bufferSize[0]) > 1000) ? 1000 : (uint64_t)((uint64_t)4096 * 1024.0 * 1024.0) / (numBuf * bufferSize[0]);
-			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
+			if (vkGPU->physicalDeviceProperties.vendorID == VKFFT_VENDOR_INTEL) num_iter /= 4;
 			if (num_iter == 0) num_iter = 1;
-			if (vkGPU->physicalDeviceProperties.vendorID != 0x8086) num_iter *= 5;
+			if (vkGPU->physicalDeviceProperties.vendorID != VKFFT_VENDOR_INTEL) num_iter *= 5;
 			double totTime = 0;
 			VkFFTLaunchParams launchParams = {};
 			resFFT = performVulkanFFTiFFT(vkGPU, &app, &launchParams, num_iter, &totTime);

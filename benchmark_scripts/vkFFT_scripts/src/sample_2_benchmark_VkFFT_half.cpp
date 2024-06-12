@@ -95,7 +95,7 @@ VkFFTResult sample_2_benchmark_VkFFT_half(VkGPU* vkGPU, uint64_t file_output, FI
 
 			//PARAMETERS THAT CAN BE ADJUSTED FOR SPECIFIC GPU's - this configuration is by no means final form
 #if(VKFFT_BACKEND==0)
-			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) {
+			if (vkGPU->physicalDeviceProperties.vendorID == VKFFT_VENDOR_INTEL) {
 				if (n > 22)//128byte coalescing has a limit of 2^24 max size
 					configuration.coalescedMemory = 64;
 				else
@@ -104,7 +104,7 @@ VkFFTResult sample_2_benchmark_VkFFT_half(VkGPU* vkGPU, uint64_t file_output, FI
 #elif(VKFFT_BACKEND==3)
 			cl_uint vendorID;
 			clGetDeviceInfo(vkGPU->device, CL_DEVICE_VENDOR_ID, sizeof(cl_int), &vendorID, 0);
-			if (vendorID == 0x8086) {
+			if (vendorID == VKFFT_VENDOR_INTEL) {
 				if (n > 22)//128byte coalescing has a limit of 2^24 max size
 					configuration.coalescedMemory = 64;
 				else
@@ -114,7 +114,7 @@ VkFFTResult sample_2_benchmark_VkFFT_half(VkGPU* vkGPU, uint64_t file_output, FI
 			ze_device_properties_t device_properties;
 			res = zeDeviceGetProperties(vkGPU->device, &device_properties);
 			if (res != 0) return VKFFT_ERROR_FAILED_TO_GET_ATTRIBUTE;
-			if (device_properties.vendorId == 0x8086) {
+			if (device_properties.vendorId == VKFFT_VENDOR_INTEL) {
 				if (n > 22)//128byte coalescing has a limit of 2^24 max size
 					configuration.coalescedMemory = 64;
 				else
@@ -236,11 +236,11 @@ VkFFTResult sample_2_benchmark_VkFFT_half(VkGPU* vkGPU, uint64_t file_output, FI
 			//Submit FFT+iFFT.
 			uint64_t num_iter = (((uint64_t)4096 * 1024.0 * 1024.0) / bufferSize > 1000) ? 1000 : (uint64_t)((uint64_t)4096 * 1024.0 * 1024.0) / bufferSize;
 #if(VKFFT_BACKEND==0)
-			if (vkGPU->physicalDeviceProperties.vendorID == 0x8086) num_iter /= 4;
+			if (vkGPU->physicalDeviceProperties.vendorID == VKFFT_VENDOR_INTEL) num_iter /= 4;
 #elif(VKFFT_BACKEND==3)
-			if (vendorID == 0x8086) num_iter /= 4;
+			if (vendorID == VKFFT_VENDOR_INTEL) num_iter /= 4;
 #elif(VKFFT_BACKEND==4)
-			if (device_properties.vendorId == 0x8086) num_iter /= 4;//smaller benchmark for Intel GPUs
+			if (device_properties.vendorId == VKFFT_VENDOR_INTEL) num_iter /= 4;//smaller benchmark for Intel GPUs
 #endif
 			if (num_iter == 0) num_iter = 1;
 			double totTime = 0;
