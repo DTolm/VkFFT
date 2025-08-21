@@ -32,7 +32,7 @@
 #include <OpenCL/opencl.h>
 #else
 #include <CL/cl.h>
-#endif 
+#endif
 #elif(VKFFT_BACKEND==4)
 #include <ze_api.h>
 #elif(VKFFT_BACKEND==5)
@@ -104,7 +104,7 @@
 #include "sample_1000_benchmark_cuFFT_single_2_4096.h"
 #include "sample_1001_benchmark_cuFFT_double_2_4096.h"
 #include "sample_1003_benchmark_cuFFT_single_3d_2_512.h"
-#endif  
+#endif
 #ifdef USE_rocFFT
 #include "user_benchmark_rocFFT.h"
 #include "sample_0_benchmark_rocFFT_single.h"
@@ -116,7 +116,7 @@
 #include "sample_1000_benchmark_rocFFT_single_2_4096.h"
 #include "sample_1001_benchmark_rocFFT_double_2_4096.h"
 #include "sample_1003_benchmark_rocFFT_single_3d_2_512.h"
-#endif 
+#endif
 #ifdef USE_FFTW
 #include "fftw3.h"
 #endif
@@ -127,13 +127,13 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
-	//create instance - a connection between the application and the Vulkan library 
+	//create instance - a connection between the application and the Vulkan library
 	res = createInstance(vkGPU, sample_id);
 	if (res != 0) {
 		//printf("Instance creation failed, error code: %" PRIu64 "\n", res);
 		return VKFFT_ERROR_FAILED_TO_CREATE_INSTANCE;
 	}
-	//set up the debugging messenger 
+	//set up the debugging messenger
 	res = setupDebugMessenger(vkGPU);
 	if (res != 0) {
 		//printf("Debug messenger creation failed, error code: %" PRIu64 "\n", res);
@@ -151,7 +151,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 		//printf("Device creation failed, error code: %" PRIu64 "\n", res);
 		return VKFFT_ERROR_FAILED_TO_CREATE_DEVICE;
 	}
-	//create fence for synchronization 
+	//create fence for synchronization
 	res = createFence(vkGPU);
 	if (res != 0) {
 		//printf("Fence creation failed, error code: %" PRIu64 "\n", res);
@@ -176,7 +176,11 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
 	if (res2 != cudaSuccess) return VKFFT_ERROR_FAILED_TO_SET_DEVICE_ID;
 	res = cuDeviceGet(&vkGPU->device, (int)vkGPU->device_id);
 	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_GET_DEVICE;
+#if CUDA_VERSION >= 13000
+	res = cuCtxCreate(&vkGPU->context,nullptr, 0, (int)vkGPU->device);
+#else
 	res = cuCtxCreate(&vkGPU->context, 0, (int)vkGPU->device);
+#endif
 	if (res != CUDA_SUCCESS) return VKFFT_ERROR_FAILED_TO_CREATE_CONTEXT;
 #elif(VKFFT_BACKEND==2)
 	hipError_t res = hipSuccess;
@@ -496,7 +500,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
         resFFT = sample_1003_benchmark_VkFFT_single_3d_2_512(vkGPU, file_output, output, isCompilerInitialized);
         break;
     }
-#ifdef VKFFT_USE_DOUBLEDOUBLE_FP128	
+#ifdef VKFFT_USE_DOUBLEDOUBLE_FP128
 	case 1004:
 	{
 		resFFT = sample_1004_benchmark_VkFFT_quadDoubleDouble_2_4096(vkGPU, file_output, output, isCompilerInitialized);
@@ -583,7 +587,7 @@ int main(int argc, char* argv[])
 		printf("	-vkfft X: launch VkFFT sample X:\n");
 		printf("		0 - FFT + iFFT C2C benchmark 1D batched in single precision\n");
 		printf("		1 - FFT + iFFT C2C benchmark 1D batched in double precision LUT\n");
-		printf("		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n");	
+		printf("		2 - FFT + iFFT C2C benchmark 1D batched in half precision\n");
 		printf("		3 - FFT + iFFT C2C multidimensional benchmark in single precision\n");
 		printf("		4 - FFT + iFFT C2C multidimensional benchmark in single precision, native zeropadding\n");
 		printf("		5 - FFT + iFFT C2C benchmark 1D batched in single precision, no reshuffling\n");

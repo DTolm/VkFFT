@@ -1,9 +1,12 @@
-cmake_minimum_required(VERSION 3.11)
-project(VkFFT_TestSuite)
+cmake_minimum_required(VERSION 3.21 FATAL_ERROR)
+project(VkFFT_TestSuite LANGUAGES CXX)
 
-if(NOT CMAKE_BUILD_TYPE)
-set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
-set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+# Set a default build type only for single-config generators (do not force cache)
+if(NOT CMAKE_CONFIGURATION_TYPES)
+  if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type")
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "RelWithDebInfo" "MinSizeRel")
+  endif()
 endif()
 
 if (NOT DEFINED GLSLANG_GIT_TAG)
@@ -93,28 +96,24 @@ else()
 		benchmark_scripts/vkFFT_scripts/src/sample_1003_benchmark_VkFFT_single_3d_2_512.cpp
 		benchmark_scripts/vkFFT_scripts/src/sample_1004_benchmark_VkFFT_quadDoubleDouble_2_4096.cpp)
 endif()
-target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_11)  
-add_definitions(-DVKFFT_BACKEND=${VKFFT_BACKEND})
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_11)
+target_compile_definitions(${PROJECT_NAME} PUBLIC VKFFT_BACKEND=${VKFFT_BACKEND})
 if(${VKFFT_BACKEND} EQUAL 0)
 	find_package(Vulkan REQUIRED)
 elseif(${VKFFT_BACKEND} EQUAL 1)
-	find_package(CUDA 9.0 REQUIRED)
-	enable_language(CUDA)
-if (MSVC)
-else()
-		set_source_files_properties(VkFFT_TestSuite.cpp PROPERTIES LANGUAGE CUDA)
-endif()
-	set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 60 70 75 80 86)
-	target_compile_options(${PROJECT_NAME} PUBLIC "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:
-	-std=c++11
-	-DVKFFT_BACKEND=${VKFFT_BACKEND}
-	-gencode arch=compute_60,code=compute_60
-	-gencode arch=compute_70,code=compute_70 
-	-gencode arch=compute_75,code=compute_75 
-	-gencode arch=compute_80,code=compute_80 
-	-gencode arch=compute_86,code=compute_86>")
-	set_target_properties(${PROJECT_NAME} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-	set_target_properties(${PROJECT_NAME} PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+  if (MSVC)
+  else()
+    set_source_files_properties(VkFFT_TestSuite.cpp PROPERTIES LANGUAGE CUDA)
+  endif()
+  set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES all-major)
+  set_target_properties(${PROJECT_NAME} PROPERTIES
+      CUDA_SEPARABLE_COMPILATION ON
+      CUDA_RESOLVE_DEVICE_SYMBOLS ON
+      CUDA_STANDARD 11
+      CUDA_STANDARD_REQUIRED YES)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC CUDA_TOOLKIT_ROOT_DIR="${CUDAToolkit_LIBRARY_ROOT}")
 elseif(${VKFFT_BACKEND} EQUAL 2)
 	list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
 	find_package(hip)
@@ -147,7 +146,7 @@ elseif(${VKFFT_BACKEND} EQUAL 5)
 	target_include_directories(${PROJECT_NAME} PUBLIC "metal-cpp/")
 endif()
 
-target_compile_definitions(${PROJECT_NAME} PUBLIC -DVK_API_VERSION=11)#10 - Vulkan 1.0, 11 - Vulkan 1.1, 12 - Vulkan 1.2 
+target_compile_definitions(${PROJECT_NAME} PUBLIC VK_API_VERSION=11) # 10 - Vulkan 1.0, 11 - Vulkan 1.1, 12 - Vulkan 1.2
 if(VkFFT_use_FP128_Bluestein_RaderFFT)
         target_compile_definitions(${PROJECT_NAME} PUBLIC -DVkFFT_use_FP128_Bluestein_RaderFFT)
 endif()  
@@ -173,7 +172,7 @@ endif()
 
 add_library(VkFFT INTERFACE)
 target_include_directories(VkFFT INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/vkFFT/)
-target_compile_definitions(VkFFT INTERFACE -DVKFFT_BACKEND=${VKFFT_BACKEND})
+target_compile_definitions(VkFFT INTERFACE VKFFT_BACKEND=${VKFFT_BACKEND})
 
 add_library(half INTERFACE)
 target_include_directories(half INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/half_lib/)
@@ -183,10 +182,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/be
 if(${VKFFT_BACKEND} EQUAL 0)
 	target_link_libraries(${PROJECT_NAME} PUBLIC SPIRV glslang Vulkan::Vulkan VkFFT half)
 elseif(${VKFFT_BACKEND} EQUAL 1)
-	find_library(CUDA_NVRTC_LIB libnvrtc nvrtc HINTS "${CUDA_TOOLKIT_ROOT_DIR}/lib64" "${LIBNVRTC_LIBRARY_DIR}" "${CUDA_TOOLKIT_ROOT_DIR}/lib/x64" /usr/lib64 /usr/local/cuda/lib64)
-	add_definitions(-DCUDA_TOOLKIT_ROOT_DIR="${CUDA_TOOLKIT_ROOT_DIR}")
-	target_link_libraries(${PROJECT_NAME} PUBLIC ${CUDA_LIBRARIES} cuda ${CUDA_NVRTC_LIB} VkFFT half)
-	target_include_directories(${PROJECT_NAME} PUBLIC ${CUDA_INCLUDE_DIRS})
+	target_link_libraries(${PROJECT_NAME} PUBLIC CUDA::cudart CUDA::cuda_driver CUDA::nvrtc VkFFT half)
+	target_include_directories(${PROJECT_NAME} PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
 elseif(${VKFFT_BACKEND} EQUAL 2)
 	target_link_libraries(${PROJECT_NAME} PUBLIC hip::host VkFFT half)
 elseif(${VKFFT_BACKEND} EQUAL 3)
@@ -198,8 +195,8 @@ elseif(${VKFFT_BACKEND} EQUAL 5)
 endif()
 
 if(build_VkFFT_FFTW_precision OR VkFFT_use_FP128_Bluestein_RaderFFT)
-	add_definitions(-DUSE_FFTW)
-	set(FFTW3_LIB_DIR "/usr/lib/x86_64-linux-gnu/")
+  target_compile_definitions(${PROJECT_NAME} PUBLIC USE_FFTW)
+  set(FFTW3_LIB_DIR "/usr/lib/x86_64-linux-gnu/")
 	set(FFTW3_INCLUDE_DIR "/usr/include/")
 	find_library(
 		FFTW_LIB
@@ -240,9 +237,9 @@ endif()
 endif()
 
 if(build_VkFFT_cuFFT_benchmark)
-	add_definitions(-DUSE_cuFFT)
-	find_package(CUDA 9.0 REQUIRED)
-	enable_language(CUDA)	
+  target_compile_definitions(${PROJECT_NAME} PUBLIC USE_cuFFT)
+	find_package(CUDAToolkit REQUIRED)
+	enable_language(CUDA)
 	if(build_VkFFT_FFTW_precision)
 		add_library(cuFFT_scripts STATIC
 		benchmark_scripts/cuFFT_scripts/src/user_benchmark_cuFFT.cu
@@ -274,23 +271,19 @@ if(build_VkFFT_cuFFT_benchmark)
 		benchmark_scripts/cuFFT_scripts/src/sample_1001_benchmark_cuFFT_double_2_4096.cu
 		benchmark_scripts/cuFFT_scripts/src/sample_1003_benchmark_cuFFT_single_3d_2_512.cu)
 	endif()
-	set_property(TARGET cuFFT_scripts PROPERTY CUDA_ARCHITECTURES 60 70 75 80 86)
-	CUDA_ADD_CUFFT_TO_TARGET(cuFFT_scripts)
-	target_compile_options(cuFFT_scripts PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:
-	-std=c++11
-	-gencode arch=compute_60,code=compute_60
-	-gencode arch=compute_70,code=compute_70 
-	-gencode arch=compute_75,code=compute_75 
-	-gencode arch=compute_80,code=compute_80 
-	-gencode arch=compute_86,code=compute_86>")
+	set_property(TARGET cuFFT_scripts PROPERTY CUDA_ARCHITECTURES all-major)
 	target_include_directories(cuFFT_scripts PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_scripts/cuFFT_scripts/include)
-	target_include_directories(cuFFT_scripts PUBLIC ${CUDA_INCLUDE_DIRS})
-	set_target_properties(cuFFT_scripts PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-	set_target_properties(cuFFT_scripts PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+	target_include_directories(cuFFT_scripts PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+	set_target_properties(cuFFT_scripts PROPERTIES
+			CUDA_SEPARABLE_COMPILATION ON
+			CUDA_RESOLVE_DEVICE_SYMBOLS ON
+			CUDA_STANDARD 11
+			CUDA_STANDARD_REQUIRED YES)
+	target_link_libraries(cuFFT_scripts PRIVATE CUDA::cufft CUDA::cudart)
 	target_link_libraries(${PROJECT_NAME} PUBLIC cuFFT_scripts)
 endif()
 if(build_VkFFT_rocFFT_benchmark)
-	add_definitions(-DUSE_rocFFT)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC USE_rocFFT)
 	list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
 	find_package(hip)
     find_package(hipfft)
