@@ -429,9 +429,8 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 			temp_int1.data.i = (i + 1) * sc->localSize[1].data.i;
 
 			if (temp_int1.data.i > sc->fftDim.data.i) {
-				//&sc->tempIntLen = sprintf(&sc->tempIntStr, "		if(%s < %" PRIu64 "){\n", &sc->gl_LocalInvocationID_y, &sc->fftDim - (i + k * used_registers) * &sc->localSize[1]);
-				temp_int1.data.i = sc->localSize[1].data.i - (temp_int1.data.i - sc->fftDim.data.i);
-				PfIf_lt_start(sc, &sc->gl_LocalInvocationID_y, &temp_int1);
+				PfIf_end(sc);
+				PfIf_end(sc);
 			}
 		}
 	}
