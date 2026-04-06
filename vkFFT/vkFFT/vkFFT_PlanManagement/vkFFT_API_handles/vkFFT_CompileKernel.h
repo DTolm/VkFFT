@@ -366,7 +366,9 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 
 		if (result != NVRTC_SUCCESS) {
 			printf("nvrtcCompileProgram error: %s\n", nvrtcGetErrorString(result));
-			char* log = (char*)malloc(sizeof(char) * 4000000);
+			size_t logSize;
+			nvrtcGetProgramLogSize(prog, &logSize);
+			char* log = (char*)malloc(sizeof(char) * logSize);
 			if (!log) {
 				free(code0);
 				code0 = 0;
@@ -553,7 +555,9 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			free(opts[0]);	
 		if (result != HIPRTC_SUCCESS) {
 			printf("hiprtcCompileProgram error: %s\n", hiprtcGetErrorString(result));
-			char* log = (char*)malloc(sizeof(char) * 100000);
+			size_t logSize;
+			hiprtcGetProgramLogSize(prog, &logSize);
+			char* log = (char*)malloc(sizeof(char) * logSize);
 			if (!log) {
 				free(code0);
 				code0 = 0;
