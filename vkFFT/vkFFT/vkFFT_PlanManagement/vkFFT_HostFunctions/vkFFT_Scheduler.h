@@ -1033,6 +1033,9 @@ static inline VkFFTResult VkFFTScheduler(VkFFTApplication* app, VkFFTPlan* FFTPl
 	if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] >= app->configuration.swapTo2Stage4Step) && (numPasses < 3)) numPasses = 2;//Force set to 2 stage 4 step algorithm
 	if ((FFTPlan->actualFFTSizePerAxis[axis_id][axis_id] >= app->configuration.swapTo3Stage4Step) && (app->configuration.swapTo3Stage4Step >= 65536)) numPasses = 3;//Force set to 3 stage 4 step algorithm
 	if (forceRaderTwoUpload && (numPasses == 1)) numPasses = 2;//Force set Rader cases that use more than 512 or maxNumThreads threads per one of Rader primes
+	if (app->configuration.performConvolution && (numPasses > 1) && (axis_id != (int)nonStridedAxisId)) {
+		numPasses = 1;
+	}
 	pfUINT* locAxisSplit = FFTPlan->axisSplit[axis_id];
 	if (numPasses == 1) {
 		locAxisSplit[0] = FFTPlan->actualFFTSizePerAxis[axis_id][axis_id];
