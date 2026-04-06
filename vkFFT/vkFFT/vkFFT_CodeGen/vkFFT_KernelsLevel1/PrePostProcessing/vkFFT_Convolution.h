@@ -425,13 +425,15 @@ static inline void appendKernelConvolution(VkFFTSpecializationConstantsLayout* s
 				}
 			}
 		}
-		else {
+		else if(strideType == 1) {
 			temp_int1.data.i = (i + 1) * sc->localSize[1].data.i;
 
 			if (temp_int1.data.i > sc->fftDim.data.i) {
 				PfIf_end(sc);
-				PfIf_end(sc);
 			}
+		}
+		if (localSize.data.i * ((1 + (pfINT)i)) > sc->fftDim.data.i) {
+			PfIf_end(sc);
 		}
 	}
 

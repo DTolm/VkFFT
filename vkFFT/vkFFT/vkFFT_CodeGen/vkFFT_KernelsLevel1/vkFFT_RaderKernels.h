@@ -666,11 +666,10 @@ sdata[sharedStride * gl_LocalInvocationID.y + inoutID + %" PRIu64 "] = temp%s%s;
 				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
 					PfCopyContainer(sc, &sc->regIDs[i], &tempID[i]);
 				}
-				for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
-					PfDeallocateContainer(sc, &tempID[i]);
-				}
 			}
-			
+			for (pfUINT i = 0; i < sc->registers_per_thread * sc->registerBoost; i++) {
+				PfDeallocateContainer(sc, &tempID[i]);
+			}
 			free(tempID);
 			tempID = 0;
 		}

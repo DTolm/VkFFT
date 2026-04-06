@@ -896,15 +896,21 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 			if (readWrite == 0) {
 				if ((sc->inputMemoryCode % 10) == 2) {
 					if (((type / 10) == 50) || ((type / 10) == 70) || ((type / 10) == 110) || ((type / 10) == 111) || ((type / 10) == 120) || ((type / 10) == 121) || ((type / 10) == 130) || ((type / 10) == 131) || ((type / 10) == 142) || ((type / 10) == 143)) {
-						if (recalculateAtEveryStep_inoutID)
-							checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);
-							
 						if (sc->readToRegisters) {
+							PfSetToZero(sc, &sc->regIDs[k * sc->registers_per_thread + i]);
+
+							if (recalculateAtEveryStep_inoutID)
+								checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);
+							
 							appendGlobalToRegisters_x(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID);
+
+							if (recalculateAtEveryStep_inoutID)
+								checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
 
 							if (((((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 0)) || (((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 1))) && ((type / 10) == 131)) {
 								if (recalculateAtEveryStep_inoutID) {
 									checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID2);
+
 									if (sc->fftDim.data.i == sc->fft_dim_full.data.i) {
 										PfMul(sc, &sc->tempInt, &sc->inoutID_y, &bufferStride[1], 0);
 										PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->tempInt);
@@ -912,25 +918,43 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 									PfAdd(sc, &sc->inoutID2, &sc->inoutID2, &sc->shiftZ);
 								}
 								appendGlobalToRegisters_y(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID2);
+
 								if (recalculateAtEveryStep_inoutID)
 									checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
 							}
 
 							append_processing_multiupload_R2R(sc, &sc->inoutID_x, &sc->regIDs[k * sc->registers_per_thread + i], readWrite, type, 0, 0);
+							
 							if (sc->mergeSequencesR2C) {
+								if (recalculateAtEveryStep_inoutID)
+									checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);
 								if ((sc->size[1].data.i % 2) != 0) {
 									temp_int.data.i = sc->size[1].data.i - 1;
 									PfIf_lt_start(sc, &sc->inoutID_y, &temp_int);
 								}
 								PfAdd(sc, &sc->inoutID, &sc->inoutID, &sc->inputStride[1]);
+
 								if ((sc->size[1].data.i % 2) != 0) {
 									PfIf_end(sc);
 								}
+
 								appendGlobalToRegisters_y(sc, &sc->regIDs[k * sc->registers_per_thread + i], &sc->inputsStruct, &sc->inoutID);
+								
+								if (recalculateAtEveryStep_inoutID)
+									checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
 							}
+
 						}
 						else {
+							PfSetToZero(sc, &sc->temp);
+
+							if (recalculateAtEveryStep_inoutID)
+								checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);
+
 							appendGlobalToRegisters_x(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
+
+							if (recalculateAtEveryStep_inoutID)
+								checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
 
 							if (((((sc->performDCT == 3) || (sc->performDST == 3)) && (sc->actualInverse == 0)) || (((sc->performDCT == 2) || (sc->performDST == 2)) && (sc->actualInverse == 1))) && ((type / 10) == 131)) {
 								if (recalculateAtEveryStep_inoutID) {
@@ -949,6 +973,9 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 
 							append_processing_multiupload_R2R(sc, &sc->inoutID_x, &sc->temp, readWrite, type, 0, 0);
 							if (sc->mergeSequencesR2C) {
+								if (recalculateAtEveryStep_inoutID)
+									checkZeropadStart_currentFFTAxis(sc, readWrite, type, &sc->inoutID_x);
+
 								if ((sc->size[1].data.i % 2) != 0) {
 									temp_int.data.i = sc->size[1].data.i - 1;
 									PfIf_lt_start(sc, &sc->inoutID_y, &temp_int);
@@ -958,12 +985,13 @@ static inline void appendReadWriteDataVkFFT_nonstrided(VkFFTSpecializationConsta
 									PfIf_end(sc);
 								}
 								appendGlobalToRegisters_y(sc, &sc->temp, &sc->inputsStruct, &sc->inoutID);
+
+								if (recalculateAtEveryStep_inoutID)
+									checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
 							}
+
 							appendRegistersToShared(sc, &sc->sdataID, &sc->temp);
 						}
-
-						if (recalculateAtEveryStep_inoutID)
-							checkZeropadEnd_currentFFTAxis(sc, readWrite, type);
 						
 					}
 					else  if ((type / 10) == 140) {
