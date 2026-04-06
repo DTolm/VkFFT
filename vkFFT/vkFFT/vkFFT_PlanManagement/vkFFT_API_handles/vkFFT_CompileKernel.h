@@ -329,40 +329,23 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			deleteVkFFT(app);
 			return VKFFT_ERROR_FAILED_TO_CREATE_PROGRAM;
 		}
-		int numOpts = 1;
-		char* opts[5];
-		opts[0] = (char*)malloc(sizeof(char) * 50);
-		if (!opts[0]) {
-			free(code0);
-			code0 = 0;
-			deleteVkFFT(app);
-			return VKFFT_ERROR_MALLOC_FAILED;
-		}
+		int numOpts = 0;
+		const char* opts[5];
+		char archOpt[50];
 #if (CUDA_VERSION >= 11030)
-		sprintf(opts[0], "--gpu-architecture=sm_%" PRIu64 "%" PRIu64 "", app->configuration.computeCapabilityMajor, app->configuration.computeCapabilityMinor);
+		sprintf(archOpt, "--gpu-architecture=sm_%" PRIu64 "%" PRIu64 "", app->configuration.computeCapabilityMajor, app->configuration.computeCapabilityMinor);
 #else
-		sprintf(opts[0], "--gpu-architecture=compute_%" PRIu64 "%" PRIu64 "", app->configuration.computeCapabilityMajor, app->configuration.computeCapabilityMinor);
+		sprintf(archOpt, "--gpu-architecture=compute_%" PRIu64 "%" PRIu64 "", app->configuration.computeCapabilityMajor, app->configuration.computeCapabilityMinor);
 #endif
+		opts[numOpts++] = archOpt;
+    char fmadOpt[50];
 		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
-			opts[1] = (char*)malloc(sizeof(char) * 50);
-			if (!opts[1]) {
-				free(code0);
-				code0 = 0;
-				deleteVkFFT(app);
-				return VKFFT_ERROR_MALLOC_FAILED;
-			}
-			numOpts++;
-			sprintf(opts[1], "-fmad=false");
+			sprintf(fmadOpt, "-fmad=false");
+			opts[numOpts++] = fmadOpt;
 		}
 		//result = nvrtcAddNameExpression(prog, "&consts");
 		//if (result != NVRTC_SUCCESS) printf("1.5 error: %s\n", nvrtcGetErrorString(result));
-		result = nvrtcCompileProgram(prog,  // prog
-			numOpts,     // numOptions
-			(const char* const*)opts); // options
-
-		free(opts[0]);
-		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
-			free(opts[1]);
+		result = nvrtcCompileProgram(prog, numOpts, opts);
 
 		if (result != NVRTC_SUCCESS) {
 			printf("nvrtcCompileProgram error: %s\n", nvrtcGetErrorString(result));
@@ -532,25 +515,15 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			}
 		}*/
 		int numOpts = 0;
-		char* opts[5];
+		const char* opts[5];
+		char ffpContractOpt[50];
 		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
-			opts[0] = (char*)malloc(sizeof(char) * 50);
-			if (!opts[0]) {
-				free(code0);
-				code0 = 0;
-				deleteVkFFT(app);
-				return VKFFT_ERROR_MALLOC_FAILED;
-			}
-			numOpts++;
-			sprintf(opts[0], "-ffp-contract=off");
+			sprintf(ffpContractOpt, "-ffp-contract=off");
+			opts[numOpts++] = ffpContractOpt;
 		}
 
-		result = hiprtcCompileProgram(prog,  // prog
-			numOpts,     // numOptions
-			(const char**)opts); // options
+		result = hiprtcCompileProgram(prog, numOpts, opts);
 
-		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory)
-			free(opts[0]);	
 		if (result != HIPRTC_SUCCESS) {
 			printf("hiprtcCompileProgram error: %s\n", hiprtcGetErrorString(result));
 			char* log = (char*)malloc(sizeof(char) * 100000);
