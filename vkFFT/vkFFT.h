@@ -101,6 +101,7 @@
 
 #endif
 
+#include "vkFFT-fwd.h"
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 #include "vkFFT/vkFFT_AppManagement/vkFFT_RunApp.h"
 #include "vkFFT/vkFFT_AppManagement/vkFFT_InitializeApp.h"

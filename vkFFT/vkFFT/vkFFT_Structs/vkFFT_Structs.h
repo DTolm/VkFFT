@@ -90,7 +90,7 @@ struct PfContainer{
 	int size; //  bytes allcoated in name
 };
 
-typedef struct {
+struct VkFFTConfiguration {
 	//WHDCN layout
 
 	//required parameters:
@@ -342,9 +342,9 @@ typedef struct {
 	MTL::CommandBuffer* commandBuffer;//Filled at app execution
 	MTL::ComputeCommandEncoder* commandEncoder;//Filled at app execution
 #endif
-} VkFFTConfiguration;//parameters specified at plan creation
+};//parameters specified at plan creation
 
-typedef struct {
+struct VkFFTLaunchParams {
 #if(VKFFT_BACKEND==0)
 	VkCommandBuffer* commandBuffer;//commandBuffer to which FFT is appended
 
@@ -404,7 +404,7 @@ typedef struct {
 	pfUINT inputBufferOffsetImaginary;//specify if VkFFT has to offset the first element position inside the input buffer. In bytes. Default 0 
 	pfUINT outputBufferOffsetImaginary;//specify if VkFFT has to offset the first element position inside the output buffer. In bytes. Default 0
 	pfUINT kernelOffsetImaginary;//specify if VkFFT has to offset the first element position inside the kernel. In bytes. Default 0
-} VkFFTLaunchParams;//parameters specified at plan execution
+};//parameters specified at plan execution
 typedef enum VkFFTResult {
 	VKFFT_SUCCESS = 0,
 	VKFFT_ERROR_MALLOC_FAILED = 1,
@@ -1186,7 +1186,7 @@ typedef struct {
 	VkFFTAxis R2Cdecomposition;
 	VkFFTAxis inverseBluesteinAxes[VKFFT_MAX_FFT_DIMENSIONS][4];
 } VkFFTPlan;
-typedef struct {
+struct VkFFTApplication {
 	VkFFTConfiguration configuration;
 	VkFFTPlan* localFFTPlan;
 	VkFFTPlan* localFFTPlan_inverse; //additional inverse plan
@@ -1246,6 +1246,6 @@ typedef struct {
 
 	pfUINT applicationStringSize;//size of saveApplicationString in bytes
 	void* saveApplicationString;//memory array(uint32_t* for Vulkan, char* for CUDA/HIP/OpenCL) through which user can access VkFFT generated binaries. (will be allocated by VkFFT, deallocated with deleteVkFFT call)
-} VkFFTApplication;
+};
 
 #endif
