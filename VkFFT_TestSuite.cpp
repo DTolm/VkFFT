@@ -293,6 +293,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
     vkGPU->device = device;
     MTL::CommandQueue* queue = device->newCommandQueue();
     vkGPU->queue = queue;
+    auto *pool = NS::AutoreleasePool::alloc()->init();
 #endif
 
 	uint64_t isCompilerInitialized = 1;
@@ -527,6 +528,7 @@ VkFFTResult launchVkFFT(VkGPU* vkGPU, uint64_t sample_id, bool file_output, FILE
     vkGPU->queue->release();
     vkGPU->device->release();
     devices->release();
+    pool->drain();
 #endif
 
 	return resFFT;

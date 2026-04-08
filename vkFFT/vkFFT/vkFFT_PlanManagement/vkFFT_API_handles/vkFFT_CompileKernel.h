@@ -956,14 +956,12 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		if (app->configuration.saveApplicationToString) {
 
 		}
-		str->release();
 	}
 	//const char function_name[20] = "VkFFT_main_R2C";
 	NS::String* str = NS::String::string(axis->VkFFTFunctionName, NS::UTF8StringEncoding);
 	MTL::Function* function = axis->library->newFunction(str);
 	axis->pipeline = app->configuration.device->newComputePipelineState(function, &error);
 	function->release();
-	str->release();
 #endif
 	return VKFFT_SUCCESS;
 }

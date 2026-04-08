@@ -1126,9 +1126,7 @@ static inline VkFFTResult setConfigurationVkFFT(VkFFTApplication* app, VkFFTConf
 
 	dummy_state->release();
 	function->release();
-	str_name->release();
 	dummy_library->release();
-	str_code->release();
 	compileOptions->release();
 #endif
 

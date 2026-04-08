@@ -507,8 +507,6 @@ VkFFTResult transferDataToCPU(VkGPU* vkGPU, void* cpu_arr, void* output_buffer, 
 	blitCommandEncoder->endEncoding();
 	copyCommandBuffer->commit();
 	copyCommandBuffer->waitUntilCompleted();
-	blitCommandEncoder->release();
-	copyCommandBuffer->release();
 	memcpy(cpu_arr, stagingBuffer->contents(), transferSize);
 	stagingBuffer->release();
 #endif
@@ -632,8 +630,6 @@ VkFFTResult transferDataFromCPU(VkGPU* vkGPU, void* cpu_arr, void* input_buffer,
 	blitCommandEncoder->endEncoding();
 	copyCommandBuffer->commit();
 	copyCommandBuffer->waitUntilCompleted();
-	blitCommandEncoder->release();
-	copyCommandBuffer->release();
 	stagingBuffer->release();
 #endif
 	return resFFT;
@@ -894,9 +890,6 @@ VkFFTResult performVulkanFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunchPar
 	commandBuffer->waitUntilCompleted();
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
-
-	commandEncoder->release();
-	commandBuffer->release();
 #endif
 	return resFFT;
 }
@@ -1031,8 +1024,6 @@ VkFFTResult performVulkanFFTiFFT(VkGPU* vkGPU, VkFFTApplication* app, VkFFTLaunc
 	std::chrono::steady_clock::time_point timeEnd = std::chrono::steady_clock::now();
 	double totTime = std::chrono::duration_cast<std::chrono::microseconds>(timeEnd - timeSubmit).count() * 0.001;
 	time_result[0] = totTime / num_iter;
-	commandEncoder->release();
-	commandBuffer->release();
 #endif
 	return resFFT;
 }
