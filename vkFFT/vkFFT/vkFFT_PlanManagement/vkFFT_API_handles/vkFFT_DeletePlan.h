@@ -24,6 +24,10 @@
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 
 static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis, int isInverseBluesteinAxes) {
+	if(axis->specializationConstants.inoutID_y.name) {
+		free(axis->specializationConstants.inoutID_y.name);
+		axis->specializationConstants.inoutID_y.name = 0;
+	}
 	if (app->configuration.keepShaderCode) {
 		free(axis->specializationConstants.code0);
 		axis->specializationConstants.code0 = 0;
