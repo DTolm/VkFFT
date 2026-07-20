@@ -539,8 +539,6 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			commandEncoder->endEncoding();
 			commandBuffer->commit();
 			commandBuffer->waitUntilCompleted();
-			commandEncoder->release();
-			commandBuffer->release();
 #endif
 		}
 		if ((FFTPlan->numAxisUploads[axis_id] > 1) && (!app->configuration.makeForwardPlanOnly)) {
@@ -946,8 +944,6 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			commandEncoder->endEncoding();
 			commandBuffer->commit();
 			commandBuffer->waitUntilCompleted();
-			commandEncoder->release();
-			commandBuffer->release();
 		}
 		if ((FFTPlan->numAxisUploads[axis_id] == 1) && (!app->configuration.makeForwardPlanOnly)) {
 			MTL::CommandBuffer* commandBuffer = app->configuration.queue->commandBuffer();
@@ -967,8 +963,6 @@ static inline VkFFTResult VkFFTGeneratePhaseVectors(VkFFTApplication* app, VkFFT
 			commandEncoder->endEncoding();
 			commandBuffer->commit();
 			commandBuffer->waitUntilCompleted();
-			commandEncoder->release();
-			commandBuffer->release();
 		}
 #endif
 #if(VKFFT_BACKEND==0)
@@ -1358,8 +1352,6 @@ static inline VkFFTResult VkFFTGenerateRaderFFTKernel(VkFFTApplication* app, VkF
 				commandEncoder->endEncoding();
 				commandBuffer->commit();
 				commandBuffer->waitUntilCompleted();
-				commandEncoder->release();
-				commandBuffer->release();
 #endif
 				resFFT = VkFFT_TransferDataToCPU(&kernelPreparationApplication, axis->specializationConstants.raderContainer[i].raderFFTkernel, &bufferRaderFFT, bufferSize);
 				if (resFFT != VKFFT_SUCCESS) {

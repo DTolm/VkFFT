@@ -23,6 +23,48 @@
 #define VKFFT_COMPILEKERNEL_H
 #include "vkFFT/vkFFT_Structs/vkFFT_Structs.h"
 
+#if(VKFFT_BACKEND==1)
+
+// Get architecture for CUDA compilation.
+// arch_out holds the architecture to pass to the compiler
+// use_cubin indicates whether to get the code in CUBIN or PTX format
+static void getCudaArchitecture(VkFFTApplication *app, int *arch_out, bool *use_cubin) {
+        int count = 1;
+        nvrtcGetNumSupportedArchs(&count);
+        int *supportedArchs = (int *)malloc(count * sizeof(int));
+
+        int maxSupported = 0;
+        if (nvrtcGetSupportedArchs(supportedArchs) == cudaSuccess) {
+                for (int i = 0; i < count; i++) {
+                        int a = supportedArchs[i];
+                        if (a > maxSupported) {
+                                maxSupported = a;
+                        }
+                }
+                int target = 10 * app->configuration.computeCapabilityMajor
+                             + app->configuration.computeCapabilityMinor;
+                if (target > maxSupported) {
+                        // If target architecture is not supported, compile
+                        // for the maximum supported architecture, and use
+                        // PTX for forward compatibility
+                        *use_cubin = false;
+                        *arch_out = maxSupported;
+                        return;
+                } else {
+                        // Otherwise compile for the target architecture, and
+                        // use CUBIN
+                        *use_cubin = true;
+                        *arch_out = target;
+                        return;
+                }
+        }
+
+        free(supportedArchs);
+        *arch_out = 0;
+        *use_cubin = false;
+}
+#endif
+
 static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* axis) {
 #if(VKFFT_BACKEND==0)
 	VkResult res = VK_SUCCESS;
@@ -331,17 +373,21 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		}
 		int numOpts = 1;
 		char* opts[5];
-		opts[0] = (char*)malloc(sizeof(char) * 50);
+		opts[0] = (char*)malloc(sizeof(char) * 60);
 		if (!opts[0]) {
 			free(code0);
 			code0 = 0;
 			deleteVkFFT(app);
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
+
+                int arch;
+                bool use_cubin;
+                getCudaArchitecture(app, &arch, &use_cubin);
 #if (CUDA_VERSION >= 11030)
-		sprintf(opts[0], "--gpu-architecture=sm_%" PRIu64 "%" PRIu64 "", app->configuration.computeCapabilityMajor, app->configuration.computeCapabilityMinor);
+		sprintf(opts[0], "--gpu-architecture=sm_%d", arch);
 #else
-		sprintf(opts[0], "--gpu-architecture=compute_%" PRIu64 "%" PRIu64 "", app->configuration.computeCapabilityMajor, app->configuration.computeCapabilityMinor);
+		sprintf(opts[0], "--gpu-architecture=compute_%d", arch);
 #endif
 		if (app->configuration.quadDoubleDoublePrecision || app->configuration.quadDoubleDoublePrecisionDoubleMemory){
 			opts[1] = (char*)malloc(sizeof(char) * 50);
@@ -385,17 +431,22 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 				return VKFFT_ERROR_FAILED_TO_COMPILE_PROGRAM;
 			}
 		}
-#if (CUDA_VERSION >= 11030)
-		result = nvrtcGetCUBINSize(prog, &codeSize);
-#else
-		result = nvrtcGetPTXSize(prog, &codeSize);
-#endif
+
+                if (use_cubin) {
+                        result = nvrtcGetCUBINSize(prog, &codeSize);
+                } else {
+                        result = nvrtcGetPTXSize(prog, &codeSize);
+                }
+
 		if (result != NVRTC_SUCCESS) {
-#if (CUDA_VERSION >= 11030)
-			printf("nvrtcGetCUBINSize error: %s\n", nvrtcGetErrorString(result));
-#else
-			printf("nvrtcGetPTXSize error: %s\n", nvrtcGetErrorString(result));
-#endif
+                        if (use_cubin) {
+                                printf("nvrtcGetCUBINSize error: %s\n",
+                                       nvrtcGetErrorString(result));
+                        } else {
+                                printf("nvrtcGetPTXSize error: %s\n",
+                                       nvrtcGetErrorString(result));
+                        }
+
 			free(code0);
 			code0 = 0;
 			deleteVkFFT(app);
@@ -410,17 +461,21 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 			return VKFFT_ERROR_MALLOC_FAILED;
 		}
 		axis->binary = code;
-#if (CUDA_VERSION >= 11030)
-		result = nvrtcGetCUBIN(prog, code);
-#else
+                if (use_cubin) {
+                        result = nvrtcGetCUBIN(prog, code);
+                } else {
 		result = nvrtcGetPTX(prog, code);
-#endif
+                }
+
 		if (result != NVRTC_SUCCESS) {
-#if (CUDA_VERSION >= 11030)
-			printf("nvrtcGetCUBIN error: %s\n", nvrtcGetErrorString(result));
-#else
-			printf("nvrtcGetPTX error: %s\n", nvrtcGetErrorString(result));
-#endif
+                        if (use_cubin) {
+                                printf("nvrtcGetCUBIN error: %s\n",
+                                       nvrtcGetErrorString(result));
+                        } else {
+                                printf("nvrtcGetPTX error: %s\n",
+                                       nvrtcGetErrorString(result));
+                        }
+
 			free(code);
 			code = 0;
 			free(code0);
@@ -956,14 +1011,12 @@ static inline VkFFTResult VkFFT_CompileKernel(VkFFTApplication* app, VkFFTAxis* 
 		if (app->configuration.saveApplicationToString) {
 
 		}
-		str->release();
 	}
 	//const char function_name[20] = "VkFFT_main_R2C";
 	NS::String* str = NS::String::string(axis->VkFFTFunctionName, NS::UTF8StringEncoding);
 	MTL::Function* function = axis->library->newFunction(str);
 	axis->pipeline = app->configuration.device->newComputePipelineState(function, &error);
 	function->release();
-	str->release();
 #endif
 	return VKFFT_SUCCESS;
 }

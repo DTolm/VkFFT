@@ -183,8 +183,6 @@ static inline VkFFTResult VkFFT_TransferDataFromCPU(VkFFTApplication* app, void*
 	blitCommandEncoder->endEncoding();
 	copyCommandBuffer->commit();
 	copyCommandBuffer->waitUntilCompleted();
-	blitCommandEncoder->release();
-	copyCommandBuffer->release();
 	stagingBuffer->release();
 #endif
 	return resFFT;
@@ -307,8 +305,6 @@ static inline VkFFTResult VkFFT_TransferDataToCPU(VkFFTApplication* app, void* c
 	blitCommandEncoder->endEncoding();
 	copyCommandBuffer->commit();
 	copyCommandBuffer->waitUntilCompleted();
-	blitCommandEncoder->release();
-	copyCommandBuffer->release();
 	memcpy(cpu_arr, stagingBuffer->contents(), transferSize);
 	stagingBuffer->release();
 #endif
