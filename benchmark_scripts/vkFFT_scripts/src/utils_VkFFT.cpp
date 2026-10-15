@@ -492,9 +492,13 @@ VkFFTResult transferDataToCPU(VkGPU* vkGPU, void* cpu_arr, void* output_buffer, 
 	if (res != ZE_RESULT_SUCCESS) {
 		return VKFFT_ERROR_FAILED_TO_COPY;
 	}
-	res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
+	res = zeCommandListHostSynchronize(copyCommandList, UINT32_MAX);
 	if (res != ZE_RESULT_SUCCESS) {
 		return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+	}
+	res = zeCommandListDestroy(copyCommandList);
+	if (res != ZE_RESULT_SUCCESS) {
+		return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
 	}
 #elif(VKFFT_BACKEND==5)
 	MTL::Buffer* stagingBuffer = vkGPU->device->newBuffer(transferSize, MTL::ResourceStorageModeShared);
@@ -617,9 +621,13 @@ VkFFTResult transferDataFromCPU(VkGPU* vkGPU, void* cpu_arr, void* input_buffer,
 	if (res != ZE_RESULT_SUCCESS) {
 		return VKFFT_ERROR_FAILED_TO_COPY;
 	}
-	res = zeCommandQueueSynchronize(vkGPU->commandQueue, UINT32_MAX);
+	res = zeCommandListHostSynchronize(copyCommandList, UINT32_MAX);
 	if (res != ZE_RESULT_SUCCESS) {
 		return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+	}
+	res = zeCommandListDestroy(copyCommandList);
+	if (res != ZE_RESULT_SUCCESS) {
+		return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
 	}
 #elif(VKFFT_BACKEND==5)
 	MTL::Buffer* stagingBuffer = vkGPU->device->newBuffer(cpu_arr, transferSize, MTL::ResourceStorageModeShared);
