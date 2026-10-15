@@ -168,9 +168,13 @@ static inline VkFFTResult VkFFT_TransferDataFromCPU(VkFFTApplication* app, void*
 	if (res != ZE_RESULT_SUCCESS) {
 		return VKFFT_ERROR_FAILED_TO_COPY;
 	}
-	res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
+	res = zeCommandListHostSynchronize(copyCommandList, UINT32_MAX);
 	if (res != ZE_RESULT_SUCCESS) {
 		return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+	}
+	res = zeCommandListDestroy(copyCommandList);
+	if (res != ZE_RESULT_SUCCESS) {
+		return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
 	}
 #elif(VKFFT_BACKEND==5)
 	MTL::Buffer* stagingBuffer = app->configuration.device->newBuffer(cpu_arr, transferSize, MTL::ResourceStorageModeShared);
@@ -292,9 +296,13 @@ static inline VkFFTResult VkFFT_TransferDataToCPU(VkFFTApplication* app, void* c
 	if (res != ZE_RESULT_SUCCESS) {
 		return VKFFT_ERROR_FAILED_TO_COPY;
 	}
-	res = zeCommandQueueSynchronize(app->configuration.commandQueue[0], UINT32_MAX);
+	res = zeCommandListHostSynchronize(copyCommandList, UINT32_MAX);
 	if (res != ZE_RESULT_SUCCESS) {
 		return VKFFT_ERROR_FAILED_TO_SYNCHRONIZE;
+	}
+	res = zeCommandListDestroy(copyCommandList);
+	if (res != ZE_RESULT_SUCCESS) {
+		return VKFFT_ERROR_FAILED_TO_DESTROY_COMMAND_LIST;
 	}
 #elif(VKFFT_BACKEND==5)
 	MTL::Buffer* stagingBuffer = app->configuration.device->newBuffer(transferSize, MTL::ResourceStorageModeShared);

@@ -479,7 +479,7 @@ static inline VkFFTResult VkFFT_DispatchPlan(VkFFTApplication* app, VkFFTAxis* a
 				}
 				if (axis->specializationConstants.convolutionStep) {
 					for (int l = 0; l < axis->specializationConstants.kernelNum; l++){
-						args[args_id] = &axis->kernelBuffer[l];
+						args[args_id] = &axis->kernel[l];
 						result = zeKernelSetArgumentValue(axis->VkFFTKernel, (uint32_t)args_id, sizeof(void*), args[args_id]);
 						if (result != ZE_RESULT_SUCCESS) {
 							return VKFFT_ERROR_FAILED_TO_SET_KERNEL_ARG;
