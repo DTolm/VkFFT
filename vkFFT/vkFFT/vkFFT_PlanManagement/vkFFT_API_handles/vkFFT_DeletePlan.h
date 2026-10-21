@@ -83,13 +83,13 @@ static inline void deleteAxis(VkFFTApplication* app, VkFFTAxis* axis, int isInve
 		res = clReleaseMemObject(axis->bufferLUT);
 		if (res == 0) axis->bufferLUT = 0;
 	}
-	if (axis->program != 0) {
-		res = clReleaseProgram(axis->program);
-		if (res == 0) axis->program = 0;
-	}
 	if (axis->kernel != 0) {
 		res = clReleaseKernel(axis->kernel);
 		if (res == 0) axis->kernel = 0;
+	}
+	if (axis->program != 0) {
+		res = clReleaseProgram(axis->program);
+		if (res == 0) axis->program = 0;
 	}
 #elif(VKFFT_BACKEND==4)
 	ze_result_t res = ZE_RESULT_SUCCESS;
