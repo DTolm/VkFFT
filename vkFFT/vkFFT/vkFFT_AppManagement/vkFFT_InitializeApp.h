@@ -2181,6 +2181,18 @@ static inline VkFFTResult initializeVkFFT(VkFFTApplication* app, VkFFTConfigurat
 				deleteVkFFT(app);
 				return resFFT;
 			}
+			if (!app->configuration.makeInversePlanOnly) {
+				for (pfUINT j = 0; j < app->localFFTPlan->numAxisUploads[i]; j++)
+					app->localFFTPlan->axes[i][j].specializationConstants.performBufferSetUpdate = 1;
+				for (pfUINT j = 1; j < app->localFFTPlan->numAxisUploads[i]; j++)
+					app->localFFTPlan->inverseBluesteinAxes[i][j].specializationConstants.performBufferSetUpdate = 1;
+			}
+			if (!app->configuration.makeForwardPlanOnly) {
+				for (pfUINT j = 0; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
+					app->localFFTPlan_inverse->axes[i][j].specializationConstants.performBufferSetUpdate = 1;
+				for (pfUINT j = 1; j < app->localFFTPlan_inverse->numAxisUploads[i]; j++)
+					app->localFFTPlan_inverse->inverseBluesteinAxes[i][j].specializationConstants.performBufferSetUpdate = 1;
+			}
 		}
 	}
 

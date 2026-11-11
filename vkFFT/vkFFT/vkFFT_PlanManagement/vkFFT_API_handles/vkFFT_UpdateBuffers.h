@@ -954,7 +954,7 @@ static inline VkFFTResult VkFFTUpdateBufferSet(VkFFTApplication* app, VkFFTPlan*
 #endif
 				}
 #if(VKFFT_BACKEND==0)
-				if (axis->specializationConstants.performBufferSetUpdate) {
+				if ((axis->specializationConstants.performBufferSetUpdate) && (descriptorBufferInfo.buffer != VK_NULL_HANDLE)) {
 					VkWriteDescriptorSet writeDescriptorSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
 					writeDescriptorSet.dstSet = axis->descriptorSet;
 					writeDescriptorSet.dstBinding = (uint32_t)i;
